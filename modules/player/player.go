@@ -30,6 +30,7 @@ type Player struct {
 	depth       int
 	loop        bool
 	done        bool
+	waitSamps   int
 }
 
 func New(cfg Config) *Player {
@@ -223,6 +224,10 @@ func (p *Player) ReceiveMessage(msg psalm.Message) {
 	if endOffsetSec, ok := msg.FltVal("endOffsetSec"); ok {
 		p.SetEndOffsetSec(endOffsetSec)
 	}
+
+	if tick, ok := msg["tick"].(psalm.CtrlTick); ok {
+		p.waitSamps = tick.SampleOffset
+	}
 }
 
 func (p *Player) NoteOn(amplitude float64, message psalm.Message, _ *psalm.Config) {
@@ -255,7 +260,7 @@ func (p *Player) IsActive() bool {
 func (p *Player) Synthesize() {
 	outSocket := p.Output(0)
 
-	for i := 0; i < p.Config().BufferSize; i++ {
+	for i := p.waitSamps; i < p.Config().BufferSize; i++ {
 		if p.done || p.sf == nil {
 			for _, out := range p.Outputs() {
 				out.Clear()
@@ -292,4 +297,6 @@ func (p *Player) Synthesize() {
 			p.phase = p.startOffset + np
 		}
 	}
+
+	p.waitSamps = 0
 }

@@ -42,6 +42,7 @@ func main() {
 		"message": template.Template{
 			"speed": bucket.New(1.0, 2.0, 0.2, 0.75, 0.4).SetMode(bucket.Indexed).Loop(true),
 			"sound": bucket.New("sh1", "sh2", "sh3", "sh4", "sh5").SetMode(bucket.Indexed).Loop(true),
+			"tick":  template.NewParameter("tick", nil),
 		},
 	}).ValueIn(timer.New(p.PPQ(), true).AddTo(p)))
 
@@ -52,6 +53,7 @@ func main() {
 		"message": template.Template{
 			"speed": bucket.New(1.0, 2.0, 2.2, 0.75, 0.4).SetMode(bucket.Indexed).Loop(true),
 			"sound": bucket.New("kick1", "kick2", "kick3", "kick4").SetMode(bucket.Indexed).Loop(true),
+			"tick":  template.NewParameter("tick", nil),
 		},
 	}).ValueIn(timer.New(p.PPQ()*2, true).AddTo(p)))
 
@@ -60,8 +62,9 @@ func main() {
 		"duration":  0.0,
 		"amplitude": 0.5,
 		"message": template.Template{
-			"speed": bucket.New(3.0, 2.0, 2.2, 0.75, 0.4).SetMode(bucket.Indexed).Loop(true),
-			"sound": bucket.New("hihat1", "hihat2", "hihat3", "hihat4", "hihat5").SetMode(bucket.Indexed).Loop(true),
+			"speed": bucket.New(2.0, 1.4, 3.0, 1.3, 1.5).SetMode(bucket.Indexed).Loop(true),
+			"sound": bucket.New("hihat1").SetMode(bucket.Indexed).Loop(true),
+			"tick":  template.NewParameter("tick", nil),
 		},
 	}).ValueIn(timer.New(p.PPQ()/4, true).AddTo(p)))
 
