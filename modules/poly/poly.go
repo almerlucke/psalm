@@ -115,8 +115,8 @@ func (p *Poly) handleTriggerMessage(msg psalm.Message, identifier string, durati
 		// Steal oldest active voice
 		e := p.getOldestActiveVoiceElement()
 		if e != nil {
-			fadeOut := p.getFadeOut()
-			fadeOut.Fill(e.Value.voice)
+			fade := p.getFadeOut()
+			fade.Fill(e.Value.voice)
 			p.freePool.PushElement(e.Unlink())
 			p.handleTriggerMessage(msg, identifier, duration, isNoteOn)
 		}

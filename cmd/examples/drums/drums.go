@@ -52,7 +52,6 @@ func main() {
 		"command":   "trigger",
 		"duration":  0.0,
 		"amplitude": 0.35,
-		"tick":      template.NewParameter("tick", nil),
 		"message": template.Template{
 			"speed": bucket.New(1.0, 2.0, 0.2, 0.75, 0.4, 3.0, 2.5).SetMode(bucket.Indexed).Loop(true),
 			"sound": bucket.New("sh1", "sh2", "sh3", "sh4", "sh5").SetMode(bucket.Indexed).Loop(true),
@@ -64,7 +63,6 @@ func main() {
 		"command":   "trigger",
 		"duration":  0.0,
 		"amplitude": 0.75,
-		"tick":      template.NewParameter("tick", nil),
 		"message": template.Template{
 			"speed": bucket.New(1.0, 2.0, 0.8, 0.75, 1.4, 3.0, 2.5).SetMode(bucket.Indexed).Loop(true),
 			"sound": bucket.New("shot1", "shot2", "shot3", "shot4", "shot5").SetMode(bucket.Indexed).Loop(true),
@@ -76,7 +74,6 @@ func main() {
 		"command":   "trigger",
 		"duration":  0.0,
 		"amplitude": 0.65,
-		"tick":      template.NewParameter("tick", nil),
 		"message": template.Template{
 			"speed": bucket.New(1.0, 2.0, 0.2, 0.75, 0.4, 3.0, 2.5).SetMode(bucket.Indexed).Loop(true),
 			"sound": bucket.New("perc1", "perc2", "perc3", "perc4", "perc5").SetMode(bucket.Indexed).Loop(true),
@@ -106,7 +103,9 @@ func main() {
 		},
 	}).ValueIn(timer.New(p.PPQ()/3, true).AddTo(p)))
 
-	pp := pingpong.New(2000.0, timing.BPMToMilli(p.BPM())*1.5, 0.1, 0.075).AddTo(p).In(drms)
+	bpmMs := timing.BPMToMilli(p.BPM())
+
+	pp := pingpong.New(bpmMs*4.0, bpmMs*1.5, 0.1, 0.075).AddTo(p).In(drms)
 
 	p.Out(pp)
 
