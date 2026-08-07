@@ -56,13 +56,53 @@ func (c Channels) CopyWithFunc(c2 Channels, f func(Buffer, float32, int)) {
 }
 
 func (c Channels) Copy(c2 Channels) {
-	c.CopyWithFunc(c2, func(buf Buffer, samp float32, index int) {
-		buf[index] = samp
-	})
+	if c.IsStereo() {
+		if c2.IsStereo() {
+			for i := 0; i < c.BufLen(); i++ {
+				c[0][i] = c2[0][i]
+				c[1][i] = c2[1][i]
+			}
+		} else {
+			for i := 0; i < c.BufLen(); i++ {
+				c[0][i] = c2[0][i]
+				c[1][i] = c2[0][i]
+			}
+		}
+	} else {
+		if c2.IsStereo() {
+			for i := 0; i < c.BufLen(); i++ {
+				c[0][i] = (c2[0][i] + c2[1][i]) * 0.5
+			}
+		} else {
+			for i := 0; i < c.BufLen(); i++ {
+				c[0][i] = c2[0][i]
+			}
+		}
+	}
 }
 
 func (c Channels) Accum(c2 Channels) {
-	c.CopyWithFunc(c2, func(buf Buffer, samp float32, index int) {
-		buf[index] += samp
-	})
+	if c.IsStereo() {
+		if c2.IsStereo() {
+			for i := 0; i < c.BufLen(); i++ {
+				c[0][i] += c2[0][i]
+				c[1][i] += c2[1][i]
+			}
+		} else {
+			for i := 0; i < c.BufLen(); i++ {
+				c[0][i] += c2[0][i]
+				c[1][i] += c2[0][i]
+			}
+		}
+	} else {
+		if c2.IsStereo() {
+			for i := 0; i < c.BufLen(); i++ {
+				c[0][i] += (c2[0][i] + c2[1][i]) * 0.5
+			}
+		} else {
+			for i := 0; i < c.BufLen(); i++ {
+				c[0][i] += c2[0][i]
+			}
+		}
+	}
 }

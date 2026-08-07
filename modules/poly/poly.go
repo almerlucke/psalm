@@ -66,8 +66,8 @@ func New(numChannels int, voices []Voice) *Poly {
 	poly.fadeOutFreePool = list.New[*fadeOut]()
 	poly.fadeOutActivePool = list.New[*fadeOut]()
 	for range len(voices) {
-		fadeOut := newFadeOutVoice(numChannels, poly.Config().BufferSize)
-		poly.fadeOutFreePool.Push(fadeOut)
+		fade := newFadeOutVoice(numChannels, poly.Config().BufferSize)
+		poly.fadeOutFreePool.Push(fade)
 	}
 
 	poly.SetSelf(poly)

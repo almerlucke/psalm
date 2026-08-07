@@ -268,7 +268,7 @@ func (p *Player) Synthesize() {
 			continue
 		}
 
-		samps := p.sf.LookupAll(p.phase*float64(p.sf.NumFrames()), p.depth, p.loop)
+		samps := p.sf.LookupAll(p.phase*float64(p.sf.NumFrames()-1), p.depth, p.loop)
 		for chanIndex, channel := range outSocket.Channels {
 			channel[i] = float32(samps[chanIndex] * p.amp)
 		}

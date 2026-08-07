@@ -19,7 +19,7 @@ func NewDrums(soundBank sndfile.SoundBank, numVoices int) *poly.Poly {
 		p := player.New(player.Config{
 			SndBank:   soundBank,
 			SndFile:   initSound,
-			EndOffset: 0.99,
+			EndOffset: 1.0,
 		})
 		voices[i] = p
 	}
