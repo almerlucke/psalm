@@ -1,0 +1,200 @@
+package lfo
+
+import (
+	"github.com/almerlucke/david"
+	"github.com/almerlucke/genny/float"
+	"github.com/almerlucke/genny/float/interp"
+	"github.com/almerlucke/genny/float/phasor"
+	"github.com/almerlucke/genny/float/rand"
+	"github.com/almerlucke/genny/float/shape"
+	"github.com/almerlucke/genny/float/shape/shapers/linear"
+	"github.com/almerlucke/genny/float/shape/shapers/lookup"
+	"github.com/almerlucke/genny/float/shape/shapers/mirror"
+	"github.com/almerlucke/genny/float/shape/shapers/series"
+)
+
+type WaveForm int
+
+const (
+	Sine WaveForm = iota
+	Triangle
+	Saw
+	Square
+	Rand
+	Custom
+)
+
+const (
+	randFcMult = 4.0
+)
+
+var sineTable = lookup.NewUniSineTable(512)
+var triangleTable = lookup.NewUniTriangleTable(512)
+var sawTable = lookup.NewUniSawtoothTable(512)
+var squareTable = lookup.NewUniSquareTable(512)
+
+func tableForWaveForm(wf WaveForm, cwt lookup.Table) lookup.Table {
+	switch wf {
+	case Triangle:
+		return triangleTable
+	case Saw:
+		return sawTable
+	case Square:
+		return squareTable
+	case Custom:
+		return cwt
+	default:
+		return sineTable
+	}
+}
+
+type LFO struct {
+	*david.Module
+	phasor *phasor.Phasor
+	linear *linear.Linear
+	shaper *series.Series
+	ipol   *interp.Interpolator
+	sh     *shape.Shape
+	r      *rand.Rand
+	wf     WaveForm
+	wt     lookup.Table
+	kr     bool
+}
+
+func New(kr bool, fc float64, minVal float64, maxVal float64, wf WaveForm, wts ...lookup.Table) *LFO {
+	var (
+		wt lookup.Table
+		sr float64
+	)
+
+	if kr {
+		sr = david.ControlRate()
+	} else {
+		sr = david.SampleRate()
+	}
+
+	if len(wts) > 0 {
+		wt = wts[0]
+	}
+
+	lin := linear.New(maxVal-minVal, minVal)
+	r := rand.New(minVal, maxVal)
+	ipol := interp.New(float.ToFrame(r), interp.Cubic, (fc*randFcMult)/sr)
+
+	l := &LFO{
+		Module: david.NewModule(nil, []int{david.Mono}),
+		phasor: phasor.New(fc, sr, 0.0),
+		linear: lin,
+		shaper: series.New(tableForWaveForm(wf, wt), lin),
+		r:      r,
+		ipol:   ipol,
+		sh:     shape.New(ipol, mirror.New(minVal, maxVal)),
+		wf:     wf,
+		wt:     wt,
+		kr:     kr,
+	}
+
+	l.SetSelf(l)
+
+	return l
+}
+
+func (lfo *LFO) SetCustomWaveTable(wt lookup.Table) {
+	lfo.wt = wt
+}
+
+func (lfo *LFO) SetWaveForm(wf WaveForm) {
+	lfo.shaper.Shapers[0] = tableForWaveForm(wf, lfo.wt)
+	lfo.wf = wf
+}
+
+func (lfo *LFO) SetFrequency(fc float64) {
+	var sr float64
+
+	if lfo.kr {
+		sr = lfo.Config().ControlRate()
+	} else {
+		sr = lfo.Config().SampleRate
+	}
+
+	lfo.phasor.SetFrequency(fc, sr)
+	lfo.ipol.SetDelta((fc * randFcMult) / sr)
+}
+
+func (lfo *LFO) SetMinValue(minVal float64) {
+	lfo.linear.Shift = minVal
+	lfo.r.SetLow(minVal)
+}
+
+func (lfo *LFO) SetMaxValue(maxVal float64) {
+	lfo.linear.Scale = maxVal - lfo.linear.Shift
+	lfo.r.SetHigh(maxVal)
+}
+
+func (lfo *LFO) Receive(value any, index int) {
+	if msg, ok := david.MsgVal(value); ok {
+		lfo.ReceiveMessage(msg)
+		return
+	}
+
+	switch index {
+	case 0:
+		lfo.SetFrequency(david.FltVal[float64](value))
+	case 1:
+		lfo.SetMinValue(david.FltVal[float64](value))
+	case 2:
+		lfo.SetMaxValue(david.FltVal[float64](value))
+	case 3:
+		lfo.SetWaveForm(WaveForm(david.IntVal[int](value)))
+	}
+}
+
+func (lfo *LFO) ReceiveMessage(msg david.Message) {
+	msg.IfFltVal("frequency", func(v float64) {
+		lfo.SetFrequency(v)
+	})
+	msg.IfFltVal("minValue", func(v float64) {
+		lfo.SetMinValue(v)
+	})
+	msg.IfFltVal("maxValue", func(v float64) {
+		lfo.SetMaxValue(v)
+	})
+	msg.IfIntVal("waveForm", func(v int) {
+		lfo.SetWaveForm(WaveForm(v))
+	})
+}
+
+func (lfo *LFO) Tick(_ int64) {
+	if !lfo.kr {
+		return
+	}
+
+	v := lfo.shaper.Shape(lfo.phasor.Generate())
+	r := lfo.sh.Generate()[0]
+	if lfo.wf == Rand {
+		lfo.Send(r, 0)
+	} else {
+		lfo.Send(v, 0)
+	}
+}
+
+func (lfo *LFO) Synthesize() {
+	if lfo.kr {
+		return
+	}
+
+	lfo.Module.Synthesize()
+
+	config := lfo.Config()
+	out := lfo.Output(0).Channels[0]
+
+	for i := 0; i < config.BufferSize; i++ {
+		v := lfo.shaper.Shape(lfo.phasor.Generate())
+		r := lfo.sh.Generate()[0]
+		if lfo.wf == Rand {
+			out[i] = r
+		} else {
+			out[i] = v
+		}
+	}
+}

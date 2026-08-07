@@ -1,0 +1,6 @@
+github.com/almerlucke/genny v0.0.0-20240617080403-1351c8c8676a h1:o7K/6i5gjZWR2s/C7a2U6x0x1B+K7bPHhXnN3vsm2O0=
+github.com/almerlucke/genny v0.0.0-20240617080403-1351c8c8676a/go.mod h1:JC+d2tGGXfY9vuYpEwWq75PfOHSwiHiren4mWPml2k8=
+github.com/gordonklaus/portaudio v0.0.0-20260203164431-765aa7dfa631 h1:8TBHztmhDfAAg34yddptshinXBtDQwgKGlMfdtSFETw=
+github.com/gordonklaus/portaudio v0.0.0-20260203164431-765aa7dfa631/go.mod h1:esZFQEUwqC+l76f2R8bIWSwXMaPbp79PppwZ1eJhFco=
+golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 h1:qLvzZeaANDgyVOA8pyHCOStGlXn0rseXma+GQjeuv2g=
+golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597/go.mod h1:EdfpwwqSu+0Li0mzskwHU6FWDV3t9Q+RZDo3QMUtL3Q=
