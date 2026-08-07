@@ -17,6 +17,7 @@ func New(templ template.Template) *Templ {
 	g := &Templ{
 		Module: psalm.NewControl(),
 		templ:  templ,
+		params: make(map[string]any),
 	}
 
 	g.SetSelf(g)

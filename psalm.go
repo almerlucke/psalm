@@ -186,7 +186,7 @@ func (p *Psalm) audioCallback(in, out [][]float32) {
 }
 
 func (p *Psalm) Run() {
-	for range p.config.BufferSize {
+	for n := range p.config.BufferSize {
 		p.sampleTimestamp++
 		p.sampleCnt += 1.0
 		for p.sampleCnt >= p.samplesPerTick {
@@ -195,14 +195,10 @@ func (p *Psalm) Run() {
 			p.CtrlTick(CtrlTick{
 				SampleTimestamp: p.sampleTimestamp,
 				TickTimestamp:   p.tickTimestamp,
+				SampleOffset:    n,
 			})
 		}
 	}
 
 	p.Patch.Run()
-}
-
-func (p *Psalm) Render(file string) error {
-
-	return nil
 }

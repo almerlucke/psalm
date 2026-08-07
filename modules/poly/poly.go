@@ -14,18 +14,39 @@ type Voice interface {
 	IsActive() bool
 }
 
+type fadeOut struct {
+	channels psalm.Channels
+}
+
+func newFadeOutVoice(numChannels int, bufferSize int) *fadeOut {
+	return &fadeOut{
+		channels: psalm.NewChannels(numChannels, bufferSize),
+	}
+}
+
+func (f *fadeOut) Fill(v Voice) {
+	v.Synthesize()
+	invBufferSize := 1.0 / float32(len(f.channels[0]))
+	f.channels.CopyWithFunc(v.Output(0).Channels, func(buf psalm.Buffer, samp float32, index int) {
+		buf[index] += samp * (1.0 - invBufferSize*float32(index))
+	})
+}
+
+func (f *fadeOut) Copy(c psalm.Channels) {
+	c.Accum(f.channels)
+}
+
 type voiceInfo struct {
-	age            int64
-	isStolen       bool
-	nextMsg        psalm.Message
-	nextIdentifier string
-	voice          Voice
+	age   int64
+	voice Voice
 }
 
 type Poly struct {
 	*psalm.Module
-	freePool   *list.List[*voiceInfo]
-	activePool *list.List[*voiceInfo]
+	freePool          *list.List[*voiceInfo]
+	activePool        *list.List[*voiceInfo]
+	fadeOutFreePool   *list.List[*fadeOut]
+	fadeOutActivePool *list.List[*fadeOut]
 }
 
 func New(numChannels int, voices []Voice) *Poly {
@@ -42,6 +63,13 @@ func New(numChannels int, voices []Voice) *Poly {
 		})
 	}
 
+	poly.fadeOutFreePool = list.New[*fadeOut]()
+	poly.fadeOutActivePool = list.New[*fadeOut]()
+	for range len(voices) {
+		fadeOut := newFadeOutVoice(numChannels, poly.Config().BufferSize)
+		poly.fadeOutFreePool.Push(fadeOut)
+	}
+
 	poly.SetSelf(poly)
 
 	return poly
@@ -49,11 +77,7 @@ func New(numChannels int, voices []Voice) *Poly {
 
 func (p *Poly) noteOff(identifier string) {
 	p.CallActiveVoiceInfo(func(info *voiceInfo) bool {
-		if info.isStolen && info.nextIdentifier == identifier {
-			info.isStolen = false
-			info.nextMsg = nil
-			info.nextIdentifier = ""
-		} else if info.voice.ID() == identifier {
+		if info.voice.ID() == identifier {
 			info.voice.NoteOff()
 			info.voice.SetID("")
 			return false
@@ -67,9 +91,6 @@ func (p *Poly) AllNotesOff() {
 	p.CallActiveVoiceInfo(func(info *voiceInfo) bool {
 		info.voice.NoteOff()
 		info.voice.SetID("")
-		info.isStolen = false
-		info.nextMsg = nil
-		info.nextIdentifier = ""
 		return true
 	})
 }
@@ -92,28 +113,14 @@ func (p *Poly) handleTriggerMessage(msg psalm.Message, identifier string, durati
 		}
 	} else {
 		// Steal oldest active voice
-		info := p.getOldestActiveVoiceInfo()
-		if info != nil {
-			info.isStolen = true
-			info.nextMsg = msg
-			info.nextIdentifier = identifier
+		e := p.getOldestActiveVoiceElement()
+		if e != nil {
+			fadeOut := p.getFadeOut()
+			fadeOut.Fill(e.Value.voice)
+			p.freePool.PushElement(e.Unlink())
+			p.handleTriggerMessage(msg, identifier, duration, isNoteOn)
 		}
 	}
-}
-
-func (p *Poly) activateStolenVoiceInfo(info *voiceInfo) {
-	if noteOnIdentifier, ok := info.nextMsg.StrVal("noteOn"); ok {
-		info.voice.Clear()
-		info.voice.SetID(noteOnIdentifier)
-		info.voice.NoteOn(info.nextMsg.MustFltVal("amplitude"), info.nextMsg.MustMsg("message"), p.Config())
-	} else if duration, ok := info.nextMsg.FltVal("duration"); ok {
-		info.voice.Clear()
-		info.voice.Note(duration, info.nextMsg.MustFltVal("amplitude"), info.nextMsg.MustMsg("message"), p.Config())
-	}
-	info.isStolen = false
-	info.nextMsg = nil
-	info.age = 0
-	info.nextIdentifier = ""
 }
 
 // ReceiveMessage is used to activate voices
@@ -137,12 +144,12 @@ func (p *Poly) ReceiveMessage(msg psalm.Message) {
 	}
 }
 
-func (p *Poly) getOldestActiveVoiceInfo() *voiceInfo {
-	var oldest *voiceInfo
+func (p *Poly) getOldestActiveVoiceElement() *list.Element[*voiceInfo] {
+	var oldest *list.Element[*voiceInfo]
 
-	p.activePool.ForEach(func(v *voiceInfo, _ int) {
-		if !v.isStolen && (oldest == nil || v.age > oldest.age) {
-			oldest = v
+	p.activePool.ForEachElement(func(e *list.Element[*voiceInfo], _ int) {
+		if oldest == nil || e.Value.age > oldest.Value.age {
+			oldest = e
 		}
 	})
 
@@ -155,6 +162,16 @@ func (p *Poly) getFreeVoice() Voice {
 		p.activePool.PushElement(e)
 		e.Value.age = 0
 		return e.Value.voice
+	}
+
+	return nil
+}
+
+func (p *Poly) getFadeOut() *fadeOut {
+	e := p.fadeOutFreePool.PopElement()
+	if e != nil {
+		p.fadeOutActivePool.PushElement(e)
+		return e.Value
 	}
 
 	return nil
@@ -202,22 +219,16 @@ func (p *Poly) Synthesize() {
 		if voice.IsActive() {
 			// Add voice output to buffer
 			voice.Synthesize()
-
-			if info.isStolen {
-				// Fade out voice over 1 buffer cycle
-				invBufferSize := 1.0 / float32(bufferSize)
-				p.Output(0).Channels.CopyWithFunc(voice.Output(0).Channels, func(buf psalm.Buffer, samp float32, index int) {
-					buf[index] += samp * (1.0 - invBufferSize*float32(index))
-				})
-				p.activateStolenVoiceInfo(info)
-			} else {
-				info.age += int64(bufferSize)
-				p.Output(0).Channels.Accum(voice.Output(0).Channels)
-			}
-		} else if info.isStolen {
-			p.activateStolenVoiceInfo(info)
+			p.Output(0).Channels.Accum(voice.Output(0).Channels)
+			info.age += int64(bufferSize)
 		} else {
 			p.freePool.PushElement(e.Unlink())
 		}
+	})
+
+	// Copy fade out voices to output
+	p.fadeOutActivePool.ForEachElement(func(e *list.Element[*fadeOut], _ int) {
+		e.Value.Copy(p.Output(0).Channels)
+		p.fadeOutFreePool.PushElement(e.Unlink())
 	})
 }

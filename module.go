@@ -3,6 +3,7 @@ package psalm
 type CtrlTick struct {
 	SampleTimestamp int64
 	TickTimestamp   int64
+	SampleOffset    int
 	BPM             int
 	PPQ             int
 }

@@ -26,13 +26,21 @@ func New(ticksPerBeat int, firstBang bool) *Timer {
 
 func (t *Timer) CtrlTick(tick psalm.CtrlTick) {
 	if tick.TickTimestamp == 1 && t.firstBang {
-		t.Send(psalm.Bang, 0)
+		t.Send(psalm.Message{
+			"bang":   true,
+			"tick":   tick,
+			"sender": t.ID(),
+		}, 0)
 		return
 	}
 
 	t.tickCntr++
 	for t.tickCntr >= t.ticksPerBeat {
 		t.tickCntr -= t.ticksPerBeat
-		t.Send(psalm.Bang, 0)
+		t.Send(psalm.Message{
+			"bang":   true,
+			"tick":   tick,
+			"sender": t.ID(),
+		}, 0)
 	}
 }

@@ -38,6 +38,7 @@ func main() {
 		"command":   "trigger",
 		"duration":  0.0,
 		"amplitude": 0.85,
+		"tick":      template.NewParameter("tick", nil),
 		"message": template.Template{
 			"speed": bucket.New(1.0, 2.0, 0.2, 0.75, 0.4).SetMode(bucket.Indexed).Loop(true),
 			"sound": bucket.New("sh1", "sh2", "sh3", "sh4", "sh5").SetMode(bucket.Indexed).Loop(true),
