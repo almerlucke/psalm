@@ -198,6 +198,7 @@ func (p *Psalm) Run() {
 			})
 		}
 	}
+
 	p.Patch.Run()
 }
 

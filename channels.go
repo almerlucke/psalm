@@ -29,7 +29,7 @@ func (c Channels) BufLen() int {
 	return len(c[0])
 }
 
-func (c Channels) copyWithFunc(c2 Channels, f func(Buffer, float32, int)) {
+func (c Channels) CopyWithFunc(c2 Channels, f func(Buffer, float32, int)) {
 	if c.IsStereo() {
 		if c2.IsStereo() {
 			for i := 0; i < c.BufLen(); i++ {
@@ -56,13 +56,13 @@ func (c Channels) copyWithFunc(c2 Channels, f func(Buffer, float32, int)) {
 }
 
 func (c Channels) Copy(c2 Channels) {
-	c.copyWithFunc(c2, func(buf Buffer, samp float32, index int) {
+	c.CopyWithFunc(c2, func(buf Buffer, samp float32, index int) {
 		buf[index] = samp
 	})
 }
 
 func (c Channels) Accum(c2 Channels) {
-	c.copyWithFunc(c2, func(buf Buffer, samp float32, index int) {
+	c.CopyWithFunc(c2, func(buf Buffer, samp float32, index int) {
 		buf[index] += samp
 	})
 }

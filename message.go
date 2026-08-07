@@ -17,7 +17,7 @@ func IsBang(value any) bool {
 	}
 
 	if msg, ok := MsgVal(value); ok {
-		if _, ok := msg["bang"]; ok {
+		if _, ok = msg["bang"]; ok {
 			return true
 		}
 	}

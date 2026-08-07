@@ -1,6 +1,10 @@
 github.com/almerlucke/genny v0.0.0-20240617080403-1351c8c8676a h1:o7K/6i5gjZWR2s/C7a2U6x0x1B+K7bPHhXnN3vsm2O0=
 github.com/almerlucke/genny v0.0.0-20240617080403-1351c8c8676a/go.mod h1:JC+d2tGGXfY9vuYpEwWq75PfOHSwiHiren4mWPml2k8=
+github.com/almerlucke/sndfile v0.0.0-20240322094746-7b1e8d9b93ac h1:9AoOkvUYW/9VtM2/8yAuYmjhRf8Vv3DW3S1ERLZpKlc=
+github.com/almerlucke/sndfile v0.0.0-20240322094746-7b1e8d9b93ac/go.mod h1:GEs6pnOnDhAlwt4KIIRDwvagZDXaVcfAYd3dWaGdPXs=
 github.com/gordonklaus/portaudio v0.0.0-20260203164431-765aa7dfa631 h1:8TBHztmhDfAAg34yddptshinXBtDQwgKGlMfdtSFETw=
 github.com/gordonklaus/portaudio v0.0.0-20260203164431-765aa7dfa631/go.mod h1:esZFQEUwqC+l76f2R8bIWSwXMaPbp79PppwZ1eJhFco=
+github.com/mkb218/gosndfile v0.0.0-20171006180803-e0c9ef895ee2 h1:VxuHU1GzpitRcSRQLMsYzmiR4AWli0ZIAwuay3nAdng=
+github.com/mkb218/gosndfile v0.0.0-20171006180803-e0c9ef895ee2/go.mod h1:Bt3M0pOPhXFJld5U1F484ASifG9E1Tych5ukWdGXnxw=
 golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 h1:qLvzZeaANDgyVOA8pyHCOStGlXn0rseXma+GQjeuv2g=
 golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597/go.mod h1:EdfpwwqSu+0Li0mzskwHU6FWDV3t9Q+RZDo3QMUtL3Q=

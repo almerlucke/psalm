@@ -13,6 +13,8 @@ github.com/andybalholm/stroke v0.0.0-20221221101821-bd29b49d73f0 h1:uF5Q/hWnDU1X
 github.com/andybalholm/stroke v0.0.0-20221221101821-bd29b49d73f0/go.mod h1:ccdDYaY5+gO+cbnQdFxEXqfy0RkoV25H3jLXUDNM3wg=
 github.com/boombuler/barcode v1.0.1 h1:NDBbPmhS+EqABEs5Kg3n/5ZNjy73Pz7SIV+KCeqyXcs=
 github.com/boombuler/barcode v1.0.1/go.mod h1:paBWMcWSl3LHKBqUq+rly7CNSldXjb2rDl3JlRe0mD8=
+github.com/dh1tw/gosamplerate v0.1.2 h1:oyqtZk67xB9B4l+vIZCZ3F0RYV/z66W58VOah11/ktI=
+github.com/dh1tw/gosamplerate v0.1.2/go.mod h1:zooTyHpoR7hE+FLfdE3yjLHb2QA2NpMusNfuaZqEACM=
 github.com/fogleman/gg v1.3.0 h1:/7zJX8F6AaYQc57WQCyN9cAIz+4bCJGO9B+dyW29am8=
 github.com/fogleman/gg v1.3.0/go.mod h1:R/bRT+9gY/C5z7JzPU0zXsXHKM4/ayA+zqcVNZzPa1k=
 github.com/go-fonts/stix v0.1.0 h1:UlZlgrvvmT/58o573ot7NFw0vZasZ5I6bcIft/oMdgg=

@@ -31,7 +31,7 @@ func (t *Timer) CtrlTick(tick psalm.CtrlTick) {
 	}
 
 	t.tickCntr++
-	for t.tickCntr > t.ticksPerBeat {
+	for t.tickCntr >= t.ticksPerBeat {
 		t.tickCntr -= t.ticksPerBeat
 		t.Send(psalm.Bang, 0)
 	}
