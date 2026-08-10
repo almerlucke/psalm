@@ -11,6 +11,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/synths/drums"
 	"github.com/almerlucke/sndfile"
+	"github.com/almerlucke/sndfile/writer"
 )
 
 func main() {
@@ -32,13 +33,13 @@ func main() {
 	soundBank["harp6"], _ = sndfile.NewMipMapSoundFile("assets/sounds/harp/F2_f1.wav", 4)
 	soundBank["harp7"], _ = sndfile.NewMipMapSoundFile("assets/sounds/harp/G1_f1.wav", 4)
 
-	soundBank["glass1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Maracas/01_01.wav", 4)
-	soundBank["glass2"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/LowConga/v3_01_01.wav", 4)
-	soundBank["glass3"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/LowConga/v3_01_02.wav", 4)
-	soundBank["glass4"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/LowConga/v4_01_01.wav", 4)
-	soundBank["glass5"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Castanets/01.wav", 4)
-	soundBank["glass6"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Darbuka/doom_01_01.wav", 4)
-	soundBank["glass7"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Darbuka/doom_01_05.wav", 4)
+	soundBank["perc1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Maracas/01_01.wav", 4)
+	soundBank["perc2"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/LowConga/v3_01_01.wav", 4)
+	soundBank["perc3"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/LowConga/v3_01_02.wav", 4)
+	soundBank["perc4"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/LowConga/v4_01_01.wav", 4)
+	soundBank["perc5"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Castanets/01.wav", 4)
+	soundBank["perc6"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Darbuka/doom_01_01.wav", 4)
+	soundBank["perc7"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Darbuka/doom_01_05.wav", 4)
 
 	soundBank["kick1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/kick/long-boomy-real-acoustic-kick-one-shot_120bpm_C_major.wav", 4)
 	soundBank["kick2"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/kick/Cymatics - Orchid Kick - Dancehall (A#).wav", 4)
@@ -106,7 +107,7 @@ func main() {
 		"amplitude": 0.45,
 		"message": template.Template{
 			"speed": bucket.New(1.0, 2.0, 0.25, 0.75, 0.5, 1.25, 1.5).SetMode(bucket.Indexed).Loop(true),
-			"sound": bucket.New("glass1", "glass2", "glass3", "glass4", "glass5", "glass6", "glass7").SetMode(bucket.Indexed).Loop(true),
+			"sound": bucket.New("perc1", "perc2", "perc3", "perc4", "perc5", "perc6", "perc7").SetMode(bucket.Indexed).Loop(true),
 			"tick":  template.NewParameter("tick", nil),
 		},
 	}).ValueIn(timer.New(p.PPQ()*4, true).AddTo(p)))
@@ -179,5 +180,10 @@ func main() {
 
 	p.Out(rv)
 
-	_ = p.Listen()
+	err := p.ToSoundFile("7x7.wav", writer.WAV, 60*6, 44100.0, true)
+	if err != nil {
+		panic(err)
+	}
+
+	// _ = p.Listen()
 }

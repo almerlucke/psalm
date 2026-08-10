@@ -3,10 +3,13 @@ package psalm
 import (
 	"fmt"
 	"log"
+	"math"
 	"sync/atomic"
 	"syscall"
 
 	"github.com/almerlucke/psalm/internal/signal"
+	"github.com/almerlucke/sndfile/writer"
+	"github.com/dh1tw/gosamplerate"
 
 	"github.com/gordonklaus/portaudio"
 )
@@ -64,6 +67,54 @@ func (p *Psalm) SetPPQ(ppq int) {
 func (p *Psalm) updateCtrlTick() {
 	tickDuration := 60.0 / (float64(p.bpm) * float64(p.ppq))
 	p.samplesPerTick = tickDuration * p.config.SampleRate
+}
+
+func (p *Psalm) ToSoundFile(filePath string, fileFormat writer.FileFormat, numSeconds float64, sampleRate float64, normalize bool) error {
+	config := p.config
+	inputSampleRate := config.SampleRate
+	numChannels := 2
+	writeBuffers := make([][]float32, numChannels)
+	pipe := p.Output(0).Channels
+
+	for i := 0; i < numChannels; i++ {
+		writeBuffers[i] = pipe[i]
+	}
+
+	wr, err := writer.NewWithOptions(filePath, fileFormat, numChannels, sampleRate, writer.Options{
+		InputConverter:    writer.NewChannelConverter[float32](config.BufferSize, 2),
+		Normalize:         normalize,
+		ConvertSampleRate: inputSampleRate != sampleRate,
+		InputSampleRate:   inputSampleRate,
+		SrConvQuality:     gosamplerate.SRC_SINC_BEST_QUALITY,
+	})
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		_ = wr.Close()
+	}()
+
+	numCycles := int64(math.Ceil((config.SampleRate * numSeconds) / float64(config.BufferSize)))
+
+	if numCycles == 0 {
+		return nil
+	}
+
+	for numCycles > 1 {
+		p.ResetRun()
+		p.Run()
+		err = wr.Write(writeBuffers, false)
+		if err != nil {
+			return err
+		}
+		numCycles--
+	}
+
+	p.ResetRun()
+	p.Run()
+
+	return wr.Write(writeBuffers, true)
 }
 
 func (p *Psalm) InitializeAudio() error {
