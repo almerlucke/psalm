@@ -6,8 +6,8 @@ import (
 	"github.com/almerlucke/sndfile"
 )
 
-func NewDrums(soundBank sndfile.SoundBank, numVoices int) *poly.Poly {
-	var initSound sndfile.SoundFiler
+func NewDrums(soundBank sndfile.SoundBank[float32], numVoices int) *poly.Poly {
+	var initSound sndfile.SoundFiler[float32]
 
 	for _, v := range soundBank {
 		initSound = v

@@ -11,69 +11,68 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/synths/drums"
 	"github.com/almerlucke/sndfile"
-	"github.com/almerlucke/sndfile/writer"
 )
 
 func main() {
-	soundBank := sndfile.SoundBank{}
+	soundBank := sndfile.SoundBank[float32]{}
 
-	soundBank["perc1_1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 1.wav", 4)
-	soundBank["perc2_1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 2.wav", 4)
-	soundBank["perc3_1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 3.wav", 4)
-	soundBank["perc4_1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 4.wav", 4)
-	soundBank["perc5_1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 5.wav", 4)
-	soundBank["perc6_1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 6.wav", 4)
-	soundBank["perc7_1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 7.wav", 4)
+	soundBank["perc1_1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 1.wav", 4)
+	soundBank["perc2_1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 2.wav", 4)
+	soundBank["perc3_1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 3.wav", 4)
+	soundBank["perc4_1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 4.wav", 4)
+	soundBank["perc5_1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 5.wav", 4)
+	soundBank["perc6_1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 6.wav", 4)
+	soundBank["perc7_1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 7.wav", 4)
 
-	soundBank["harp1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/harp/E3_mf1.wav", 4)
-	soundBank["harp2"], _ = sndfile.NewMipMapSoundFile("assets/sounds/harp/B1_f1.wav", 4)
-	soundBank["harp3"], _ = sndfile.NewMipMapSoundFile("assets/sounds/harp/B3_mf1.wav", 4)
-	soundBank["harp4"], _ = sndfile.NewMipMapSoundFile("assets/sounds/harp/C3_f2.wav", 4)
-	soundBank["harp5"], _ = sndfile.NewMipMapSoundFile("assets/sounds/harp/D2_f1.wav", 4)
-	soundBank["harp6"], _ = sndfile.NewMipMapSoundFile("assets/sounds/harp/F2_f1.wav", 4)
-	soundBank["harp7"], _ = sndfile.NewMipMapSoundFile("assets/sounds/harp/G1_f1.wav", 4)
+	soundBank["harp1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/harp/E3_mf1.wav", 4)
+	soundBank["harp2"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/harp/B1_f1.wav", 4)
+	soundBank["harp3"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/harp/B3_mf1.wav", 4)
+	soundBank["harp4"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/harp/C3_f2.wav", 4)
+	soundBank["harp5"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/harp/D2_f1.wav", 4)
+	soundBank["harp6"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/harp/F2_f1.wav", 4)
+	soundBank["harp7"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/harp/G1_f1.wav", 4)
 
-	soundBank["perc1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Maracas/01_01.wav", 4)
-	soundBank["perc2"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/LowConga/v3_01_01.wav", 4)
-	soundBank["perc3"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/LowConga/v3_01_02.wav", 4)
-	soundBank["perc4"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/LowConga/v4_01_01.wav", 4)
-	soundBank["perc5"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Castanets/01.wav", 4)
-	soundBank["perc6"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Darbuka/doom_01_01.wav", 4)
-	soundBank["perc7"], _ = sndfile.NewMipMapSoundFile("assets/sounds/world_percussion/Darbuka/doom_01_05.wav", 4)
+	soundBank["perc1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/world_percussion/Maracas/01_01.wav", 4)
+	soundBank["perc2"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/world_percussion/LowConga/v3_01_01.wav", 4)
+	soundBank["perc3"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/world_percussion/LowConga/v3_01_02.wav", 4)
+	soundBank["perc4"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/world_percussion/LowConga/v4_01_01.wav", 4)
+	soundBank["perc5"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/world_percussion/Castanets/01.wav", 4)
+	soundBank["perc6"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/world_percussion/Darbuka/doom_01_01.wav", 4)
+	soundBank["perc7"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/world_percussion/Darbuka/doom_01_05.wav", 4)
 
-	soundBank["kick1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/kick/long-boomy-real-acoustic-kick-one-shot_120bpm_C_major.wav", 4)
-	soundBank["kick2"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/kick/Cymatics - Orchid Kick - Dancehall (A#).wav", 4)
-	soundBank["kick3"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/kick/Cymatics - Orchid Kick - Layered (F#).wav", 4)
-	soundBank["kick4"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/kick/Cymatics - Orchid Kick - Tight (G).wav", 4)
-	soundBank["kick5"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/kick/CarbonKick_01_634.wav", 4)
-	soundBank["kick6"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/kick/long-boomy-real-acoustic-kick-one-shot_120bpm_C_major.wav", 4)
-	soundBank["kick7"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/kick/WaterKick_01_693.wav", 4)
+	soundBank["kick1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/long-boomy-real-acoustic-kick-one-shot_120bpm_C_major.wav", 4)
+	soundBank["kick2"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/Cymatics - Orchid Kick - Dancehall (A#).wav", 4)
+	soundBank["kick3"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/Cymatics - Orchid Kick - Layered (F#).wav", 4)
+	soundBank["kick4"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/Cymatics - Orchid Kick - Tight (G).wav", 4)
+	soundBank["kick5"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/CarbonKick_01_634.wav", 4)
+	soundBank["kick6"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/long-boomy-real-acoustic-kick-one-shot_120bpm_C_major.wav", 4)
+	soundBank["kick7"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/WaterKick_01_693.wav", 4)
 
-	soundBank["hihat1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 1.wav", 4)
-	soundBank["hihat2"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 2.wav", 4)
-	soundBank["hihat3"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 3.wav", 4)
-	soundBank["hihat4"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 4.wav", 4)
-	soundBank["hihat5"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 5.wav", 4)
-	soundBank["hihat6"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 6.wav", 4)
-	soundBank["hihat7"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 7.wav", 4)
+	soundBank["hihat1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 1.wav", 4)
+	soundBank["hihat2"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 2.wav", 4)
+	soundBank["hihat3"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 3.wav", 4)
+	soundBank["hihat4"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 4.wav", 4)
+	soundBank["hihat5"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 5.wav", 4)
+	soundBank["hihat6"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 6.wav", 4)
+	soundBank["hihat7"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 7.wav", 4)
 
-	soundBank["ride1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Orchid Ride - Flanged.wav", 4)
-	soundBank["ride2"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Orchid Ride - Mysterious.wav", 4)
-	soundBank["ride3"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Orchid Rimshot - Basic.wav", 4)
-	soundBank["ride4"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Orchid Rimshot - Bunker.wav", 4)
-	soundBank["ride5"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Orchid Shaker - Banana.wav", 4)
-	soundBank["ride6"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Orchid Shaker - Crisp.wav", 4)
-	soundBank["ride7"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/hihat/Cymatics - Orchid Shaker - Drew.wav", 4)
+	soundBank["ride1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Orchid Ride - Flanged.wav", 4)
+	soundBank["ride2"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Orchid Ride - Mysterious.wav", 4)
+	soundBank["ride3"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Orchid Rimshot - Basic.wav", 4)
+	soundBank["ride4"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Orchid Rimshot - Bunker.wav", 4)
+	soundBank["ride5"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Orchid Shaker - Banana.wav", 4)
+	soundBank["ride6"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Orchid Shaker - Crisp.wav", 4)
+	soundBank["ride7"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Orchid Shaker - Drew.wav", 4)
 
-	soundBank["clap1"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/clap/Cymatics - Humble Divine Clap.wav", 4)
-	soundBank["clap2"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/clap/Cymatics - Humble Infatuation Clap.wav", 4)
-	soundBank["clap3"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/clap/Cymatics - Humble Sit Down Clap.wav", 4)
-	soundBank["clap4"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/clap/Cymatics - Humble Stars Clap.wav", 4)
-	soundBank["clap5"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/clap/Cymatics - Orchid Clap - Basic.wav", 4)
-	soundBank["clap6"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/clap/Cymatics - Orchid Clap - Flam.wav", 4)
-	soundBank["clap7"], _ = sndfile.NewMipMapSoundFile("assets/sounds/drums/clap/Cymatics - Orchid Clap - Pop.wav", 4)
+	soundBank["clap1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Humble Divine Clap.wav", 4)
+	soundBank["clap2"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Humble Infatuation Clap.wav", 4)
+	soundBank["clap3"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Humble Sit Down Clap.wav", 4)
+	soundBank["clap4"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Humble Stars Clap.wav", 4)
+	soundBank["clap5"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Orchid Clap - Basic.wav", 4)
+	soundBank["clap6"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Orchid Clap - Flam.wav", 4)
+	soundBank["clap7"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Orchid Clap - Pop.wav", 4)
 
-	soundBank["angels"], _ = sndfile.NewMipMapSoundFile("assets/sounds/various/mixkit-cinematic-angelical-choir-transition-663.wav", 4)
+	soundBank["angels"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-cinematic-angelical-choir-transition-663.wav", 4)
 
 	p := psalm.New()
 
@@ -180,10 +179,10 @@ func main() {
 
 	p.Out(rv)
 
-	err := p.ToSoundFile("7x7.wav", writer.WAV, 60*6, 44100.0, true)
-	if err != nil {
-		panic(err)
-	}
+	//err := p.ToSoundFile("7x7.wav", writer.WAV, 60*6, 44100.0, true)
+	//if err != nil {
+	//	panic(err)
+	//}
 
-	// _ = p.Listen()
+	_ = p.Listen()
 }

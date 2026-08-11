@@ -6,8 +6,8 @@ import (
 )
 
 type Config struct {
-	SndFile     sndfile.SoundFiler
-	SndBank     sndfile.SoundBank
+	SndFile     sndfile.SoundFiler[float32]
+	SndBank     sndfile.SoundBank[float32]
 	SndName     string
 	NumChannels int
 	StartOffset float64 // seconds
@@ -19,8 +19,8 @@ type Config struct {
 
 type Player struct {
 	*psalm.Module
-	sf          sndfile.SoundFiler
-	sndBank     sndfile.SoundBank
+	sf          sndfile.SoundFiler[float32]
+	sndBank     sndfile.SoundBank[float32]
 	startOffset float64
 	endOffset   float64
 	phase       float64
@@ -94,7 +94,7 @@ func (p *Player) normalizeOffset(offset float64) float64 {
 	return frameOffset / numFrames
 }
 
-func (p *Player) SetSoundBank(sndBank sndfile.SoundBank) *Player {
+func (p *Player) SetSoundBank(sndBank sndfile.SoundBank[float32]) *Player {
 	p.sndBank = sndBank
 	return p
 }
@@ -108,7 +108,7 @@ func (p *Player) SetSound(sound string) *Player {
 	return p
 }
 
-func (p *Player) SetSoundFile(sf sndfile.SoundFiler) {
+func (p *Player) SetSoundFile(sf sndfile.SoundFiler[float32]) {
 	p.sf = sf
 	p.recalculate()
 }
@@ -268,14 +268,14 @@ func (p *Player) Synthesize() {
 			continue
 		}
 
-		samps := p.sf.LookupAll(p.phase*float64(p.sf.NumFrames()-1), p.depth, p.loop)
-		if len(samps) == 1 {
+		frame := p.sf.LookupAll(p.phase*float64(p.sf.NumFrames()-1), p.depth, p.loop)
+		if len(frame) == 1 {
 			for _, channel := range outSocket.Channels {
-				channel[i] = float32(samps[0] * p.amp)
+				channel[i] = float32(float64(frame[0]) * p.amp)
 			}
 		} else {
 			for chanIndex, channel := range outSocket.Channels {
-				channel[i] = float32(samps[chanIndex] * p.amp)
+				channel[i] = float32(float64(frame[chanIndex]) * p.amp)
 			}
 		}
 
