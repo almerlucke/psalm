@@ -7,9 +7,9 @@ import (
 
 type Voice interface {
 	psalm.Modular
-	NoteOn(amplitude float64, message psalm.Message, config *psalm.Config)
+	NoteOn(amplitude float64, message psalm.Message, config psalm.Config)
 	NoteOff()
-	Note(duration float64, amplitude float64, message psalm.Message, config *psalm.Config)
+	Note(duration float64, amplitude float64, message psalm.Message, config psalm.Config)
 	Clear()
 	IsActive() bool
 }

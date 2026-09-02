@@ -18,8 +18,6 @@ type Psalm struct {
 	*Patch
 
 	// Control
-	ppq             int // 120.0 pulses per quarter note
-	bpm             int // 120.0 beats per minute
 	samplesPerTick  float64
 	sampleCnt       float64
 	sampleTimestamp int64
@@ -34,39 +32,25 @@ type Psalm struct {
 func New() *Psalm {
 	p := &Psalm{
 		Patch: NewPatch([]int{2}, []int{2}),
-		bpm:   DefaultBPM,
-		ppq:   DefaultPPQ,
 	}
 
 	p.SetSelf(p)
 	p.SetID("psalm")
 	p.SetSkipInputs(true)
+
+	AddConfigListener(p)
+
 	p.updateCtrlTick()
 
 	return p
 }
 
-func (p *Psalm) BPM() int {
-	return p.bpm
-}
-
-func (p *Psalm) SetBPM(bpm int) {
-	p.bpm = bpm
-	p.updateCtrlTick()
-}
-
-func (p *Psalm) PPQ() int {
-	return p.ppq
-}
-
-func (p *Psalm) SetPPQ(ppq int) {
-	p.ppq = ppq
+func (p *Psalm) OnConfigChanged() {
 	p.updateCtrlTick()
 }
 
 func (p *Psalm) updateCtrlTick() {
-	tickDuration := 60.0 / (float64(p.bpm) * float64(p.ppq))
-	p.samplesPerTick = tickDuration * p.config.SampleRate
+	p.samplesPerTick = TickDuration() * p.config.SampleRate
 }
 
 func (p *Psalm) ToSoundFile(filePath string, fileFormat writer.FileFormat, numSeconds float64, sampleRate float64, normalize bool) error {

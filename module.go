@@ -30,7 +30,7 @@ type Modular interface {
 	ValueConnect(int, Modular, int)
 	ValueIn(...any) Modular
 	AddTo(Patcher) Modular
-	Config() *Config
+	Config() Config
 	CtrlTick(CtrlTick)
 	Receive(any, int)
 	Send(any, int)
@@ -44,14 +44,11 @@ type Module struct {
 	inputs       []*Socket
 	outputs      []*Socket
 	valueOutputs map[int][]*Connection
-	config       *Config
+	config       Config
 }
 
 func NewModule(ins []int, outs []int) *Module {
 	config := CurrentConfig()
-	if config == nil {
-		panic("No config set")
-	}
 
 	m := &Module{
 		inputs:       make([]*Socket, len(ins)),
@@ -193,7 +190,7 @@ func (m *Module) ValueIn(args ...any) Modular {
 	return m.self
 }
 
-func (m *Module) Config() *Config {
+func (m *Module) Config() Config {
 	return m.config
 }
 

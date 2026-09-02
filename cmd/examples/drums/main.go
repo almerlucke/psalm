@@ -87,7 +87,7 @@ func main() {
 			"sound": bucket.New("perc1_1", "perc2_1", "perc3_1", "perc4_1", "perc5_1", "perc6_1", "perc7_1").SetMode(bucket.Indexed).Loop(true),
 			"tick":  template.NewParameter("tick", nil),
 		},
-	}).ValueIn(timer.New(p.PPQ()*2, true).AddTo(p)))
+	}).ValueIn(timer.New(psalm.PPQ()*2, true).AddTo(p)))
 
 	drms.ValueIn(templ.New(template.Template{
 		"command":   "trigger",
@@ -98,7 +98,7 @@ func main() {
 			"sound": bucket.New("harp1", "harp2", "harp3", "harp4", "harp5", "harp6", "harp7").SetMode(bucket.Indexed).Loop(true),
 			"tick":  template.NewParameter("tick", nil),
 		},
-	}).ValueIn(timer.New(p.PPQ()*7, true).AddTo(p)))
+	}).ValueIn(timer.New(psalm.PPQ()*7, true).AddTo(p)))
 
 	drms.ValueIn(templ.New(template.Template{
 		"command":   "trigger",
@@ -109,7 +109,7 @@ func main() {
 			"sound": bucket.New("perc1", "perc2", "perc3", "perc4", "perc5", "perc6", "perc7").SetMode(bucket.Indexed).Loop(true),
 			"tick":  template.NewParameter("tick", nil),
 		},
-	}).ValueIn(timer.New(p.PPQ()*4, true).AddTo(p)))
+	}).ValueIn(timer.New(psalm.PPQ()*4, true).AddTo(p)))
 
 	drms.ValueIn(templ.New(template.Template{
 		"command":   "trigger",
@@ -120,7 +120,7 @@ func main() {
 			"sound": bucket.New("kick1", "kick2", "kick3", "kick4", "kick5", "kick6", "kick7").SetMode(bucket.Indexed).Loop(true),
 			"tick":  template.NewParameter("tick", nil),
 		},
-	}).ValueIn(timer.New(p.PPQ()*3, true).AddTo(p)))
+	}).ValueIn(timer.New(psalm.PPQ()*3, true).AddTo(p)))
 
 	drms.ValueIn(templ.New(template.Template{
 		"command":   "trigger",
@@ -131,7 +131,7 @@ func main() {
 			"sound": bucket.New("hihat1", "hihat2", "hihat3", "hihat4", "hihat5", "hihat6", "hihat7").SetMode(bucket.Indexed).Loop(true),
 			"tick":  template.NewParameter("tick", nil),
 		},
-	}).ValueIn(timer.New(p.PPQ(), true).AddTo(p)))
+	}).ValueIn(timer.New(psalm.PPQ(), true).AddTo(p)))
 
 	drms.ValueIn(templ.New(template.Template{
 		"command":   "trigger",
@@ -142,7 +142,7 @@ func main() {
 			"sound": bucket.New("ride1", "ride2", "ride3", "ride4", "ride5", "ride6", "ride7").SetMode(bucket.Indexed).Loop(true),
 			"tick":  template.NewParameter("tick", nil),
 		},
-	}).ValueIn(timer.New(p.PPQ()*5, true).AddTo(p)))
+	}).ValueIn(timer.New(psalm.PPQ()*5, true).AddTo(p)))
 
 	drms.ValueIn(templ.New(template.Template{
 		"command":   "trigger",
@@ -153,7 +153,7 @@ func main() {
 			"sound": bucket.New("clap1", "clap2", "clap3", "clap4", "clap5", "clap6", "clap7").SetMode(bucket.Indexed).Loop(true),
 			"tick":  template.NewParameter("tick", nil),
 		},
-	}).ValueIn(timer.New(p.PPQ()*6, true).AddTo(p)))
+	}).ValueIn(timer.New(psalm.PPQ()*6, true).AddTo(p)))
 
 	drms.ValueIn(templ.New(template.Template{
 		"command":   "trigger",
@@ -164,9 +164,9 @@ func main() {
 			"sound": "angels",
 			"tick":  template.NewParameter("tick", nil),
 		},
-	}).ValueIn(timer.New(p.PPQ()*30, true).AddTo(p)))
+	}).ValueIn(timer.New(psalm.PPQ()*30, true).AddTo(p)))
 
-	bpmMs := timing.BPMToMilli(p.BPM())
+	bpmMs := timing.BPMToMilli(psalm.BPM())
 
 	pp := pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.1, 0.125).AddTo(p).In(drms)
 	rv := freeverb.New()

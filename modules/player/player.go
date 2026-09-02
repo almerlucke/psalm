@@ -2,35 +2,40 @@ package player
 
 import (
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/internal/float"
 	"github.com/almerlucke/sndfile"
 )
 
 type Config struct {
-	SndFile     sndfile.SoundFiler[float32]
-	SndBank     sndfile.SoundBank[float32]
-	SndName     string
-	NumChannels int
-	StartOffset float64 // seconds
-	EndOffset   float64 // seconds
-	Speed       float64
-	Amp         float64
-	Loop        bool
+	SndFile          sndfile.SoundFiler[float32]
+	SndBank          sndfile.SoundBank[float32]
+	SndName          string
+	NumChannels      int
+	StartOffset      float64 // 0-1 range
+	EndOffset        float64 // 0-1 range
+	OffsetRange      float64 // 0-1 range
+	Speed            float64
+	Amp              float64
+	Loop             bool
+	UseZeroCrossings bool
 }
 
 type Player struct {
 	*psalm.Module
-	sf          sndfile.SoundFiler[float32]
-	sndBank     sndfile.SoundBank[float32]
-	startOffset float64
-	endOffset   float64
-	phase       float64
-	inc         float64
-	speed       float64
-	amp         float64
-	depth       int
-	loop        bool
-	done        bool
-	waitSamps   int
+	sf               sndfile.SoundFiler[float32]
+	sndBank          sndfile.SoundBank[float32]
+	startOffset      float64
+	endOffset        float64
+	offsetRange      float64
+	phase            float64
+	inc              float64
+	speed            float64
+	amp              float64
+	depth            int
+	loop             bool
+	useZeroCrossings bool
+	done             bool
+	waitSamps        int
 }
 
 func New(cfg Config) *Player {
@@ -51,19 +56,20 @@ func New(cfg Config) *Player {
 	}
 
 	p := &Player{
-		Module:      psalm.NewModule(nil, []int{numChannels}),
-		speed:       cfg.Speed,
-		loop:        cfg.Loop,
-		done:        !cfg.Loop,
-		sf:          sndFile,
-		sndBank:     cfg.SndBank,
-		amp:         cfg.Amp,
-		startOffset: cfg.StartOffset,
-		endOffset:   cfg.EndOffset,
+		Module:           psalm.NewModule(nil, []int{numChannels}),
+		speed:            cfg.Speed,
+		loop:             cfg.Loop,
+		done:             !cfg.Loop,
+		sf:               sndFile,
+		sndBank:          cfg.SndBank,
+		amp:              cfg.Amp,
+		startOffset:      cfg.StartOffset,
+		endOffset:        cfg.EndOffset,
+		useZeroCrossings: cfg.UseZeroCrossings,
 	}
 
 	p.SetSelf(p)
-
+	p.sanitizeOffsets()
 	p.recalculate()
 
 	return p
@@ -77,6 +83,44 @@ func (p *Player) recalculate() {
 			p.depth = sf.Depth() - 1
 		}
 	}
+}
+
+func (p *Player) snapToZeroCrossings() {
+	if p.useZeroCrossings {
+		if cr, ok := p.sf.ZeroCrossings(0).NearestPos(p.startOffset, sndfile.DirectionAny); ok {
+			p.startOffset = cr.Position
+		}
+		if cr, ok := p.sf.ZeroCrossings(0).NearestPos(p.endOffset, sndfile.DirectionAny); ok {
+			p.endOffset = cr.Position
+		}
+	}
+}
+
+func (p *Player) sanitizeOffsets() {
+	if p.startOffset < 0.0 {
+		p.startOffset = 0.0
+	}
+	if p.startOffset > 1.0 {
+		p.startOffset = 1.0
+	}
+
+	if p.offsetRange > 0.0 {
+		p.endOffset = p.startOffset + p.offsetRange
+	}
+
+	if p.endOffset < 0.0 {
+		p.endOffset = 0.0
+	}
+	if p.endOffset > 1.0 {
+		p.endOffset = 1.0
+	}
+	if p.startOffset > p.endOffset {
+		tmp := p.startOffset
+		p.startOffset = p.endOffset
+		p.endOffset = tmp
+	}
+
+	p.snapToZeroCrossings()
 }
 
 // offset in seconds
@@ -127,6 +171,7 @@ func (p *Player) SetSpeed(speed float64) *Player {
 func (p *Player) SetOffsets(start float64, end float64) *Player {
 	p.startOffset = start
 	p.endOffset = end
+	p.sanitizeOffsets()
 	return p
 }
 
@@ -136,11 +181,13 @@ func (p *Player) SetOffsetsSec(start float64, end float64) *Player {
 	}
 	p.startOffset = p.normalizeOffset(start)
 	p.endOffset = p.normalizeOffset(end)
+	p.sanitizeOffsets()
 	return p
 }
 
 func (p *Player) SetStartOffset(offset float64) *Player {
 	p.startOffset = offset
+	p.sanitizeOffsets()
 	return p
 }
 
@@ -149,11 +196,13 @@ func (p *Player) SetStartOffsetSec(offset float64) *Player {
 		return p
 	}
 	p.startOffset = p.normalizeOffset(offset)
+	p.sanitizeOffsets()
 	return p
 }
 
 func (p *Player) SetEndOffset(offset float64) *Player {
 	p.endOffset = offset
+	p.sanitizeOffsets()
 	return p
 }
 
@@ -162,6 +211,13 @@ func (p *Player) SetEndOffsetSec(offset float64) *Player {
 		return p
 	}
 	p.endOffset = p.normalizeOffset(offset)
+	p.sanitizeOffsets()
+	return p
+}
+
+func (p *Player) SetOffsetRange(offset float64) *Player {
+	p.offsetRange = offset
+	p.sanitizeOffsets()
 	return p
 }
 
@@ -193,6 +249,8 @@ func (p *Player) Receive(value any, index int) {
 		p.SetStartOffset(psalm.FltVal[float64](value))
 	case 4: // End offset
 		p.SetEndOffset(psalm.FltVal[float64](value))
+	case 5: // Offset range
+		p.SetOffsetRange(psalm.FltVal[float64](value))
 	}
 }
 
@@ -225,16 +283,20 @@ func (p *Player) ReceiveMessage(msg psalm.Message) {
 		p.SetEndOffsetSec(endOffsetSec)
 	}
 
+	if offsetRange, ok := msg.FltVal("offsetRange"); ok {
+		p.SetOffsetRange(offsetRange)
+	}
+
 	if tick, ok := msg["tick"].(psalm.CtrlTick); ok {
 		p.waitSamps = tick.SampleOffset
 	}
 }
 
-func (p *Player) NoteOn(amplitude float64, message psalm.Message, _ *psalm.Config) {
+func (p *Player) NoteOn(amplitude float64, message psalm.Message, _ psalm.Config) {
 	p.activate(amplitude, message)
 }
 
-func (p *Player) Note(_ float64, amplitude float64, message psalm.Message, _ *psalm.Config) {
+func (p *Player) Note(_ float64, amplitude float64, message psalm.Message, _ psalm.Config) {
 	p.activate(amplitude, message)
 }
 
@@ -290,17 +352,21 @@ func (p *Player) Synthesize() {
 				p.done = true
 			}
 		} else {
-			r := p.endOffset - p.startOffset
-			np := p.phase - p.startOffset
+			if float.Equal(p.startOffset, p.endOffset) {
+				p.phase = p.startOffset
+			} else {
+				r := p.endOffset - p.startOffset
+				np := p.phase - p.startOffset
 
-			for np >= r {
-				np -= r
-			}
-			for np < 0.0 {
-				np += r
-			}
+				for np >= r {
+					np -= r
+				}
+				for np < 0.0 {
+					np += r
+				}
 
-			p.phase = p.startOffset + np
+				p.phase = p.startOffset + np
+			}
 		}
 	}
 

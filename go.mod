@@ -1,6 +1,6 @@
 module github.com/almerlucke/psalm
 
-go 1.26.4
+go 1.27
 
 require (
 	github.com/almerlucke/genny v0.0.0-20240617080403-1351c8c8676a // indirect

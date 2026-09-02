@@ -14,6 +14,5 @@ func ZeroIfSmall(x float64) float64 {
 	if math.Abs(x) < SampleEpsilon {
 		return 0.0
 	}
-
 	return x
 }
