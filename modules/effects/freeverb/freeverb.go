@@ -158,7 +158,7 @@ type FreeVerb struct {
 }
 
 // New generate new freeverb module
-func New() *FreeVerb {
+func New(roomSize float64, damp float64, width float64, wet float64, dry float64) *FreeVerb {
 	scale := psalm.SampleRate() / 44100.0
 
 	fv := &FreeVerb{
@@ -195,11 +195,11 @@ func New() *FreeVerb {
 	fv.allpassL[3] = newAllpass(int(allpasstuningL4*scale), initialfeedback)
 	fv.allpassR[3] = newAllpass(int(allpasstuningR4*scale), initialfeedback)
 
-	fv.SetWet(initialwet)
-	fv.SetRoomSize(initialroom)
-	fv.SetDry(initialdry)
-	fv.SetDamp(initialdamp)
-	fv.SetWidth(initialwidth)
+	fv.SetWet(wet)
+	fv.SetRoomSize(roomSize)
+	fv.SetDry(dry)
+	fv.SetDamp(damp)
+	fv.SetWidth(width)
 	fv.SetMode(initialmode)
 
 	fv.SetSelf(fv)

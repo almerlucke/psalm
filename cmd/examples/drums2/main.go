@@ -10,6 +10,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/triggers/stepper"
 	"github.com/almerlucke/psalm/modules/controls/triggers/stepper/duration/swing"
+	"github.com/almerlucke/psalm/modules/effects/flanger"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/player"
@@ -50,16 +51,16 @@ func main() {
 	soundBank["hihat"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 4.wav", 4)
 	soundBank["clap"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/snare/Cymatics - Odyssey Trap Snare 3 - E.wav", 4)
 
-	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/Cymatics - Blurry Vocal - 80 BPM F Min.wav", 4)
+	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/cheering_church.wav", 4)
 	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4)
 	sf3 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-cinematic-angelical-choir-transition-663.wav", 4)
 
 	p := psalm.New()
 
-	drms := drums.NewDrums(soundBank, 8).AddTo(p).SetID("drums")
+	drms := drums.NewDrums(soundBank, 16).AddTo(p).SetID("drums")
 
-	drms.ValueIn(drumTemplate(0.6,
-		bucket.NewLoop(1.0, 1.4, 1.3, 0.75, 0.4, 1.2, 0.85), "kick").ValueIn(newStepper(
+	drms.ValueIn(drumTemplate(0.7,
+		bucket.NewLoop(1.0), "kick").ValueIn(newStepper(
 		0.25,
 		// Bar 1
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
@@ -72,7 +73,7 @@ func main() {
 	).AddTo(p)))
 
 	drms.ValueIn(drumTemplate(0.4,
-		bucket.NewLoop(1.0, 1.4, 1.3, 1.75, 1.85, 1.8, 0.95), "clap").ValueIn(newStepper(
+		bucket.NewLoop(1.0), "clap").ValueIn(newStepper(
 		0.25,
 		// Bar 1
 		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
@@ -84,7 +85,7 @@ func main() {
 		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1,
 	).AddTo(p)))
 
-	drms.ValueIn(drumTemplate(0.4, 2.0, "hihat").ValueIn(newStepper(
+	drms.ValueIn(drumTemplate(0.5, 2.0, "hihat").ValueIn(newStepper(
 		0.25,
 		// Bar 1
 		1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, &swing.Step{
@@ -115,7 +116,7 @@ func main() {
 		UseZeroCrossings: true,
 		Loop:             false,
 		Speed:            1.0,
-		Amp:              0.2,
+		Amp:              0.6,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3, 0.2),
@@ -128,11 +129,12 @@ func main() {
 		EndOffset:        0.2,
 		UseZeroCrossings: true,
 		Loop:             false,
-		Speed:            0.5,
-		Amp:              0.2,
+		Speed:            0.25,
+		Amp:              0.5,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.1, 0.1, 0.1),
+		"speed":       bucket.NewLoop(0.25, 0.375, 0.5, 0.25, 0.25, 0.25),
 		"bang":        true,
 	}).ValueIn(timer.New(psalm.PPQ()*6, true).AddTo(p)))
 
@@ -155,16 +157,14 @@ func main() {
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 
-	pp := pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.075, 0.125).AddTo(p).In(drms, pl1, 0, 0, pl2, 0, 0, pl3, 0, 0)
-	rv := freeverb.New()
-	rv.SetRoomSize(0.7)
-	rv.SetDry(0.8)
-	rv.SetWet(0.05)
-	rv.SetDamp(0.8)
-	rv.SetWidth(0.9)
-	rv.AddTo(p).In(pp)
-
-	p.Out(rv)
+	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.2, 0.8).AddTo(p).In(
+		pingpong.New(bpmMs*4.0, bpmMs*1.25, 0.075, 0.125).AddTo(p).In(
+			drms,
+			pl1, 0, 0,
+			pl2, 0, 0,
+			flanger.New(0.1, 0.5, 0.8, 0.9, nil).AddTo(p).In(pl3), 0, 0,
+		)),
+	)
 
 	//err := p.ToSoundFile("7x7.wav", writer.WAV, 60*6, 44100.0, true)
 	//if err != nil {

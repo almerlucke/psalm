@@ -4,10 +4,15 @@ import (
 	"math"
 
 	"github.com/almerlucke/genny/float/line"
+	"github.com/almerlucke/genny/float/phasor"
+	"github.com/almerlucke/genny/float/shape"
+	"github.com/almerlucke/genny/float/shape/shapers/lookup"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/delay"
 	"github.com/almerlucke/psalm/internal/timing"
 )
+
+var defaultModTable = lookup.NewUniTriangleTable(512)
 
 const (
 	FlangeMinPos = 1.0
@@ -22,9 +27,13 @@ type Flanger struct {
 	depth      float64
 	newDepth   float64
 	mix        float64
+	rate       float64
+	modShaper  shape.Shaper
+	mod        *phasor.Phasor
+	phase      float64
 }
 
-func New(depth float64, feedback float64, mix float64) *Flanger {
+func New(rate float64, depth float64, feedback float64, mix float64, modShaper shape.Shaper) *Flanger {
 	delaySize := int(math.Ceil(timing.MsToSampsf(FlangeMaxPos, psalm.SampleRate())))
 
 	f := &Flanger{
@@ -32,11 +41,19 @@ func New(depth float64, feedback float64, mix float64) *Flanger {
 		delayLeft:  delay.New(delaySize),
 		delayRight: delay.New(delaySize),
 		depth:      depth,
+		newDepth:   depth,
 		fb:         feedback,
 		mix:        mix,
 	}
 
 	f.SetSelf(f)
+
+	if modShaper == nil {
+		f.modShaper = defaultModTable
+	}
+
+	f.mod = phasor.New(rate, psalm.SampleRate()/float64(psalm.BufferSize()), 0.0)
+	f.phase = f.modShaper.Shape(f.mod.Generate())
 
 	return f
 }
@@ -91,11 +108,12 @@ func (f *Flanger) Synthesize() {
 		config      = f.Config()
 	)
 
-	readLine.From(timing.MsToSampsf(f.depth*(FlangeMaxPos-FlangeMinPos)+FlangeMinPos, config.SampleRate))
+	readLine.From(timing.MsToSampsf(f.phase*f.depth*(FlangeMaxPos-FlangeMinPos)+FlangeMinPos, config.SampleRate))
 	if f.depth != f.newDepth {
-		readLine.To(timing.MsToSampsf(f.newDepth*(FlangeMaxPos-FlangeMinPos)+FlangeMinPos, config.SampleRate), config.BufferSize)
 		f.depth = f.newDepth
 	}
+	f.phase = f.modShaper.Shape(f.mod.Generate())
+	readLine.To(timing.MsToSampsf(f.phase*f.depth*(FlangeMaxPos-FlangeMinPos)+FlangeMinPos, config.SampleRate), config.BufferSize)
 
 	dry := 1.0 - f.mix
 	wet := f.mix

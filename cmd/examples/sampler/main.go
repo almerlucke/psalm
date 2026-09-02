@@ -7,6 +7,7 @@ import (
 	"github.com/almerlucke/psalm/internal/timing"
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
+	"github.com/almerlucke/psalm/modules/effects/flanger"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/player"
@@ -25,7 +26,7 @@ func main() {
 		UseZeroCrossings: true,
 		Loop:             true,
 		Speed:            1.0,
-		Amp:              1.0,
+		Amp:              0.6,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.New(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8).SetMode(bucket.Indexed).Loop(true),
 		"offsetRange": bucket.New(0.05, 0.1, 0.2, 0.3, 0.4).SetMode(bucket.Indexed).Loop(true),
@@ -33,16 +34,11 @@ func main() {
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 
-	pp := pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.1, 0.125).AddTo(p).In(pl)
-	rv := freeverb.New()
-	rv.SetRoomSize(0.7)
-	rv.SetDry(0.8)
-	rv.SetWet(0.05)
-	rv.SetDamp(0.8)
-	rv.SetWidth(0.9)
-	rv.AddTo(p).In(pp)
-
-	p.Out(rv)
+	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.05, 0.8).AddTo(p).In(
+		pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.1, 0.125).AddTo(p).In(
+			flanger.New(0.05, 0.95, 0.85, 0.9, nil).AddTo(p).In(pl),
+		),
+	))
 
 	//err := p.ToSoundFile("7x7.wav", writer.WAV, 60*6, 44100.0, true)
 	//if err != nil {

@@ -168,16 +168,9 @@ func main() {
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 
-	pp := pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.1, 0.125).AddTo(p).In(drms)
-	rv := freeverb.New()
-	rv.SetRoomSize(0.7)
-	rv.SetDry(0.7)
-	rv.SetWet(0.05)
-	rv.SetDamp(0.8)
-	rv.SetWidth(0.9)
-	rv.AddTo(p).In(pp)
-
-	p.Out(rv)
+	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.05, 0.7).AddTo(p).In(
+		pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.1, 0.125).AddTo(p).In(drms),
+	))
 
 	//err := p.ToSoundFile("7x7.wav", writer.WAV, 60*6, 44100.0, true)
 	//if err != nil {
