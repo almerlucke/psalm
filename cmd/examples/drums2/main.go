@@ -37,66 +37,79 @@ func drumTemplate(amp any, speed any, sound any) *templ.Templ {
 }
 
 func main() {
-	soundBank := sndfile.SoundBank[float32]{}
-
-	soundBank["kick"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/81_Kick_05_255_SP.wav", 4)
-	soundBank["hihat"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 4.wav", 4)
-	soundBank["clap"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/snare/Cymatics - Odyssey Trap Snare 4 - F.wav", 4)
-
-	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/Cymatics - Blurry Vocal - 80 BPM F Min.wav", 4)
-	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/elisa.wav", 4)
-
-	p := psalm.New()
-
 	psalm.PushConfig(psalm.Config{
-		BPM:        160,
+		BPM:        120,
 		PPQ:        240,
 		SampleRate: 44100,
 		BufferSize: 1024,
 	})
 
+	soundBank := sndfile.SoundBank[float32]{}
+
+	soundBank["kick"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/81_Kick_05_255_SP.wav", 4)
+	soundBank["hihat"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 4.wav", 4)
+	soundBank["clap"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/snare/Cymatics - Odyssey Trap Snare 3 - E.wav", 4)
+
+	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/Cymatics - Blurry Vocal - 80 BPM F Min.wav", 4)
+	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4)
+	sf3 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-cinematic-angelical-choir-transition-663.wav", 4)
+
+	p := psalm.New()
+
 	drms := drums.NewDrums(soundBank, 8).AddTo(p).SetID("drums")
 
-	drms.ValueIn(drumTemplate(0.8,
+	drms.ValueIn(drumTemplate(0.6,
 		bucket.NewLoop(1.0, 1.4, 1.3, 0.75, 0.4, 1.2, 0.85), "kick").ValueIn(newStepper(
-		0.5,
-		1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+		0.25,
+		// Bar 1
+		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
+		// Bar 2
+		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0,
+		// Bar 3
+		1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+		// Bar 4 (turnaround variation)
+		1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0,
 	).AddTo(p)))
 
-	drms.ValueIn(drumTemplate(0.6,
-		bucket.NewLoop(1.0, 1.4, 1.3, 1.75, 0.85, 1.8, 0.95), "clap").ValueIn(newStepper(
-		0.5,
-		0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+	drms.ValueIn(drumTemplate(0.4,
+		bucket.NewLoop(1.0, 1.4, 1.3, 1.75, 1.85, 1.8, 0.95), "clap").ValueIn(newStepper(
+		0.25,
+		// Bar 1
+		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+		// Bar 2
+		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+		// Bar 3
+		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+		// Bar 4 (with snare roll / pickup into loop)
+		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1,
 	).AddTo(p)))
 
-	drms.ValueIn(drumTemplate(0.6,
-		bucket.NewLoop(2.0, 2.4, 2.3, 1.75, 1.4, 1.7, 1.85), "hihat").ValueIn(newStepper(
-		0.5,
-		0, 1, 0, 1, 0, 1, &swing.Step{
-			BurstChance: 0.3,
+	drms.ValueIn(drumTemplate(0.4, 2.0, "hihat").ValueIn(newStepper(
+		0.25,
+		// Bar 1
+		1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, &swing.Step{
+			BurstChance: 0.6,
 			NumBurst:    3,
-		}, 1,
-		1, 1, 0, 1, 1, 0, &swing.Step{
-			BurstChance: 0.3,
+		}, 0,
+		// Bar 2 (trap roll accents)
+		1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, &swing.Step{
+			BurstChance: 0.7,
+			NumBurst:    4,
+		}, 0,
+		// Bar 3 (syncopated 16th groove)
+		1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, &swing.Step{
+			BurstChance: 0.5,
 			NumBurst:    6,
-		}, 1,
+		}, 0,
+		// Bar 4 (high-energy fill before turnaround)
+		1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, &swing.Step{
+			BurstChance: 0.8,
+			NumBurst:    4,
+		}, 0, 1, 0,
 	).AddTo(p)))
 
 	pl1 := player.New(player.Config{
 		SndFile:          sf1,
-		StartOffset:      0.1,
-		EndOffset:        0.2,
-		UseZeroCrossings: true,
-		Loop:             true,
-		Speed:            1.5,
-		Amp:              0.4,
-	}).AddTo(p).ValueIn(templ.New(template.Template{
-		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
-		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3, 0.4),
-	}).ValueIn(timer.New(psalm.PPQ()*8, true).AddTo(p)))
-
-	pl2 := player.New(player.Config{
-		SndFile:          sf2,
 		StartOffset:      0.1,
 		EndOffset:        0.2,
 		UseZeroCrossings: true,
@@ -105,8 +118,36 @@ func main() {
 		Amp:              0.2,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
+		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3, 0.2),
+		"bang":        true,
+	}).ValueIn(timer.New(psalm.PPQ()*8, true).AddTo(p)))
+
+	pl2 := player.New(player.Config{
+		SndFile:          sf3,
+		StartOffset:      0.1,
+		EndOffset:        0.2,
+		UseZeroCrossings: true,
+		Loop:             false,
+		Speed:            0.5,
+		Amp:              0.2,
+	}).AddTo(p).ValueIn(templ.New(template.Template{
+		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.1, 0.1, 0.1),
-		"speed":       bucket.NewLoop(1.0, 1.25, 1.15, 1.25, 1.0, 0.75, 0.85),
+		"bang":        true,
+	}).ValueIn(timer.New(psalm.PPQ()*6, true).AddTo(p)))
+
+	pl3 := player.New(player.Config{
+		SndFile:          sf2,
+		StartOffset:      0.1,
+		EndOffset:        0.2,
+		UseZeroCrossings: true,
+		Loop:             false,
+		Speed:            1.0,
+		Amp:              0.8,
+	}).AddTo(p).ValueIn(templ.New(template.Template{
+		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
+		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3),
+		"speed":       bucket.NewLoop(1.0, 0.65, 0.95, 1.05, 1.0, 0.75, 0.85),
 		"bang":        true,
 	}).ValueIn(newStepper(
 		2.0, 1, 1, 0, 1, 1, 0, 0, 0,
@@ -114,11 +155,11 @@ func main() {
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 
-	pp := pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.0175, 0.125).AddTo(p).In(drms, pl1, 0, 0, pl2, 0, 0)
+	pp := pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.075, 0.125).AddTo(p).In(drms, pl1, 0, 0, pl2, 0, 0, pl3, 0, 0)
 	rv := freeverb.New()
 	rv.SetRoomSize(0.7)
-	rv.SetDry(0.7)
-	rv.SetWet(0.1)
+	rv.SetDry(0.8)
+	rv.SetWet(0.05)
 	rv.SetDamp(0.8)
 	rv.SetWidth(0.9)
 	rv.AddTo(p).In(pp)
