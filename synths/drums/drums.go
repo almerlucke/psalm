@@ -6,23 +6,15 @@ import (
 	"github.com/almerlucke/sndfile"
 )
 
-func NewDrums(soundBank sndfile.SoundBank[float32], numVoices int) *poly.Poly {
-	var initSound sndfile.SoundFiler[float32]
-
-	for _, v := range soundBank {
-		initSound = v
-		break
-	}
-
+func NewDrums(soundBank sndfile.SoundBank[float32], numVoices int, numChannels int) *poly.Poly {
 	voices := make([]poly.Voice, numVoices)
 	for i := range numVoices {
-		p := player.New(player.Config{
-			SndBank:   soundBank,
-			SndFile:   initSound,
-			EndOffset: 1.0,
+		voices[i] = player.New(player.Config{
+			SndBank:     soundBank,
+			NumChannels: numChannels,
+			EndOffset:   1.0,
 		})
-		voices[i] = p
 	}
 
-	return poly.New(initSound.NumChannels(), voices)
+	return poly.New(numChannels, voices)
 }

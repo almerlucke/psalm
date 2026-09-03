@@ -49,7 +49,7 @@ func main() {
 
 	p := psalm.New()
 
-	drms := drums.NewDrums(soundBank, 16).AddTo(p).SetID("drums")
+	drms := drums.NewDrums(soundBank, 16, 2).AddTo(p).SetID("drums")
 
 	drms.ValueIn(drumTemplate(0.7,
 		bucket.NewLoop(1.0), "kick").ValueIn(newTimer(

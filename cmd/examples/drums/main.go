@@ -76,7 +76,7 @@ func main() {
 
 	p := psalm.New()
 
-	drms := drums.NewDrums(soundBank, 32).AddTo(p).SetID("drums")
+	drms := drums.NewDrums(soundBank, 32, 2).AddTo(p).SetID("drums")
 
 	drms.ValueIn(templ.NewTrigger(0.35, template.Template{
 		"speed": bucket.New(1.0, 2.0, 0.2, 0.75, 0.4, 3.0, 2.5).SetMode(bucket.Indexed).Loop(true),
