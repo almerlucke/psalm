@@ -78,93 +78,45 @@ func main() {
 
 	drms := drums.NewDrums(soundBank, 32).AddTo(p).SetID("drums")
 
-	drms.ValueIn(templ.New(template.Template{
-		"command":   "trigger",
-		"duration":  0.0,
-		"amplitude": 0.35,
-		"message": template.Template{
-			"speed": bucket.New(1.0, 2.0, 0.2, 0.75, 0.4, 3.0, 2.5).SetMode(bucket.Indexed).Loop(true),
-			"sound": bucket.New("perc1_1", "perc2_1", "perc3_1", "perc4_1", "perc5_1", "perc6_1", "perc7_1").SetMode(bucket.Indexed).Loop(true),
-			"tick":  template.NewParameter("tick", nil),
-		},
-	}).ValueIn(timer.New(psalm.PPQ()*2, true).AddTo(p)))
+	drms.ValueIn(templ.NewTrigger(0.35, template.Template{
+		"speed": bucket.New(1.0, 2.0, 0.2, 0.75, 0.4, 3.0, 2.5).SetMode(bucket.Indexed).Loop(true),
+		"sound": bucket.New("perc1_1", "perc2_1", "perc3_1", "perc4_1", "perc5_1", "perc6_1", "perc7_1").SetMode(bucket.Indexed).Loop(true),
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 2)).AddTo(p)))
 
-	drms.ValueIn(templ.New(template.Template{
-		"command":   "trigger",
-		"duration":  0.0,
-		"amplitude": 0.15,
-		"message": template.Template{
-			"speed": 1,
-			"sound": bucket.New("harp1", "harp2", "harp3", "harp4", "harp5", "harp6", "harp7").SetMode(bucket.Indexed).Loop(true),
-			"tick":  template.NewParameter("tick", nil),
-		},
-	}).ValueIn(timer.New(psalm.PPQ()*7, true).AddTo(p)))
+	drms.ValueIn(templ.NewTrigger(0.15, template.Template{
+		"speed": 1.0,
+		"sound": bucket.New("harp1", "harp2", "harp3", "harp4", "harp5", "harp6", "harp7").SetMode(bucket.Indexed).Loop(true),
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 7)).AddTo(p)))
 
-	drms.ValueIn(templ.New(template.Template{
-		"command":   "trigger",
-		"duration":  0.0,
-		"amplitude": 0.45,
-		"message": template.Template{
-			"speed": bucket.New(1.0, 2.0, 0.25, 0.75, 0.5, 1.25, 1.5).SetMode(bucket.Indexed).Loop(true),
-			"sound": bucket.New("perc1", "perc2", "perc3", "perc4", "perc5", "perc6", "perc7").SetMode(bucket.Indexed).Loop(true),
-			"tick":  template.NewParameter("tick", nil),
-		},
-	}).ValueIn(timer.New(psalm.PPQ()*4, true).AddTo(p)))
+	drms.ValueIn(templ.NewTrigger(0.45, template.Template{
+		"speed": bucket.New(1.0, 2.0, 0.25, 0.75, 0.5, 1.25, 1.5).SetMode(bucket.Indexed).Loop(true),
+		"sound": bucket.New("perc1", "perc2", "perc3", "perc4", "perc5", "perc6", "perc7").SetMode(bucket.Indexed).Loop(true),
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 4)).AddTo(p)))
 
-	drms.ValueIn(templ.New(template.Template{
-		"command":   "trigger",
-		"duration":  0.0,
-		"amplitude": 1.0,
-		"message": template.Template{
-			"speed": bucket.New(1.0, 2.0, 2.2, 0.75, 0.4, 1.2, 0.85).SetMode(bucket.Indexed).Loop(true),
-			"sound": bucket.New("kick1", "kick2", "kick3", "kick4", "kick5", "kick6", "kick7").SetMode(bucket.Indexed).Loop(true),
-			"tick":  template.NewParameter("tick", nil),
-		},
-	}).ValueIn(timer.New(psalm.PPQ()*3, true).AddTo(p)))
+	drms.ValueIn(templ.NewTrigger(1.0, template.Template{
+		"speed": bucket.New(1.0, 2.0, 2.2, 0.75, 0.4, 1.2, 0.85).SetMode(bucket.Indexed).Loop(true),
+		"sound": bucket.New("kick1", "kick2", "kick3", "kick4", "kick5", "kick6", "kick7").SetMode(bucket.Indexed).Loop(true),
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 3)).AddTo(p)))
 
-	drms.ValueIn(templ.New(template.Template{
-		"command":   "trigger",
-		"duration":  0.0,
-		"amplitude": 0.5,
-		"message": template.Template{
-			"speed": bucket.New(2.0, 3.0, 1.0, 1.25, 1.5, 2.5, 0.75).SetMode(bucket.Indexed).Loop(true),
-			"sound": bucket.New("hihat1", "hihat2", "hihat3", "hihat4", "hihat5", "hihat6", "hihat7").SetMode(bucket.Indexed).Loop(true),
-			"tick":  template.NewParameter("tick", nil),
-		},
-	}).ValueIn(timer.New(psalm.PPQ(), true).AddTo(p)))
+	drms.ValueIn(templ.NewTrigger(0.5, template.Template{
+		"speed": bucket.New(2.0, 3.0, 1.0, 1.25, 1.5, 2.5, 0.75).SetMode(bucket.Indexed).Loop(true),
+		"sound": bucket.New("hihat1", "hihat2", "hihat3", "hihat4", "hihat5", "hihat6", "hihat7").SetMode(bucket.Indexed).Loop(true),
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ())).AddTo(p)))
 
-	drms.ValueIn(templ.New(template.Template{
-		"command":   "trigger",
-		"duration":  0.0,
-		"amplitude": 0.75,
-		"message": template.Template{
-			"speed": bucket.New(0.6, 1.0, 1.2, 0.5, 1.5, 0.45, 0.75).SetMode(bucket.Indexed).Loop(true),
-			"sound": bucket.New("ride1", "ride2", "ride3", "ride4", "ride5", "ride6", "ride7").SetMode(bucket.Indexed).Loop(true),
-			"tick":  template.NewParameter("tick", nil),
-		},
-	}).ValueIn(timer.New(psalm.PPQ()*5, true).AddTo(p)))
+	drms.ValueIn(templ.NewTrigger(0.75, template.Template{
+		"speed": bucket.New(0.6, 1.0, 1.2, 0.5, 1.5, 0.45, 0.75).SetMode(bucket.Indexed).Loop(true),
+		"sound": bucket.New("ride1", "ride2", "ride3", "ride4", "ride5", "ride6", "ride7").SetMode(bucket.Indexed).Loop(true),
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 5)).AddTo(p)))
 
-	drms.ValueIn(templ.New(template.Template{
-		"command":   "trigger",
-		"duration":  0.0,
-		"amplitude": 0.4,
-		"message": template.Template{
-			"speed": bucket.New(0.4, 1.2, 1.0, 1.25, 1.5, 1.75, 0.75).SetMode(bucket.Indexed).Loop(true),
-			"sound": bucket.New("clap1", "clap2", "clap3", "clap4", "clap5", "clap6", "clap7").SetMode(bucket.Indexed).Loop(true),
-			"tick":  template.NewParameter("tick", nil),
-		},
-	}).ValueIn(timer.New(psalm.PPQ()*6, true).AddTo(p)))
+	drms.ValueIn(templ.NewTrigger(0.4, template.Template{
+		"speed": bucket.New(0.4, 1.2, 1.0, 1.25, 1.5, 1.75, 0.75).SetMode(bucket.Indexed).Loop(true),
+		"sound": bucket.New("clap1", "clap2", "clap3", "clap4", "clap5", "clap6", "clap7").SetMode(bucket.Indexed).Loop(true),
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 6)).AddTo(p)))
 
-	drms.ValueIn(templ.New(template.Template{
-		"command":   "trigger",
-		"duration":  0.0,
-		"amplitude": 0.10,
-		"message": template.Template{
-			"speed": bucket.New(1.0, 0.75, 1.25).SetMode(bucket.Indexed).Loop(true),
-			"sound": "angels",
-			"tick":  template.NewParameter("tick", nil),
-		},
-	}).ValueIn(timer.New(psalm.PPQ()*30, true).AddTo(p)))
+	drms.ValueIn(templ.NewTrigger(0.10, template.Template{
+		"speed": bucket.New(1.0, 0.75, 1.25).SetMode(bucket.Indexed).Loop(true),
+		"sound": "angels",
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 30)).AddTo(p)))
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 

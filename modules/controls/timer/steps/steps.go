@@ -1,4 +1,4 @@
-package swing
+package steps
 
 import (
 	"math"
@@ -93,9 +93,9 @@ func QuickSteps(args ...any) []*Step {
 	return steps
 }
 
-func Multiply(steps []*Step, multiply float64) []*Step {
+func Multiply(s []*Step, multiply float64) []*Step {
 	if multiply > 0 {
-		for _, step := range steps {
+		for _, step := range s {
 			if step.Multiply > 0.0 {
 				step.Multiply *= multiply
 			} else {
@@ -103,10 +103,10 @@ func Multiply(steps []*Step, multiply float64) []*Step {
 			}
 		}
 	}
-	return steps
+	return s
 }
 
-type Swing struct {
+type Steps struct {
 	steps             genny.Generator[*Step]
 	remainingDuration float64
 	delayed           bool
@@ -115,28 +115,28 @@ type Swing struct {
 	burstDuration     float64
 }
 
-func New(steps genny.Generator[*Step]) *Swing {
-	return &Swing{
-		steps: steps,
+func New(s genny.Generator[*Step]) *Steps {
+	return &Steps{
+		steps: s,
 	}
 }
 
-func (sw *Swing) Generate() float64 {
-	if sw.delayed {
-		sw.delayed = false
-		return sw.remainingDuration
+func (s *Steps) Generate() float64 {
+	if s.delayed {
+		s.delayed = false
+		return s.remainingDuration
 	}
 
-	if sw.burstMode {
-		sw.burstCount--
-		if sw.burstCount == 0 {
-			sw.burstMode = false
+	if s.burstMode {
+		s.burstCount--
+		if s.burstCount == 0 {
+			s.burstMode = false
 		}
 
-		return sw.burstDuration
+		return s.burstDuration
 	}
 
-	step := sw.steps.Generate()
+	step := s.steps.Generate()
 
 	multiply := 1.0
 
@@ -151,32 +151,32 @@ func (sw *Swing) Generate() float64 {
 	}
 
 	if step.Burst() {
-		sw.burstMode = true
-		sw.burstCount = step.NumBurst
-		sw.burstDuration = ticks / float64(step.NumBurst)
-		return sw.Generate()
+		s.burstMode = true
+		s.burstCount = step.NumBurst
+		s.burstDuration = ticks / float64(step.NumBurst)
+		return s.Generate()
 	}
 
 	delay := step.shuffleDelay(ticks)
 	if delay > 0.0 {
-		sw.remainingDuration = ticks - delay
-		sw.delayed = true
+		s.remainingDuration = ticks - delay
+		s.delayed = true
 		return -delay
 	}
 
 	return ticks
 }
 
-func (sw *Swing) Done() bool {
-	return sw.steps.Done()
+func (s *Steps) Done() bool {
+	return s.steps.Done()
 }
 
-func (sw *Swing) Reset() {
-	sw.steps.Reset()
-	sw.delayed = false
-	sw.burstMode = false
+func (s *Steps) Reset() {
+	s.steps.Reset()
+	s.delayed = false
+	s.burstMode = false
 }
 
-func (sw *Swing) Continuous() bool {
-	return sw.steps.Continuous()
+func (s *Steps) Continuous() bool {
+	return s.steps.Continuous()
 }

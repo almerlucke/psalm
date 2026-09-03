@@ -1,46 +1,63 @@
 package timer
 
 import (
+	"github.com/almerlucke/genny"
 	"github.com/almerlucke/psalm"
 )
 
 type Timer struct {
 	*psalm.Module
-	previousTimestamp int64
-	tickCntr          int64
-	ticksPerBeat      int64
-	firstBang         bool
+	ticks    float64
+	counter  float64
+	bang     bool
+	rest     bool
+	ticksGen genny.Generator[float64]
 }
 
-func New(ticksPerBeat int, firstBang bool) *Timer {
-	t := &Timer{
-		Module:       psalm.NewControl(),
-		ticksPerBeat: int64(ticksPerBeat),
-		firstBang:    firstBang,
+func New(ticksGen genny.Generator[float64]) *Timer {
+	s := &Timer{
+		Module:   psalm.NewControl(),
+		ticksGen: ticksGen,
 	}
 
-	t.SetSelf(t)
+	s.SetSelf(s)
+	s.setNextDuration()
 
-	return t
+	return s
+}
+
+func (t *Timer) setNextDuration() {
+	if t.ticksGen.Done() {
+		t.ticksGen.Reset()
+		t.Send(psalm.Bang, 2)
+
+	}
+	ticks := t.ticksGen.Generate()
+	if ticks < 0 {
+		t.ticks = -ticks
+	} else {
+		t.ticks = ticks
+		t.bang = true
+	}
 }
 
 func (t *Timer) CtrlTick(tick psalm.CtrlTick) {
-	if tick.TickTimestamp == 1 && t.firstBang {
+	if t.bang {
+		dur := t.ticks * psalm.TickDuration()
+		t.bang = false
+		t.Send(dur, 1)
 		t.Send(psalm.Message{
-			"bang":   true,
-			"tick":   tick,
-			"sender": t.ID(),
+			"bang":     true,
+			"tick":     tick,
+			"sender":   t.ID(),
+			"duration": dur,
 		}, 0)
-		return
 	}
 
-	t.tickCntr++
-	for t.tickCntr >= t.ticksPerBeat {
-		t.tickCntr -= t.ticksPerBeat
-		t.Send(psalm.Message{
-			"bang":   true,
-			"tick":   tick,
-			"sender": t.ID(),
-		}, 0)
+	t.counter += 1.0
+
+	for t.counter >= t.ticks {
+		t.counter -= t.ticks
+		t.setNextDuration()
 	}
 }

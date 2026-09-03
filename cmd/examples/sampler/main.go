@@ -30,7 +30,7 @@ func main() {
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.New(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8).SetMode(bucket.Indexed).Loop(true),
 		"offsetRange": bucket.New(0.05, 0.1, 0.2, 0.3, 0.4).SetMode(bucket.Indexed).Loop(true),
-	}).ValueIn(timer.New(psalm.PPQ()*8, true).AddTo(p)))
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 8)).AddTo(p)))
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 

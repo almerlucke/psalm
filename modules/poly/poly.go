@@ -7,9 +7,9 @@ import (
 
 type Voice interface {
 	psalm.Modular
-	NoteOn(amplitude float64, message psalm.Message, config psalm.Config)
+	NoteOn(amplitude float64, message psalm.Message, tick psalm.CtrlTick, config psalm.Config)
 	NoteOff()
-	Note(duration float64, amplitude float64, message psalm.Message, config psalm.Config)
+	Note(duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick, config psalm.Config)
 	Clear()
 	IsActive() bool
 }
@@ -102,14 +102,14 @@ func (p *Poly) Receive(value any, _ int) {
 	}
 }
 
-func (p *Poly) handleTriggerMessage(msg psalm.Message, identifier string, duration float64, isNoteOn bool) {
+func (p *Poly) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, identifier string, duration float64, isNoteOn bool) {
 	v := p.getFreeVoice()
 	if v != nil {
 		if isNoteOn {
 			v.SetID(identifier)
-			v.NoteOn(msg.MustFltVal("amplitude"), msg.MustMsg("message"), p.Config())
+			v.NoteOn(msg.MustFltVal("amplitude"), msg.MustMsg("message"), tick, p.Config())
 		} else {
-			v.Note(duration, msg.MustFltVal("amplitude"), msg.MustMsg("message"), p.Config())
+			v.Note(duration, msg.MustFltVal("amplitude"), msg.MustMsg("message"), tick, p.Config())
 		}
 	} else {
 		// Steal oldest active voice
@@ -118,7 +118,7 @@ func (p *Poly) handleTriggerMessage(msg psalm.Message, identifier string, durati
 			fade := p.getFadeOut()
 			fade.Fill(e.Value.voice)
 			p.freePool.PushElement(e.Unlink())
-			p.handleTriggerMessage(msg, identifier, duration, isNoteOn)
+			p.handleTriggerMessage(msg, tick, identifier, duration, isNoteOn)
 		}
 	}
 }
@@ -127,13 +127,16 @@ func (p *Poly) handleTriggerMessage(msg psalm.Message, identifier string, durati
 func (p *Poly) ReceiveMessage(msg psalm.Message) {
 	if command, ok := msg.StrVal("command"); ok {
 		if command == "trigger" {
-			// Trigger a voice
+			// get ctrl tick mainly for sample offset (sample accurate timing)
+			tick := msg.MustTickVal("tick")
+			// trigger note on/off/duration
 			if noteOffIdentifier, ok := msg.StrVal("noteOff"); ok {
 				p.noteOff(noteOffIdentifier)
 			} else if noteOnIdentifier, ok := msg.StrVal("noteOn"); ok {
-				p.handleTriggerMessage(msg, noteOnIdentifier, 0, true)
-			} else if duration, ok := msg.FltVal("duration"); ok {
-				p.handleTriggerMessage(msg, "", duration, false)
+				p.handleTriggerMessage(msg, tick, noteOnIdentifier, 0, true)
+			} else {
+				duration := msg.MustFltVal("duration")
+				p.handleTriggerMessage(msg, tick, "", duration, false)
 			}
 		} else if command == "voice" {
 			// Pass message to all voices

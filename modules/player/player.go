@@ -286,31 +286,31 @@ func (p *Player) ReceiveMessage(msg psalm.Message) {
 	if offsetRange, ok := msg.FltVal("offsetRange"); ok {
 		p.SetOffsetRange(offsetRange)
 	}
-
-	if tick, ok := msg["tick"].(psalm.CtrlTick); ok {
-		p.waitSamps = tick.SampleOffset
-	}
 }
 
-func (p *Player) NoteOn(amplitude float64, message psalm.Message, _ psalm.Config) {
-	p.activate(amplitude, message)
+func (p *Player) NoteOn(amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
+	p.activate(amplitude, message, tick)
 }
 
-func (p *Player) Note(_ float64, amplitude float64, message psalm.Message, _ psalm.Config) {
-	p.activate(amplitude, message)
+func (p *Player) Note(_ float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
+	p.activate(amplitude, message, tick)
 }
 
 func (p *Player) NoteOff() {}
 
 func (p *Player) Clear() {}
 
-func (p *Player) activate(amplitude float64, message psalm.Message) {
+func (p *Player) activate(amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
 	p.ReceiveMessage(message)
+
+	p.waitSamps = tick.SampleOffset
+
 	if p.inc < 0.0 {
 		p.phase = p.endOffset
 	} else {
 		p.phase = p.startOffset
 	}
+
 	p.amp = amplitude
 	p.done = false
 }

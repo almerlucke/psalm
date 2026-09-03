@@ -257,3 +257,19 @@ func (m Message) IfStrVal(key string, f func(v string)) {
 		f(StrVal(v))
 	}
 }
+
+func (m Message) MustTickVal(key string) CtrlTick {
+	v, _ := m.TickVal(key)
+	return v
+}
+
+func (m Message) TickVal(key string) (tick CtrlTick, ok bool) {
+	tick, ok = m[key].(CtrlTick)
+	return
+}
+
+func (m Message) IfTickVal(key string, f func(v CtrlTick)) {
+	if tick, ok := m[key].(CtrlTick); ok {
+		f(tick)
+	}
+}

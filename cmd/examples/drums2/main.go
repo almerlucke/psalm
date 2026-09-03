@@ -2,14 +2,12 @@ package main
 
 import (
 	"github.com/almerlucke/genny/bucket"
-	"github.com/almerlucke/genny/sequence"
 	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/internal/timing"
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
-	"github.com/almerlucke/psalm/modules/controls/triggers/stepper"
-	"github.com/almerlucke/psalm/modules/controls/triggers/stepper/duration/swing"
+	"github.com/almerlucke/psalm/modules/controls/timer/steps"
 	"github.com/almerlucke/psalm/modules/effects/flanger"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
@@ -18,22 +16,16 @@ import (
 	"github.com/almerlucke/sndfile"
 )
 
-func newStepper(multiplier float64, steps ...any) *stepper.Stepper {
-	return stepper.NewStepper(swing.New(sequence.NewLoop[*swing.Step](
-		swing.Multiply(swing.QuickSteps(steps...), multiplier)...,
-	)))
+func newTimer(mult float64, s ...any) *timer.Timer {
+	return timer.WithSteps(
+		steps.Multiply(steps.QuickSteps(s...), mult),
+	)
 }
 
 func drumTemplate(amp any, speed any, sound any) *templ.Templ {
-	return templ.New(template.Template{
-		"command":   "trigger",
-		"duration":  0.0,
-		"amplitude": amp,
-		"message": template.Template{
-			"speed": speed,
-			"sound": sound,
-			"tick":  template.NewParameter("tick", nil),
-		},
+	return templ.NewTrigger(amp, template.Template{
+		"speed": speed,
+		"sound": sound,
 	})
 }
 
@@ -60,7 +52,7 @@ func main() {
 	drms := drums.NewDrums(soundBank, 16).AddTo(p).SetID("drums")
 
 	drms.ValueIn(drumTemplate(0.7,
-		bucket.NewLoop(1.0), "kick").ValueIn(newStepper(
+		bucket.NewLoop(1.0), "kick").ValueIn(newTimer(
 		0.25,
 		// Bar 1
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
@@ -73,7 +65,7 @@ func main() {
 	).AddTo(p)))
 
 	drms.ValueIn(drumTemplate(0.4,
-		bucket.NewLoop(1.0), "clap").ValueIn(newStepper(
+		bucket.NewLoop(1.0), "clap").ValueIn(newTimer(
 		0.25,
 		// Bar 1
 		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
@@ -85,25 +77,25 @@ func main() {
 		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1,
 	).AddTo(p)))
 
-	drms.ValueIn(drumTemplate(0.5, 2.0, "hihat").ValueIn(newStepper(
+	drms.ValueIn(drumTemplate(0.5, 2.0, "hihat").ValueIn(newTimer(
 		0.25,
 		// Bar 1
-		1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, &swing.Step{
+		1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, &steps.Step{
 			BurstChance: 0.6,
 			NumBurst:    3,
 		}, 0,
 		// Bar 2 (trap roll accents)
-		1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, &swing.Step{
+		1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, &steps.Step{
 			BurstChance: 0.7,
 			NumBurst:    4,
 		}, 0,
 		// Bar 3 (syncopated 16th groove)
-		1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, &swing.Step{
+		1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, &steps.Step{
 			BurstChance: 0.5,
 			NumBurst:    6,
 		}, 0,
 		// Bar 4 (high-energy fill before turnaround)
-		1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, &swing.Step{
+		1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0, &steps.Step{
 			BurstChance: 0.8,
 			NumBurst:    4,
 		}, 0, 1, 0,
@@ -121,7 +113,7 @@ func main() {
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3, 0.2),
 		"bang":        true,
-	}).ValueIn(timer.New(psalm.PPQ()*8, true).AddTo(p)))
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 8)).AddTo(p)))
 
 	pl2 := player.New(player.Config{
 		SndFile:          sf3,
@@ -136,7 +128,7 @@ func main() {
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.1, 0.1, 0.1),
 		"speed":       bucket.NewLoop(0.25, 0.375, 0.5, 0.25, 0.25, 0.25),
 		"bang":        true,
-	}).ValueIn(timer.New(psalm.PPQ()*6, true).AddTo(p)))
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 6)).AddTo(p)))
 
 	pl3 := player.New(player.Config{
 		SndFile:          sf2,
@@ -151,7 +143,7 @@ func main() {
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3),
 		"speed":       bucket.NewLoop(1.0, 0.65, 0.95, 1.05, 1.0, 0.75, 0.85),
 		"bang":        true,
-	}).ValueIn(newStepper(
+	}).ValueIn(newTimer(
 		2.0, 1, 1, 0, 1, 1, 0, 0, 0,
 	).AddTo(p)))
 
