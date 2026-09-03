@@ -8,8 +8,14 @@ type CtrlTick struct {
 	PPQ             int
 }
 
+type Receiver interface {
+	Receive(any, int)
+	ReceiveMessage(Message)
+}
+
 type Modular interface {
 	Selfie[Modular]
+	Receiver
 	ID() string
 	SetID(string) Modular
 	HasRun() bool
@@ -32,9 +38,7 @@ type Modular interface {
 	AddTo(Patcher) Modular
 	Config() Config
 	CtrlTick(CtrlTick)
-	Receive(any, int)
 	Send(any, int)
-	ReceiveMessage(Message)
 }
 
 type Module struct {
