@@ -33,7 +33,7 @@ type Envelope struct {
 	cnt             int64
 }
 
-func (e *Envelope) New(_ any) granular.Envelope {
+func (e *Envelope) New(_ any) *Envelope {
 	return &Envelope{}
 }
 

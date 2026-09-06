@@ -89,13 +89,15 @@ func (s *Source) New(cfg any) *Source {
 
 type ParamGen struct {
 	parameter    Param // single parameter can be passed for each NextParameter call, prevent from allocating new params
-	returnParams [1]granular.Parameter
+	returnParams []granular.Parameter
 }
 
 func NewParamGen() *ParamGen {
 	g := &ParamGen{}
 	g.parameter.adsrSetting = adsr.NewADSetting(1.0, 0.05, 0.95)
 	g.parameter.adsrSetting.ReleaseShape = -0.5
+	g.returnParams = make([]granular.Parameter, 1)
+	g.returnParams[0] = &g.parameter
 	return g
 }
 
@@ -108,12 +110,10 @@ func (pgen *ParamGen) Next(_ int64, config psalm.Config) []granular.Parameter {
 	p.duration = rand.Float64()*0.1 + 0.05
 	p.amplitude = rand.Float64()*0.4 + 0.2
 	p.freq = rand.Float64()*2000.0 + 400.0
-	p.onset = int64((rand.Float64()*0.2 + 0.0001) * config.SampleRate)
+	p.onset = int64((rand.Float64()*0.75 + 0.0001) * config.SampleRate)
 	p.pan = rand.Float64() * 1.0
 
-	pgen.returnParams[0] = p
-
-	return pgen.returnParams[:]
+	return pgen.returnParams
 }
 
 func (pgen *ParamGen) Type() granular.ParameterGeneratorType {

@@ -11,7 +11,7 @@ type Envelope struct {
 	curve float64
 }
 
-func (e *Envelope) New(_ any) granular.Envelope {
+func (e *Envelope) New(_ any) *Envelope {
 	return &Envelope{}
 }
 
