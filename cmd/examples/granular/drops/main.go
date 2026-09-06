@@ -83,7 +83,7 @@ func (s *Source) Activate(sampsToGo int64, p granular.Parameter, cfg psalm.Confi
 	s.pan[1] = math.Sin(param.pan * math.Pi / 2.0)
 }
 
-func (s *Source) New(cfg any) granular.Source {
+func (s *Source) New(cfg any) *Source {
 	return NewSource(cfg.(psalm.Config).SampleRate)
 }
 
@@ -123,7 +123,7 @@ func (pgen *ParamGen) Type() granular.ParameterGeneratorType {
 func main() {
 	p := psalm.New()
 
-	gl := granular.New(2, &Source{}, &grainAdsr.Envelope{}, 40, NewParamGen()).AddTo(p)
+	gl := granular.New[*Source, *grainAdsr.Envelope](2, &Source{}, &grainAdsr.Envelope{}, 40, NewParamGen()).AddTo(p)
 
 	p.Out(freeverb.New(0.9, 0.6, 0.9, 0.3, 0.6).AddTo(p).In(gl))
 

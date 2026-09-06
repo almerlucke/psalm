@@ -36,19 +36,19 @@ type Source interface {
 	Activate(int64, Parameter, psalm.Config)
 }
 
-type grain struct {
-	envelope  Envelope
-	source    Source
+type grain[S Source, E Envelope] struct {
+	envelope  E
+	source    S
 	sampsToGo int64
 }
 
-func (g *grain) activate(p Parameter, config psalm.Config) {
+func (g *grain[S, E]) activate(p Parameter, config psalm.Config) {
 	g.sampsToGo = int64(math.Round(p.Duration() * config.SampleRate))
 	g.source.Activate(g.sampsToGo, p, config)
 	g.envelope.Activate(p.Amplitude(), g.sampsToGo, p, config)
 }
 
-func (g *grain) synthesize(sourceBufs [][]float32, bufSize int) int {
+func (g *grain[S, E]) synthesize(sourceBufs [][]float32, bufSize int) int {
 	sampsToSynthesize := min(g.sampsToGo, int64(bufSize))
 
 	g.sampsToGo -= sampsToSynthesize
@@ -61,10 +61,10 @@ func (g *grain) synthesize(sourceBufs [][]float32, bufSize int) int {
 	return n
 }
 
-type Granulator struct {
+type Granulator[S Source, E Envelope] struct {
 	*psalm.Module
-	freeGrains    []*grain
-	activeGrains  []*grain
+	freeGrains    []*grain[S, E]
+	activeGrains  []*grain[S, E]
 	paramGen      ParameterGenerator
 	nextParameter Parameter
 	interOnset    int64
@@ -72,21 +72,21 @@ type Granulator struct {
 	sourceBufs    [][]float32
 }
 
-func New(numChannels int, sf factory.Factory[Source], ef factory.Factory[Envelope], grainPoolSize int, paramGen ParameterGenerator) *Granulator {
+func New[S Source, E Envelope](numChannels int, sf factory.Factory[S], ef factory.Factory[E], grainPoolSize int, paramGen ParameterGenerator) *Granulator[S, E] {
 	config := psalm.CurrentConfig()
 
-	grains := make([]grain, grainPoolSize)
-	freeGrains := make([]*grain, grainPoolSize)
+	grains := make([]grain[S, E], grainPoolSize)
+	freeGrains := make([]*grain[S, E], grainPoolSize)
 	for i := range grains {
 		grains[i].source = sf.New(config)
 		grains[i].envelope = ef.New(config)
 		freeGrains[i] = &grains[i]
 	}
 
-	gl := &Granulator{
+	gl := &Granulator[S, E]{
 		Module:       psalm.NewModule(nil, []int{numChannels}),
 		freeGrains:   freeGrains,
-		activeGrains: make([]*grain, 0, grainPoolSize),
+		activeGrains: make([]*grain[S, E], 0, grainPoolSize),
 		paramGen:     paramGen,
 		sourceBufs:   make([][]float32, numChannels), // synthesize buffer for grain source
 	}
@@ -105,7 +105,7 @@ func New(numChannels int, sf factory.Factory[Source], ef factory.Factory[Envelop
 	return gl
 }
 
-func (gl *Granulator) Receive(value any, index int) {
+func (gl *Granulator[S, E]) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		gl.ReceiveMessage(msg)
 		return
@@ -114,11 +114,11 @@ func (gl *Granulator) Receive(value any, index int) {
 	gl.paramGen.Receive(value, index)
 }
 
-func (gl *Granulator) ReceiveMessage(msg psalm.Message) {
+func (gl *Granulator[S, E]) ReceiveMessage(msg psalm.Message) {
 	gl.paramGen.ReceiveMessage(msg)
 }
 
-func (gl *Granulator) synthesizeActiveGrains(bufSize int) {
+func (gl *Granulator[S, E]) synthesizeActiveGrains(bufSize int) {
 	channels := gl.Output(0).Channels
 
 	for i := 0; i < len(gl.activeGrains); {
@@ -145,7 +145,7 @@ func (gl *Granulator) synthesizeActiveGrains(bufSize int) {
 	}
 }
 
-func (gl *Granulator) onsetSynthesize() {
+func (gl *Granulator[S, E]) onsetSynthesize() {
 	var (
 		outIndex     int
 		cfg          = gl.Config()
@@ -204,7 +204,7 @@ func (gl *Granulator) onsetSynthesize() {
 	gl.timestamp = endTimestamp
 }
 
-func (gl *Granulator) perFrameSynthesize() {
+func (gl *Granulator[S, E]) perFrameSynthesize() {
 	var (
 		cfg        = gl.Config()
 		bufferSize = int64(cfg.BufferSize)
@@ -251,7 +251,7 @@ func (gl *Granulator) perFrameSynthesize() {
 	gl.timestamp = timestamp + bufferSize
 }
 
-func (gl *Granulator) Synthesize() {
+func (gl *Granulator[S, E]) Synthesize() {
 	// Zero buffers for new frame
 	gl.Output(0).Clear()
 

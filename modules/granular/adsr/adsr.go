@@ -14,7 +14,7 @@ type Parameter interface {
 	ADSRSetting() *adsr.Setting
 }
 
-func (e *Envelope) New(cfg any) granular.Envelope {
+func (e *Envelope) New(cfg any) *Envelope {
 	return &Envelope{
 		adsr: adsr.New(&adsr.Setting{}, adsr.Automatic, cfg.(psalm.Config).SampleRate),
 	}
