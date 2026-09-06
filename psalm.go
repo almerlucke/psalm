@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/almerlucke/psalm/internal/signal"
+	"github.com/almerlucke/psalm/tools/signal"
 	"github.com/almerlucke/sndfile/writer"
 	"github.com/dh1tw/gosamplerate"
 

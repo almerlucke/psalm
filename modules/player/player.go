@@ -2,7 +2,7 @@ package player
 
 import (
 	"github.com/almerlucke/psalm"
-	"github.com/almerlucke/psalm/internal/float"
+	"github.com/almerlucke/psalm/tools/float"
 	"github.com/almerlucke/sndfile"
 )
 

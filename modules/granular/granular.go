@@ -4,8 +4,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
-	"github.com/almerlucke/psalm/internal/containers/list"
-	"github.com/almerlucke/psalm/internal/factory"
+	"github.com/almerlucke/psalm/tools/factory"
 )
 
 type ParameterGeneratorType int
@@ -64,8 +63,8 @@ func (g *grain) synthesize(sourceBufs [][]float32, bufSize int) int {
 
 type Granulator struct {
 	*psalm.Module
-	freeGrains    *list.List[*grain]
-	activeGrains  *list.List[*grain]
+	freeGrains    []*grain
+	activeGrains  []*grain
 	paramGen      ParameterGenerator
 	nextParameter Parameter
 	interOnset    int64
@@ -76,23 +75,24 @@ type Granulator struct {
 func New(numChannels int, sf factory.Factory[Source], ef factory.Factory[Envelope], grainPoolSize int, paramGen ParameterGenerator) *Granulator {
 	config := psalm.CurrentConfig()
 
+	grains := make([]grain, grainPoolSize)
+	freeGrains := make([]*grain, grainPoolSize)
+	for i := range grains {
+		grains[i].source = sf.New(config)
+		grains[i].envelope = ef.New(config)
+		freeGrains[i] = &grains[i]
+	}
+
 	gl := &Granulator{
 		Module:       psalm.NewModule(nil, []int{numChannels}),
-		freeGrains:   list.New[*grain](),
-		activeGrains: list.New[*grain](),
+		freeGrains:   freeGrains,
+		activeGrains: make([]*grain, 0, grainPoolSize),
 		paramGen:     paramGen,
 		sourceBufs:   make([][]float32, numChannels), // synthesize buffer for grain source
 	}
 
 	for i := range numChannels {
 		gl.sourceBufs[i] = make([]float32, config.BufferSize)
-	}
-
-	for range grainPoolSize {
-		gl.freeGrains.Push(&grain{
-			source:   sf.New(config),
-			envelope: ef.New(config),
-		})
 	}
 
 	if paramGen.Type() == Onset {
@@ -119,21 +119,30 @@ func (gl *Granulator) ReceiveMessage(msg psalm.Message) {
 }
 
 func (gl *Granulator) synthesizeActiveGrains(bufSize int) {
-	gl.activeGrains.ForEachElement(func(e *list.Element[*grain], index int) {
-		g := e.Value
+	channels := gl.Output(0).Channels
 
+	for i := 0; i < len(gl.activeGrains); {
+		g := gl.activeGrains[i]
 		n := g.synthesize(gl.sourceBufs, bufSize)
 
-		for i, ch := range gl.Output(0).Channels {
-			for j := range n {
-				ch[j] += gl.sourceBufs[i][j]
+		for c, ch := range channels {
+			dst := ch[:n]
+			src := gl.sourceBufs[c][:n]
+			for j := range dst {
+				dst[j] += src[j]
 			}
 		}
 
 		if g.sampsToGo == 0 {
-			gl.freeGrains.PushElement(e.Unlink())
+			// Swap with last active grain and return to free pool
+			lastIdx := len(gl.activeGrains) - 1
+			gl.activeGrains[i] = gl.activeGrains[lastIdx]
+			gl.activeGrains = gl.activeGrains[:lastIdx]
+			gl.freeGrains = append(gl.freeGrains, g)
+		} else {
+			i++
 		}
-	})
+	}
 }
 
 func (gl *Granulator) onsetSynthesize() {
@@ -160,26 +169,29 @@ func (gl *Granulator) onsetSynthesize() {
 
 		gl.interOnset = 0
 
+		channels := gl.Output(0).Channels
+
 		// While interOnset == 0 generate new grains and synthesize for remaining samples in this frame
 		for gl.interOnset == 0 {
-			e := gl.freeGrains.PopElement()
-			if e != nil {
-				e.Value.activate(gl.nextParameter, cfg)
+			if len(gl.freeGrains) > 0 {
+				g := gl.freeGrains[len(gl.freeGrains)-1]
+				g.activate(gl.nextParameter, cfg)
 
 				// Synthesize remaining samples in this frame
-				n := e.Value.synthesize(gl.sourceBufs, int(sampsLeft))
+				n := g.synthesize(gl.sourceBufs, int(sampsLeft))
 
-				for c, ch := range gl.Output(0).Channels {
-					for i := range n {
-						ch[outIndex+i] += gl.sourceBufs[c][i]
+				for c, ch := range channels {
+					dst := ch[outIndex : outIndex+n]
+					src := gl.sourceBufs[c][:n]
+					for i := range dst {
+						dst[i] += src[i]
 					}
 				}
 
-				// If grain is done, put it back in free list, otherwise keep it for next frame in active grains
-				if e.Value.sampsToGo == 0 {
-					gl.freeGrains.PushElement(e)
-				} else {
-					gl.activeGrains.PushElement(e)
+				// If grain is not done keep it for next frame in active grains
+				if g.sampsToGo > 0 {
+					gl.freeGrains = gl.freeGrains[:len(gl.freeGrains)-1]
+					gl.activeGrains = append(gl.activeGrains, g)
 				}
 			}
 
@@ -199,38 +211,39 @@ func (gl *Granulator) perFrameSynthesize() {
 		timestamp  = gl.timestamp
 	)
 
+	channels := gl.Output(0).Channels
+
 	// Get parameters for this frame
 	params := gl.paramGen.Next(timestamp, cfg)
 
 	// For each parameter activate a grain and run it for the remaining samples in this frame
 	for _, param := range params {
-		e := gl.freeGrains.PopElement()
-		if e == nil {
-			continue
-		}
+		if len(gl.freeGrains) > 0 {
+			g := gl.freeGrains[len(gl.freeGrains)-1]
+			g.activate(gl.nextParameter, cfg)
 
-		e.Value.activate(param, cfg)
+			// Bookkeeping
+			interFrameOnset := param.Onset()
+			outIndex := int(interFrameOnset)
+			sampsToSynthesize := bufferSize - interFrameOnset
 
-		// Bookkeeping
-		interFrameOnset := param.Onset()
-		outIndex := int(interFrameOnset)
-		sampsToSynthesize := bufferSize - interFrameOnset
+			// Synthesize remaining samples in this frame
+			n := g.synthesize(gl.sourceBufs, int(sampsToSynthesize))
 
-		// Synthesize remaining samples in this frame
-		n := e.Value.synthesize(gl.sourceBufs, int(sampsToSynthesize))
-
-		// Copy grain output to output buffers
-		for c, ch := range gl.Output(0).Channels {
-			for i := range n {
-				ch[outIndex+i] += gl.sourceBufs[c][i]
+			// Copy grain output to output buffers
+			for c, ch := range channels {
+				dst := ch[outIndex : outIndex+n]
+				src := gl.sourceBufs[c][:n]
+				for i := range dst {
+					dst[i] += src[i]
+				}
 			}
-		}
 
-		// If grain is done, put it back in free list, otherwise keep it for next frame in active grains
-		if e.Value.sampsToGo == 0 {
-			gl.freeGrains.PushElement(e)
-		} else {
-			gl.activeGrains.PushElement(e)
+			// If grain is not done keep it for next frame in active grains
+			if g.sampsToGo > 0 {
+				gl.freeGrains = gl.freeGrains[:len(gl.freeGrains)-1]
+				gl.activeGrains = append(gl.activeGrains, g)
+			}
 		}
 	}
 

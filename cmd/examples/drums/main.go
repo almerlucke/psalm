@@ -4,12 +4,12 @@ import (
 	"github.com/almerlucke/genny/bucket"
 	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
-	"github.com/almerlucke/psalm/internal/timing"
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/synths/drums"
+	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
 )
 

@@ -2,7 +2,7 @@ package poly
 
 import (
 	"github.com/almerlucke/psalm"
-	"github.com/almerlucke/psalm/internal/containers/list"
+	"github.com/almerlucke/psalm/tools/containers/list"
 )
 
 type Voice interface {

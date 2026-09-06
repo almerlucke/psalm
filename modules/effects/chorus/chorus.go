@@ -8,8 +8,8 @@ import (
 	"github.com/almerlucke/genny/float/shape/shapers/lookup"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/delay"
-	"github.com/almerlucke/psalm/internal/mmath"
-	"github.com/almerlucke/psalm/internal/timing"
+	"github.com/almerlucke/psalm/tools/mmath"
+	"github.com/almerlucke/psalm/tools/timing"
 )
 
 /*

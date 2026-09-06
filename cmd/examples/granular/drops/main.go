@@ -7,10 +7,10 @@ import (
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
-	"github.com/almerlucke/psalm/internal/timing"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/granular"
 	grainAdsr "github.com/almerlucke/psalm/modules/granular/adsr"
+	"github.com/almerlucke/psalm/tools/timing"
 )
 
 type Param struct {
@@ -108,7 +108,7 @@ func (pgen *ParamGen) Next(_ int64, config psalm.Config) []granular.Parameter {
 	p.duration = rand.Float64()*0.1 + 0.05
 	p.amplitude = rand.Float64()*0.4 + 0.2
 	p.freq = rand.Float64()*2000.0 + 400.0
-	p.onset = int64((rand.Float64()*1.2 + 0.0001) * config.SampleRate)
+	p.onset = int64((rand.Float64()*0.2 + 0.0001) * config.SampleRate)
 	p.pan = rand.Float64() * 1.0
 
 	pgen.returnParams[0] = p

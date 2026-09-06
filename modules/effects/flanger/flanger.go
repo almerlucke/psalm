@@ -9,7 +9,7 @@ import (
 	"github.com/almerlucke/genny/float/shape/shapers/lookup"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/delay"
-	"github.com/almerlucke/psalm/internal/timing"
+	"github.com/almerlucke/psalm/tools/timing"
 )
 
 var defaultModTable = lookup.NewUniTriangleTable(512)
