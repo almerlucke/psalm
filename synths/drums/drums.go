@@ -6,8 +6,8 @@ import (
 	"github.com/almerlucke/sndfile"
 )
 
-func NewDrums(soundBank sndfile.SoundBank[float32], numVoices int, numChannels int) *poly.Poly {
-	voices := make([]poly.Voice, numVoices)
+func NewDrums(soundBank sndfile.SoundBank[float32], numVoices int, numChannels int) *poly.Poly[*player.Player] {
+	voices := make([]*player.Player, numVoices)
 	for i := range numVoices {
 		voices[i] = player.New(player.Config{
 			SndBank:     soundBank,
@@ -16,5 +16,5 @@ func NewDrums(soundBank sndfile.SoundBank[float32], numVoices int, numChannels i
 		})
 	}
 
-	return poly.New(numChannels, voices)
+	return poly.New[*player.Player](numChannels, voices)
 }

@@ -14,30 +14,30 @@ type Voice interface {
 	IsActive() bool
 }
 
-type voiceInfo struct {
+type voiceInfo[T Voice] struct {
 	triggeredAt int64
-	voice       Voice
+	voice       T
 }
 
-type Poly struct {
+type Poly[T Voice] struct {
 	*psalm.Module
-	freePool     *list.List[*voiceInfo]
-	activePool   *list.List[*voiceInfo]
+	freePool     *list.List[*voiceInfo[T]]
+	activePool   *list.List[*voiceInfo[T]]
 	fadeOut      psalm.Channels
 	hasFadeOut   bool
 	triggerCount int64
 }
 
-func New(numChannels int, voices []Voice) *Poly {
-	poly := &Poly{
+func New[T Voice](numChannels int, voices []T) *Poly[T] {
+	poly := &Poly[T]{
 		Module: psalm.NewModule([]int{psalm.Mono}, []int{numChannels}),
 	}
 
-	poly.freePool = list.New[*voiceInfo]()
-	poly.activePool = list.New[*voiceInfo]()
+	poly.freePool = list.New[*voiceInfo[T]]()
+	poly.activePool = list.New[*voiceInfo[T]]()
 
 	for _, voice := range voices {
-		poly.freePool.Push(&voiceInfo{
+		poly.freePool.Push(&voiceInfo[T]{
 			voice: voice,
 		})
 	}
@@ -49,8 +49,8 @@ func New(numChannels int, voices []Voice) *Poly {
 	return poly
 }
 
-func (p *Poly) noteOff(identifier string) {
-	p.CallActiveVoiceInfo(func(info *voiceInfo) bool {
+func (p *Poly[T]) noteOff(identifier string) {
+	p.CallActiveVoiceInfo(func(info *voiceInfo[T]) bool {
 		if info.voice.ID() == identifier {
 			info.voice.NoteOff()
 			info.voice.SetID("")
@@ -61,27 +61,29 @@ func (p *Poly) noteOff(identifier string) {
 	})
 }
 
-func (p *Poly) AllNotesOff() {
-	p.CallActiveVoiceInfo(func(info *voiceInfo) bool {
+func (p *Poly[T]) AllNotesOff() {
+	p.CallActiveVoiceInfo(func(info *voiceInfo[T]) bool {
 		info.voice.NoteOff()
 		info.voice.SetID("")
 		return true
 	})
 }
 
-func (p *Poly) Receive(value any, _ int) {
+func (p *Poly[T]) Receive(value any, _ int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		p.ReceiveMessage(msg)
 		return
 	}
 }
 
-func (p *Poly) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, identifier string, duration float64, isNoteOn bool) {
+func (p *Poly[T]) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, identifier string, duration float64, isNoteOn bool) {
+	// Get free voice or steal one
 	v := p.getFreeVoice()
 	if v == nil {
 		// Steal oldest active voice
 		v = p.getOldestActiveVoice()
 		if v != nil {
+			// Fade out stolen voice
 			p.hasFadeOut = true
 			v.Synthesize()
 			invBufferSize := 1.0 / float32(len(p.fadeOut[0]))
@@ -91,6 +93,7 @@ func (p *Poly) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, iden
 		}
 	}
 
+	// Activate voice
 	if v != nil {
 		v.Clear()
 		if isNoteOn {
@@ -105,7 +108,7 @@ func (p *Poly) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, iden
 }
 
 // ReceiveMessage is used to activate voices
-func (p *Poly) ReceiveMessage(msg psalm.Message) {
+func (p *Poly[T]) ReceiveMessage(msg psalm.Message) {
 	if command, ok := msg.StrVal("command"); ok {
 		if command == "trigger" {
 			// get ctrl tick mainly for sample offset (sample accurate timing)
@@ -121,17 +124,17 @@ func (p *Poly) ReceiveMessage(msg psalm.Message) {
 			}
 		} else if command == "voice" {
 			// Pass message to all voices
-			p.CallVoices(func(v Voice) {
+			p.CallVoices(func(v T) {
 				v.ReceiveMessage(msg)
 			})
 		}
 	}
 }
 
-func (p *Poly) getOldestActiveVoice() Voice {
-	var oldest *voiceInfo
+func (p *Poly[T]) getOldestActiveVoice() Voice {
+	var oldest *voiceInfo[T]
 
-	p.activePool.ForEachElement(func(e *list.Element[*voiceInfo], _ int) {
+	p.activePool.ForEachElement(func(e *list.Element[*voiceInfo[T]], _ int) {
 		if oldest == nil || e.Value.triggeredAt < oldest.triggeredAt {
 			oldest = e.Value
 		}
@@ -144,7 +147,7 @@ func (p *Poly) getOldestActiveVoice() Voice {
 	return oldest.voice
 }
 
-func (p *Poly) getFreeVoice() Voice {
+func (p *Poly[T]) getFreeVoice() Voice {
 	e := p.freePool.PopElement()
 	if e != nil {
 		p.activePool.PushElement(e)
@@ -155,53 +158,54 @@ func (p *Poly) getFreeVoice() Voice {
 	return nil
 }
 
-func (p *Poly) CallVoices(f func(Voice)) {
-	p.CallActiveVoices(func(v Voice) bool {
+func (p *Poly[T]) CallVoices(f func(T)) {
+	p.CallActiveVoices(func(v T) bool {
 		f(v)
 		return true
 	})
-	p.CallInactiveVoices(func(v Voice) bool {
+	p.CallInactiveVoices(func(v T) bool {
 		f(v)
 		return true
 	})
 }
 
-func (p *Poly) CallActiveVoiceInfo(f func(*voiceInfo) bool) {
-	p.activePool.Until(func(v *voiceInfo, _ int) bool {
+func (p *Poly[T]) CallActiveVoiceInfo(f func(*voiceInfo[T]) bool) {
+	p.activePool.Until(func(v *voiceInfo[T], _ int) bool {
 		return f(v)
 	})
 }
 
-func (p *Poly) CallActiveVoices(f func(Voice) bool) {
-	p.CallActiveVoiceInfo(func(info *voiceInfo) bool {
+func (p *Poly[T]) CallActiveVoices(f func(T) bool) {
+	p.CallActiveVoiceInfo(func(info *voiceInfo[T]) bool {
 		return f(info.voice)
 	})
 }
 
-func (p *Poly) CallInactiveVoices(f func(Voice) bool) {
-	p.freePool.Until(func(v *voiceInfo, _ int) bool {
+func (p *Poly[T]) CallInactiveVoices(f func(T) bool) {
+	p.freePool.Until(func(v *voiceInfo[T], _ int) bool {
 		return f(v.voice)
 	})
 }
 
-func (p *Poly) Synthesize() {
+func (p *Poly[T]) Synthesize() {
+	out := p.Output(0).Channels
+
 	if p.hasFadeOut {
 		// Copy fade out buffer to output
-		p.Output(0).Channels.Copy(p.fadeOut)
+		out.Copy(p.fadeOut)
 		p.fadeOut.Clear()
 		p.hasFadeOut = false
 	} else {
-		p.Output(0).Clear()
+		out.Clear()
 	}
 
 	// Run active voices
-	p.activePool.ForEachElement(func(e *list.Element[*voiceInfo], _ int) {
+	p.activePool.ForEachElement(func(e *list.Element[*voiceInfo[T]], _ int) {
 		voice := e.Value.voice
-
 		if voice.IsActive() {
 			// Add voice output to buffer
 			voice.Synthesize()
-			p.Output(0).Channels.Accum(voice.Output(0).Channels)
+			out.Accum(voice.Output(0).Channels)
 		} else {
 			p.freePool.PushElement(e.Unlink())
 		}
