@@ -92,18 +92,16 @@ func (s *Source) New(cfg any) *Source {
 }
 
 type ParamGen struct {
-	parameter    Param // single parameter can be passed for each NextParameter call, prevent from allocating new params
-	returnParams []granular.Parameter
-	freqGen      genny.Generator[float64]
-	panGen       genny.Generator[float64]
+	granular.ParameterGenerator
+	parameter Param // single parameter can be passed for each NextParameter call, prevent from allocating new params
+	freqGen   genny.Generator[float64]
+	panGen    genny.Generator[float64]
 }
 
 func NewParamGen() *ParamGen {
 	g := &ParamGen{}
 	g.parameter.adsrSetting = adsr.NewADSetting(1.0, 0.0025, 0.95)
 	g.parameter.adsrSetting.ReleaseShape = -0.5
-	g.returnParams = make([]granular.Parameter, 1)
-	g.returnParams[0] = &g.parameter
 	g.panGen = rwalk.New(0.5, 0.0, 1.0, 0.01, rwalk.Bounce)
 	g.freqGen = sequence.NewLoop(
 		// Phrase 1: Solemn Invocation & Multi-Octave Ascent (Notes 1 - 25)
@@ -130,10 +128,7 @@ func NewParamGen() *ParamGen {
 	return g
 }
 
-func (pgen *ParamGen) Receive(_ any, _ int)           {}
-func (pgen *ParamGen) ReceiveMessage(_ psalm.Message) {}
-
-func (pgen *ParamGen) Next(_ int64, config psalm.Config) []granular.Parameter {
+func (pgen *ParamGen) NextOnset(_ int64, config psalm.Config) granular.Parameter {
 	p := &pgen.parameter
 
 	p.duration = rand.Float64()*2.5 + 0.1
@@ -142,7 +137,7 @@ func (pgen *ParamGen) Next(_ int64, config psalm.Config) []granular.Parameter {
 	p.onset = int64((rand.Float64()*0.25 + 0.0001) * config.SampleRate)
 	p.pan = pgen.panGen.Generate()
 
-	return pgen.returnParams
+	return p
 }
 
 func (pgen *ParamGen) Type() granular.ParameterGeneratorType {

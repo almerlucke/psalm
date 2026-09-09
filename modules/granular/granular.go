@@ -14,6 +14,10 @@ const (
 	PerFrame
 )
 
+const (
+	MaxParams = 100
+)
+
 type Parameter interface {
 	Onset() int64      // Onset in samples
 	Duration() float64 // Duration in seconds
@@ -22,7 +26,8 @@ type Parameter interface {
 
 type ParameterGenerator interface {
 	psalm.Receiver
-	Next(int64, psalm.Config) []Parameter
+	NextOnset(int64, psalm.Config) Parameter
+	NextFrame(int64, psalm.Config, []Parameter) []Parameter
 	Type() ParameterGeneratorType
 }
 
@@ -66,7 +71,8 @@ type Granulator[S Source, E Envelope] struct {
 	freeGrains    []*grain[S, E]
 	activeGrains  []*grain[S, E]
 	paramGen      ParameterGenerator
-	nextParameter Parameter
+	nextParameter Parameter // For onset param gen
+	params        []Parameter
 	interOnset    int64
 	timestamp     int64
 	sourceBufs    [][]float32
@@ -89,6 +95,7 @@ func New[S Source, E Envelope](numChannels int, sf factory.Factory[S], ef factor
 		activeGrains: make([]*grain[S, E], 0, grainPoolSize),
 		paramGen:     paramGen,
 		sourceBufs:   make([][]float32, numChannels), // synthesize buffer for grain source
+		params:       make([]Parameter, 0, MaxParams),
 	}
 
 	for i := range numChannels {
@@ -96,7 +103,7 @@ func New[S Source, E Envelope](numChannels int, sf factory.Factory[S], ef factor
 	}
 
 	if paramGen.Type() == Onset {
-		gl.nextParameter = paramGen.Next(0, config)[0]
+		gl.nextParameter = paramGen.NextOnset(0, config)
 		gl.interOnset = gl.nextParameter.Onset()
 	}
 
@@ -195,7 +202,7 @@ func (gl *Granulator[S, E]) onsetSynthesize() {
 				}
 			}
 
-			gl.nextParameter = gl.paramGen.Next(timestamp, cfg)[0]
+			gl.nextParameter = gl.paramGen.NextOnset(timestamp, cfg)
 			gl.interOnset = gl.nextParameter.Onset()
 		}
 	}
@@ -214,7 +221,7 @@ func (gl *Granulator[S, E]) perFrameSynthesize() {
 	channels := gl.Output(0).Channels
 
 	// Get parameters for this frame
-	params := gl.paramGen.Next(timestamp, cfg)
+	params := gl.paramGen.NextFrame(timestamp, cfg, gl.params)
 
 	// For each parameter activate a grain and run it for the remaining samples in this frame
 	for _, param := range params {
