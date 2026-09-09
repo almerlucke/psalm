@@ -17,6 +17,7 @@ type Config struct {
 	Speed            float64
 	Amp              float64
 	Loop             bool
+	LoopOnNoteOn     bool
 	UseZeroCrossings bool
 }
 
@@ -33,9 +34,11 @@ type Player struct {
 	amp              float64
 	depth            int
 	loop             bool
+	loopOnNoteOn     bool
 	useZeroCrossings bool
 	done             bool
 	waitSamps        int
+	noteOffSamps     int
 }
 
 func New(cfg Config) *Player {
@@ -61,6 +64,7 @@ func New(cfg Config) *Player {
 		Module:           psalm.NewModule(nil, []int{numChannels}),
 		speed:            cfg.Speed,
 		loop:             cfg.Loop,
+		loopOnNoteOn:     cfg.LoopOnNoteOn,
 		done:             !cfg.Loop,
 		sf:               sndFile,
 		sndBank:          cfg.SndBank,
@@ -297,19 +301,26 @@ func (p *Player) ReceiveMessage(msg psalm.Message) {
 }
 
 func (p *Player) NoteOn(amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
-	p.activate(amplitude, message, tick)
+	p.note(0.0, amplitude, message, tick)
 }
 
-func (p *Player) Note(_ float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
-	p.activate(amplitude, message, tick)
+func (p *Player) Note(duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
+	p.note(duration, amplitude, message, tick)
 }
 
-func (p *Player) NoteOff() {}
+func (p *Player) NoteOff() {
+	p.loop = false
+}
 
-func (p *Player) Clear() {}
+func (p *Player) Clear() {
+}
 
-func (p *Player) activate(amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
+func (p *Player) note(duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
 	p.ReceiveMessage(message)
+
+	if p.loopOnNoteOn {
+		p.loop = true
+	}
 
 	p.waitSamps = tick.SampleOffset
 
@@ -321,6 +332,12 @@ func (p *Player) activate(amplitude float64, message psalm.Message, tick psalm.C
 
 	p.amp = amplitude
 	p.done = false
+
+	if duration > 0.0 {
+		p.noteOffSamps = int(duration * p.Config().SampleRate)
+	} else {
+		p.noteOffSamps = 0
+	}
 }
 
 func (p *Player) IsActive() bool {
@@ -360,6 +377,13 @@ func (p *Player) Synthesize() {
 			}
 		}
 
+		if p.noteOffSamps > 0 {
+			p.noteOffSamps--
+			if p.noteOffSamps == 0 {
+				p.loop = false
+			}
+		}
+
 		p.phase += p.inc
 
 		if !p.loop {
@@ -390,22 +414,3 @@ func (p *Player) Synthesize() {
 
 	p.waitSamps = 0
 }
-
-/*
-1.
-NoteOff():
-◦
-Currently an empty no-op {}.
-◦
-For looping or sustained sample playback, NoteOff() should stop playback or start a release phase (p.done = true or p.loop = false).
-2.
-Clear():
-◦
-Currently an empty no-op {}.
-◦
-Should reset p.done = true, p.waitSamps = 0, and clear output buffers.
-3.
-Note(duration, ...):
-◦
-Ignores the duration parameter. Calculating a sample countdown (durationSamps = int(duration * sampleRate)) allows one-shot and looping notes to automatically stop after the specified duration.
-*/
