@@ -14,46 +14,42 @@ const (
 	PerFrame
 )
 
-const (
-	MaxParams = 100
-)
-
 type Parameter interface {
 	Onset() int64      // Onset in samples
 	Duration() float64 // Duration in seconds
 	Amplitude() float64
 }
 
-type ParameterGenerator interface {
+type ParameterGenerator[P Parameter] interface {
 	psalm.Receiver
-	NextOnset(int64, psalm.Config) Parameter
-	NextFrame(int64, psalm.Config, []Parameter) []Parameter
+	NextOnset(int64, psalm.Config) P
+	NextFrame(int64, psalm.Config, []P) []P
 	Type() ParameterGeneratorType
 }
 
-type Envelope interface {
+type Envelope[P Parameter] interface {
 	Synthesize([][]float32, int)
-	Activate(float64, int64, Parameter, psalm.Config)
+	Activate(float64, int64, P, psalm.Config)
 }
 
-type Source interface {
+type Source[P Parameter] interface {
 	Synthesize([][]float32, int)
-	Activate(int64, Parameter, psalm.Config)
+	Activate(int64, P, psalm.Config)
 }
 
-type grain[S Source, E Envelope] struct {
+type grain[P Parameter, S Source[P], E Envelope[P]] struct {
 	envelope  E
 	source    S
 	sampsToGo int64
 }
 
-func (g *grain[S, E]) activate(p Parameter, config psalm.Config) {
+func (g *grain[P, S, E]) activate(p P, config psalm.Config) {
 	g.sampsToGo = int64(math.Round(p.Duration() * config.SampleRate))
 	g.source.Activate(g.sampsToGo, p, config)
 	g.envelope.Activate(p.Amplitude(), g.sampsToGo, p, config)
 }
 
-func (g *grain[S, E]) synthesize(sourceBufs [][]float32, bufSize int) int {
+func (g *grain[P, S, E]) synthesize(sourceBufs [][]float32, bufSize int) int {
 	sampsToSynthesize := min(g.sampsToGo, int64(bufSize))
 
 	g.sampsToGo -= sampsToSynthesize
@@ -66,36 +62,36 @@ func (g *grain[S, E]) synthesize(sourceBufs [][]float32, bufSize int) int {
 	return n
 }
 
-type Granulator[S Source, E Envelope] struct {
+type Granulator[P Parameter, S Source[P], E Envelope[P]] struct {
 	*psalm.Module
-	freeGrains    []*grain[S, E]
-	activeGrains  []*grain[S, E]
-	paramGen      ParameterGenerator
-	nextParameter Parameter // For onset param gen
-	params        []Parameter
+	freeGrains    []*grain[P, S, E]
+	activeGrains  []*grain[P, S, E]
+	paramGen      ParameterGenerator[P]
+	nextParameter P // For onset param gen
+	params        []P
 	interOnset    int64
 	timestamp     int64
 	sourceBufs    [][]float32
 }
 
-func New[S Source, E Envelope](numChannels int, sf factory.Factory[S], ef factory.Factory[E], grainPoolSize int, paramGen ParameterGenerator) *Granulator[S, E] {
+func New[P Parameter, S Source[P], E Envelope[P]](numChannels int, sf factory.Factory[S], ef factory.Factory[E], grainPoolSize int, paramGen ParameterGenerator[P]) *Granulator[P, S, E] {
 	config := psalm.CurrentConfig()
 
-	grains := make([]grain[S, E], grainPoolSize)
-	freeGrains := make([]*grain[S, E], grainPoolSize)
+	grains := make([]grain[P, S, E], grainPoolSize)
+	freeGrains := make([]*grain[P, S, E], grainPoolSize)
 	for i := range grains {
 		grains[i].source = sf.New(config)
 		grains[i].envelope = ef.New(config)
 		freeGrains[i] = &grains[i]
 	}
 
-	gl := &Granulator[S, E]{
+	gl := &Granulator[P, S, E]{
 		Module:       psalm.NewModule(nil, []int{numChannels}),
 		freeGrains:   freeGrains,
-		activeGrains: make([]*grain[S, E], 0, grainPoolSize),
+		activeGrains: make([]*grain[P, S, E], 0, grainPoolSize),
 		paramGen:     paramGen,
 		sourceBufs:   make([][]float32, numChannels), // synthesize buffer for grain source
-		params:       make([]Parameter, 0, MaxParams),
+		params:       make([]P, 0, grainPoolSize),    // params buffer for frame param generator (max num params == grain poolsize)
 	}
 
 	for i := range numChannels {
@@ -112,7 +108,7 @@ func New[S Source, E Envelope](numChannels int, sf factory.Factory[S], ef factor
 	return gl
 }
 
-func (gl *Granulator[S, E]) Receive(value any, index int) {
+func (gl *Granulator[P, S, E]) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		gl.ReceiveMessage(msg)
 		return
@@ -121,11 +117,11 @@ func (gl *Granulator[S, E]) Receive(value any, index int) {
 	gl.paramGen.Receive(value, index)
 }
 
-func (gl *Granulator[S, E]) ReceiveMessage(msg psalm.Message) {
+func (gl *Granulator[P, S, E]) ReceiveMessage(msg psalm.Message) {
 	gl.paramGen.ReceiveMessage(msg)
 }
 
-func (gl *Granulator[S, E]) synthesizeActiveGrains(bufSize int) {
+func (gl *Granulator[P, S, E]) synthesizeActiveGrains(bufSize int) {
 	channels := gl.Output(0).Channels
 
 	for i := 0; i < len(gl.activeGrains); {
@@ -152,7 +148,7 @@ func (gl *Granulator[S, E]) synthesizeActiveGrains(bufSize int) {
 	}
 }
 
-func (gl *Granulator[S, E]) onsetSynthesize() {
+func (gl *Granulator[P, S, E]) onsetSynthesize() {
 	var (
 		outIndex     int
 		cfg          = gl.Config()
@@ -211,7 +207,7 @@ func (gl *Granulator[S, E]) onsetSynthesize() {
 	gl.timestamp = endTimestamp
 }
 
-func (gl *Granulator[S, E]) perFrameSynthesize() {
+func (gl *Granulator[P, S, E]) perFrameSynthesize() {
 	var (
 		cfg        = gl.Config()
 		bufferSize = int64(cfg.BufferSize)
@@ -258,7 +254,7 @@ func (gl *Granulator[S, E]) perFrameSynthesize() {
 	gl.timestamp = timestamp + bufferSize
 }
 
-func (gl *Granulator[S, E]) Synthesize() {
+func (gl *Granulator[P, S, E]) Synthesize() {
 	// Zero buffers for new frame
 	gl.Output(0).Clear()
 

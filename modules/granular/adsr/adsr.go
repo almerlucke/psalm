@@ -6,23 +6,24 @@ import (
 	"github.com/almerlucke/psalm/modules/granular"
 )
 
-type Envelope struct {
-	adsr *adsr.ADSR
-}
-
 type Parameter interface {
+	granular.Parameter
 	ADSRSetting() *adsr.Setting
 }
 
-func (e *Envelope) New(cfg any) *Envelope {
-	return &Envelope{
+type Envelope[P Parameter] struct {
+	adsr *adsr.ADSR
+}
+
+func (e *Envelope[P]) New(cfg any) *Envelope[P] {
+	return &Envelope[P]{
 		adsr: adsr.New(&adsr.Setting{}, adsr.Automatic, cfg.(psalm.Config).SampleRate),
 	}
 }
 
-func (e *Envelope) Activate(amplitude float64, durationSamples int64, param granular.Parameter, _ psalm.Config) {
+func (e *Envelope[P]) Activate(amplitude float64, durationSamples int64, param P, _ psalm.Config) {
 	var (
-		inputSetting        = param.(any).(Parameter).ADSRSetting()
+		inputSetting        = param.ADSRSetting()
 		outputSetting       = *inputSetting
 		envRelativeDuration float64
 		grainDuration       = param.Duration()
@@ -60,7 +61,7 @@ func (e *Envelope) Activate(amplitude float64, durationSamples int64, param gran
 	e.adsr.TriggerFull(grainDuration, amplitude, &outputSetting, adsr.Automatic)
 }
 
-func (e *Envelope) Synthesize(bufs [][]float32, bufSize int) {
+func (e *Envelope[P]) Synthesize(bufs [][]float32, bufSize int) {
 	for i := range bufSize {
 		amp := float32(e.adsr.Generate())
 		for _, buf := range bufs {

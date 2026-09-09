@@ -72,19 +72,17 @@ func (s *Source) Synthesize(outBuffers [][]float32, bufSize int) {
 	}
 }
 
-func (s *Source) Activate(sampsToGo int64, p granular.Parameter, cfg psalm.Config) {
-	param := p.(*Param)
-
+func (s *Source) Activate(sampsToGo int64, p *Param, cfg psalm.Config) {
 	duration := timing.SampsToMs(sampsToGo, cfg.SampleRate)
 
 	s.pitchEnvSetting.AttackDuration = duration * 0.01
 	s.pitchEnvSetting.ReleaseDuration = duration * 0.05
 	s.pitchEnv.TriggerFull(0, 1.0, s.pitchEnvSetting, adsr.Automatic)
-	s.freq = param.freq
-	s.osc.SetFrequency(param.freq, cfg.SampleRate)
-	s.osc.SetAmplitude(param.amplitude)
-	s.pan[0] = math.Cos(param.pan * math.Pi / 2.0)
-	s.pan[1] = math.Sin(param.pan * math.Pi / 2.0)
+	s.freq = p.freq
+	s.osc.SetFrequency(p.freq, cfg.SampleRate)
+	s.osc.SetAmplitude(p.amplitude)
+	s.pan[0] = math.Cos(p.pan * math.Pi / 2.0)
+	s.pan[1] = math.Sin(p.pan * math.Pi / 2.0)
 }
 
 func (s *Source) New(cfg any) *Source {
@@ -92,7 +90,7 @@ func (s *Source) New(cfg any) *Source {
 }
 
 type ParamGen struct {
-	granular.ParameterGenerator
+	granular.ParameterGenerator[*Param]
 	parameter Param // single parameter can be passed for each NextParameter call, prevent from allocating new params
 	freqGen   genny.Generator[float64]
 	panGen    genny.Generator[float64]
@@ -128,7 +126,7 @@ func NewParamGen() *ParamGen {
 	return g
 }
 
-func (pgen *ParamGen) NextOnset(_ int64, config psalm.Config) granular.Parameter {
+func (pgen *ParamGen) NextOnset(_ int64, config psalm.Config) *Param {
 	p := &pgen.parameter
 
 	p.duration = rand.Float64()*2.5 + 0.1
@@ -147,7 +145,12 @@ func (pgen *ParamGen) Type() granular.ParameterGeneratorType {
 func main() {
 	p := psalm.New()
 
-	gl := granular.New[*Source, *grainAdsr.Envelope](2, &Source{}, &grainAdsr.Envelope{}, 40, NewParamGen()).AddTo(p)
+	gl := granular.New[*Param, *Source, *grainAdsr.Envelope[*Param]](
+		2, &Source{},
+		&grainAdsr.Envelope[*Param]{},
+		40,
+		NewParamGen(),
+	).AddTo(p)
 
 	p.Out(freeverb.New(0.9, 0.5, 0.95, 0.3, 0.6).AddTo(p).In(
 		pingpong.New(4000.0, 2000.0, 0.1, 0.175).AddTo(p).In(gl),
