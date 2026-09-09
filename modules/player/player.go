@@ -49,10 +49,12 @@ func New(cfg Config) *Player {
 	}
 
 	numChannels := cfg.NumChannels
-	if numChannels == 0 && sndFile != nil {
-		numChannels = sndFile.NumChannels()
-	} else {
-		numChannels = 1
+	if numChannels == 0 {
+		if sndFile != nil {
+			numChannels = sndFile.NumChannels()
+		} else {
+			numChannels = 1
+		}
 	}
 
 	p := &Player{
@@ -76,7 +78,7 @@ func New(cfg Config) *Player {
 }
 
 func (p *Player) recalculate() {
-	if sf := p.sf; sf != nil {
+	if sf := p.sf; sf != nil && sf.NumFrames() > 0 {
 		p.inc = (p.speed * sf.SampleRate() / p.Config().SampleRate) / float64(sf.NumFrames())
 		p.depth = sndfile.SpeedToMipMapDepth(p.speed)
 		if p.depth >= sf.Depth() {
@@ -87,11 +89,14 @@ func (p *Player) recalculate() {
 
 func (p *Player) snapToZeroCrossings() {
 	if p.useZeroCrossings {
-		if cr, ok := p.sf.ZeroCrossings(0).NearestPos(p.startOffset, sndfile.DirectionAny); ok {
-			p.startOffset = cr.Position
-		}
-		if cr, ok := p.sf.ZeroCrossings(0).NearestPos(p.endOffset, sndfile.DirectionAny); ok {
-			p.endOffset = cr.Position
+		zc := p.sf.ZeroCrossings(0)
+		if zc != nil {
+			if cr, ok := p.sf.ZeroCrossings(0).NearestPos(p.startOffset, sndfile.DirectionAny); ok {
+				p.startOffset = cr.Position
+			}
+			if cr, ok := p.sf.ZeroCrossings(0).NearestPos(p.endOffset, sndfile.DirectionAny); ok {
+				p.endOffset = cr.Position
+			}
 		}
 	}
 }
@@ -112,6 +117,9 @@ func (p *Player) sanitizeOffsets() {
 		p.endOffset = 0.0
 	}
 	if p.endOffset > 1.0 {
+		p.endOffset = 1.0
+	}
+	if p.endOffset == 0.0 && p.offsetRange == 0.0 {
 		p.endOffset = 1.0
 	}
 	if p.startOffset > p.endOffset {
@@ -321,23 +329,34 @@ func (p *Player) IsActive() bool {
 
 func (p *Player) Synthesize() {
 	outSocket := p.Output(0)
+	outSocket.Clear()
 
-	for i := p.waitSamps; i < p.Config().BufferSize; i++ {
-		if p.done || p.sf == nil {
-			for _, out := range p.Outputs() {
-				out.Clear()
-			}
-			continue
-		}
+	if p.done || p.sf == nil {
+		return
+	}
 
-		frame := p.sf.LookupAll(p.phase*float64(p.sf.NumFrames()-1), p.depth, p.loop)
-		if len(frame) == 1 {
-			for _, channel := range outSocket.Channels {
-				channel[i] = float32(float64(frame[0]) * p.amp)
+	outChannels := outSocket.Channels
+	bufferSize := p.Config().BufferSize
+	numFramesMinus1 := float64(p.sf.NumFrames() - 1)
+	isMonoSource := p.sf.NumChannels() == 1
+	isMonoOut := len(outChannels) == 1
+	amp := float32(p.amp)
+	loopRange := p.endOffset - p.startOffset
+	offsetEqual := float.Equal(p.startOffset, p.endOffset)
+
+	for i := p.waitSamps; i < bufferSize; i++ {
+		frame := p.sf.LookupAll(p.phase*numFramesMinus1, p.depth, p.loop)
+		if isMonoSource {
+			val := frame[0] * amp
+			for _, channel := range outChannels {
+				channel[i] = val
 			}
+		} else if isMonoOut {
+			// Downmix multi-channel source to mono
+			outChannels[0][i] = (frame[0] + frame[1]) * 0.5 * amp
 		} else {
-			for chanIndex, channel := range outSocket.Channels {
-				channel[i] = float32(float64(frame[chanIndex]) * p.amp)
+			for chanIndex, channel := range outChannels {
+				channel[i] = frame[chanIndex] * amp
 			}
 		}
 
@@ -347,28 +366,46 @@ func (p *Player) Synthesize() {
 			if p.inc < 0.0 {
 				if p.phase <= p.startOffset {
 					p.done = true
+					break
 				}
 			} else if p.phase >= p.endOffset {
 				p.done = true
+				break
 			}
+		} else if offsetEqual {
+			p.phase = p.startOffset
 		} else {
-			if float.Equal(p.startOffset, p.endOffset) {
-				p.phase = p.startOffset
-			} else {
-				r := p.endOffset - p.startOffset
-				np := p.phase - p.startOffset
+			np := p.phase - p.startOffset
 
-				for np >= r {
-					np -= r
-				}
-				for np < 0.0 {
-					np += r
-				}
-
-				p.phase = p.startOffset + np
+			for np >= loopRange {
+				np -= loopRange
 			}
+			for np < 0.0 {
+				np += loopRange
+			}
+
+			p.phase = p.startOffset + np
 		}
 	}
 
 	p.waitSamps = 0
 }
+
+/*
+1.
+NoteOff():
+◦
+Currently an empty no-op {}.
+◦
+For looping or sustained sample playback, NoteOff() should stop playback or start a release phase (p.done = true or p.loop = false).
+2.
+Clear():
+◦
+Currently an empty no-op {}.
+◦
+Should reset p.done = true, p.waitSamps = 0, and clear output buffers.
+3.
+Note(duration, ...):
+◦
+Ignores the duration parameter. Calculating a sample countdown (durationSamps = int(duration * sampleRate)) allows one-shot and looping notes to automatically stop after the specified duration.
+*/
