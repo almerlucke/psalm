@@ -2,7 +2,6 @@ package poly
 
 import (
 	"github.com/almerlucke/psalm"
-	"github.com/almerlucke/psalm/tools/containers/list"
 )
 
 type Voice interface {
@@ -21,8 +20,8 @@ type voiceInfo[T Voice] struct {
 
 type Poly[T Voice] struct {
 	*psalm.Module
-	freePool     *list.List[*voiceInfo[T]]
-	activePool   *list.List[*voiceInfo[T]]
+	freePool     []*voiceInfo[T]
+	activePool   []*voiceInfo[T]
 	fadeOut      psalm.Channels
 	hasFadeOut   bool
 	triggerCount int64
@@ -33,14 +32,13 @@ func New[T Voice](numChannels int, voices []T) *Poly[T] {
 		Module: psalm.NewModule([]int{psalm.Mono}, []int{numChannels}),
 	}
 
-	poly.freePool = list.New[*voiceInfo[T]]()
-	poly.activePool = list.New[*voiceInfo[T]]()
-
-	for _, voice := range voices {
-		poly.freePool.Push(&voiceInfo[T]{
-			voice: voice,
-		})
+	pool := make([]voiceInfo[T], len(voices))
+	poly.freePool = make([]*voiceInfo[T], len(voices))
+	for i := range pool {
+		poly.freePool[i] = &pool[i]
+		poly.freePool[i].voice = voices[i]
 	}
+	poly.activePool = make([]*voiceInfo[T], 0, len(voices))
 
 	poly.fadeOut = psalm.NewChannels(numChannels, poly.Config().BufferSize)
 
@@ -50,23 +48,20 @@ func New[T Voice](numChannels int, voices []T) *Poly[T] {
 }
 
 func (p *Poly[T]) noteOff(identifier string) {
-	p.CallActiveVoiceInfo(func(info *voiceInfo[T]) bool {
-		if info.voice.ID() == identifier {
-			info.voice.NoteOff()
-			info.voice.SetID("")
-			return false
+	for _, v := range p.activePool {
+		if v.voice.ID() == identifier {
+			v.voice.NoteOff()
+			v.voice.SetID("")
+			return
 		}
-
-		return true
-	})
+	}
 }
 
 func (p *Poly[T]) AllNotesOff() {
-	p.CallActiveVoiceInfo(func(info *voiceInfo[T]) bool {
-		info.voice.NoteOff()
-		info.voice.SetID("")
-		return true
-	})
+	for _, v := range p.activePool {
+		v.voice.NoteOff()
+		v.voice.SetID("")
+	}
 }
 
 func (p *Poly[T]) Receive(value any, _ int) {
@@ -78,11 +73,11 @@ func (p *Poly[T]) Receive(value any, _ int) {
 
 func (p *Poly[T]) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, identifier string, duration float64, isNoteOn bool) {
 	// Get free voice or steal one
-	v := p.getFreeVoice()
-	if v == nil {
+	v, ok := p.getFreeVoice()
+	if !ok {
 		// Steal oldest active voice
-		v = p.getOldestActiveVoice()
-		if v != nil {
+		v, ok = p.getOldestActiveVoice()
+		if ok {
 			// Fade out stolen voice
 			p.hasFadeOut = true
 			v.Synthesize()
@@ -94,7 +89,7 @@ func (p *Poly[T]) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, i
 	}
 
 	// Activate voice
-	if v != nil {
+	if ok {
 		v.Clear()
 		if isNoteOn {
 			v.SetID(identifier)
@@ -131,60 +126,46 @@ func (p *Poly[T]) ReceiveMessage(msg psalm.Message) {
 	}
 }
 
-func (p *Poly[T]) getOldestActiveVoice() Voice {
+func (p *Poly[T]) getOldestActiveVoice() (T, bool) {
 	var oldest *voiceInfo[T]
+	var nilVoice T
 
-	p.activePool.ForEachElement(func(e *list.Element[*voiceInfo[T]], _ int) {
-		if oldest == nil || e.Value.triggeredAt < oldest.triggeredAt {
-			oldest = e.Value
+	for _, info := range p.activePool {
+		if oldest == nil || info.triggeredAt < oldest.triggeredAt {
+			oldest = info
 		}
-	})
+	}
 
 	if oldest != nil {
 		oldest.triggeredAt = p.triggerCount
+		return oldest.voice, true
 	}
 
-	return oldest.voice
+	return nilVoice, false
 }
 
-func (p *Poly[T]) getFreeVoice() Voice {
-	e := p.freePool.PopElement()
-	if e != nil {
-		p.activePool.PushElement(e)
-		e.Value.triggeredAt = p.triggerCount
-		return e.Value.voice
+func (p *Poly[T]) getFreeVoice() (T, bool) {
+	var nilVoice T
+
+	if len(p.freePool) == 0 {
+		return nilVoice, false
 	}
 
-	return nil
+	v := p.freePool[len(p.freePool)-1]
+	p.freePool = p.freePool[:len(p.freePool)-1]
+	p.activePool = append(p.activePool, v)
+	v.triggeredAt = p.triggerCount
+
+	return v.voice, true
 }
 
 func (p *Poly[T]) CallVoices(f func(T)) {
-	p.CallActiveVoices(func(v T) bool {
-		f(v)
-		return true
-	})
-	p.CallInactiveVoices(func(v T) bool {
-		f(v)
-		return true
-	})
-}
-
-func (p *Poly[T]) CallActiveVoiceInfo(f func(*voiceInfo[T]) bool) {
-	p.activePool.Until(func(v *voiceInfo[T], _ int) bool {
-		return f(v)
-	})
-}
-
-func (p *Poly[T]) CallActiveVoices(f func(T) bool) {
-	p.CallActiveVoiceInfo(func(info *voiceInfo[T]) bool {
-		return f(info.voice)
-	})
-}
-
-func (p *Poly[T]) CallInactiveVoices(f func(T) bool) {
-	p.freePool.Until(func(v *voiceInfo[T], _ int) bool {
-		return f(v.voice)
-	})
+	for _, v := range p.activePool {
+		f(v.voice)
+	}
+	for _, v := range p.freePool {
+		f(v.voice)
+	}
 }
 
 func (p *Poly[T]) Synthesize() {
@@ -200,14 +181,20 @@ func (p *Poly[T]) Synthesize() {
 	}
 
 	// Run active voices
-	p.activePool.ForEachElement(func(e *list.Element[*voiceInfo[T]], _ int) {
-		voice := e.Value.voice
+	for i := 0; i < len(p.activePool); {
+		v := p.activePool[i]
+		voice := v.voice
 		if voice.IsActive() {
 			// Add voice output to buffer
 			voice.Synthesize()
 			out.Accum(voice.Output(0).Channels)
+			i++
 		} else {
-			p.freePool.PushElement(e.Unlink())
+			// Swap-and-pop deactivated voice
+			last := len(p.activePool) - 1
+			p.activePool[i] = p.activePool[last]
+			p.activePool = p.activePool[:last]
+			p.freePool = append(p.freePool, v)
 		}
-	})
+	}
 }
