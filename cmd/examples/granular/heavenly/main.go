@@ -14,7 +14,6 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/granular"
 	grainAdsr "github.com/almerlucke/psalm/modules/granular/adsr"
-	"github.com/almerlucke/psalm/tools/timing"
 )
 
 type Param struct {
@@ -73,7 +72,7 @@ func (s *Source) Synthesize(outBuffers [][]float32, bufSize int) {
 }
 
 func (s *Source) Activate(sampsToGo int64, p *Param, cfg psalm.Config) {
-	duration := timing.SampsToMs(sampsToGo, cfg.SampleRate)
+	duration := p.duration * 1000.0
 
 	s.pitchEnvSetting.AttackDuration = duration * 0.01
 	s.pitchEnvSetting.ReleaseDuration = duration * 0.05
@@ -91,7 +90,7 @@ func (s *Source) New(cfg any) *Source {
 
 type ParamGen struct {
 	granular.ParameterGenerator[*Param]
-	parameter Param // single parameter can be passed for each NextParameter call, prevent from allocating new params
+	parameter Param // single parameter can be passed for each NextOnset call, prevent from allocating new params
 	freqGen   genny.Generator[float64]
 	panGen    genny.Generator[float64]
 }
