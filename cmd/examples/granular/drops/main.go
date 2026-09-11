@@ -9,7 +9,7 @@ import (
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/granular"
-	grainAdsr "github.com/almerlucke/psalm/modules/granular/adsr"
+	grainAdsr "github.com/almerlucke/psalm/modules/granular/envelopes/adsr"
 )
 
 type Param struct {
