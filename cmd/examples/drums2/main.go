@@ -43,7 +43,7 @@ func main() {
 	soundBank["hihat"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 4.wav", 4)
 	soundBank["clap"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/snare/Cymatics - Odyssey Trap Snare 3 - E.wav", 4)
 
-	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/cheering_church.wav", 4)
+	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Johannes.Hymnus.wav", 4)
 	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4)
 	sf3 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-cinematic-angelical-choir-transition-663.wav", 4)
 
@@ -108,7 +108,7 @@ func main() {
 		UseZeroCrossings: true,
 		Loop:             false,
 		Speed:            1.0,
-		Amp:              0.6,
+		Amp:              0.5,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3, 0.2),
@@ -137,7 +137,7 @@ func main() {
 		UseZeroCrossings: true,
 		Loop:             false,
 		Speed:            1.0,
-		Amp:              0.8,
+		Amp:              0.6,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3),
