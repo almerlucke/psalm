@@ -45,11 +45,15 @@ func NewTimedSelector[T any](loop bool, until int64, timeAndGens ...any) *TimedS
 		})
 	}
 
-	return &TimedSelector[T]{
+	sel := &TimedSelector[T]{
 		slots: slots,
 		loop:  loop,
 		until: until,
 	}
+
+	sel.SetTimestamp(0)
+
+	return sel
 }
 
 func (s *TimedSelector[T]) SetTimestamp(t int64) {

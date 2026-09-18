@@ -7,7 +7,6 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
-	"github.com/almerlucke/psalm/modules/effects/flanger"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/player"
@@ -39,20 +38,20 @@ func main() {
 
 	soundBank := sndfile.SoundBank[float32]{}
 
-	soundBank["kick"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/81_Kick_05_255_SP.wav", 4)
+	soundBank["kick"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/CarbonKick_01_634.wav", 4)
 	soundBank["hihat"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 4.wav", 4)
-	soundBank["clap"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/snare/Cymatics - Odyssey Trap Snare 3 - E.wav", 4)
+	soundBank["clap"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Humble Stars Clap.wav", 4)
 
 	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Johannes.Hymnus.wav", 4)
-	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4)
+	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Crux_fidelis_(Graduale_1974).wav", 4)
 	sf3 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-cinematic-angelical-choir-transition-663.wav", 4)
 
 	p := psalm.New()
 
 	drms := drums.NewDrums(soundBank, 16, 2).AddTo(p).SetID("drums")
 
-	drms.ValueIn(drumTemplate(0.7,
-		bucket.NewLoop(1.0), "kick").ValueIn(newTimer(
+	drms.ValueIn(drumTemplate(0.5,
+		bucket.NewLoop(0.75, 0.6, 0.85, 0.7), "kick").ValueIn(newTimer(
 		0.25,
 		// Bar 1
 		1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
@@ -77,7 +76,7 @@ func main() {
 		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1,
 	).AddTo(p)))
 
-	drms.ValueIn(drumTemplate(0.5, 2.0, "hihat").ValueIn(newTimer(
+	drms.ValueIn(drumTemplate(0.5, 3.0, "hihat").ValueIn(newTimer(
 		0.25,
 		// Bar 1
 		1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, &steps.Step{
@@ -108,7 +107,7 @@ func main() {
 		UseZeroCrossings: true,
 		Loop:             false,
 		Speed:            1.0,
-		Amp:              0.5,
+		Amp:              0.375,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3, 0.2),
@@ -137,11 +136,10 @@ func main() {
 		UseZeroCrossings: true,
 		Loop:             false,
 		Speed:            1.0,
-		Amp:              0.6,
+		Amp:              0.5,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3),
-		"speed":       bucket.NewLoop(1.0, 0.65, 0.95, 1.05, 1.0, 0.75, 0.85),
 		"bang":        true,
 	}).ValueIn(newTimer(
 		2.0, 1, 1, 0, 1, 1, 0, 0, 0,
@@ -149,12 +147,12 @@ func main() {
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 
-	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.2, 0.8).AddTo(p).In(
+	p.Out(freeverb.New(0.8, 0.7, 0.9, 0.225, 0.8).AddTo(p).In(
 		pingpong.New(bpmMs*4.0, bpmMs*1.25, 0.075, 0.125).AddTo(p).In(
 			drms,
 			pl1, 0, 0,
 			pl2, 0, 0,
-			flanger.New(0.1, 0.5, 0.8, 0.9, nil).AddTo(p).In(pl3), 0, 0,
+			pl3, 0, 0,
 		)),
 	)
 
