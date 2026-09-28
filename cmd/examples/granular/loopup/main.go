@@ -36,20 +36,21 @@ func NewParamGen(sb sndfile.SoundBank[float32]) *ParamGen {
 	g := &ParamGen{}
 	g.sb = sb
 	g.panGen = rwalk.New(0.5, 0.0, 1.0, 0.001, rwalk.Bounce)
-	g.offsetGen = float.FromFrame(shape.New(float.ToFrame(phasor.New(0.01, 4000.0, 0.0)), linear.New(0.95, 0.05)), 0)
+	g.offsetGen = float.FromFrame(shape.New(float.ToFrame(phasor.New(0.005, 4000.0, 0.0)), linear.New(0.95, 0.05)), 0)
 	g.sndGen = bucket.NewLoop("sf1", "sf2", "sf3")
-	g.speedGen = x.NewTimedSelector[float64](
-		true,
-		timing.SecToSamps(40, psalm.SampleRate()),
-		0,
-		constant.New(1.0),
-		timing.SecToSamps(10, psalm.SampleRate()),
-		constant.New(1.1),
-		timing.SecToSamps(20, psalm.SampleRate()),
-		constant.New(1.2),
-		timing.SecToSamps(30, psalm.SampleRate()),
-		constant.New(1.3),
-	)
+	g.speedGen = constant.New(1.0)
+	//g.speedGen = x.NewTimedSelector[float64](
+	//	true,
+	//	timing.SecToSamps(40, psalm.SampleRate()),
+	//	0,
+	//	constant.New(1.0),
+	//	timing.SecToSamps(10, psalm.SampleRate()),
+	//	constant.New(1.1),
+	//	timing.SecToSamps(20, psalm.SampleRate()),
+	//	constant.New(1.2),
+	//	timing.SecToSamps(30, psalm.SampleRate()),
+	//	constant.New(1.3),
+	//)
 	g.speedWidthGen = x.NewTimedSelector[float64](
 		true,
 		timing.SecToSamps(40, psalm.SampleRate()),
@@ -71,7 +72,7 @@ func (pgen *ParamGen) NextOnset(timestamp int64, config psalm.Config) *loop.Para
 	p := &pgen.parameter
 
 	pgen.speedWidthGen.(*x.TimedSelector[float64]).SetTimestamp(timestamp)
-	pgen.speedGen.(*x.TimedSelector[float64]).SetTimestamp(timestamp)
+	// pgen.speedGen.(*x.TimedSelector[float64]).SetTimestamp(timestamp)
 
 	p.Sound = pgen.sb[pgen.sndGen.Generate()]
 	p.GrainDuration = rand.Float64()*0.7 + 0.02
@@ -96,9 +97,9 @@ func (pgen *ParamGen) Type() granular.ParameterGeneratorType {
 func main() {
 	p := psalm.New()
 
-	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Epistle_for_the_Solemn_Mass_of_Easter_Day.wav", 4)
-	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Factus.est.repente.VII.Ton.wav", 4)
-	sf3 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Gregorian_chant_-_Procedamus_in_pace_-_Cum_angelis_-_Psalm_24_(23)_(German-Polish_accent).wav", 4)
+	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Crux_fidelis_(Graduale_1974).wav", 4)
+	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-gentle-sea-wave-1204.wav", 4)
+	sf3 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/seagulls-by-the-sea-7042.wav", 4)
 	sb := sndfile.SoundBank[float32]{
 		"sf1": sf1,
 		"sf2": sf2,
@@ -120,4 +121,6 @@ func main() {
 	p.Out(gl)
 
 	_ = p.Listen()
+
+	// _ = p.ToSoundFile("grains.wav", writer.WAV, 200, 44100.0, true)
 }

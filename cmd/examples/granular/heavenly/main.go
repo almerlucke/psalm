@@ -156,4 +156,6 @@ func main() {
 	))
 
 	_ = p.Listen()
+
+	// _ = p.ToSoundFile("heavenly.wav", writer.WAV, 200, 44100.0, true)
 }

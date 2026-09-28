@@ -129,4 +129,6 @@ func main() {
 	p.Out(freeverb.New(0.9, 0.6, 0.9, 0.3, 0.6).AddTo(p).In(gl))
 
 	_ = p.Listen()
+
+	// _ = p.ToSoundFile("drops.wav", writer.WAV, 200, 44100.0, true)
 }

@@ -1,2 +1,3 @@
 - mouse and keyboard events
 - midi events
+- support for multiple audio input/output libraries
