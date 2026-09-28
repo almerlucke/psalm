@@ -1,17 +1,15 @@
 package psalm
 
 import (
-	"fmt"
+	"errors"
 	"log"
 	"math"
-	"sync/atomic"
 	"syscall"
 
+	"github.com/almerlucke/psalm/audio"
 	"github.com/almerlucke/psalm/tools/signal"
 	"github.com/almerlucke/sndfile/writer"
 	"github.com/dh1tw/gosamplerate"
-
-	"github.com/gordonklaus/portaudio"
 )
 
 type Psalm struct {
@@ -24,16 +22,29 @@ type Psalm struct {
 	tickTimestamp   int64
 
 	// Audio
-	started     atomic.Bool
-	initialized atomic.Bool
-	paStream    *portaudio.Stream
+	engine audio.Engine
 }
 
-func New() *Psalm {
+func New(engine audio.Engine) *Psalm {
 	p := &Psalm{
-		Patch: NewPatch([]int{2}, []int{2}),
+		engine: engine,
 	}
 
+	if engine != nil {
+		engine.SetCallback(p.audioCallback)
+		err := engine.Init()
+		if err != nil {
+			panic(err)
+		}
+		PushConfig(Config{
+			SampleRate: engine.GetSampleRate(),
+			BufferSize: engine.GetBufferSize(),
+			BPM:        BPM(),
+			PPQ:        PPQ(),
+		})
+	}
+
+	p.Patch = NewPatch([]int{2}, []int{2})
 	p.SetSelf(p)
 	p.SetID("psalm")
 	p.SetSkipInputs(true)
@@ -101,91 +112,23 @@ func (p *Psalm) ToSoundFile(filePath string, fileFormat writer.FileFormat, numSe
 	return wr.Write(writeBuffers, true)
 }
 
-func (p *Psalm) InitializeAudio() error {
-	if p.initialized.Load() {
-		return nil
+func (p *Psalm) AudioStart() error {
+	if p.engine == nil {
+		return errors.New("engine not initialized")
 	}
-
-	err := portaudio.Initialize()
-	if err != nil {
-		return err
-	}
-
-	paStream, err := portaudio.OpenDefaultStream(
-		2,
-		2,
-		p.config.SampleRate,
-		p.config.BufferSize,
-		p.audioCallback,
-	)
-
-	if err != nil {
-		_ = portaudio.Terminate()
-		return err
-	}
-
-	p.paStream = paStream
-	p.initialized.Store(true)
-
-	return nil
+	return p.engine.Start()
 }
 
-func (p *Psalm) TerminateAudio() {
-	if !p.initialized.Load() {
-		return
+func (p *Psalm) AudioStop() error {
+	if p.engine == nil {
+		return errors.New("engine not initialized")
 	}
 
-	_ = p.paStream.Close()
-	p.paStream = nil
-
-	_ = portaudio.Terminate()
-
-	p.initialized.Store(false)
-}
-
-func (p *Psalm) Start() error {
-	if p.started.Load() {
-		return nil
-	}
-
-	if !p.initialized.Load() {
-		return fmt.Errorf("portaudio not initialized")
-	}
-
-	err := p.paStream.Start()
-	if err != nil {
-		return err
-	}
-
-	p.started.Store(true)
-
-	return nil
-}
-
-func (p *Psalm) Stop() error {
-	if !p.started.Load() {
-		return nil
-	}
-
-	err := p.paStream.Stop()
-	if err != nil {
-		return err
-	}
-
-	p.started.Store(false)
-
-	return nil
+	return p.engine.Stop()
 }
 
 func (p *Psalm) Listen() error {
-	err := p.InitializeAudio()
-	if err != nil {
-		return err
-	}
-
-	defer p.TerminateAudio()
-
-	err = p.Start()
+	err := p.AudioStart()
 	if err != nil {
 		return err
 	}
@@ -196,7 +139,13 @@ func (p *Psalm) Listen() error {
 
 	log.Printf("stopping audio")
 
-	return p.Stop()
+	return p.AudioStop()
+}
+
+func (p *Psalm) Close() {
+	if p.engine != nil {
+		_ = p.engine.Close()
+	}
 }
 
 func (p *Psalm) audioCallback(in, out [][]float32) {

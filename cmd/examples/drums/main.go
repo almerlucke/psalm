@@ -4,6 +4,7 @@ import (
 	"github.com/almerlucke/genny/bucket"
 	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
+	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
@@ -74,7 +75,8 @@ func main() {
 
 	soundBank["angels"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-cinematic-angelical-choir-transition-663.wav", 4)
 
-	p := psalm.New()
+	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
+	defer p.Close()
 
 	drms := drums.NewDrums(soundBank, 32, 2).AddTo(p).SetID("drums")
 

@@ -12,6 +12,7 @@ import (
 	"github.com/almerlucke/genny/float/shape"
 	"github.com/almerlucke/genny/float/shape/shapers/linear"
 	"github.com/almerlucke/psalm"
+	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/granular"
 	"github.com/almerlucke/psalm/modules/granular/envelopes/parabolic"
@@ -95,7 +96,8 @@ func (pgen *ParamGen) Type() granular.ParameterGeneratorType {
 }
 
 func main() {
-	p := psalm.New()
+	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
+	defer p.Close()
 
 	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Crux_fidelis_(Graduale_1974).wav", 4)
 	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-gentle-sea-wave-1204.wav", 4)

@@ -4,4 +4,5 @@ use (
 	.
 	../genny
 	../sndfile
+	../go-jack
 )

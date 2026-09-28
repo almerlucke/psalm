@@ -4,6 +4,7 @@ import (
 	"github.com/almerlucke/genny/bucket"
 	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
+	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
@@ -36,6 +37,9 @@ func main() {
 		BufferSize: 1024,
 	})
 
+	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
+	defer p.Close()
+
 	soundBank := sndfile.SoundBank[float32]{}
 
 	soundBank["kick"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/CarbonKick_01_634.wav", 4)
@@ -45,8 +49,6 @@ func main() {
 	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Johannes.Hymnus.wav", 4)
 	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Crux_fidelis_(Graduale_1974).wav", 4)
 	sf3 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-cinematic-angelical-choir-transition-663.wav", 4)
-
-	p := psalm.New()
 
 	drms := drums.NewDrums(soundBank, 16, 2).AddTo(p).SetID("drums")
 
