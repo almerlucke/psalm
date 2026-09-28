@@ -16,10 +16,10 @@ import (
 )
 
 func main() {
-	sf := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4)
-
 	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
 	defer p.Close()
+
+	sf := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4)
 
 	pl := player.New(player.Config{
 		SndFile:          sf,

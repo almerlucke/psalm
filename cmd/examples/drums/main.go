@@ -15,6 +15,9 @@ import (
 )
 
 func main() {
+	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
+	defer p.Close()
+
 	soundBank := sndfile.SoundBank[float32]{}
 
 	soundBank["perc1_1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 1.wav", 4)
@@ -74,9 +77,6 @@ func main() {
 	soundBank["clap7"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Orchid Clap - Pop.wav", 4)
 
 	soundBank["angels"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-cinematic-angelical-choir-transition-663.wav", 4)
-
-	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
-	defer p.Close()
 
 	drms := drums.NewDrums(soundBank, 32, 2).AddTo(p).SetID("drums")
 
