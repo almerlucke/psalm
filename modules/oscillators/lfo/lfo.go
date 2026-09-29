@@ -1,7 +1,6 @@
 package lfo
 
 import (
-	"github.com/almerlucke/david"
 	"github.com/almerlucke/genny/float"
 	"github.com/almerlucke/genny/float/interp"
 	"github.com/almerlucke/genny/float/phasor"
@@ -11,6 +10,7 @@ import (
 	"github.com/almerlucke/genny/float/shape/shapers/lookup"
 	"github.com/almerlucke/genny/float/shape/shapers/mirror"
 	"github.com/almerlucke/genny/float/shape/shapers/series"
+	"github.com/almerlucke/psalm"
 )
 
 type WaveForm int
@@ -49,7 +49,7 @@ func tableForWaveForm(wf WaveForm, cwt lookup.Table) lookup.Table {
 }
 
 type LFO struct {
-	*david.Module
+	*psalm.Module
 	phasor *phasor.Phasor
 	linear *linear.Linear
 	shaper *series.Series
@@ -68,9 +68,9 @@ func New(kr bool, fc float64, minVal float64, maxVal float64, wf WaveForm, wts .
 	)
 
 	if kr {
-		sr = david.ControlRate()
+		sr = psalm.ControlRate()
 	} else {
-		sr = david.SampleRate()
+		sr = psalm.SampleRate()
 	}
 
 	if len(wts) > 0 {
@@ -82,7 +82,7 @@ func New(kr bool, fc float64, minVal float64, maxVal float64, wf WaveForm, wts .
 	ipol := interp.New(float.ToFrame(r), interp.Cubic, (fc*randFcMult)/sr)
 
 	l := &LFO{
-		Module: david.NewModule(nil, []int{david.Mono}),
+		Module: psalm.NewModule(nil, []int{psalm.Mono}),
 		phasor: phasor.New(fc, sr, 0.0),
 		linear: lin,
 		shaper: series.New(tableForWaveForm(wf, wt), lin),
@@ -132,24 +132,24 @@ func (lfo *LFO) SetMaxValue(maxVal float64) {
 }
 
 func (lfo *LFO) Receive(value any, index int) {
-	if msg, ok := david.MsgVal(value); ok {
+	if msg, ok := psalm.MsgVal(value); ok {
 		lfo.ReceiveMessage(msg)
 		return
 	}
 
 	switch index {
 	case 0:
-		lfo.SetFrequency(david.FltVal[float64](value))
+		lfo.SetFrequency(psalm.FltVal[float64](value))
 	case 1:
-		lfo.SetMinValue(david.FltVal[float64](value))
+		lfo.SetMinValue(psalm.FltVal[float64](value))
 	case 2:
-		lfo.SetMaxValue(david.FltVal[float64](value))
+		lfo.SetMaxValue(psalm.FltVal[float64](value))
 	case 3:
-		lfo.SetWaveForm(WaveForm(david.IntVal[int](value)))
+		lfo.SetWaveForm(WaveForm(psalm.IntVal[int](value)))
 	}
 }
 
-func (lfo *LFO) ReceiveMessage(msg david.Message) {
+func (lfo *LFO) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("frequency", func(v float64) {
 		lfo.SetFrequency(v)
 	})
@@ -164,7 +164,7 @@ func (lfo *LFO) ReceiveMessage(msg david.Message) {
 	})
 }
 
-func (lfo *LFO) Tick(_ int64) {
+func (lfo *LFO) CtrlTick(tick psalm.CtrlTick) {
 	if !lfo.kr {
 		return
 	}
@@ -183,8 +183,6 @@ func (lfo *LFO) Synthesize() {
 		return
 	}
 
-	lfo.Module.Synthesize()
-
 	config := lfo.Config()
 	out := lfo.Output(0).Channels[0]
 
@@ -192,9 +190,9 @@ func (lfo *LFO) Synthesize() {
 		v := lfo.shaper.Shape(lfo.phasor.Generate())
 		r := lfo.sh.Generate()[0]
 		if lfo.wf == Rand {
-			out[i] = r
+			out[i] = float32(r)
 		} else {
-			out[i] = v
+			out[i] = float32(v)
 		}
 	}
 }

@@ -23,6 +23,14 @@ type Config struct {
 	PPQ        int
 }
 
+func (c Config) ControlRate() float64 {
+	return 1.0 / c.TickDuration()
+}
+
+func (c Config) TickDuration() float64 {
+	return 60.0 / (float64(c.BPM) * float64(c.PPQ))
+}
+
 func init() {
 	_configList = list.New()
 	_configList.PushFront(Config{
@@ -72,26 +80,26 @@ func CurrentConfig() Config {
 }
 
 func SampleRate() float64 {
-	config := CurrentConfig()
-	return config.SampleRate
+	return CurrentConfig().SampleRate
+}
+
+func ControlRate() float64 {
+	return CurrentConfig().ControlRate()
 }
 
 func BufferSize() int {
-	config := CurrentConfig()
-	return config.BufferSize
+	return CurrentConfig().BufferSize
 }
 
 func BPM() int {
-	config := CurrentConfig()
-	return config.BPM
+	return CurrentConfig().BPM
 }
 
 func PPQ() int {
-	config := CurrentConfig()
-	return config.PPQ
+	return CurrentConfig().PPQ
 }
 
 // TickDuration returns the duration of a single control tick in seconds.
 func TickDuration() float64 {
-	return 60.0 / (float64(BPM()) * float64(PPQ()))
+	return CurrentConfig().TickDuration()
 }

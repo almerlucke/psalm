@@ -147,6 +147,12 @@ func (p *Patch) Run() {
 	}
 
 	p.self.Synthesize()
+
+	if p.muted {
+		for _, out := range p.outputs {
+			out.Clear()
+		}
+	}
 }
 
 func (p *Patch) Out(args ...any) Patcher {

@@ -39,10 +39,13 @@ type Modular interface {
 	Config() Config
 	CtrlTick(CtrlTick)
 	Send(any, int)
+	Muted() bool
+	SetMuted(bool) Modular
 }
 
 type Module struct {
 	hasRun       bool
+	muted        bool
 	id           string
 	self         Modular
 	inputs       []*Socket
@@ -99,6 +102,15 @@ func (m *Module) SetSelf(self Modular) {
 	m.self = self
 }
 
+func (m *Module) Muted() bool {
+	return m.muted
+}
+
+func (m *Module) SetMuted(muted bool) Modular {
+	m.muted = muted
+	return m.self
+}
+
 func (m *Module) HasRun() bool {
 	return m.hasRun
 }
@@ -122,6 +134,12 @@ func (m *Module) Run() {
 	}
 
 	m.self.Synthesize()
+
+	if m.muted {
+		for _, out := range m.outputs {
+			out.Clear()
+		}
+	}
 }
 
 func (m *Module) ResetRun() {

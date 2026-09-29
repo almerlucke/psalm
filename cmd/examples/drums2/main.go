@@ -5,6 +5,7 @@ import (
 	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
+	"github.com/almerlucke/psalm/modules/controls/dispatch"
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
@@ -14,6 +15,7 @@ import (
 	"github.com/almerlucke/psalm/synths/drums"
 	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
+	"github.com/almerlucke/sndfile/writer"
 )
 
 func newTimer(mult float64, s ...any) *timer.Timer {
@@ -44,7 +46,8 @@ func main() {
 
 	soundBank["kick"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/CarbonKick_01_634.wav", 4)
 	soundBank["hihat"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 4.wav", 4)
-	soundBank["clap"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/clap/Cymatics - Humble Stars Clap.wav", 4)
+	soundBank["synth1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/shots/Cymatics - Odyssey Synth One Shot 4 - C.wav", 4)
+	soundBank["synth2"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/shots/Cymatics - Odyssey Synth One Shot 16 - F.wav", 4)
 
 	sf1 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Johannes.Hymnus.wav", 4)
 	sf2 := sndfile.MustMipMapSoundFile[float32]("assets/sounds/chants/Crux_fidelis_(Graduale_1974).wav", 4)
@@ -65,8 +68,8 @@ func main() {
 		1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 0,
 	).AddTo(p)))
 
-	drms.ValueIn(drumTemplate(0.4,
-		bucket.NewLoop(1.0), "clap").ValueIn(newTimer(
+	drms.ValueIn(drumTemplate(0.5,
+		bucket.NewLoop(2.0, 1.0, 0.5, 0.75, 1.5), bucket.NewLoop("synth1", "synth2")).ValueIn(newTimer(
 		0.25,
 		// Bar 1
 		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
@@ -78,8 +81,9 @@ func main() {
 		0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1,
 	).AddTo(p)))
 
-	drms.ValueIn(drumTemplate(0.5, 3.0, "hihat").ValueIn(newTimer(
-		0.25,
+	drms.ValueIn(drumTemplate(0.375,
+		bucket.NewLoop(2.0, 1.0, 1.5, 1.75, 4.5, 3.0), "hihat").ValueIn(newTimer(
+		0.5,
 		// Bar 1
 		1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, &steps.Step{
 			BurstChance: 0.6,
@@ -109,43 +113,60 @@ func main() {
 		UseZeroCrossings: true,
 		Loop:             false,
 		Speed:            1.0,
-		Amp:              0.375,
+		Amp:              0.25,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3, 0.2),
 		"bang":        true,
-	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 8)).AddTo(p)))
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 8)).AddTo(p))).SetMuted(true)
 
 	pl2 := player.New(player.Config{
-		SndFile:          sf3,
-		StartOffset:      0.1,
-		EndOffset:        0.2,
-		UseZeroCrossings: true,
-		Loop:             false,
-		Speed:            0.25,
-		Amp:              0.5,
-	}).AddTo(p).ValueIn(templ.New(template.Template{
-		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
-		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.1, 0.1, 0.1),
-		"speed":       bucket.NewLoop(0.25, 0.375, 0.5, 0.25, 0.25, 0.25),
-		"bang":        true,
-	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 6)).AddTo(p)))
-
-	pl3 := player.New(player.Config{
 		SndFile:          sf2,
 		StartOffset:      0.1,
 		EndOffset:        0.2,
 		UseZeroCrossings: true,
 		Loop:             false,
 		Speed:            1.0,
-		Amp:              0.5,
+		Amp:              0.25,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
 		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.2, 0.3),
 		"bang":        true,
 	}).ValueIn(newTimer(
 		2.0, 1, 1, 0, 1, 1, 0, 0, 0,
-	).AddTo(p)))
+	).AddTo(p))).SetMuted(true)
+
+	pl3 := player.New(player.Config{
+		SndFile:          sf3,
+		StartOffset:      0.1,
+		EndOffset:        0.2,
+		UseZeroCrossings: true,
+		Loop:             false,
+		Speed:            0.25,
+		Amp:              0.375,
+	}).AddTo(p).ValueIn(templ.New(template.Template{
+		"startOffset": bucket.NewLoop(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8),
+		"offsetRange": bucket.NewLoop(0.05, 0.1, 0.1, 0.1, 0.1),
+		"speed":       bucket.NewLoop(0.25, 0.375, 0.5, 0.25, 0.25, 0.25),
+		"bang":        true,
+	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 6)).AddTo(p))).SetMuted(true)
+
+	bar := psalm.PPQ() * 32
+	dispatch.New(
+		dispatch.NewEvent(pl3, bar, dispatch.Unmute),
+		dispatch.NewEvent(pl1, bar*2, dispatch.Unmute),
+		dispatch.NewEvent(pl2, bar*3, dispatch.Unmute),
+		dispatch.NewEvent(drms, bar*6, dispatch.Mute),
+		dispatch.NewEvent(pl1, bar*6, dispatch.Mute),
+		dispatch.NewEvent(drms, bar*9, dispatch.Unmute),
+		dispatch.NewEvent(pl2, bar*11, dispatch.Mute),
+		dispatch.NewEvent(pl1, bar*11, dispatch.Unmute),
+		dispatch.NewEvent(pl2, bar*13, dispatch.Unmute),
+		dispatch.NewEvent(drms, bar*15, dispatch.Mute),
+		dispatch.NewEvent(pl3, bar*15, dispatch.Mute),
+		dispatch.NewEvent(pl1, bar*16, dispatch.Mute),
+		dispatch.NewEvent(pl2, bar*18, dispatch.Mute),
+	).AddTo(p)
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 
@@ -158,10 +179,10 @@ func main() {
 		)),
 	)
 
-	//err := p.ToSoundFile("7x7.wav", writer.WAV, 60*6, 44100.0, true)
-	//if err != nil {
-	//	panic(err)
-	//}
+	err := p.ToSoundFile("crux_fidelis.wav", writer.WAV, float64(bar)*18.3*psalm.TickDuration(), 44100.0, true)
+	if err != nil {
+		panic(err)
+	}
 
-	_ = p.Listen()
+	// _ = p.Listen()
 }
