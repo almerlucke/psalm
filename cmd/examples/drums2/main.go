@@ -170,7 +170,7 @@ func main() {
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 
-	p.Out(freeverb.New(0.8, 0.7, 0.9, 0.225, 0.8).AddTo(p).In(
+	p.Out(freeverb.New(0.8, 0.7, 0.9, 0.075, 0.8).AddTo(p).In(
 		pingpong.New(bpmMs*4.0, bpmMs*1.25, 0.075, 0.125).AddTo(p).In(
 			drms,
 			pl1, 0, 0,
@@ -184,5 +184,5 @@ func main() {
 		panic(err)
 	}
 
-	// _ = p.Listen()
+	//_ = p.Listen()
 }

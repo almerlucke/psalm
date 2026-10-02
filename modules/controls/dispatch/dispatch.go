@@ -10,19 +10,29 @@ type EventType int
 const (
 	Mute EventType = iota
 	Unmute
+	Message
 )
 
 type Event struct {
-	Module psalm.Modular
-	When   int
-	Action EventType
+	Who   psalm.Modular
+	When  int
+	Which EventType
+	What  any
 }
 
-func NewEvent(m psalm.Modular, when int, action EventType) *Event {
+// NewEvent to WHO is it addressed? WHEN will it be dispatched? WHICH event type is it?, WHAT is the payload?
+func NewEvent(who psalm.Modular, when int, which EventType, what ...any) *Event {
+	var w any
+
+	if len(what) > 0 {
+		w = what[0]
+	}
+
 	return &Event{
-		Module: m,
-		When:   when,
-		Action: action,
+		Who:   who,
+		When:  when,
+		Which: which,
+		What:  w,
 	}
 }
 
@@ -56,11 +66,13 @@ func (d *Dispatch) CtrlTick(tick psalm.CtrlTick) {
 	for len(d.events) > 0 {
 		event := d.events[0]
 		if tick.TickTimestamp >= int64(event.When) {
-			switch event.Action {
+			switch event.Which {
 			case Mute:
-				event.Module.SetMuted(true)
+				event.Who.SetMuted(true)
 			case Unmute:
-				event.Module.SetMuted(false)
+				event.Who.SetMuted(false)
+			case Message:
+				event.Who.ReceiveMessage(event.What.(psalm.Message))
 			default:
 				break
 			}

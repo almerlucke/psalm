@@ -9,7 +9,7 @@ import (
 	"github.com/almerlucke/genny/float/rwalk"
 	"github.com/almerlucke/genny/sequence"
 	"github.com/almerlucke/psalm"
-	jackengine "github.com/almerlucke/psalm/audio/jack"
+	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
@@ -143,7 +143,7 @@ func (pgen *ParamGen) Type() granular.ParameterGeneratorType {
 }
 
 func main() {
-	p := psalm.New(jackengine.New("heavenly"))
+	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
 	defer p.Close()
 
 	gl := granular.New[*Param, *Source, *grainAdsr.Envelope[*Param]](

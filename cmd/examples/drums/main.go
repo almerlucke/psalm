@@ -44,14 +44,6 @@ func main() {
 	soundBank["perc6"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/world_percussion/Darbuka/doom_01_01.wav", 4)
 	soundBank["perc7"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/world_percussion/Darbuka/doom_01_05.wav", 4)
 
-	soundBank["kick1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/long-boomy-real-acoustic-kick-one-shot_120bpm_C_major.wav", 4)
-	soundBank["kick2"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/Cymatics - Orchid Kick - Dancehall (A#).wav", 4)
-	soundBank["kick3"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/Cymatics - Orchid Kick - Layered (F#).wav", 4)
-	soundBank["kick4"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/Cymatics - Orchid Kick - Tight (G).wav", 4)
-	soundBank["kick5"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/CarbonKick_01_634.wav", 4)
-	soundBank["kick6"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/long-boomy-real-acoustic-kick-one-shot_120bpm_C_major.wav", 4)
-	soundBank["kick7"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/WaterKick_01_693.wav", 4)
-
 	soundBank["hihat1"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 1.wav", 4)
 	soundBank["hihat2"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 2.wav", 4)
 	soundBank["hihat3"] = sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/hihat/Cymatics - Humble Closed Hihat 3.wav", 4)
@@ -94,11 +86,6 @@ func main() {
 		"speed": bucket.New(1.0, 2.0, 0.25, 0.75, 0.5, 1.25, 1.5).SetMode(bucket.Indexed).Loop(true),
 		"sound": bucket.New("perc1", "perc2", "perc3", "perc4", "perc5", "perc6", "perc7").SetMode(bucket.Indexed).Loop(true),
 	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 4)).AddTo(p)))
-
-	drms.ValueIn(templ.NewTrigger(1.0, template.Template{
-		"speed": bucket.New(1.0, 2.0, 2.2, 0.75, 0.4, 1.2, 0.85).SetMode(bucket.Indexed).Loop(true),
-		"sound": bucket.New("kick1", "kick2", "kick3", "kick4", "kick5", "kick6", "kick7").SetMode(bucket.Indexed).Loop(true),
-	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 3)).AddTo(p)))
 
 	drms.ValueIn(templ.NewTrigger(0.5, template.Template{
 		"speed": bucket.New(2.0, 3.0, 1.0, 1.25, 1.5, 2.5, 0.75).SetMode(bucket.Indexed).Loop(true),
