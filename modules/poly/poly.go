@@ -64,10 +64,17 @@ func (p *Poly[T]) AllNotesOff() {
 	}
 }
 
-func (p *Poly[T]) Receive(value any, _ int) {
+func (p *Poly[T]) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		p.ReceiveMessage(msg)
 		return
+	}
+
+	// Forward plain values (e.g. from an LFO) on inputs > 0 to all voices
+	if index > 0 {
+		p.CallVoices(func(v T) {
+			v.Receive(value, index)
+		})
 	}
 }
 

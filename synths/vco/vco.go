@@ -77,6 +77,7 @@ type VCO struct {
 	filterEnv *adsr.ADSR
 	ampEnv    *adsr.ADSR
 	frequency float64
+	cutoff    float64 // smoothed cutoff, ramps towards cfg.Cutoff over a buffer
 	waitSamps int
 }
 
@@ -89,6 +90,7 @@ func New(cfg Config) *VCO {
 		Module:    psalm.NewModule(nil, []int{cfg.NumChannels}),
 		cfg:       cfg,
 		frequency: middleC,
+		cutoff:    cfg.Cutoff,
 	}
 
 	sr := v.Config().SampleRate
@@ -156,9 +158,21 @@ func (v *VCO) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("pitch", v.SetPitch)
 }
 
-func (v *VCO) Receive(value any, _ int) {
+// Receive accepts messages, or plain values on inputs 1 (cutoff), 2 (resonance) and 3 (pulse width),
+// which makes it easy to connect LFOs
+func (v *VCO) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		v.ReceiveMessage(msg)
+		return
+	}
+
+	switch index {
+	case 1:
+		v.cfg.Cutoff = psalm.FltVal[float64](value)
+	case 2:
+		v.cfg.Resonance = psalm.FltVal[float64](value)
+	case 3:
+		v.SetPulseWidth(psalm.FltVal[float64](value))
 	}
 }
 
@@ -201,6 +215,7 @@ func (v *VCO) Synthesize() {
 	outSocket.Clear()
 
 	if v.ampEnv.Done() {
+		v.cutoff = v.cfg.Cutoff
 		return
 	}
 
@@ -208,7 +223,7 @@ func (v *VCO) Synthesize() {
 	outChannels := outSocket.Channels
 	bufferSize := v.Config().BufferSize
 	keyTrackMult := math.Pow(v.frequency/middleC, cfg.KeyTrack)
-	baseCutoff := cfg.Cutoff * keyTrackMult
+	cutoffInc := (cfg.Cutoff - v.cutoff) / float64(bufferSize-v.waitSamps)
 	drive := cfg.Drive
 	if drive <= 0.0 {
 		drive = 1.0
@@ -226,7 +241,8 @@ func (v *VCO) Synthesize() {
 		s = math.Tanh(s*drive) * driveComp
 
 		// Filter with envelope modulation in octaves
-		v.filter.Set(baseCutoff*math.Pow(2.0, cfg.FilterEnvAmount*v.filterEnv.Generate()), cfg.Resonance)
+		v.cutoff += cutoffInc
+		v.filter.Set(v.cutoff*keyTrackMult*math.Pow(2.0, cfg.FilterEnvAmount*v.filterEnv.Generate()), cfg.Resonance)
 		low, band, high := v.filter.Tick(s)
 		switch cfg.FilterMode {
 		case BandPass:
@@ -244,6 +260,7 @@ func (v *VCO) Synthesize() {
 		}
 
 		if v.ampEnv.Done() {
+			v.cutoff = cfg.Cutoff
 			break
 		}
 	}
