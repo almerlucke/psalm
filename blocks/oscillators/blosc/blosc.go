@@ -63,6 +63,11 @@ func (b *Blosc) SetPhase(t float64) {
 	}
 }
 
+// Phase returns the current phase in the range 0-1
+func (b *Blosc) Phase() float64 {
+	return b.t
+}
+
 func (b *Blosc) SetPulseWidth(pw float64) {
 	b.pw = math.Max(0.0, math.Min(1.0, pw))
 }

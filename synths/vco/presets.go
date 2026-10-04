@@ -21,6 +21,10 @@ var Presets = map[string]func() Config{
 	"chipArp":   ChipArpPreset,
 	"wobble":    WobblePreset,
 	"hollowPad": HollowPadPreset,
+	"syncLead":  SyncLeadPreset,
+	"ringBell":  RingBellPreset,
+	"pwmPad":    PWMPadPreset,
+	"zap":       ZapPreset,
 }
 
 // BassPreset is a punchy saw bass with a square sub an octave below
@@ -263,5 +267,77 @@ func WindPreset() Config {
 	cfg.KeyTrack = 1.0
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1500.0, 0.3, 2000.0, 1.0, 2000.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1000.0, 0.8, 1000.0, 1.0, 2000.0)
+	return cfg
+}
+
+// SyncLeadPreset is a hard synced lead, the filter envelope sweeps osc 2 for the classic sync scream
+func SyncLeadPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Sawtooth
+	cfg.Osc2Waveform = blosc.Sawtooth
+	cfg.Osc1Level = 0.2
+	cfg.Osc2Level = 0.5
+	cfg.Osc2Detune = 7.0
+	cfg.Sync = true
+	cfg.Cutoff = 2500.0
+	cfg.Resonance = 0.2
+	cfg.FilterEnvAmount = 1.0
+	cfg.KeyTrack = 0.8
+	cfg.FilterEnv = *adsr.NewSetting(1.0, 5.0, 0.4, 400.0, 1.0, 300.0)
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 0.8, 200.0, 1.0, 250.0)
+	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 5.5, Delay: 300.0, Pitch: 0.25}
+	return cfg
+}
+
+// RingBellPreset is a metallic bell from ring modulating two inharmonic sines
+func RingBellPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Sine
+	cfg.Osc2Waveform = blosc.Sine
+	cfg.Osc1Level = 0.2
+	cfg.Osc2Level = 0.0
+	cfg.Osc2Detune = 16.3 // inharmonic ratio for a bell-like spectrum
+	cfg.RingModLevel = 0.7
+	cfg.Cutoff = 5000.0
+	cfg.Resonance = 0.0
+	cfg.FilterEnvAmount = 0.0
+	cfg.KeyTrack = 0.5
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 1500.0, 1.0, 800.0)
+	return cfg
+}
+
+// PWMPadPreset is a lush pulse width modulated pad with slow vibrato
+func PWMPadPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Rectangle
+	cfg.Osc2Waveform = blosc.Rectangle
+	cfg.Osc2Detune = 0.1
+	cfg.Osc1Level = 0.4
+	cfg.Osc2Level = 0.4
+	cfg.PulseWidth = 0.5
+	cfg.SubLevel = 0.2
+	cfg.Cutoff = 1200.0
+	cfg.Resonance = 0.15
+	cfg.FilterEnvAmount = 0.8
+	cfg.KeyTrack = 0.5
+	cfg.FilterEnv = *adsr.NewSetting(1.0, 1000.0, 0.6, 1500.0, 1.0, 2000.0)
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 700.0, 0.9, 1000.0, 1.0, 1800.0)
+	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 0.4, PulseWidth: 0.35}
+	cfg.LFO2 = LFOConfig{Waveform: LFOSine, Rate: 4.5, Delay: 600.0, Pitch: 0.1, Cutoff: 0.2}
+	return cfg
+}
+
+// ZapPreset is a laser zap / percussive blip using a fast filter envelope pitch drop
+func ZapPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Square
+	cfg.Osc1Level = 0.5
+	cfg.Osc2Level = 0.0
+	cfg.FilterEnvToPitch = 36.0
+	cfg.Cutoff = 3000.0
+	cfg.Resonance = 0.3
+	cfg.FilterEnvAmount = 1.0
+	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 120.0, 1.0, 50.0)
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 250.0, 1.0, 80.0)
 	return cfg
 }

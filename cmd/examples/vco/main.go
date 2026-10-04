@@ -57,32 +57,56 @@ func phrase(legato float64, notes ...note) (*timer.Timer, *bucket.Bucket[float64
 	return timer.WithSteps(steps.QuickSteps(stps...)), seq(pitches...), seq(durs...)
 }
 
-// acidLine is a 303 style 16th note sequence: notes plus a filter envelope amount and amplitude per
-// sounding note, accented notes get a bigger filter sweep and are louder
+// acidLine is a 303 style 16th note sequence: notes plus a filter envelope amount, amplitude, gate duration
+// and glide time per sounding note
 type acidLine struct {
 	notes   []note
 	envAmts []float64
 	amps    []float64
+	durs    []float64
+	glides  []float64
 }
 
-// newAcidLine parses 16th note steps relative to root: "7" is a note 7 semitones up, "7!" is accented
-// and "-" is a rest
+const (
+	acidGate  = 0.55 // fraction of a 16th a normal note sounds
+	acidGlide = 70.0 // slide time in milliseconds
+)
+
+// newAcidLine parses 16th note steps relative to root: "7" is a note 7 semitones up, "7!" is accented,
+// "7~" slides into the note from the previous one (which is held until it arrives) and "-" is a rest
 func newAcidLine(root float64, amp float64, accentAmp float64, stps ...string) *acidLine {
-	line := &acidLine{}
+	var (
+		line     = &acidLine{}
+		stepSec  = 0.25 * 60.0 / float64(psalm.BPM())
+		prevNote = -1 // index into durs of the previous sounding note, when it was on the previous step
+	)
 
 	for _, s := range stps {
 		if s == "-" {
 			line.notes = append(line.notes, note{rest, 0.25})
+			prevNote = -1
 			continue
 		}
 
-		accent := strings.HasSuffix(s, "!")
-		off, err := strconv.Atoi(strings.TrimSuffix(s, "!"))
+		slide := strings.Contains(s, "~")
+		accent := strings.Contains(s, "!")
+		off, err := strconv.Atoi(strings.Trim(s, "!~"))
 		if err != nil {
 			panic("invalid acid step: " + s)
 		}
 
+		// A slide ties the previous note into this one, so the previous gate stays open
+		glide := 0.0
+		if slide && prevNote >= 0 {
+			line.durs[prevNote] = stepSec * 1.1
+			glide = acidGlide
+		}
+
 		line.notes = append(line.notes, note{root + float64(off), 0.25})
+		line.durs = append(line.durs, stepSec*acidGate)
+		line.glides = append(line.glides, glide)
+		prevNote = len(line.durs) - 1
+
 		if accent {
 			line.envAmts = append(line.envAmts, 5.5)
 			line.amps = append(line.amps, accentAmp)
@@ -95,11 +119,12 @@ func newAcidLine(root float64, amp float64, accentAmp float64, stps ...string) *
 	return line
 }
 
-// connect drives a poly synth with the acid line
+// connect drives a (mono) poly synth with the acid line
 func (l *acidLine) connect(p *psalm.Psalm, synth psalm.Modular) {
-	t, pitches, durs := phrase(0.55, l.notes...)
+	t, pitches, _ := phrase(1.0, l.notes...)
 
-	synth.ValueIn(templ.NewDurationTrigger(durs, seq(l.amps...), template.Template{
+	synth.ValueIn(templ.NewDurationTrigger(seq(l.durs...), seq(l.amps...), template.Template{
+		"glide":           seq(l.glides...),
 		"pitch":           pitches,
 		"filterEnvAmount": seq(l.envAmts...),
 	}).ValueIn(t.AddTo(p)))
@@ -168,27 +193,37 @@ func main() {
 	// Original acid house jam in A minor, everything on one chord in the classic style
 	const root = 45.0 // A2
 
-	// Bass 303: 2 bar 16th note line with octave jumps, minor third and flat seventh, accents marked with !
+	// Bass 303: 2 bar 16th note line with octave jumps, minor third and flat seventh,
+	// accents marked with ! and slides with ~
 	bassLine := newAcidLine(root, 0.2, 0.3,
-		"0!", "0", "12", "-", "0", "0!", "3", "-", "0", "12!", "0", "7", "-", "0", "10", "12!",
-		"0!", "0", "12", "-", "0", "0!", "3", "-", "0", "12!", "0", "7", "3!", "-", "5", "7",
+		"0!", "0", "12~", "-", "0", "0!", "3", "-", "0", "12!~", "0", "7", "-", "0", "10", "12!~",
+		"0!", "0", "12~", "-", "0", "0!", "3~", "-", "0", "12!", "0~", "7", "3!", "-", "5", "7~",
 	)
 
 	// Lead 303: sparser answering line an octave up, square wave like the 303's second waveform
 	leadLine := newAcidLine(root+12, 0.12, 0.18,
-		"-", "-", "12!", "-", "-", "15", "-", "12", "-", "-", "19!", "-", "17", "-", "15", "-",
-		"-", "-", "12!", "-", "-", "15", "-", "12", "-", "10", "-", "7!", "-", "-", "3", "-",
+		"-", "-", "12!", "15~", "-", "15", "-", "12", "-", "-", "19!", "17~", "-", "-", "15", "-",
+		"-", "-", "12!", "15~", "-", "15", "-", "12", "-", "10", "7!~", "-", "-", "-", "3", "-",
 	)
 
+	beatHz := float64(psalm.BPM()) / 60.0
+
+	// Bass: mono 303 so slides glide from the previous note. A slow triangle LFO, locked to 2 bars,
+	// pushes the cutoff up and down on top of the long external sweep
 	bassCfg := vco.AcidBassPreset()
-	bass := vco.NewPoly(bassCfg, 4).AddTo(p)
+	bassCfg.LFO1 = vco.LFOConfig{Waveform: vco.LFOTriangle, Rate: beatHz / 8.0, Cutoff: 0.6}
+	bass := vco.NewPoly(bassCfg, 1).AddTo(p)
 	bassLine.connect(p, bass)
 
+	// Lead: mono square 303 with random sample & hold cutoff jumps every 8th note and a delayed
+	// vibrato on longer notes
 	leadCfg := vco.AcidBassPreset()
 	leadCfg.Osc1Waveform = blosc.Square
 	leadCfg.Resonance = 0.8
 	leadCfg.KeyTrack = 0.3
-	lead := vco.NewPoly(leadCfg, 4).AddTo(p)
+	leadCfg.LFO1 = vco.LFOConfig{Waveform: vco.LFOSampleHold, Rate: beatHz * 2.0, Cutoff: 0.8}
+	leadCfg.LFO2 = vco.LFOConfig{Waveform: vco.LFOSine, Rate: 6.0, Delay: 120.0, KeySync: true, Pitch: 0.2}
+	lead := vco.NewPoly(leadCfg, 1).AddTo(p)
 	leadLine.connect(p, lead)
 
 	// Drums: four on the floor house beat
