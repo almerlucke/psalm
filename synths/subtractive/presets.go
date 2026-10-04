@@ -1,4 +1,4 @@
-package vco
+package subtractive
 
 import (
 	"github.com/almerlucke/genny/float/envelopes/adsr"

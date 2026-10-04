@@ -16,7 +16,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/synths/drums"
-	"github.com/almerlucke/psalm/synths/vco"
+	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
 )
@@ -210,20 +210,20 @@ func main() {
 
 	// Bass: mono 303 so slides glide from the previous note. A slow triangle LFO, locked to 2 bars,
 	// pushes the cutoff up and down on top of the long external sweep
-	bassCfg := vco.AcidBassPreset()
-	bassCfg.LFO1 = vco.LFOConfig{Waveform: vco.LFOTriangle, Rate: beatHz / 8.0, Cutoff: 0.6}
-	bass := vco.NewPoly(bassCfg, 1).AddTo(p)
+	bassCfg := subtractive.AcidBassPreset()
+	bassCfg.LFO1 = subtractive.LFOConfig{Waveform: subtractive.LFOTriangle, Rate: beatHz / 8.0, Cutoff: 0.6}
+	bass := subtractive.NewPoly(bassCfg, 1).AddTo(p)
 	bassLine.connect(p, bass)
 
 	// Lead: mono square 303 with random sample & hold cutoff jumps every 8th note and a delayed
 	// vibrato on longer notes
-	leadCfg := vco.AcidBassPreset()
+	leadCfg := subtractive.AcidBassPreset()
 	leadCfg.Osc1Waveform = blosc.Square
 	leadCfg.Resonance = 0.8
 	leadCfg.KeyTrack = 0.3
-	leadCfg.LFO1 = vco.LFOConfig{Waveform: vco.LFOSampleHold, Rate: beatHz * 2.0, Cutoff: 0.8}
-	leadCfg.LFO2 = vco.LFOConfig{Waveform: vco.LFOSine, Rate: 6.0, Delay: 120.0, KeySync: true, Pitch: 0.2}
-	lead := vco.NewPoly(leadCfg, 1).AddTo(p)
+	leadCfg.LFO1 = subtractive.LFOConfig{Waveform: subtractive.LFOSampleHold, Rate: beatHz * 2.0, Cutoff: 0.8}
+	leadCfg.LFO2 = subtractive.LFOConfig{Waveform: subtractive.LFOSine, Rate: 6.0, Delay: 120.0, KeySync: true, Pitch: 0.2}
+	lead := subtractive.NewPoly(leadCfg, 1).AddTo(p)
 	leadLine.connect(p, lead)
 
 	// Drums: four on the floor house beat
@@ -270,7 +270,7 @@ func main() {
 		pingpong.New(bpmMs*4.0, bpmMs*0.75, 0.35, 0.25).AddTo(p).In(lead), 0, 0,
 	))
 
-	//err := p.ToSoundFile("vco.wav", writer.WAV, 60, 44100.0, true)
+	//err := p.ToSoundFile("subtractive.wav", writer.WAV, 60, 44100.0, true)
 	//if err != nil {
 	//	panic(err)
 	//}

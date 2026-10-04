@@ -15,11 +15,11 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
-	"github.com/almerlucke/psalm/synths/vco"
+	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/tools/timing"
 )
 
-// A guided tour through all features of the vco voice: every section plays for sectionBeats,
+// A guided tour through all features of the subtractive voice: every section plays for sectionBeats,
 // one after the other, and the whole tour loops. The schedule is printed at start.
 
 const sectionBeats = 16.0 // 4 bars
@@ -64,7 +64,7 @@ func hits(pitch float64, bars ...string) []note {
 // params are sent with every note and cycle per note, so they can step through settings
 type section struct {
 	name   string
-	cfg    vco.Config
+	cfg    subtractive.Config
 	voices int
 	amp    float64
 	legato float64
@@ -120,7 +120,7 @@ func play(legato float64, ns []note) (*timer.Timer, *bucket.Bucket[float64], *bu
 
 // build creates the synths of the section (and the parts it plays with) and returns them for mixing
 func (s *section) build(p *psalm.Psalm, index int, numSections int) []psalm.Modular {
-	synth := vco.NewPoly(s.cfg, s.voices).AddTo(p)
+	synth := subtractive.NewPoly(s.cfg, s.voices).AddTo(p)
 
 	for _, layer := range s.layers {
 		if beatsOf(layer) != sectionBeats {
@@ -182,8 +182,8 @@ func main() {
 	)
 
 	// A plain voice with osc 2 off and an open filter, used to hear the raw oscillator features
-	plain := func() vco.Config {
-		cfg := vco.DefaultConfig()
+	plain := func() subtractive.Config {
+		cfg := subtractive.DefaultConfig()
 		cfg.Osc2Level = 0.0
 		cfg.Cutoff = 8000.0
 		cfg.Resonance = 0.0
@@ -205,7 +205,7 @@ func main() {
 		},
 		{
 			name: "Osc 2 detune and octave: unison, slow beating, chorus, fifth, octave",
-			cfg: func() vco.Config {
+			cfg: func() subtractive.Config {
 				cfg := plain()
 				cfg.Osc1Level, cfg.Osc2Level = 0.4, 0.4
 				cfg.Cutoff = 3000.0
@@ -217,10 +217,10 @@ func main() {
 		},
 		{
 			name: "Pulse width: narrowing pulse, then LFO pulse width modulation",
-			cfg: func() vco.Config {
+			cfg: func() subtractive.Config {
 				cfg := plain()
 				cfg.Osc1Waveform = blosc.Rectangle
-				cfg.LFO1 = vco.LFOConfig{Waveform: vco.LFOTriangle, Rate: 2.0}
+				cfg.LFO1 = subtractive.LFOConfig{Waveform: subtractive.LFOTriangle, Rate: 2.0}
 				return cfg
 			}(),
 			voices: 2, amp: 0.3, legato: 0.9,
@@ -232,8 +232,8 @@ func main() {
 		},
 		{
 			name: "Sub oscillator and noise: plain, + sub, + white noise, + pink noise",
-			cfg: func() vco.Config {
-				cfg := vco.BassPreset()
+			cfg: func() subtractive.Config {
+				cfg := subtractive.BassPreset()
 				cfg.Osc2Level = 0.0
 				return cfg
 			}(),
@@ -242,27 +242,27 @@ func main() {
 			params: map[string][]float64{
 				"subLevel":   {0, 0, 0, 0, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6},
 				"noiseLevel": {0, 0, 0, 0, 0, 0, 0, 0, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3},
-				"noiseType": {0, 0, 0, 0, 0, 0, 0, 0, float64(vco.WhiteNoise), float64(vco.WhiteNoise),
-					float64(vco.WhiteNoise), float64(vco.WhiteNoise), float64(vco.PinkNoise), float64(vco.PinkNoise),
-					float64(vco.PinkNoise), float64(vco.PinkNoise)},
+				"noiseType": {0, 0, 0, 0, 0, 0, 0, 0, float64(subtractive.WhiteNoise), float64(subtractive.WhiteNoise),
+					float64(subtractive.WhiteNoise), float64(subtractive.WhiteNoise), float64(subtractive.PinkNoise), float64(subtractive.PinkNoise),
+					float64(subtractive.PinkNoise), float64(subtractive.PinkNoise)},
 			},
 		},
 		{
 			name:   "Ring modulation (ringBell preset)",
-			cfg:    vco.RingBellPreset(),
+			cfg:    subtractive.RingBellPreset(),
 			voices: 8, amp: 0.3, legato: 0.5,
 			layers: [][]note{notes(1, A4, C5, E5, G5, A5, G5, E5, C5, A4, C5, D5, E5, G5, E5, D5, C5)},
 		},
 		{
 			name:   "Hard sync (syncLead preset): sweeping the osc 2 pitch against osc 1",
-			cfg:    vco.SyncLeadPreset(),
+			cfg:    subtractive.SyncLeadPreset(),
 			voices: 2, amp: 0.3, legato: 0.9,
 			layers: [][]note{notes(2, A3, A3, A3, A3, A3, A3, A3, A3)},
 			params: map[string][]float64{"osc2Detune": {0, 4, 7, 12, 17, 24, 19, 12}},
 		},
 		{
 			name: "FM: osc 1 modulating osc 2 with growing amount",
-			cfg: func() vco.Config {
+			cfg: func() subtractive.Config {
 				cfg := plain()
 				cfg.Osc1Waveform, cfg.Osc2Waveform = blosc.Sine, blosc.Sine
 				cfg.Osc1Level, cfg.Osc2Level = 0.0, 0.5
@@ -275,8 +275,8 @@ func main() {
 		},
 		{
 			name: "Filter modes (lowpass, bandpass, highpass) and resonance, cutoff swept by an external LFO",
-			cfg: func() vco.Config {
-				cfg := vco.DefaultConfig()
+			cfg: func() subtractive.Config {
+				cfg := subtractive.DefaultConfig()
 				cfg.FilterEnvAmount = 0.0
 				cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 0.8, 100.0, 1.0, 150.0)
 				return cfg
@@ -284,8 +284,8 @@ func main() {
 			voices: 2, amp: 0.22, legato: 0.95,
 			layers: [][]note{notes(2, A2, A2, A2, A2, A2, A2, A2, A2)},
 			params: map[string][]float64{
-				"filterMode": {float64(vco.LowPass), float64(vco.LowPass), float64(vco.BandPass), float64(vco.BandPass),
-					float64(vco.HighPass), float64(vco.HighPass), float64(vco.LowPass), float64(vco.LowPass)},
+				"filterMode": {float64(subtractive.LowPass), float64(subtractive.LowPass), float64(subtractive.BandPass), float64(subtractive.BandPass),
+					float64(subtractive.HighPass), float64(subtractive.HighPass), float64(subtractive.LowPass), float64(subtractive.LowPass)},
 				"resonance": {0.2, 0.85, 0.2, 0.85, 0.2, 0.85, 0.2, 0.9},
 			},
 			patch: func(p *psalm.Psalm, synth psalm.Modular) {
@@ -294,14 +294,14 @@ func main() {
 		},
 		{
 			name:   "Filter envelope amount (pluck preset)",
-			cfg:    vco.PluckPreset(),
+			cfg:    subtractive.PluckPreset(),
 			voices: 4, amp: 0.3, legato: 0.5,
 			layers: [][]note{notes(1, A3, C4, E4, A4, A3, C4, E4, A4, G3, B4, D4, G4, G3, B4, D4, G4)},
 			params: map[string][]float64{"filterEnvAmount": {0.5, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5}},
 		},
 		{
 			name: "Glide: alternating jumps and slides (acidBass preset, mono)",
-			cfg:  vco.AcidBassPreset(),
+			cfg:  subtractive.AcidBassPreset(),
 			// one voice, so every note glides from the previous one
 			voices: 1, amp: 0.25, legato: 0.6,
 			layers: [][]note{notes(1, A1, A2, A1, E3, A1, A2, G3, A2, A1, A2, A1, E3, C3, A2, G3, A2)},
@@ -309,10 +309,10 @@ func main() {
 		},
 		{
 			name: "LFO pitch and amp: delayed vibrato, then square tremolo",
-			cfg: func() vco.Config {
-				cfg := vco.LeadPreset()
-				cfg.LFO1 = vco.LFOConfig{Waveform: vco.LFOSine, Rate: 5.5, Delay: 400.0, KeySync: true}
-				cfg.LFO2 = vco.LFOConfig{Waveform: vco.LFOSquare, Rate: 8.0, KeySync: true}
+			cfg: func() subtractive.Config {
+				cfg := subtractive.LeadPreset()
+				cfg.LFO1 = subtractive.LFOConfig{Waveform: subtractive.LFOSine, Rate: 5.5, Delay: 400.0, KeySync: true}
+				cfg.LFO2 = subtractive.LFOConfig{Waveform: subtractive.LFOSquare, Rate: 8.0, KeySync: true}
 				return cfg
 			}(),
 			voices: 2, amp: 0.25, legato: 0.9,
@@ -324,14 +324,14 @@ func main() {
 		},
 		{
 			name: "LFO cutoff: sample & hold random filter, then smooth sine wah",
-			cfg: func() vco.Config {
-				cfg := vco.DefaultConfig()
+			cfg: func() subtractive.Config {
+				cfg := subtractive.DefaultConfig()
 				cfg.Cutoff = 600.0
 				cfg.Resonance = 0.75
 				cfg.FilterEnvAmount = 0.0
 				cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 0.9, 100.0, 1.0, 200.0)
-				cfg.LFO1 = vco.LFOConfig{Waveform: vco.LFOSampleHold, Rate: 8.0}
-				cfg.LFO2 = vco.LFOConfig{Waveform: vco.LFOSine, Rate: 1.0, KeySync: true}
+				cfg.LFO1 = subtractive.LFOConfig{Waveform: subtractive.LFOSampleHold, Rate: 8.0}
+				cfg.LFO2 = subtractive.LFOConfig{Waveform: subtractive.LFOSine, Rate: 1.0, KeySync: true}
 				return cfg
 			}(),
 			voices: 2, amp: 0.3, legato: 0.95,
@@ -343,7 +343,7 @@ func main() {
 		},
 		{
 			name:   "PWM pad (pwmPad preset): Am F C G chords",
-			cfg:    vco.PWMPadPreset(),
+			cfg:    subtractive.PWMPadPreset(),
 			voices: 12, amp: 0.15, legato: 1.0,
 			layers: [][]note{
 				notes(4, A3, F4-12, C4, G3),
@@ -353,7 +353,7 @@ func main() {
 		},
 		{
 			name:   "Filter envelope to pitch (zap preset)",
-			cfg:    vco.ZapPreset(),
+			cfg:    subtractive.ZapPreset(),
 			voices: 4, amp: 0.25, legato: 0.5,
 			layers: [][]note{{
 				{A3, 1}, {rest, 1}, {A3, 0.5}, {A3, 0.5}, {rest, 1},
@@ -366,8 +366,8 @@ func main() {
 		},
 		{
 			name: "Drive: increasing saturation before the filter",
-			cfg: func() vco.Config {
-				cfg := vco.BassPreset()
+			cfg: func() subtractive.Config {
+				cfg := subtractive.BassPreset()
 				cfg.Cutoff = 600.0
 				return cfg
 			}(),
@@ -377,79 +377,79 @@ func main() {
 		},
 		{
 			name:   "Noise only through a resonant bandpass (wind preset)",
-			cfg:    vco.WindPreset(),
+			cfg:    subtractive.WindPreset(),
 			voices: 2, amp: 0.3, legato: 0.8,
 			layers: [][]note{notes(8, C5, G5)},
 		},
 		{
 			name:   "Reese bass (reeseBass preset): detuned saws with a slow internal cutoff LFO",
-			cfg:    vco.ReeseBassPreset(),
+			cfg:    subtractive.ReeseBassPreset(),
 			voices: 2, amp: 0.3, legato: 0.95,
 			layers: [][]note{notes(4, A1, A1, 29, 31)},
 		},
 		{
 			name:   "FM bass (fmBass preset) with changing FM amount",
-			cfg:    vco.FMBassPreset(),
+			cfg:    subtractive.FMBassPreset(),
 			voices: 2, amp: 0.3, legato: 0.6,
 			layers: [][]note{notes(1, A1, A2, A1, A2, 36, C3, 36, 43, A1, A2, A1, A2, 31, 43, 31, 40)},
 			params: map[string][]float64{"fmAmount": {2, 3, 4, 3}},
 		},
 		{
 			name:   "Square bass with short glide (squareBass preset, mono)",
-			cfg:    vco.SquareBassPreset(),
+			cfg:    subtractive.SquareBassPreset(),
 			voices: 1, amp: 0.3, legato: 0.7,
 			layers: [][]note{notes(1, A2, A2, E3, A2, 43, A2, C3, 50, A2, A2, E3, A3, G3, E3, 50, C3)},
 		},
 		{
 			name:   "LFO wobble bass (lfoWobble preset): wobble rate set per note",
-			cfg:    vco.LFOWobblePreset(),
+			cfg:    subtractive.LFOWobblePreset(),
 			voices: 2, amp: 0.25, legato: 0.95,
 			layers: [][]note{notes(4, A1, A1, 29, 31)},
 			params: map[string][]float64{"lfo1Rate": {2, 4, 6, 8}},
 		},
 		{
 			name: "Synth drums (synthKick, synthSnare, synthHat, synthTom presets)",
-			cfg:  vco.SynthKickPreset(), voices: 2, amp: 0.45, legato: 0.5,
+			cfg:  subtractive.SynthKickPreset(), voices: 2, amp: 0.45, legato: 0.5,
 			layers: [][]note{hits(36,
 				"x.....x...x.....", "x.....x...x.....", "x.....x...x.....", "x.....x.x.x.....")},
 			with: []*section{
 				{
-					name: "snare", cfg: vco.SynthSnarePreset(), voices: 2, amp: 0.3, legato: 0.5,
+					name: "snare", cfg: subtractive.SynthSnarePreset(), voices: 2, amp: 0.3, legato: 0.5,
 					layers: [][]note{hits(50,
 						"....x.......x...", "....x.......x...", "....x.......x...", "....x.......x.xx")},
 				},
 				{
-					name: "hat", cfg: vco.SynthHatPreset(), voices: 4, amp: 0.12, legato: 0.5,
+					name: "hat", cfg: subtractive.SynthHatPreset(), voices: 4, amp: 0.12, legato: 0.5,
 					layers: [][]note{hits(60,
 						"x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.....")},
 				},
 				{
-					name: "tom", cfg: vco.SynthTomPreset(), voices: 4, amp: 0.3, legato: 0.5,
+					name: "tom", cfg: subtractive.SynthTomPreset(), voices: 4, amp: 0.3, legato: 0.5,
 					layers: [][]note{{{rest, 14}, {G3, 0.5}, {E3, 0.5}, {C3, 0.5}, {A2, 0.5}}},
 				},
 			},
 		},
 		{
 			name:   "Flute (flute preset): breath noise and delayed vibrato",
-			cfg:    vco.FlutePreset(),
+			cfg:    subtractive.FlutePreset(),
 			voices: 2, amp: 0.3, legato: 0.95,
 			layers: [][]note{{{E5, 2}, {D5, 1}, {C5, 1}, {A4, 3}, {rest, 1}, {C5, 1}, {D5, 1}, {E5, 2}, {G5, 3}, {rest, 1}}},
 		},
 		{
 			name:   "Clarinet (clarinet preset)",
-			cfg:    vco.ClarinetPreset(),
+			cfg:    subtractive.ClarinetPreset(),
 			voices: 2, amp: 0.3, legato: 0.95,
 			layers: [][]note{{{A3, 1}, {C4, 1}, {E4, 2}, {D4, 1}, {C4, 1}, {59, 2}, {C4, 1}, {D4, 1}, {E4, 1}, {F4, 1}, {E4, 4}}},
 		},
 		{
 			name:   "Theremin (theremin preset, mono): long glides and wide vibrato",
-			cfg:    vco.ThereminPreset(),
+			cfg:    subtractive.ThereminPreset(),
 			voices: 1, amp: 0.3, legato: 1.0,
 			layers: [][]note{{{A4, 3}, {E5, 3}, {D5, 2}, {C5, 3}, {A4, 3}, {rest, 2}}},
 		},
 		{
 			name:   "Electric piano (ePiano preset): FM tone with tremolo, chords",
-			cfg:    vco.EPianoPreset(),
+			cfg:    subtractive.EPianoPreset(),
 			voices: 12, amp: 0.15, legato: 0.9,
 			layers: [][]note{
 				notes(4, A3, D4, G3, C4),
@@ -459,7 +459,7 @@ func main() {
 		},
 		{
 			name:   "Glass keys (glassKeys preset): FM bell arpeggio",
-			cfg:    vco.GlassKeysPreset(),
+			cfg:    subtractive.GlassKeysPreset(),
 			voices: 8, amp: 0.2, legato: 0.5,
 			layers: [][]note{notes(0.5,
 				A4, C5, E5, G5, A5, G5, E5, C5, A4, C5, E5, G5, A5, G5, E5, C5,
@@ -467,13 +467,13 @@ func main() {
 		},
 		{
 			name:   "Vibes (vibes preset): mallet tone with tremolo",
-			cfg:    vco.VibesPreset(),
+			cfg:    subtractive.VibesPreset(),
 			voices: 6, amp: 0.3, legato: 0.9,
 			layers: [][]note{notes(2, C5, E5, G5, B4, A4, C5, E5, G5)},
 		},
 		{
 			name:   "Riser FX (riser preset): pitch and filter swell",
-			cfg:    vco.RiserPreset(),
+			cfg:    subtractive.RiserPreset(),
 			voices: 2, amp: 0.3, legato: 0.95,
 			layers: [][]note{notes(8, A3, E4)},
 		},
@@ -498,7 +498,7 @@ func main() {
 		pingpong.New(bpmMs*4.0, bpmMs*0.75, 0.2, 0.15).AddTo(p).In(mix...),
 	))
 
-	//err := p.ToSoundFile("vco2.wav", writer.WAV, float64(len(sections))*sectionSec, 44100.0, true)
+	//err := p.ToSoundFile("subtractive2.wav", writer.WAV, float64(len(sections))*sectionSec, 44100.0, true)
 	//if err != nil {
 	//	panic(err)
 	//}

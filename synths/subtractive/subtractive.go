@@ -1,4 +1,4 @@
-package vco
+package subtractive
 
 import (
 	"math"
@@ -80,7 +80,7 @@ func DefaultConfig() Config {
 
 const middleC = 261.6255653005986
 
-type VCO struct {
+type Voice struct {
 	*psalm.Module
 	cfg       Config
 	osc1      *blosc.Blosc
@@ -98,12 +98,12 @@ type VCO struct {
 	waitSamps int
 }
 
-func New(cfg Config) *VCO {
+func New(cfg Config) *Voice {
 	if cfg.NumChannels == 0 {
 		cfg.NumChannels = psalm.Mono
 	}
 
-	v := &VCO{
+	v := &Voice{
 		Module:    psalm.NewModule(nil, []int{cfg.NumChannels}),
 		cfg:       cfg,
 		frequency: middleC,
@@ -125,29 +125,29 @@ func New(cfg Config) *VCO {
 	return v
 }
 
-func (v *VCO) osc2Ratio() float64 {
+func (v *Voice) osc2Ratio() float64 {
 	return math.Pow(2.0, float64(v.cfg.Osc2Octave)+v.cfg.Osc2Detune/12.0)
 }
 
 // SetFrequency sets the target frequency, the voice glides there when Glide is set
-func (v *VCO) SetFrequency(frequency float64) {
+func (v *Voice) SetFrequency(frequency float64) {
 	v.frequency = frequency
 	if v.cfg.Glide <= 0.0 {
 		v.glideFreq = frequency
 	}
 }
 
-func (v *VCO) SetPitch(pitch float64) {
+func (v *Voice) SetPitch(pitch float64) {
 	v.SetFrequency(440.0 * math.Pow(2.0, (pitch-69.0)/12.0))
 }
 
-func (v *VCO) SetPulseWidth(pw float64) {
+func (v *Voice) SetPulseWidth(pw float64) {
 	v.cfg.PulseWidth = pw
 	v.osc1.SetPulseWidth(pw)
 	v.osc2.SetPulseWidth(pw)
 }
 
-func (v *VCO) ReceiveMessage(msg psalm.Message) {
+func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("osc1Waveform", func(wf int) {
 		v.cfg.Osc1Waveform = blosc.Waveform(wf)
 		v.osc1.SetWaveform(v.cfg.Osc1Waveform)
@@ -195,7 +195,7 @@ func receiveLFOMessage(msg psalm.Message, prefix string, cfg *LFOConfig) {
 
 // Receive accepts messages, or plain values on inputs 1 (cutoff), 2 (resonance) and 3 (pulse width),
 // which makes it easy to connect LFOs
-func (v *VCO) Receive(value any, index int) {
+func (v *Voice) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		v.ReceiveMessage(msg)
 		return
@@ -211,15 +211,15 @@ func (v *VCO) Receive(value any, index int) {
 	}
 }
 
-func (v *VCO) NoteOn(amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
+func (v *Voice) NoteOn(amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
 	v.note(adsr.NoteOff, 0.0, amplitude, message, tick)
 }
 
-func (v *VCO) Note(duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
+func (v *Voice) Note(duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
 	v.note(adsr.Duration, duration, amplitude, message, tick)
 }
 
-func (v *VCO) note(mode adsr.ReleaseMode, duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
+func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
 	v.ReceiveMessage(message)
 
 	v.waitSamps = tick.SampleOffset
@@ -233,23 +233,23 @@ func (v *VCO) note(mode adsr.ReleaseMode, duration float64, amplitude float64, m
 	v.ampEnv.TriggerFull(duration*1000.0, amplitude, &v.cfg.AmpEnv, mode)
 }
 
-func (v *VCO) NoteOff() {
+func (v *Voice) NoteOff() {
 	v.filterEnv.Release()
 	v.ampEnv.Release()
 }
 
-func (v *VCO) Clear() {
+func (v *Voice) Clear() {
 	v.filterEnv.Clear()
 	v.ampEnv.Clear()
 	v.filter.Clear()
 	v.Output(0).Clear()
 }
 
-func (v *VCO) IsActive() bool {
+func (v *Voice) IsActive() bool {
 	return !v.ampEnv.Done()
 }
 
-func (v *VCO) Synthesize() {
+func (v *Voice) Synthesize() {
 	outSocket := v.Output(0)
 	outSocket.Clear()
 
@@ -379,16 +379,16 @@ func (v *VCO) Synthesize() {
 	v.waitSamps = 0
 }
 
-// NewPoly creates a polyphonic VCO synth
-func NewPoly(cfg Config, numVoices int) *poly.Poly[*VCO] {
+// NewPoly creates a polyphonic subtractive synth
+func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 	if cfg.NumChannels == 0 {
 		cfg.NumChannels = psalm.Mono
 	}
 
-	voices := make([]*VCO, numVoices)
+	voices := make([]*Voice, numVoices)
 	for i := range numVoices {
 		voices[i] = New(cfg)
 	}
 
-	return poly.New[*VCO](cfg.NumChannels, voices)
+	return poly.New[*Voice](cfg.NumChannels, voices)
 }

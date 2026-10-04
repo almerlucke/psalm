@@ -1,0 +1,163 @@
+package main
+
+import (
+	"github.com/almerlucke/genny/bucket"
+	"github.com/almerlucke/genny/float/envelopes/adsr"
+	"github.com/almerlucke/genny/template"
+	"github.com/almerlucke/psalm"
+	paengine "github.com/almerlucke/psalm/audio/portaudio"
+	"github.com/almerlucke/psalm/modules/controls/templ"
+	"github.com/almerlucke/psalm/modules/controls/timer"
+	"github.com/almerlucke/psalm/modules/controls/timer/steps"
+	"github.com/almerlucke/psalm/modules/effects/freeverb"
+	"github.com/almerlucke/psalm/modules/effects/latency"
+	"github.com/almerlucke/psalm/modules/effects/pan"
+	"github.com/almerlucke/psalm/modules/effects/vocoder"
+	"github.com/almerlucke/psalm/modules/player"
+	"github.com/almerlucke/psalm/synths/subtractive"
+	"github.com/almerlucke/sndfile"
+)
+
+func seq[T any](values ...T) *bucket.Bucket[T] {
+	return bucket.NewLoop(values...).SetMode(bucket.Indexed).Loop(true)
+}
+
+// chordVoice plays one voice of a chord progression, every chord lasts the given number of beats
+func chordVoice(p *psalm.Psalm, synth psalm.Modular, beats float64, amp float64, pitches ...float64) {
+	beatSec := 60.0 / float64(psalm.BPM())
+
+	stps := make([]*steps.Step, len(pitches))
+	for i := range stps {
+		stps[i] = &steps.Step{Multiply: beats}
+	}
+
+	synth.ValueIn(templ.NewDurationTrigger(beats*beatSec*0.98, amp, template.Template{
+		"pitch": seq(pitches...),
+	}).ValueIn(timer.WithSteps(stps).AddTo(p)))
+}
+
+// note is a pitch (MIDI, 0 = rest) with a length in beats
+type note struct {
+	pitch float64
+	beats float64
+}
+
+// melody plays a single note line, legato scales how long each note sounds relative to its length
+func melody(p *psalm.Psalm, synth psalm.Modular, amp float64, legato float64, notes ...note) {
+	var (
+		stps    []any
+		pitches []float64
+		durs    []float64
+		beatSec = 60.0 / float64(psalm.BPM())
+	)
+
+	for _, n := range notes {
+		if n.pitch == 0 {
+			stps = append(stps, -n.beats)
+			continue
+		}
+		stps = append(stps, n.beats)
+		pitches = append(pitches, n.pitch)
+		durs = append(durs, n.beats*beatSec*legato)
+	}
+
+	synth.ValueIn(templ.NewDurationTrigger(seq(durs...), amp, template.Template{
+		"pitch": seq(pitches...),
+	}).ValueIn(timer.WithSteps(steps.QuickSteps(stps...)).AddTo(p)))
+}
+
+func main() {
+	psalm.PushConfig(psalm.Config{
+		BPM:        90,
+		PPQ:        240,
+		SampleRate: 44100,
+		BufferSize: 1024,
+	})
+
+	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
+	defer p.Close()
+
+	// Modulator: looping speech
+	speech := player.New(player.Config{
+		SndFile: sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4),
+		Loop:    true,
+		Speed:   1.0,
+		Amp:     0.8,
+	}).AddTo(p)
+
+	// Carrier: a bright, harmonically rich chord pad, vocoders need lots of harmonics to shape
+	carrierCfg := subtractive.PadPreset()
+	carrierCfg.Cutoff = 7000.0
+	carrierCfg.FilterEnvAmount = 0.0
+	carrierCfg.Resonance = 0.0
+	carrierCfg.NoiseLevel = 0.05
+	carrierCfg.AmpEnv = *adsr.NewSetting(1.0, 30.0, 1.0, 10.0, 1.0, 300.0)
+
+	carrier := subtractive.NewPoly(carrierCfg, 12).AddTo(p)
+
+	// Am F C G, two bars per chord
+	chordVoice(p, carrier, 8, 0.2, 45, 41, 48, 43)
+	chordVoice(p, carrier, 8, 0.2, 57, 57, 55, 55)
+	chordVoice(p, carrier, 8, 0.2, 60, 60, 60, 59)
+	chordVoice(p, carrier, 8, 0.2, 64, 65, 64, 62)
+
+	// Vocoder: speech on input 0, carrier on input 1
+	vcfg := vocoder.DefaultConfig()
+	vcfg.Gain = 1.0
+	voc := vocoder.New(vcfg)
+	voc.AddTo(p)
+	voc.In(speech, 0, 0, carrier, 0, 1)
+
+	// Flute: a slow, melancholic single note line over the same progression (8 beats per
+	// chord). It opens low, answers an octave up over F, peaks over C and steps back down over G,
+	// hanging on the leading note B before the loop returns to the low A minor phrase
+	const (
+		C4 = 60.0
+		D4 = 62.0
+		E4 = 64.0
+		G4 = 67.0
+		A4 = 69.0
+		B4 = 71.0
+		C5 = 72.0
+		D5 = 74.0
+		E5 = 76.0
+		F5 = 77.0
+		G5 = 79.0
+	)
+
+	flute := subtractive.NewPoly(subtractive.FlutePreset(), 6).AddTo(p)
+
+	melody(p, flute, 0.1, 0.95,
+		note{E4, 3}, note{D4, 1}, note{C4, 4}, // Am, low
+		note{F5, 3}, note{E5, 1}, note{C5, 2}, note{A4, 2}, // F, an octave up
+		note{E5, 3}, note{D5, 1}, note{E5, 2}, note{G5, 2}, // C, the peak
+		note{D5, 4}, note{B4, 3}, note{G4, 1}, // G, stepping back down
+	)
+
+	// Pad: soft
+	padCfg := subtractive.PWMPadPreset()
+	padCfg.Cutoff = 500.0
+
+	pad := subtractive.NewPoly(padCfg, 12).AddTo(p)
+
+	chordVoice(p, pad, 8, 0.05, 57, 43, 60, 55) // A2 F2 C3 G2
+	chordVoice(p, pad, 8, 0.05, 64, 60, 67, 62) // E3 C3 G3 D3
+	chordVoice(p, pad, 8, 0.05, 72, 69, 76, 71) // C4 A3 E4 B3
+
+	// Delay the piano and pad by the vocoder latency so everything lines up
+	// Panning: the voice stays in the center, the piano sits to the left and the pad to the right
+	voicePanned := pan.New(0.0).AddTo(p).In(voc)
+	flutePanned := pan.New(-0.5).AddTo(p).In(flute)
+	padPanned := pan.New(0.45).AddTo(p).In(pad)
+
+	accompaniment := latency.New(psalm.Stereo, voc.Latency()).AddTo(p).In(flutePanned, 0, 0, padPanned, 0, 0)
+
+	p.Out(freeverb.New(0.9, 0.5, 0.9, 0.3, 0.6).AddTo(p).In(voicePanned, 0, 0, accompaniment, 0, 0))
+
+	//err := p.ToSoundFile("vocoder.wav", writer.WAV, 30, 44100.0, true)
+	//if err != nil {
+	//	panic(err)
+	//}
+
+	_ = p.Listen()
+}

@@ -1,4 +1,4 @@
-package vco
+package subtractive
 
 import (
 	"math"

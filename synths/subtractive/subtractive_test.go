@@ -1,4 +1,4 @@
-package vco
+package subtractive
 
 import (
 	"math"
@@ -9,7 +9,7 @@ import (
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
-var _ poly.Voice = (*VCO)(nil)
+var _ poly.Voice = (*Voice)(nil)
 
 func TestVCONoteLifecycle(t *testing.T) {
 	v := New(DefaultConfig())
@@ -61,7 +61,7 @@ func TestPolyForwardsCutoff(t *testing.T) {
 	p := NewPoly(DefaultConfig(), 2)
 	p.Receive(1234.0, 1)
 
-	p.CallVoices(func(v *VCO) {
+	p.CallVoices(func(v *Voice) {
 		if v.cfg.Cutoff != 1234.0 {
 			t.Fatalf("expected cutoff 1234, got %v", v.cfg.Cutoff)
 		}
