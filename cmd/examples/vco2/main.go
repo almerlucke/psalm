@@ -45,6 +45,21 @@ func notes(beats float64, pitches ...float64) []note {
 	return ns
 }
 
+// hits builds 16th note hits of one pitch from bar patterns, 'x' is a hit and '.' a rest
+func hits(pitch float64, bars ...string) []note {
+	var ns []note
+	for _, bar := range bars {
+		for _, c := range bar {
+			if c == 'x' {
+				ns = append(ns, note{pitch, 0.25})
+			} else {
+				ns = append(ns, note{rest, 0.25})
+			}
+		}
+	}
+	return ns
+}
+
 // section demonstrates a feature: one or more layers of notes (for chords) played by a synth,
 // params are sent with every note and cycle per note, so they can step through settings
 type section struct {
@@ -56,6 +71,7 @@ type section struct {
 	layers [][]note
 	params map[string][]float64
 	patch  func(p *psalm.Psalm, synth psalm.Modular) // optional extra modulation
+	with   []*section                                // extra parts playing in the same slot (e.g. a drum kit)
 }
 
 func beatsOf(ns []note) float64 {
@@ -102,7 +118,8 @@ func play(legato float64, ns []note) (*timer.Timer, *bucket.Bucket[float64], *bu
 	return timer.WithSteps(steps.QuickSteps(stps...)), seq(pitches...), seq(durs...)
 }
 
-func (s *section) build(p *psalm.Psalm, index int, numSections int) psalm.Modular {
+// build creates the synths of the section (and the parts it plays with) and returns them for mixing
+func (s *section) build(p *psalm.Psalm, index int, numSections int) []psalm.Modular {
 	synth := vco.NewPoly(s.cfg, s.voices).AddTo(p)
 
 	for _, layer := range s.layers {
@@ -124,7 +141,12 @@ func (s *section) build(p *psalm.Psalm, index int, numSections int) psalm.Modula
 		s.patch(p, synth)
 	}
 
-	return synth
+	synths := []psalm.Modular{synth}
+	for _, part := range s.with {
+		synths = append(synths, part.build(p, index, numSections)...)
+	}
+
+	return synths
 }
 
 func main() {
@@ -359,6 +381,102 @@ func main() {
 			voices: 2, amp: 0.3, legato: 0.8,
 			layers: [][]note{notes(8, C5, G5)},
 		},
+		{
+			name:   "Reese bass (reeseBass preset): detuned saws with a slow internal cutoff LFO",
+			cfg:    vco.ReeseBassPreset(),
+			voices: 2, amp: 0.3, legato: 0.95,
+			layers: [][]note{notes(4, A1, A1, 29, 31)},
+		},
+		{
+			name:   "FM bass (fmBass preset) with changing FM amount",
+			cfg:    vco.FMBassPreset(),
+			voices: 2, amp: 0.3, legato: 0.6,
+			layers: [][]note{notes(1, A1, A2, A1, A2, 36, C3, 36, 43, A1, A2, A1, A2, 31, 43, 31, 40)},
+			params: map[string][]float64{"fmAmount": {2, 3, 4, 3}},
+		},
+		{
+			name:   "Square bass with short glide (squareBass preset, mono)",
+			cfg:    vco.SquareBassPreset(),
+			voices: 1, amp: 0.3, legato: 0.7,
+			layers: [][]note{notes(1, A2, A2, E3, A2, 43, A2, C3, 50, A2, A2, E3, A3, G3, E3, 50, C3)},
+		},
+		{
+			name:   "LFO wobble bass (lfoWobble preset): wobble rate set per note",
+			cfg:    vco.LFOWobblePreset(),
+			voices: 2, amp: 0.25, legato: 0.95,
+			layers: [][]note{notes(4, A1, A1, 29, 31)},
+			params: map[string][]float64{"lfo1Rate": {2, 4, 6, 8}},
+		},
+		{
+			name: "Synth drums (synthKick, synthSnare, synthHat, synthTom presets)",
+			cfg:  vco.SynthKickPreset(), voices: 2, amp: 0.45, legato: 0.5,
+			layers: [][]note{hits(36,
+				"x.....x...x.....", "x.....x...x.....", "x.....x...x.....", "x.....x.x.x.....")},
+			with: []*section{
+				{
+					name: "snare", cfg: vco.SynthSnarePreset(), voices: 2, amp: 0.3, legato: 0.5,
+					layers: [][]note{hits(50,
+						"....x.......x...", "....x.......x...", "....x.......x...", "....x.......x.xx")},
+				},
+				{
+					name: "hat", cfg: vco.SynthHatPreset(), voices: 4, amp: 0.12, legato: 0.5,
+					layers: [][]note{hits(60,
+						"x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.....")},
+				},
+				{
+					name: "tom", cfg: vco.SynthTomPreset(), voices: 4, amp: 0.3, legato: 0.5,
+					layers: [][]note{{{rest, 14}, {G3, 0.5}, {E3, 0.5}, {C3, 0.5}, {A2, 0.5}}},
+				},
+			},
+		},
+		{
+			name:   "Flute (flute preset): breath noise and delayed vibrato",
+			cfg:    vco.FlutePreset(),
+			voices: 2, amp: 0.3, legato: 0.95,
+			layers: [][]note{{{E5, 2}, {D5, 1}, {C5, 1}, {A4, 3}, {rest, 1}, {C5, 1}, {D5, 1}, {E5, 2}, {G5, 3}, {rest, 1}}},
+		},
+		{
+			name:   "Clarinet (clarinet preset)",
+			cfg:    vco.ClarinetPreset(),
+			voices: 2, amp: 0.3, legato: 0.95,
+			layers: [][]note{{{A3, 1}, {C4, 1}, {E4, 2}, {D4, 1}, {C4, 1}, {59, 2}, {C4, 1}, {D4, 1}, {E4, 1}, {F4, 1}, {E4, 4}}},
+		},
+		{
+			name:   "Theremin (theremin preset, mono): long glides and wide vibrato",
+			cfg:    vco.ThereminPreset(),
+			voices: 1, amp: 0.3, legato: 1.0,
+			layers: [][]note{{{A4, 3}, {E5, 3}, {D5, 2}, {C5, 3}, {A4, 3}, {rest, 2}}},
+		},
+		{
+			name:   "Electric piano (ePiano preset): FM tone with tremolo, chords",
+			cfg:    vco.EPianoPreset(),
+			voices: 12, amp: 0.15, legato: 0.9,
+			layers: [][]note{
+				notes(4, A3, D4, G3, C4),
+				notes(4, C4, F4, 59, E4),
+				notes(4, E4, A4, D4, G4),
+			},
+		},
+		{
+			name:   "Glass keys (glassKeys preset): FM bell arpeggio",
+			cfg:    vco.GlassKeysPreset(),
+			voices: 8, amp: 0.2, legato: 0.5,
+			layers: [][]note{notes(0.5,
+				A4, C5, E5, G5, A5, G5, E5, C5, A4, C5, E5, G5, A5, G5, E5, C5,
+				G4, B4, D5, G5, D5, B4, G4, D5, A4, C5, E5, A5, E5, C5, A4, E5)},
+		},
+		{
+			name:   "Vibes (vibes preset): mallet tone with tremolo",
+			cfg:    vco.VibesPreset(),
+			voices: 6, amp: 0.3, legato: 0.9,
+			layers: [][]note{notes(2, C5, E5, G5, B4, A4, C5, E5, G5)},
+		},
+		{
+			name:   "Riser FX (riser preset): pitch and filter swell",
+			cfg:    vco.RiserPreset(),
+			voices: 2, amp: 0.3, legato: 0.95,
+			layers: [][]note{notes(8, A3, E4)},
+		},
 	}
 
 	// Build the synths and print the schedule
@@ -367,7 +485,9 @@ func main() {
 
 	for i, s := range sections {
 		fmt.Printf("%6.1fs  %s\n", float64(i)*sectionSec, s.name)
-		mix = append(mix, s.build(p, i, len(sections)), 0, 0)
+		for _, synth := range s.build(p, i, len(sections)) {
+			mix = append(mix, synth, 0, 0)
+		}
 	}
 
 	fmt.Printf("%6.1fs  (tour loops)\n", float64(len(sections))*sectionSec)
