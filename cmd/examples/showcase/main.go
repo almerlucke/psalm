@@ -17,7 +17,6 @@ package main
 //	voices      speech vocoding a wavetable pad
 //	droplets    pulsar raindrops
 //	aurora      wavetable drone on a generated random spectra table
-//	bells       FM tubular bells
 //
 // The strings run through a ladder lowpass that opens at dawn (the prelude) and closes at dusk
 // (the coda), the whole orchestra sits in an FDN hall and a soft clipper guards the master.
@@ -398,9 +397,6 @@ func main() {
 	hornSolo := fm.NewPoly(fm.FrenchHornPreset(), 2).AddTo(p)
 	route(&hall, pan.New(0.25).AddTo(p).In(hornSolo))
 
-	bells := fm.NewPoly(fm.TubularBellsPreset(), 4).AddTo(p)
-	route(&hall, pan.New(0.15).AddTo(p).In(bells))
-
 	// --- choir: grains on a choir recording, a pulsar choir and the soprano, in a church ---
 
 	choirRec := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-angelical-choir-654.wav", 4)
@@ -629,15 +625,6 @@ func main() {
 				return nil
 			}
 			return []ev{{pitches: []float64{38, 45}, beats: 32, hold: 26}}
-		}},
-		{"bells", bells, 0.15, 1.0, "", func(s section) []ev {
-			if !only("Climax", "Coda")(s) {
-				return nil
-			}
-			if s.name == "Coda" {
-				return []ev{rest(24), n(62, 8)}
-			}
-			return []ev{n(62, 32), n(62, 32)} // a bell at the start of each half
 		}},
 	}
 	for _, pt := range parts {
