@@ -137,6 +137,9 @@ type FDNReverb struct {
 	modPhase  [numLines]float64
 	modInc    [numLines]float64
 	modDepth  float64
+	modVal    [numLines]float64 // current modulation, interpolated between updates
+	modStep   [numLines]float64
+	modCount  int
 	feedback  [numLines]float64
 	out       [numLines]float64
 	preDelayN float64 // pre-delay in samples
@@ -230,6 +233,9 @@ func (r *FDNReverb) ReceiveMessage(msg psalm.Message) {
 	r.update()
 }
 
+// modUpdate is the interval in samples at which the delay modulation (below 1 Hz) is evaluated
+const modUpdate = 8
+
 // hadamard8 applies the 8x8 Hadamard matrix in place with a fast Walsh-Hadamard transform,
 // scaled by 1/sqrt(8) so it is orthogonal (energy preserving)
 func hadamard8(x *[numLines]float64) {
@@ -267,8 +273,20 @@ func (r *FDNReverb) ProcessSample(inL float64, inR float64) (float64, float64) {
 	}
 
 	// read the modulated delay lines through their damping filters
+	// the slow modulation is evaluated every modUpdate samples and interpolated in between
+	if r.modCount == 0 {
+		for l := range numLines {
+			now := math.Sin(2.0 * math.Pi * r.modPhase[l])
+			next := math.Sin(2.0 * math.Pi * (r.modPhase[l] + modUpdate*r.modInc[l]))
+			r.modVal[l] = now * r.modDepth
+			r.modStep[l] = (next - now) * r.modDepth / modUpdate
+		}
+	}
+	r.modCount = (r.modCount + 1) % modUpdate
+
 	for l := range numLines {
-		mod := math.Sin(2.0*math.Pi*r.modPhase[l]) * r.modDepth
+		mod := r.modVal[l]
+		r.modVal[l] += r.modStep[l]
 		r.modPhase[l] += r.modInc[l]
 		if r.modPhase[l] >= 1.0 {
 			r.modPhase[l] -= 1.0

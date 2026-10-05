@@ -282,3 +282,71 @@ func TestFilterTypesWithModulationAreStable(t *testing.T) {
 		}
 	}
 }
+
+// jumpRatio plays a sustained note while setting a value input to a new value every buffer (like an
+// LFO does), and compares the largest sudden jump (third difference) at buffer boundaries with the
+// largest one elsewhere. Parameters that step instead of glide would click at the boundaries
+func jumpRatio(cfg Config, input int, value func(t float64) float64) float64 {
+	v := New(cfg)
+	v.NoteOn(0.5, psalm.Message{"pitch": 45.0}, psalm.CtrlTick{}, v.Config())
+	bufSize := v.Config().BufferSize
+	var out []float64
+	for b := range 200 {
+		if input > 0 {
+			v.Receive(value(float64(b*bufSize)/v.Config().SampleRate), input)
+		}
+		v.Synthesize()
+		for _, s := range v.Output(0).Channels[0] {
+			out = append(out, float64(s))
+		}
+	}
+	boundary, inner := 0.0, 0.0
+	for i := 100 * bufSize; i+3 < len(out); i++ {
+		d := math.Abs(out[i+3] - 3*out[i+2] + 3*out[i+1] - out[i])
+		if (i+2)%bufSize == 0 || (i+1)%bufSize == 0 || i%bufSize == 0 {
+			boundary = math.Max(boundary, d)
+		} else {
+			inner = math.Max(inner, d)
+		}
+	}
+	return boundary / inner
+}
+
+func TestModulatedInputsDontClick(t *testing.T) {
+	// a sine source, so the only sudden changes come from the parameters
+	base := DefaultConfig()
+	base.Osc1Waveform = blosc.Sine
+	base.Osc2Level = 0
+	base.Cutoff = 400
+	base.FilterEnvAmount = 0
+	base.AmpEnv = *adsr.NewSetting(1.0, 5.0, 1.0, 10.0, 1.0, 100.0)
+	sweep := func(lo, hi float64) func(float64) float64 {
+		return func(t float64) float64 { return lo + (hi-lo)*(0.5+0.5*math.Sin(2*math.Pi*0.3*t)) }
+	}
+
+	pw := base
+	pw.Osc1Waveform = blosc.Rectangle
+	pw.Cutoff = 4000
+
+	formantCfg := base
+	formantCfg.FilterType = FilterFormant
+	formantCfg.Resonance = 0.5
+
+	cases := []struct {
+		name  string
+		cfg   Config
+		input int
+		value func(float64) float64
+	}{
+		{"cutoff", base, 1, sweep(200, 3000)},
+		{"resonance", base, 2, sweep(0, 0.9)},
+		{"pulse width", pw, 3, sweep(0.1, 0.9)},
+		{"vowel", formantCfg, 4, sweep(0, 4)},
+	}
+
+	for _, c := range cases {
+		if r := jumpRatio(c.cfg, c.input, c.value); r > 1.1 {
+			t.Fatalf("%s changes click at buffer boundaries (jump ratio %.2f)", c.name, r)
+		}
+	}
+}

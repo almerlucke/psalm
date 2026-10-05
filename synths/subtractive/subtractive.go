@@ -116,12 +116,14 @@ type Voice struct {
 	formant   *formant.Formant
 	ladderDrv float64
 	formShift float64
-	formCount int
+	formCount int // counts samples until the next filter coefficient update
 	filterEnv *adsr.ADSR
 	ampEnv    *adsr.ADSR
 	frequency float64 // target frequency
 	glideFreq float64 // current frequency, glides towards frequency
 	cutoff    float64 // smoothed cutoff, ramps towards cfg.Cutoff over a buffer
+	res       float64 // smoothed resonance, ramps towards cfg.Resonance over a buffer
+	vowel     float64 // smoothed vowel, ramps towards cfg.Vowel over a buffer
 	waitSamps int
 }
 
@@ -136,6 +138,8 @@ func New(cfg Config) *Voice {
 		frequency: middleC,
 		glideFreq: middleC,
 		cutoff:    cfg.Cutoff,
+		res:       cfg.Resonance,
+		vowel:     cfg.Vowel,
 	}
 
 	sr := v.Config().SampleRate
@@ -293,7 +297,7 @@ func (v *Voice) Synthesize() {
 	outSocket.Clear()
 
 	if v.ampEnv.Done() {
-		v.cutoff = v.cfg.Cutoff
+		v.resetSmoothing()
 		return
 	}
 
@@ -302,7 +306,12 @@ func (v *Voice) Synthesize() {
 	outChannels := outSocket.Channels
 	bufferSize := v.Config().BufferSize
 	keyTrackMult := math.Pow(v.glideFreq/middleC, cfg.KeyTrack)
-	cutoffInc := (cfg.Cutoff - v.cutoff) / float64(bufferSize-v.waitSamps)
+	// cutoff, resonance and vowel glide over the buffer, so changing them (for example from an LFO
+	// on the value inputs) doesn't step and click
+	n := float64(bufferSize - v.waitSamps)
+	cutoffInc := (cfg.Cutoff - v.cutoff) / n
+	resInc := (cfg.Resonance - v.res) / n
+	vowelInc := (cfg.Vowel - v.vowel) / n
 	osc2Ratio := v.osc2Ratio()
 	lfo1Active := cfg.LFO1.active()
 	lfo2Active := cfg.LFO2.active()
@@ -383,8 +392,14 @@ func (v *Voice) Synthesize() {
 
 		// Filter with envelope and LFO modulation in octaves (in vowel steps for the formant filter)
 		v.cutoff += cutoffInc
-		mod := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2
-		s = v.filter(s, v.cutoff*keyTrackMult*math.Pow(2.0, mod), mod)
+		v.res += resInc
+		v.vowel += vowelInc
+		if v.formCount == 0 {
+			mod := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2
+			v.setFilter(v.cutoff*keyTrackMult*math.Exp2(mod), mod)
+		}
+		v.formCount = (v.formCount + 1) % filterUpdate
+		s = v.processFilter(s)
 
 		// Amp with LFO tremolo
 		amp := v.ampEnv.Generate()
@@ -401,12 +416,21 @@ func (v *Voice) Synthesize() {
 		}
 
 		if v.ampEnv.Done() {
-			v.cutoff = cfg.Cutoff
+			v.resetSmoothing()
 			break
 		}
 	}
 
+	// land exactly on the targets, no rounding drift
+	v.resetSmoothing()
 	v.waitSamps = 0
+}
+
+// resetSmoothing sets the smoothed filter settings to their targets
+func (v *Voice) resetSmoothing() {
+	v.cutoff = v.cfg.Cutoff
+	v.res = v.cfg.Resonance
+	v.vowel = v.cfg.Vowel
 }
 
 // formantQ maps resonance 0-1 to the formant sharpness
@@ -414,8 +438,13 @@ func formantQ(res float64) float64 {
 	return 4.0 + math.Max(0.0, math.Min(res, 1.0))*16.0
 }
 
-// filter runs a sample through the selected filter
-func (v *Voice) filter(s float64, cutoff float64, mod float64) float64 {
+// filterUpdate is the interval in samples at which the filter coefficients are recalculated
+// (about 11 kHz at 44.1 kHz). Calculating them every sample costs a lot (tan and exp) and is far
+// more often than any modulation needs
+const filterUpdate = 4
+
+// setFilter updates the coefficients of the selected filter
+func (v *Voice) setFilter(cutoff float64, mod float64) {
 	cfg := &v.cfg
 
 	switch cfg.FilterType {
@@ -428,8 +457,7 @@ func (v *Voice) filter(s float64, cutoff float64, mod float64) float64 {
 			v.ladderDrv = drive
 			v.ladder.SetDrive(drive)
 		}
-		v.ladder.Set(cutoff, cfg.Resonance)
-		return v.ladder.Process(s, cfg.LadderMode)
+		v.ladder.Set(cutoff, v.res)
 
 	case FilterFormant:
 		shift := cfg.FormantShift
@@ -440,16 +468,22 @@ func (v *Voice) filter(s float64, cutoff float64, mod float64) float64 {
 			v.formShift = shift
 			v.formant.SetShift(shift)
 		}
-		// three filters per update, so update the vowel every few samples
-		if v.formCount == 0 {
-			v.formant.Set(cfg.Vowel+mod, formantQ(cfg.Resonance))
-		}
-		v.formCount = (v.formCount + 1) % 8
-		return v.formant.Process(s)
+		v.formant.Set(v.vowel+mod, formantQ(v.res))
 
 	default:
-		v.svf.Set(cutoff, cfg.Resonance)
-		return v.svf.Process(s, svf.Mode(cfg.FilterMode))
+		v.svf.Set(cutoff, v.res)
+	}
+}
+
+// processFilter runs a sample through the selected filter
+func (v *Voice) processFilter(s float64) float64 {
+	switch v.cfg.FilterType {
+	case FilterLadder:
+		return v.ladder.Process(s, v.cfg.LadderMode)
+	case FilterFormant:
+		return v.formant.Process(s)
+	default:
+		return v.svf.Process(s, svf.Mode(v.cfg.FilterMode))
 	}
 }
 

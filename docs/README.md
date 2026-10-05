@@ -11,8 +11,8 @@ play it live through an audio engine or render it to a sound file.
 | [Core concepts](core-concepts.md) | Psalm, config, modules, audio and value connections, messages, control ticks, rendering, audio engines |
 | [Controls](controls.md) | Sequencing and control modules: `timer`, `steps`, `templ`, `gen`, `dispatch`, `logger` |
 | [Sources](sources.md) | Sound sources: `player`, `blosc` oscillator, `lfo`, `granular` |
-| [Synths](synths.md) | `poly` voice allocation, the `subtractive` synth (all settings and presets), `drums` |
-| [Effects](effects.md) | Reverbs (`freeverb`, `fdnreverb`, `shimmer`, `convolver`), `chorus`, `flanger`, `pingpong`, `vocoder`, `pitchshift`, `pan`, `latency` |
+| [Synths](synths.md) | `poly` voice allocation, the `subtractive` synth, the 4 operator `fm` synth, the 6 operator `dx` engine with SysEx loading, the `grains` granular sampler, the `pulsar` synth, `drums` |
+| [Effects](effects.md) | Reverbs (`freeverb`, `fdnreverb`, `shimmer`, `convolver`), `chorus`, `flanger`, `pingpong`, `vocoder`, `granulator` (with freeze), `pitchshift`, `pan`, `latency` |
 | [Filters](filters.md) | The `filters` module: SVF, Moog style ladder, biquad EQ and formant (vowel) filters |
 | [Blocks](blocks.md) | Low level DSP building blocks used by the modules (`fft`, filters, `pitchshift`, `blosc`, `delay`) |
 | [Examples](examples.md) | The example programs in `cmd/examples` and what they demonstrate |

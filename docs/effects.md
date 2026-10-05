@@ -162,6 +162,42 @@ voc.In(speech, 0, 0, carrier, 0, 1)
 Carriers need lots of harmonics: detuned saws, a little noise, an open filter. To line up other
 parts with the vocoded output, delay them with the [latency](#latency) module by `voc.Latency()`.
 
+## granulator
+
+Records its stereo input into a buffer and plays grains from it: short windowed slices read a
+little behind the input, with pitch, spray and stereo spread. **Freeze** stops the recording, so the
+grains keep playing the captured moment while the input moves on. Feedback sends the grains back
+into the buffer, so pitched grains stack up (a fifth up stacks fifths).
+
+```go
+gran := granulator.New(granulator.DefaultConfig())
+gran.AddTo(p)
+gran.In(synth)
+gran.ReceiveMessage(psalm.Message{"freeze": 1.0}) // or SetFreeze(true), or value input 1
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Freeze` | false | input 1 (above 0.5), `freeze` | Stop recording, keep playing the buffer |
+| `Delay` | 150 | input 2, `delay` | Milliseconds behind the input the grains read |
+| `Density` | 25 | input 3, `density` | Grains per second |
+| `GrainSize` | 120 | input 4, `grainSize` | Milliseconds |
+| `Pitch` | 0 | input 5, `pitch` | Semitones |
+| `Spray` | 80 | `spray` | Milliseconds, random spread of the grain positions |
+| `PitchSpread` | 0 | `pitchSpread` | Semitones, random detune per grain |
+| `Octave` | 0 | `octave` | 0-1, chance a grain plays an octave up |
+| `Reverse` | 0 | `reverse` | 0-1, chance a grain plays backwards |
+| `Shape` | 0 | `shape` | 0-1, grain window from smooth to percussive (stutter) |
+| `Jitter` | 0.4 | `jitter` | 0-1, randomness of the time between grains |
+| `StereoSpread` | 0.7 | `stereoSpread` | 0-1, random pan per grain |
+| `Feedback` | 0 | `feedback` | 0-1, grains fed back into the buffer |
+| `Mix` | 0.5 | `mix` | 0 dry, 1 wet |
+| `BufferSeconds` | 4 | | Length of the buffer, the longest delay |
+
+Every grain is placed so it only reads recorded audio: pitched up grains never catch up with the
+input, and frozen grains never cross the seam between the newest and oldest audio, so there are no
+clicks from reading stale audio. The level stays steady when the density or grain size changes.
+
 ## pitchshift
 
 `pitchshift.New(semitones, windowMs, mix)` - a delay line pitch shifter with two crossfading read

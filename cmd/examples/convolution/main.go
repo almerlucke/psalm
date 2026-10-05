@@ -9,7 +9,6 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/synths/subtractive"
-	"github.com/almerlucke/sndfile"
 )
 
 // random picks one of the values at random every time
@@ -38,8 +37,8 @@ func main() {
 
 	// Convolution reverb with a synthetic 3 second impulse response. To use a recorded impulse
 	// response (at the same sample rate) instead:
-	ir := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
-	// ir := convolver.SyntheticReverbIR(3.0, 0.6, psalm.SampleRate(), 1)
+	//ir := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
+	ir := convolver.SyntheticReverbIR(3.0, 0.6, psalm.SampleRate(), 1)
 
 	reverb := convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.35, Gain: 0.3}).AddTo(p).In(plucks)
 
