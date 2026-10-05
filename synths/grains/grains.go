@@ -260,11 +260,29 @@ func (v *Voice) IsActive() bool {
 	return !v.ampEnv.Done()
 }
 
+// smoothTable holds the sin^2 window, read with linear interpolation (an error below 1e-6): every
+// sample of every grain reads the window, a sine there costs more than all the rest of a grain
+var smoothTable = func() []float64 {
+	const n = 1024
+	t := make([]float64, n+2)
+	for i := range n + 1 {
+		s := math.Sin(math.Pi * float64(i) / n)
+		t[i] = s * s
+	}
+	return t
+}()
+
+func smoothWindow(t float64) float64 {
+	pos := math.Max(0, math.Min(t, 1)) * float64(len(smoothTable)-2)
+	i := int(pos)
+	a := smoothTable[i]
+	return a + (smoothTable[i+1]-a)*(pos-float64(i))
+}
+
 // window returns the grain envelope at t (0-1): a smooth sin^2 window, morphing to a percussive
 // shape with a fast attack and an exponential decay
 func window(t float64, shape float64) float64 {
-	smooth := math.Sin(math.Pi * t)
-	smooth *= smooth
+	smooth := smoothWindow(t)
 
 	if shape <= 0.0 {
 		return smooth
