@@ -69,6 +69,7 @@ func New(cfg Config) *Player {
 		sf:               sndFile,
 		sndBank:          cfg.SndBank,
 		amp:              cfg.Amp,
+		offsetRange:      cfg.OffsetRange,
 		startOffset:      cfg.StartOffset,
 		endOffset:        cfg.EndOffset,
 		useZeroCrossings: cfg.UseZeroCrossings,

@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/almerlucke/genny/bucket"
 	"github.com/almerlucke/genny/float/envelopes/adsr"
+	"github.com/almerlucke/genny/sequence"
 	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
@@ -25,23 +25,50 @@ import (
 
 const sectionBeats = 16.0 // 4 bars
 
-func seq[T any](values ...T) *bucket.Bucket[T] {
-	return bucket.NewLoop(values...).SetMode(bucket.Indexed).Loop(true)
+// seq plays the values in order and loops (a bucket would shuffle them)
+func seq[T any](values ...T) *sequence.Sequence[T] {
+	return sequence.NewLoop(values...)
 }
 
-// note is a pitch (MIDI, 0 = rest) with a length in beats
+// note is one or more pitches (MIDI, a chord when more than one) with a length in beats, no
+// pitches is a rest
 type note struct {
-	pitch float64
-	beats float64
+	pitches []float64
+	beats   float64
 }
 
 const rest = 0.0
 
-// notes builds notes of equal length from pitches
+func single(pitch float64, beats float64) note {
+	if pitch == rest {
+		return note{nil, beats}
+	}
+	return note{[]float64{pitch}, beats}
+}
+
+// notes builds single notes of equal length from pitches
 func notes(beats float64, pitches ...float64) []note {
 	ns := make([]note, len(pitches))
 	for i, p := range pitches {
-		ns[i] = note{p, beats}
+		ns[i] = single(p, beats)
+	}
+	return ns
+}
+
+// line builds single notes from pitch, beats pairs
+func line(pairs ...float64) []note {
+	ns := make([]note, 0, len(pairs)/2)
+	for i := 0; i+1 < len(pairs); i += 2 {
+		ns = append(ns, single(pairs[i], pairs[i+1]))
+	}
+	return ns
+}
+
+// chordNotes builds chords of equal length
+func chordNotes(beats float64, chords ...[]float64) []note {
+	ns := make([]note, len(chords))
+	for i, c := range chords {
+		ns[i] = note{c, beats}
 	}
 	return ns
 }
@@ -52,24 +79,24 @@ func hits(pitch float64, bars ...string) []note {
 	for _, bar := range bars {
 		for _, c := range bar {
 			if c == 'x' {
-				ns = append(ns, note{pitch, 0.25})
+				ns = append(ns, single(pitch, 0.25))
 			} else {
-				ns = append(ns, note{rest, 0.25})
+				ns = append(ns, single(rest, 0.25))
 			}
 		}
 	}
 	return ns
 }
 
-// section demonstrates a feature: one or more layers of notes (for chords) played by a synth,
-// params are sent with every note and cycle per note, so they can step through settings
+// section demonstrates a feature: notes (or chords) played by a synth, params are sent with every
+// note and cycle per note, so they can step through settings
 type section struct {
 	name   string
 	cfg    subtractive.Config
 	voices int
 	amp    float64
 	legato float64
-	layers [][]note
+	notes  []note
 	params map[string][]float64
 	patch  func(p *psalm.Psalm, synth psalm.Modular) // optional extra modulation
 	with   []*section                                // extra parts playing in the same slot (e.g. a drum kit)
@@ -87,32 +114,33 @@ func beatsOf(ns []note) float64 {
 func schedule(ns []note, index int, numSections int) []note {
 	var out []note
 	if index > 0 {
-		out = append(out, note{rest, float64(index) * sectionBeats})
+		out = append(out, single(rest, float64(index)*sectionBeats))
 	}
 	out = append(out, ns...)
 	if after := numSections - 1 - index; after > 0 {
-		out = append(out, note{rest, float64(after) * sectionBeats})
+		out = append(out, single(rest, float64(after)*sectionBeats))
 	}
 	return out
 }
 
-// play converts notes into a step timer plus matching pitch and duration sequences
-func play(legato float64, ns []note) (*timer.Timer, *bucket.Bucket[float64], *bucket.Bucket[float64]) {
+// play converts notes into a step timer plus matching pitch and duration sequences. Every pitch
+// value is a slice, so the template sends one note message per pitch: a chord for more than one
+func play(legato float64, ns []note) (*timer.Timer, *sequence.Sequence[[]float64], *sequence.Sequence[float64]) {
 	var (
 		stps    []any
-		pitches []float64
+		pitches [][]float64
 		durs    []float64
 		beatSec = 60.0 / float64(psalm.BPM())
 	)
 
 	for _, n := range ns {
-		if n.pitch == rest {
+		if len(n.pitches) == 0 {
 			stps = append(stps, -n.beats)
 			continue
 		}
 
 		stps = append(stps, n.beats)
-		pitches = append(pitches, n.pitch)
+		pitches = append(pitches, n.pitches)
 		durs = append(durs, n.beats*beatSec*legato)
 	}
 
@@ -123,20 +151,18 @@ func play(legato float64, ns []note) (*timer.Timer, *bucket.Bucket[float64], *bu
 func (s *section) build(p *psalm.Psalm, index int, numSections int) []psalm.Modular {
 	synth := subtractive.NewPoly(s.cfg, s.voices).AddTo(p)
 
-	for _, layer := range s.layers {
-		if beatsOf(layer) != sectionBeats {
-			panic(fmt.Sprintf("section %q layer lasts %v beats, expected %v", s.name, beatsOf(layer), sectionBeats))
-		}
-
-		t, pitches, durs := play(s.legato, schedule(layer, index, numSections))
-
-		msg := template.Template{"pitch": pitches}
-		for key, values := range s.params {
-			msg[key] = seq(values...)
-		}
-
-		synth.ValueIn(templ.NewDurationTrigger(durs, s.amp, msg).ValueIn(t.AddTo(p)))
+	if beatsOf(s.notes) != sectionBeats {
+		panic(fmt.Sprintf("section %q lasts %v beats, expected %v", s.name, beatsOf(s.notes), sectionBeats))
 	}
+
+	t, pitches, durs := play(s.legato, schedule(s.notes, index, numSections))
+
+	msg := template.Template{"pitch": pitches}
+	for key, values := range s.params {
+		msg[key] = seq(values...)
+	}
+
+	synth.ValueIn(templ.NewDurationTrigger(durs, s.amp, msg).ValueIn(t.AddTo(p)))
 
 	if s.patch != nil {
 		s.patch(p, synth)
@@ -198,7 +224,7 @@ func main() {
 			name:   "Oscillator waveforms (sine, triangle, square, rectangle, saw, ramp, modified square, trapezoid)",
 			cfg:    plain(),
 			voices: 2, amp: 0.3, legato: 0.85,
-			layers: [][]note{notes(2, A3, E4, A3, E4, A3, E4, A3, E4)},
+			notes: notes(2, A3, E4, A3, E4, A3, E4, A3, E4),
 			params: map[string][]float64{"osc1Waveform": {
 				float64(blosc.Sine), float64(blosc.Triangle), float64(blosc.Square), float64(blosc.Rectangle),
 				float64(blosc.Sawtooth), float64(blosc.Ramp), float64(blosc.ModifiedSquare), float64(blosc.TrapezoidVariable),
@@ -213,7 +239,7 @@ func main() {
 				return cfg
 			}(),
 			voices: 2, amp: 0.3, legato: 0.9,
-			layers: [][]note{notes(2, A3, A3, A3, A3, A3, A3, A3, A3)},
+			notes:  notes(2, A3, A3, A3, A3, A3, A3, A3, A3),
 			params: map[string][]float64{"osc2Detune": {0, 0.03, 0.08, 0.15, 0.3, 7, 12, 12.1}},
 		},
 		{
@@ -225,7 +251,7 @@ func main() {
 				return cfg
 			}(),
 			voices: 2, amp: 0.3, legato: 0.9,
-			layers: [][]note{notes(2, A3, A3, A3, A3, A3, C4, D4, E4)},
+			notes: notes(2, A3, A3, A3, A3, A3, C4, D4, E4),
 			params: map[string][]float64{
 				"pulseWidth":     {0.5, 0.3, 0.15, 0.05, 0.5, 0.5, 0.5, 0.5},
 				"lfo1PulseWidth": {0, 0, 0, 0, 0.4, 0.4, 0.4, 0.4},
@@ -239,7 +265,7 @@ func main() {
 				return cfg
 			}(),
 			voices: 2, amp: 0.3, legato: 0.6,
-			layers: [][]note{notes(1, A2, A2, E3, A2, A2, A2, G3, A2, A2, A2, E3, A2, A2, A2, G3, A2)},
+			notes: notes(1, A2, A2, E3, A2, A2, A2, G3, A2, A2, A2, E3, A2, A2, A2, G3, A2),
 			params: map[string][]float64{
 				"subLevel":   {0, 0, 0, 0, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6},
 				"noiseLevel": {0, 0, 0, 0, 0, 0, 0, 0, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3},
@@ -252,13 +278,13 @@ func main() {
 			name:   "Ring modulation (ringBell preset)",
 			cfg:    subtractive.RingBellPreset(),
 			voices: 8, amp: 0.3, legato: 0.5,
-			layers: [][]note{notes(1, A4, C5, E5, G5, A5, G5, E5, C5, A4, C5, D5, E5, G5, E5, D5, C5)},
+			notes: notes(1, A4, C5, E5, G5, A5, G5, E5, C5, A4, C5, D5, E5, G5, E5, D5, C5),
 		},
 		{
 			name:   "Hard sync (syncLead preset): sweeping the osc 2 pitch against osc 1",
 			cfg:    subtractive.SyncLeadPreset(),
 			voices: 2, amp: 0.3, legato: 0.9,
-			layers: [][]note{notes(2, A3, A3, A3, A3, A3, A3, A3, A3)},
+			notes:  notes(2, A3, A3, A3, A3, A3, A3, A3, A3),
 			params: map[string][]float64{"osc2Detune": {0, 4, 7, 12, 17, 24, 19, 12}},
 		},
 		{
@@ -271,7 +297,7 @@ func main() {
 				return cfg
 			}(),
 			voices: 2, amp: 0.35, legato: 0.9,
-			layers: [][]note{notes(2, A3, A3, A3, A3, A3, A3, A3, A3)},
+			notes:  notes(2, A3, A3, A3, A3, A3, A3, A3, A3),
 			params: map[string][]float64{"fmAmount": {0, 0.5, 1, 2, 4, 8, 4, 1}},
 		},
 		{
@@ -283,7 +309,7 @@ func main() {
 				return cfg
 			}(),
 			voices: 2, amp: 0.22, legato: 0.95,
-			layers: [][]note{notes(2, A2, A2, A2, A2, A2, A2, A2, A2)},
+			notes: notes(2, A2, A2, A2, A2, A2, A2, A2, A2),
 			params: map[string][]float64{
 				"filterMode": {float64(subtractive.LowPass), float64(subtractive.LowPass), float64(subtractive.BandPass), float64(subtractive.BandPass),
 					float64(subtractive.HighPass), float64(subtractive.HighPass), float64(subtractive.Notch), float64(subtractive.Peak)},
@@ -297,7 +323,7 @@ func main() {
 			name:   "Filter envelope amount (pluck preset)",
 			cfg:    subtractive.PluckPreset(),
 			voices: 4, amp: 0.3, legato: 0.5,
-			layers: [][]note{notes(1, A3, C4, E4, A4, A3, C4, E4, A4, G3, B4, D4, G4, G3, B4, D4, G4)},
+			notes:  notes(1, A3, C4, E4, A4, A3, C4, E4, A4, G3, B4, D4, G4, G3, B4, D4, G4),
 			params: map[string][]float64{"filterEnvAmount": {0.5, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5}},
 		},
 		{
@@ -305,7 +331,7 @@ func main() {
 			cfg:  subtractive.AcidBassPreset(),
 			// one voice, so every note glides from the previous one
 			voices: 1, amp: 0.25, legato: 0.6,
-			layers: [][]note{notes(1, A1, A2, A1, E3, A1, A2, G3, A2, A1, A2, A1, E3, C3, A2, G3, A2)},
+			notes:  notes(1, A1, A2, A1, E3, A1, A2, G3, A2, A1, A2, A1, E3, C3, A2, G3, A2),
 			params: map[string][]float64{"glide": {0, 0, 0, 0, 0, 0, 0, 0, 0, 120, 0, 120, 120, 120, 120, 120}},
 		},
 		{
@@ -317,7 +343,7 @@ func main() {
 				return cfg
 			}(),
 			voices: 2, amp: 0.25, legato: 0.9,
-			layers: [][]note{notes(4, E4, D4, C4, A3)},
+			notes: notes(4, E4, D4, C4, A3),
 			params: map[string][]float64{
 				"lfo1Pitch": {0.4, 0.4, 0, 0},
 				"lfo2Amp":   {0, 0, 0.9, 0.9},
@@ -336,7 +362,7 @@ func main() {
 				return cfg
 			}(),
 			voices: 2, amp: 0.3, legato: 0.95,
-			layers: [][]note{notes(8, A2, A2)},
+			notes: notes(8, A2, A2),
 			params: map[string][]float64{
 				"lfo1Cutoff": {2.0, 0},
 				"lfo2Cutoff": {0, 2.0},
@@ -346,22 +372,21 @@ func main() {
 			name:   "PWM pad (pwmPad preset): Am F C G chords",
 			cfg:    subtractive.PWMPadPreset(),
 			voices: 12, amp: 0.15, legato: 1.0,
-			layers: [][]note{
-				notes(4, A3, F4-12, C4, G3),
-				notes(4, C4, A3, E4, B4-12),
-				notes(4, E4, C4, G4, D4),
-			},
+			notes: chordNotes(4,
+				[]float64{A3, C4, E4},      // Am
+				[]float64{F4 - 12, A3, C4}, // F
+				[]float64{C4, E4, G4},      // C
+				[]float64{G3, B4 - 12, D4}, // G
+			),
 		},
 		{
 			name:   "Filter envelope to pitch (zap preset)",
 			cfg:    subtractive.ZapPreset(),
 			voices: 4, amp: 0.25, legato: 0.5,
-			layers: [][]note{{
-				{A3, 1}, {rest, 1}, {A3, 0.5}, {A3, 0.5}, {rest, 1},
-				{E4, 1}, {rest, 1}, {A3, 0.5}, {E4, 0.5}, {rest, 1},
-				{A3, 1}, {rest, 1}, {A3, 0.5}, {A3, 0.5}, {rest, 1},
-				{A4, 0.5}, {E4, 0.5}, {C4, 0.5}, {A3, 0.5}, {rest, 2},
-			}},
+			notes: line(A3, 1, rest, 1, A3, 0.5, A3, 0.5, rest, 1,
+				E4, 1, rest, 1, A3, 0.5, E4, 0.5, rest, 1,
+				A3, 1, rest, 1, A3, 0.5, A3, 0.5, rest, 1,
+				A4, 0.5, E4, 0.5, C4, 0.5, A3, 0.5, rest, 2),
 			// one value per sounding note (13), so they line up on every loop
 			params: map[string][]float64{"filterEnvToPitch": {12, 24, 36, 12, 24, 36, 12, 24, 36, 48, 48, 48, 48}},
 		},
@@ -373,60 +398,60 @@ func main() {
 				return cfg
 			}(),
 			voices: 2, amp: 0.25, legato: 0.6,
-			layers: [][]note{notes(1, A2, A2, C3, A2, A2, A2, E3, A2, A2, A2, C3, A2, A2, A2, G3, A2)},
+			notes:  notes(1, A2, A2, C3, A2, A2, A2, E3, A2, A2, A2, C3, A2, A2, A2, G3, A2),
 			params: map[string][]float64{"drive": {1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 8, 8, 8, 8}},
 		},
 		{
 			name:   "Noise only through a resonant bandpass (wind preset)",
 			cfg:    subtractive.WindPreset(),
 			voices: 2, amp: 0.3, legato: 0.8,
-			layers: [][]note{notes(8, C5, G5)},
+			notes: notes(8, C5, G5),
 		},
 		{
 			name:   "Reese bass (reeseBass preset): detuned saws with a slow internal cutoff LFO",
 			cfg:    subtractive.ReeseBassPreset(),
 			voices: 2, amp: 0.3, legato: 0.95,
-			layers: [][]note{notes(4, A1, A1, 29, 31)},
+			notes: notes(4, A1, A1, 29, 31),
 		},
 		{
 			name:   "FM bass (fmBass preset) with changing FM amount",
 			cfg:    subtractive.FMBassPreset(),
 			voices: 2, amp: 0.3, legato: 0.6,
-			layers: [][]note{notes(1, A1, A2, A1, A2, 36, C3, 36, 43, A1, A2, A1, A2, 31, 43, 31, 40)},
+			notes:  notes(1, A1, A2, A1, A2, 36, C3, 36, 43, A1, A2, A1, A2, 31, 43, 31, 40),
 			params: map[string][]float64{"fmAmount": {2, 3, 4, 3}},
 		},
 		{
 			name:   "Square bass with short glide (squareBass preset, mono)",
 			cfg:    subtractive.SquareBassPreset(),
 			voices: 1, amp: 0.3, legato: 0.7,
-			layers: [][]note{notes(1, A2, A2, E3, A2, 43, A2, C3, 50, A2, A2, E3, A3, G3, E3, 50, C3)},
+			notes: notes(1, A2, A2, E3, A2, 43, A2, C3, 50, A2, A2, E3, A3, G3, E3, 50, C3),
 		},
 		{
 			name:   "LFO wobble bass (lfoWobble preset): wobble rate set per note",
 			cfg:    subtractive.LFOWobblePreset(),
 			voices: 2, amp: 0.25, legato: 0.95,
-			layers: [][]note{notes(4, A1, A1, 29, 31)},
+			notes:  notes(4, A1, A1, 29, 31),
 			params: map[string][]float64{"lfo1Rate": {2, 4, 6, 8}},
 		},
 		{
 			name: "Synth drums (synthKick, synthSnare, synthHat, synthTom presets)",
 			cfg:  subtractive.SynthKickPreset(), voices: 2, amp: 0.45, legato: 0.5,
-			layers: [][]note{hits(36,
-				"x.....x...x.....", "x.....x...x.....", "x.....x...x.....", "x.....x.x.x.....")},
+			notes: hits(36,
+				"x.....x...x.....", "x.....x...x.....", "x.....x...x.....", "x.....x.x.x....."),
 			with: []*section{
 				{
 					name: "snare", cfg: subtractive.SynthSnarePreset(), voices: 2, amp: 0.3, legato: 0.5,
-					layers: [][]note{hits(50,
-						"....x.......x...", "....x.......x...", "....x.......x...", "....x.......x.xx")},
+					notes: hits(50,
+						"....x.......x...", "....x.......x...", "....x.......x...", "....x.......x.xx"),
 				},
 				{
 					name: "hat", cfg: subtractive.SynthHatPreset(), voices: 4, amp: 0.12, legato: 0.5,
-					layers: [][]note{hits(60,
-						"x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.....")},
+					notes: hits(60,
+						"x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x....."),
 				},
 				{
 					name: "tom", cfg: subtractive.SynthTomPreset(), voices: 4, amp: 0.3, legato: 0.5,
-					layers: [][]note{{{rest, 14}, {G3, 0.5}, {E3, 0.5}, {C3, 0.5}, {A2, 0.5}}},
+					notes: line(rest, 14, G3, 0.5, E3, 0.5, C3, 0.5, A2, 0.5),
 				},
 			},
 		},
@@ -434,55 +459,56 @@ func main() {
 			name:   "Flute (flute preset): breath noise and delayed vibrato",
 			cfg:    subtractive.FlutePreset(),
 			voices: 2, amp: 0.3, legato: 0.95,
-			layers: [][]note{{{E5, 2}, {D5, 1}, {C5, 1}, {A4, 3}, {rest, 1}, {C5, 1}, {D5, 1}, {E5, 2}, {G5, 3}, {rest, 1}}},
+			notes: line(E5, 2, D5, 1, C5, 1, A4, 3, rest, 1, C5, 1, D5, 1, E5, 2, G5, 3, rest, 1),
 		},
 		{
 			name:   "Clarinet (clarinet preset)",
 			cfg:    subtractive.ClarinetPreset(),
 			voices: 2, amp: 0.3, legato: 0.95,
-			layers: [][]note{{{A3, 1}, {C4, 1}, {E4, 2}, {D4, 1}, {C4, 1}, {59, 2}, {C4, 1}, {D4, 1}, {E4, 1}, {F4, 1}, {E4, 4}}},
+			notes: line(A3, 1, C4, 1, E4, 2, D4, 1, C4, 1, 59, 2, C4, 1, D4, 1, E4, 1, F4, 1, E4, 4),
 		},
 		{
 			name:   "Theremin (theremin preset, mono): long glides and wide vibrato",
 			cfg:    subtractive.ThereminPreset(),
 			voices: 1, amp: 0.3, legato: 1.0,
-			layers: [][]note{{{A4, 3}, {E5, 3}, {D5, 2}, {C5, 3}, {A4, 3}, {rest, 2}}},
+			notes: line(A4, 3, E5, 3, D5, 2, C5, 3, A4, 3, rest, 2),
 		},
 		{
 			name:   "Electric piano (ePiano preset): FM tone with tremolo, chords",
 			cfg:    subtractive.EPianoPreset(),
 			voices: 12, amp: 0.15, legato: 0.9,
-			layers: [][]note{
-				notes(4, A3, D4, G3, C4),
-				notes(4, C4, F4, 59, E4),
-				notes(4, E4, A4, D4, G4),
-			},
+			notes: chordNotes(4,
+				[]float64{A3, C4, E4}, // Am
+				[]float64{D4, F4, A4}, // Dm
+				[]float64{G3, 59, D4}, // G
+				[]float64{C4, E4, G4}, // C
+			),
 		},
 		{
 			name:   "Glass keys (glassKeys preset): FM bell arpeggio",
 			cfg:    subtractive.GlassKeysPreset(),
 			voices: 8, amp: 0.2, legato: 0.5,
-			layers: [][]note{notes(0.5,
+			notes: notes(0.5,
 				A4, C5, E5, G5, A5, G5, E5, C5, A4, C5, E5, G5, A5, G5, E5, C5,
-				G4, B4, D5, G5, D5, B4, G4, D5, A4, C5, E5, A5, E5, C5, A4, E5)},
+				G4, B4, D5, G5, D5, B4, G4, D5, A4, C5, E5, A5, E5, C5, A4, E5),
 		},
 		{
 			name:   "Vibes (vibes preset): mallet tone with tremolo",
 			cfg:    subtractive.VibesPreset(),
 			voices: 6, amp: 0.3, legato: 0.9,
-			layers: [][]note{notes(2, C5, E5, G5, B4, A4, C5, E5, G5)},
+			notes: notes(2, C5, E5, G5, B4, A4, C5, E5, G5),
 		},
 		{
 			name:   "Riser FX (riser preset): pitch and filter swell",
 			cfg:    subtractive.RiserPreset(),
 			voices: 2, amp: 0.3, legato: 0.95,
-			layers: [][]note{notes(8, A3, E4)},
+			notes: notes(8, A3, E4),
 		},
 		{
 			name:   "Ladder filter modes (ladderBass preset): lowpass 24, lowpass 12, bandpass 12, highpass 12",
 			cfg:    subtractive.LadderBassPreset(),
 			voices: 2, amp: 0.35, legato: 0.6,
-			layers: [][]note{notes(1, A1, A2, A1, E3, A1, A2, A1, G3, A1, A2, A1, E3, A1, A2, C3, G3)},
+			notes: notes(1, A1, A2, A1, E3, A1, A2, A1, G3, A1, A2, A1, E3, A1, A2, C3, G3),
 			params: map[string][]float64{"ladderMode": {
 				float64(ladder.LowPass24), float64(ladder.LowPass24), float64(ladder.LowPass24), float64(ladder.LowPass24),
 				float64(ladder.LowPass12), float64(ladder.LowPass12), float64(ladder.LowPass12), float64(ladder.LowPass12),
@@ -494,29 +520,30 @@ func main() {
 			name:   "Ladder lead (ladderLead preset, mono): drive, glide and delayed vibrato",
 			cfg:    subtractive.LadderLeadPreset(),
 			voices: 1, amp: 0.35, legato: 1.0,
-			layers: [][]note{{{A4, 2}, {C5, 1}, {D5, 1}, {E5, 3}, {D5, 1}, {C5, 2}, {A4, 2}, {G4, 3}, {rest, 1}}},
+			notes: line(A4, 2, C5, 1, D5, 1, E5, 3, D5, 1, C5, 2, A4, 2, G4, 3, rest, 1),
 		},
 		{
 			name:   "Talking synth (talkingSynth preset): an LFO sweeps the formant filter through the vowels",
 			cfg:    subtractive.TalkingSynthPreset(),
 			voices: 2, amp: 0.7, legato: 0.9,
-			layers: [][]note{notes(2, A2, A2, C3, A2, 43, A2, C3, E3)},
+			notes: notes(2, A2, A2, C3, A2, 43, A2, C3, E3),
 		},
 		{
 			name:   "Choir pad (choirPad preset): formant filtered saws, Am F C G",
 			cfg:    subtractive.ChoirPadPreset(),
 			voices: 12, amp: 0.25, legato: 1.0,
-			layers: [][]note{
-				notes(4, A3, F4-12, C4, G3),
-				notes(4, C4, A3, E4, 59),
-				notes(4, E4, C4, G4, D4),
-			},
+			notes: chordNotes(4,
+				[]float64{A3, C4, E4},      // Am
+				[]float64{F4 - 12, A3, C4}, // F
+				[]float64{C4, E4, G4},      // C
+				[]float64{G3, 59, D4},      // G
+			),
 		},
 		{
 			name:   "Notch pad (notchPad preset): an LFO sweeps a notch, like a phaser",
 			cfg:    subtractive.NotchPadPreset(),
 			voices: 8, amp: 0.15, legato: 1.0,
-			layers: [][]note{notes(8, A3, F4-12), notes(8, E4, C4)},
+			notes: chordNotes(8, []float64{A3, E4}, []float64{F4 - 12, C4}),
 		},
 	}
 

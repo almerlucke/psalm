@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/almerlucke/genny/bucket"
 	"github.com/almerlucke/genny/float/envelopes/adsr"
+	"github.com/almerlucke/genny/sequence"
 	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
@@ -19,11 +20,11 @@ import (
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
-	"github.com/almerlucke/sndfile/writer"
 )
 
-func seq[T any](values ...T) *bucket.Bucket[T] {
-	return bucket.NewLoop(values...).SetMode(bucket.Indexed).Loop(true)
+// seq plays the values in order and loops (a bucket would shuffle them)
+func seq[T any](values ...T) *sequence.Sequence[T] {
+	return sequence.NewLoop(values...)
 }
 
 // random picks one of the values at random every time
@@ -31,18 +32,14 @@ func random[T any](values ...T) *bucket.Bucket[T] {
 	return bucket.NewLoop(values...).SetMode(bucket.Random)
 }
 
-// chordVoice plays one voice of a chord progression, every chord lasts the given number of beats
-func chordVoice(p *psalm.Psalm, synth psalm.Modular, beats float64, amp float64, pitches ...float64) {
+// chords plays a chord progression, every chord lasts the given number of beats. The pitch
+// generator produces a slice per chord, which makes the template send one note message per pitch
+func chords(p *psalm.Psalm, synth psalm.Modular, beats float64, amp float64, progression ...[]float64) {
 	beatSec := 60.0 / float64(psalm.BPM())
 
-	stps := make([]*steps.Step, len(pitches))
-	for i := range stps {
-		stps[i] = &steps.Step{Multiply: beats}
-	}
-
 	synth.ValueIn(templ.NewDurationTrigger(beats*beatSec*0.98, amp, template.Template{
-		"pitch": seq(pitches...),
-	}).ValueIn(timer.WithSteps(stps).AddTo(p)))
+		"pitch": seq(progression...),
+	}).ValueIn(timer.WithTicks(beats * float64(psalm.PPQ())).AddTo(p)))
 }
 
 // note is a pitch (MIDI, 0 = rest) with a length in beats
@@ -105,10 +102,12 @@ func main() {
 	carrier := subtractive.NewPoly(carrierCfg, 12).AddTo(p)
 
 	// Am F C G, two bars per chord
-	chordVoice(p, carrier, 8, 0.2, 45, 41, 48, 43)
-	chordVoice(p, carrier, 8, 0.2, 57, 57, 55, 55)
-	chordVoice(p, carrier, 8, 0.2, 60, 60, 60, 59)
-	chordVoice(p, carrier, 8, 0.2, 64, 65, 64, 62)
+	chords(p, carrier, 8, 0.2,
+		[]float64{45, 57, 60, 64}, // Am: A2 A3 C4 E4
+		[]float64{41, 57, 60, 65}, // F:  F2 A3 C4 F4
+		[]float64{48, 55, 60, 64}, // C:  C3 G3 C4 E4
+		[]float64{43, 55, 59, 62}, // G:  G2 G3 B3 D4
+	)
 
 	// Vocoder: speech on input 0, carrier on input 1
 	vcfg := vocoder.DefaultConfig()
@@ -149,9 +148,12 @@ func main() {
 
 	pad := subtractive.NewPoly(padCfg, 12).AddTo(p)
 
-	chordVoice(p, pad, 8, 0.05, 57, 43, 60, 55) // A2 F2 C3 G2
-	chordVoice(p, pad, 8, 0.05, 64, 60, 67, 62) // E3 C3 G3 D3
-	chordVoice(p, pad, 8, 0.05, 72, 69, 76, 71) // C4 A3 E4 B3
+	chords(p, pad, 8, 0.05,
+		[]float64{57, 64, 72}, // A3 E4 C5
+		[]float64{43, 60, 69}, // G2 C4 A4
+		[]float64{60, 67, 76}, // C4 G4 E5
+		[]float64{55, 62, 71}, // G3 D4 B4
+	)
 
 	// Falling stars: delicate, glassy high notes from the A minor pentatonic at random, irregular
 	// times. Each star starts above its note and falls onto it while fading (the filter envelope
@@ -196,10 +198,10 @@ func main() {
 
 	p.Out(freeverb.New(0.9, 0.5, 0.9, 0.3, 0.6).AddTo(p).In(voicePanned, 0, 0, accompaniment, 0, 0, starRipples, 0, 0))
 
-	err := p.ToSoundFile("vocoder.wav", writer.WAV, 180, 44100.0, true)
-	if err != nil {
-		panic(err)
-	}
+	//err := p.ToSoundFile("vocoder.wav", writer.WAV, 180, 44100.0, true)
+	//if err != nil {
+	//	panic(err)
+	//}
 
-	//_ = p.Listen()
+	_ = p.Listen()
 }

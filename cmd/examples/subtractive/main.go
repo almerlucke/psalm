@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/almerlucke/genny/bucket"
+	"github.com/almerlucke/genny/sequence"
 	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
@@ -21,8 +22,9 @@ import (
 	"github.com/almerlucke/sndfile"
 )
 
-func seq[T any](values ...T) *bucket.Bucket[T] {
-	return bucket.NewLoop(values...).SetMode(bucket.Indexed).Loop(true)
+// seq plays the values in order and loops (a bucket would shuffle them)
+func seq[T any](values ...T) *sequence.Sequence[T] {
+	return sequence.NewLoop(values...)
 }
 
 // note is a pitch (MIDI, 0 = rest) with a length in beats
@@ -35,7 +37,7 @@ const rest = 0.0
 
 // phrase converts notes into a step timer plus matching pitch and duration sequences,
 // legato scales the sounding duration of each note relative to its length
-func phrase(legato float64, notes ...note) (*timer.Timer, *bucket.Bucket[float64], *bucket.Bucket[float64]) {
+func phrase(legato float64, notes ...note) (*timer.Timer, *sequence.Sequence[float64], *sequence.Sequence[float64]) {
 	var (
 		stps    []any
 		pitches []float64
@@ -140,7 +142,7 @@ var drumLevels = map[rune]float64{
 
 // drumPattern builds a 16th note step timer and matching amplitude sequence from bars of 16 characters,
 // '.' is a rest, any key of drumLevels is a hit
-func drumPattern(bars ...string) (*timer.Timer, *bucket.Bucket[float64]) {
+func drumPattern(bars ...string) (*timer.Timer, *sequence.Sequence[float64]) {
 	var (
 		stps []any
 		amps []float64
