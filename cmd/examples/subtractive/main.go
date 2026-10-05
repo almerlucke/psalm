@@ -12,7 +12,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
-	"github.com/almerlucke/psalm/modules/effects/freeverb"
+	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/synths/drums"
@@ -219,7 +219,7 @@ func main() {
 	// vibrato on longer notes
 	leadCfg := subtractive.AcidBassPreset()
 	leadCfg.Osc1Waveform = blosc.Square
-	leadCfg.Resonance = 0.8
+	leadCfg.Resonance = 0.7 // the ladder self-oscillates close to 1
 	leadCfg.KeyTrack = 0.3
 	leadCfg.LFO1 = subtractive.LFOConfig{Waveform: subtractive.LFOSampleHold, Rate: beatHz * 2.0, Cutoff: 0.8}
 	leadCfg.LFO2 = subtractive.LFOConfig{Waveform: subtractive.LFOSine, Rate: 6.0, Delay: 120.0, KeySync: true, Pitch: 0.2}
@@ -264,7 +264,9 @@ func main() {
 
 	bpmMs := timing.BPMToMilli(psalm.BPM())
 
-	p.Out(freeverb.New(0.8, 0.6, 0.9, 0.18, 0.8).AddTo(p).In(
+	ir := convolver.SyntheticReverbIR(3.0, 0.6, psalm.SampleRate(), 1)
+
+	p.Out(convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.45, Gain: 0.3}).AddTo(p).In(
 		bass, 0, 0,
 		drms, 0, 0,
 		pingpong.New(bpmMs*4.0, bpmMs*0.75, 0.35, 0.25).AddTo(p).In(lead), 0, 0,

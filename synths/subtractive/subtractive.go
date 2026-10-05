@@ -5,17 +5,32 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/filters/formant"
+	"github.com/almerlucke/psalm/blocks/filters/ladder"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
+// FilterType selects the filter of the voice
+type FilterType int
+
+const (
+	FilterSVF     FilterType = iota // state variable filter, 12 dB/oct, modes set by FilterMode
+	FilterLadder                    // Moog style ladder, 24 or 12 dB/oct, modes set by LadderMode
+	FilterFormant                   // vowel filter, the cutoff modulation moves the vowel instead
+)
+
+// FilterMode selects the output of the SVF filter
 type FilterMode int
 
 const (
-	LowPass FilterMode = iota
-	BandPass
-	HighPass
+	LowPass  = FilterMode(svf.LowPass)
+	BandPass = FilterMode(svf.BandPass)
+	HighPass = FilterMode(svf.HighPass)
+	Notch    = FilterMode(svf.Notch)
+	Peak     = FilterMode(svf.Peak)
+	AllPass  = FilterMode(svf.AllPass)
 )
 
 // Config describes a classic subtractive voice: 2 oscillators + noise -> filter -> amp
@@ -43,11 +58,18 @@ type Config struct {
 	FilterEnvToPitch float64 // semitones of pitch sweep driven by the filter envelope
 
 	// Filter
-	FilterMode      FilterMode
-	Cutoff          float64 // Hz
-	Resonance       float64 // 0-1
-	FilterEnvAmount float64 // octaves added to cutoff at full envelope
-	KeyTrack        float64 // 0-1, 1 means cutoff follows pitch fully (relative to middle C)
+	FilterType      FilterType
+	FilterMode      FilterMode  // SVF output
+	LadderMode      ladder.Mode // ladder output
+	FilterDrive     float64     // ladder input saturation (0 is treated as 1)
+	Cutoff          float64     // Hz
+	Resonance       float64     // 0-1, for the formant filter it sets the sharpness of the formants
+	FilterEnvAmount float64     // octaves added to cutoff at full envelope (vowel steps for the formant filter)
+	KeyTrack        float64     // 0-1, 1 means cutoff follows pitch fully (relative to middle C)
+
+	// Formant filter
+	Vowel        float64 // 0-4: a e i o u, fractions morph. Envelope and LFO cutoff amounts move the vowel
+	FormantShift float64 // scales the formant frequencies (0 is treated as 1)
 
 	// Envelopes (durations in milliseconds)
 	FilterEnv adsr.Setting
@@ -89,7 +111,12 @@ type Voice struct {
 	noise     noise
 	lfo1      lfo
 	lfo2      lfo
-	filter    *svf.SVF
+	svf       *svf.SVF
+	ladder    *ladder.Ladder
+	formant   *formant.Formant
+	ladderDrv float64
+	formShift float64
+	formCount int
 	filterEnv *adsr.ADSR
 	ampEnv    *adsr.ADSR
 	frequency float64 // target frequency
@@ -116,7 +143,9 @@ func New(cfg Config) *Voice {
 	v.osc1 = blosc.New(v.frequency, sr, 0.0, cfg.PulseWidth, 1.0, cfg.Osc1Waveform)
 	v.osc2 = blosc.New(v.frequency*v.osc2Ratio(), sr, 0.0, cfg.PulseWidth, 1.0, cfg.Osc2Waveform)
 	v.sub = blosc.New(v.frequency*0.5, sr, 0.0, 0.5, 1.0, blosc.Square)
-	v.filter = svf.New(cfg.Cutoff, cfg.Resonance, sr)
+	v.svf = svf.New(cfg.Cutoff, cfg.Resonance, sr)
+	v.ladder = ladder.New(cfg.Cutoff, cfg.Resonance, sr)
+	v.formant = formant.New(cfg.Vowel, formantQ(cfg.Resonance), sr)
 	v.filterEnv = adsr.New(&v.cfg.FilterEnv, adsr.NoteOff, sr)
 	v.ampEnv = adsr.New(&v.cfg.AmpEnv, adsr.NoteOff, sr)
 
@@ -172,7 +201,12 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("filterEnvToPitch", func(f float64) { v.cfg.FilterEnvToPitch = f })
 	receiveLFOMessage(msg, "lfo1", &v.cfg.LFO1)
 	receiveLFOMessage(msg, "lfo2", &v.cfg.LFO2)
+	msg.IfIntVal("filterType", func(t int) { v.cfg.FilterType = FilterType(t) })
 	msg.IfIntVal("filterMode", func(m int) { v.cfg.FilterMode = FilterMode(m) })
+	msg.IfIntVal("ladderMode", func(m int) { v.cfg.LadderMode = ladder.Mode(m) })
+	msg.IfFltVal("filterDrive", func(f float64) { v.cfg.FilterDrive = f })
+	msg.IfFltVal("vowel", func(f float64) { v.cfg.Vowel = f })
+	msg.IfFltVal("formantShift", func(f float64) { v.cfg.FormantShift = f })
 	msg.IfFltVal("cutoff", func(f float64) { v.cfg.Cutoff = f })
 	msg.IfFltVal("resonance", func(f float64) { v.cfg.Resonance = f })
 	msg.IfFltVal("filterEnvAmount", func(f float64) { v.cfg.FilterEnvAmount = f })
@@ -193,8 +227,8 @@ func receiveLFOMessage(msg psalm.Message, prefix string, cfg *LFOConfig) {
 	msg.IfFltVal(prefix+"Amp", func(f float64) { cfg.Amp = f })
 }
 
-// Receive accepts messages, or plain values on inputs 1 (cutoff), 2 (resonance) and 3 (pulse width),
-// which makes it easy to connect LFOs
+// Receive accepts messages, or plain values on inputs 1 (cutoff), 2 (resonance), 3 (pulse width)
+// and 4 (vowel), which makes it easy to connect LFOs
 func (v *Voice) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		v.ReceiveMessage(msg)
@@ -208,6 +242,8 @@ func (v *Voice) Receive(value any, index int) {
 		v.cfg.Resonance = psalm.FltVal[float64](value)
 	case 3:
 		v.SetPulseWidth(psalm.FltVal[float64](value))
+	case 4:
+		v.cfg.Vowel = psalm.FltVal[float64](value)
 	}
 }
 
@@ -241,7 +277,10 @@ func (v *Voice) NoteOff() {
 func (v *Voice) Clear() {
 	v.filterEnv.Clear()
 	v.ampEnv.Clear()
-	v.filter.Clear()
+	v.svf.Clear()
+	v.ladder.Clear()
+	v.formant.Clear()
+	v.formCount = 0
 	v.Output(0).Clear()
 }
 
@@ -342,19 +381,10 @@ func (v *Voice) Synthesize() {
 		// Saturation
 		s = math.Tanh(s*drive) * driveComp
 
-		// Filter with envelope and LFO modulation in octaves
+		// Filter with envelope and LFO modulation in octaves (in vowel steps for the formant filter)
 		v.cutoff += cutoffInc
-		octaves := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2
-		v.filter.Set(v.cutoff*keyTrackMult*math.Pow(2.0, octaves), cfg.Resonance)
-		low, band, high := v.filter.Tick(s)
-		switch cfg.FilterMode {
-		case BandPass:
-			s = band
-		case HighPass:
-			s = high
-		default:
-			s = low
-		}
+		mod := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2
+		s = v.filter(s, v.cutoff*keyTrackMult*math.Pow(2.0, mod), mod)
 
 		// Amp with LFO tremolo
 		amp := v.ampEnv.Generate()
@@ -377,6 +407,50 @@ func (v *Voice) Synthesize() {
 	}
 
 	v.waitSamps = 0
+}
+
+// formantQ maps resonance 0-1 to the formant sharpness
+func formantQ(res float64) float64 {
+	return 4.0 + math.Max(0.0, math.Min(res, 1.0))*16.0
+}
+
+// filter runs a sample through the selected filter
+func (v *Voice) filter(s float64, cutoff float64, mod float64) float64 {
+	cfg := &v.cfg
+
+	switch cfg.FilterType {
+	case FilterLadder:
+		drive := cfg.FilterDrive
+		if drive <= 0.0 {
+			drive = 1.0
+		}
+		if drive != v.ladderDrv {
+			v.ladderDrv = drive
+			v.ladder.SetDrive(drive)
+		}
+		v.ladder.Set(cutoff, cfg.Resonance)
+		return v.ladder.Process(s, cfg.LadderMode)
+
+	case FilterFormant:
+		shift := cfg.FormantShift
+		if shift <= 0.0 {
+			shift = 1.0
+		}
+		if shift != v.formShift {
+			v.formShift = shift
+			v.formant.SetShift(shift)
+		}
+		// three filters per update, so update the vowel every few samples
+		if v.formCount == 0 {
+			v.formant.Set(cfg.Vowel+mod, formantQ(cfg.Resonance))
+		}
+		v.formCount = (v.formCount + 1) % 8
+		return v.formant.Process(s)
+
+	default:
+		v.svf.Set(cutoff, cfg.Resonance)
+		return v.svf.Process(s, svf.Mode(cfg.FilterMode))
+	}
 }
 
 // NewPoly creates a polyphonic subtractive synth

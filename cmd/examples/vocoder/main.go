@@ -12,14 +12,23 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/latency"
 	"github.com/almerlucke/psalm/modules/effects/pan"
+	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/effects/vocoder"
+	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/modules/player"
 	"github.com/almerlucke/psalm/synths/subtractive"
+	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
+	"github.com/almerlucke/sndfile/writer"
 )
 
 func seq[T any](values ...T) *bucket.Bucket[T] {
 	return bucket.NewLoop(values...).SetMode(bucket.Indexed).Loop(true)
+}
+
+// random picks one of the values at random every time
+func random[T any](values ...T) *bucket.Bucket[T] {
+	return bucket.NewLoop(values...).SetMode(bucket.Random)
 }
 
 // chordVoice plays one voice of a chord progression, every chord lasts the given number of beats
@@ -80,10 +89,10 @@ func main() {
 	// Modulator: looping speech
 	speech := player.New(player.Config{
 		SndFile: sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4),
-		Loop:    true,
+		Loop:    false,
 		Speed:   1.0,
 		Amp:     0.8,
-	}).AddTo(p)
+	}).AddTo(p).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 8)).AddTo(p))
 
 	// Carrier: a bright, harmonically rich chord pad, vocoders need lots of harmonics to shape
 	carrierCfg := subtractive.PadPreset()
@@ -144,6 +153,39 @@ func main() {
 	chordVoice(p, pad, 8, 0.05, 64, 60, 67, 62) // E3 C3 G3 D3
 	chordVoice(p, pad, 8, 0.05, 72, 69, 76, 71) // C4 A3 E4 B3
 
+	// Falling stars: delicate, glassy high notes from the A minor pentatonic at random, irregular
+	// times. Each star starts above its note and falls onto it while fading (the filter envelope
+	// drives the pitch), streaking sideways through the stereo field and rippling away through a
+	// pingpong delay
+	starCfg := subtractive.GlassKeysPreset()
+	starCfg.FMAmount = 1.2
+	starCfg.Osc2Level = 0.15
+	starCfg.FilterEnvToPitch = 7.0 // overridden per star below
+	starCfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 1300.0, 1.0, 400.0)
+	starCfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.0, 1400.0, 1.0, 500.0)
+	starCfg.LFO1 = subtractive.LFOConfig{Waveform: subtractive.LFOSine, Rate: 7.0, Pitch: 0.06}
+
+	stars := subtractive.NewPoly(starCfg, 8).AddTo(p)
+
+	ppq := float64(psalm.PPQ())
+	starTimer := timer.New(random(
+		// note spacing in ticks, negative values are pauses so the stars appear irregularly
+		ppq, 1.5*ppq, 2*ppq, 3*ppq, 4*ppq, -3*ppq, -4*ppq, -6*ppq, -8*ppq,
+	)).AddTo(p)
+
+	// notes last long enough for the whole fall, the envelopes decay to silence by themselves
+	stars.ValueIn(templ.NewDurationTrigger(1.6, random(0.02, 0.035, 0.04, 0.055), template.Template{
+		"pitch":            random(81.0, 84.0, 86.0, 88.0, 91.0, 93.0, 96.0), // A5 C6 D6 E6 G6 A6 C7
+		"filterEnvToPitch": random(5.0, 7.0, 12.0),                           // how far each star falls (semitones)
+	}).ValueIn(starTimer))
+
+	// a steady saw sweep makes every star streak sideways across the stereo field as it falls
+	starsPanned := pan.New(0.0).AddTo(p).In(stars)
+	starsPanned.ValueIn(lfo.New(true, 0.3, -0.7, 0.7, lfo.Saw).AddTo(p), 0, 0)
+
+	bpmMs := timing.BPMToMilli(psalm.BPM())
+	starRipples := pingpong.New(bpmMs*4.0, bpmMs*0.75, 0.5, 0.5).AddTo(p).In(starsPanned)
+
 	// Delay the piano and pad by the vocoder latency so everything lines up
 	// Panning: the voice stays in the center, the piano sits to the left and the pad to the right
 	voicePanned := pan.New(0.0).AddTo(p).In(voc)
@@ -152,12 +194,12 @@ func main() {
 
 	accompaniment := latency.New(psalm.Stereo, voc.Latency()).AddTo(p).In(flutePanned, 0, 0, padPanned, 0, 0)
 
-	p.Out(freeverb.New(0.9, 0.5, 0.9, 0.3, 0.6).AddTo(p).In(voicePanned, 0, 0, accompaniment, 0, 0))
+	p.Out(freeverb.New(0.9, 0.5, 0.9, 0.3, 0.6).AddTo(p).In(voicePanned, 0, 0, accompaniment, 0, 0, starRipples, 0, 0))
 
-	//err := p.ToSoundFile("vocoder.wav", writer.WAV, 30, 44100.0, true)
-	//if err != nil {
-	//	panic(err)
-	//}
+	err := p.ToSoundFile("vocoder.wav", writer.WAV, 180, 44100.0, true)
+	if err != nil {
+		panic(err)
+	}
 
-	_ = p.Listen()
+	//_ = p.Listen()
 }

@@ -2,6 +2,7 @@ package subtractive
 
 import (
 	"github.com/almerlucke/genny/float/envelopes/adsr"
+	"github.com/almerlucke/psalm/blocks/filters/ladder"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 )
 
@@ -41,6 +42,12 @@ var Presets = map[string]func() Config{
 	"glassKeys":  GlassKeysPreset,
 	"vibes":      VibesPreset,
 	"riser":      RiserPreset,
+
+	"ladderBass":   LadderBassPreset,
+	"ladderLead":   LadderLeadPreset,
+	"talkingSynth": TalkingSynthPreset,
+	"choirPad":     ChoirPadPreset,
+	"notchPad":     NotchPadPreset,
 }
 
 // BassPreset is a punchy saw bass with a square sub an octave below
@@ -59,6 +66,8 @@ func BassPreset() Config {
 	cfg.KeyTrack = 0.3
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 2.0, 0.2, 180.0, 1.0, 120.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.8, 150.0, 1.0, 80.0)
+	cfg.FilterType = FilterLadder
+	cfg.LadderMode = ladder.LowPass24
 	return cfg
 }
 
@@ -70,11 +79,14 @@ func AcidBassPreset() Config {
 	cfg.Osc2Level = 0.0
 	cfg.Drive = 2.5
 	cfg.Cutoff = 220.0
-	cfg.Resonance = 0.85
+	cfg.Resonance = 0.75 // the ladder resonates stronger than the svf
 	cfg.FilterEnvAmount = 4.5
 	cfg.KeyTrack = 0.5
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 200.0, 1.0, 80.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.9, 100.0, 1.0, 40.0)
+	cfg.FilterType = FilterLadder
+	cfg.LadderMode = ladder.LowPass24
+	cfg.FilterDrive = 1.5
 	return cfg
 }
 
@@ -231,6 +243,8 @@ func BrassPreset() Config {
 	cfg.KeyTrack = 0.6
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 80.0, 0.6, 400.0, 1.0, 200.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 40.0, 0.85, 300.0, 1.0, 200.0)
+	cfg.FilterType = FilterLadder
+	cfg.LadderMode = ladder.LowPass12
 	return cfg
 }
 
@@ -375,6 +389,8 @@ func ReeseBassPreset() Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 20.0, 0.5, 400.0, 1.0, 200.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 0.9, 200.0, 1.0, 150.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 0.3, Cutoff: 1.2}
+	cfg.FilterType = FilterLadder
+	cfg.LadderMode = ladder.LowPass24
 	return cfg
 }
 
@@ -412,6 +428,8 @@ func SquareBassPreset() Config {
 	cfg.Glide = 30.0
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 2.0, 0.2, 250.0, 1.0, 120.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.85, 150.0, 1.0, 100.0)
+	cfg.FilterType = FilterLadder
+	cfg.LadderMode = ladder.LowPass24
 	return cfg
 }
 
@@ -621,5 +639,106 @@ func RiserPreset() Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 4000.0, 1.0, 10.0, 1.0, 300.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 3500.0, 1.0, 10.0, 1.0, 300.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 6.0, Amp: 0.3}
+	return cfg
+}
+
+// LadderBassPreset is a fat, driven 24 dB ladder bass with a punchy filter envelope
+func LadderBassPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Sawtooth
+	cfg.Osc2Waveform = blosc.Rectangle
+	cfg.PulseWidth = 0.4
+	cfg.Osc2Octave = -1
+	cfg.Osc2Detune = 0.04
+	cfg.Osc1Level = 0.5
+	cfg.Osc2Level = 0.45
+	cfg.FilterType = FilterLadder
+	cfg.LadderMode = ladder.LowPass24
+	cfg.FilterDrive = 2.5
+	cfg.Cutoff = 180.0
+	cfg.Resonance = 0.35
+	cfg.FilterEnvAmount = 3.5
+	cfg.KeyTrack = 0.4
+	cfg.FilterEnv = *adsr.NewSetting(1.0, 2.0, 0.15, 220.0, 1.0, 120.0)
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.85, 150.0, 1.0, 100.0)
+	return cfg
+}
+
+// LadderLeadPreset is a warm, driven ladder lead with glide and delayed vibrato
+func LadderLeadPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Sawtooth
+	cfg.Osc2Waveform = blosc.Sawtooth
+	cfg.Osc2Detune = 0.1
+	cfg.Osc1Level = 0.45
+	cfg.Osc2Level = 0.45
+	cfg.FilterType = FilterLadder
+	cfg.LadderMode = ladder.LowPass24
+	cfg.FilterDrive = 2.0
+	cfg.Cutoff = 900.0
+	cfg.Resonance = 0.55
+	cfg.FilterEnvAmount = 2.0
+	cfg.KeyTrack = 0.8
+	cfg.Glide = 40.0
+	cfg.FilterEnv = *adsr.NewSetting(1.0, 10.0, 0.4, 350.0, 1.0, 250.0)
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 8.0, 0.85, 200.0, 1.0, 250.0)
+	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 5.5, Delay: 300.0, KeySync: true, Pitch: 0.2}
+	return cfg
+}
+
+// TalkingSynthPreset is a talk box like sound: a formant filter whose vowel is moved by an LFO
+func TalkingSynthPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Sawtooth
+	cfg.Osc2Waveform = blosc.Rectangle
+	cfg.PulseWidth = 0.3
+	cfg.Osc2Detune = 0.08
+	cfg.Osc1Level = 0.6
+	cfg.Osc2Level = 0.4
+	cfg.FilterType = FilterFormant
+	cfg.Vowel = 2.0
+	cfg.Resonance = 0.5
+	cfg.FilterEnvAmount = -1.0 // the vowel moves from "i" towards "e" during the note
+	cfg.FilterEnv = *adsr.NewSetting(1.0, 5.0, 0.0, 400.0, 1.0, 200.0)
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 10.0, 0.9, 200.0, 1.0, 200.0)
+	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 0.7, Cutoff: 2.0} // sweeps through the vowels
+	return cfg
+}
+
+// ChoirPadPreset is a soft "ooh / aah" pad through a slowly morphing formant filter
+func ChoirPadPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Sawtooth
+	cfg.Osc2Waveform = blosc.Sawtooth
+	cfg.Osc2Detune = 0.12
+	cfg.Osc1Level = 0.5
+	cfg.Osc2Level = 0.5
+	cfg.NoiseLevel = 0.03
+	cfg.NoiseType = PinkNoise
+	cfg.FilterType = FilterFormant
+	cfg.Vowel = 3.0 // "o"
+	cfg.Resonance = 0.4
+	cfg.FilterEnvAmount = 0.0
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 900.0, 0.9, 1000.0, 1.0, 1800.0)
+	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 0.15, Cutoff: 1.0}              // drifts between "e" and "u"
+	cfg.LFO2 = LFOConfig{Waveform: LFOSine, Rate: 4.8, Delay: 500.0, Pitch: 0.08} // gentle vibrato
+	return cfg
+}
+
+// NotchPadPreset is a detuned saw pad through a slowly swept notch filter, a phaser like movement
+func NotchPadPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Sawtooth
+	cfg.Osc2Waveform = blosc.Sawtooth
+	cfg.Osc2Detune = 0.1
+	cfg.Osc1Level = 0.45
+	cfg.Osc2Level = 0.45
+	cfg.FilterMode = Notch
+	cfg.Cutoff = 800.0
+	cfg.Resonance = 0.2
+	cfg.FilterEnvAmount = 0.0
+	cfg.KeyTrack = 0.0
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 500.0, 0.9, 800.0, 1.0, 1500.0)
+	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 0.25, Cutoff: 2.0}
 	return cfg
 }

@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/modules/poly"
@@ -180,5 +181,104 @@ func TestAllFeatures(t *testing.T) {
 
 	if peak < 0.01 || peak > 2.0 {
 		t.Fatalf("unexpected peak %v", peak)
+	}
+}
+
+// renderRMS plays a sustained note and returns the RMS of the output after the attack
+func renderRMS(cfg Config, pitch float64) float64 {
+	v := New(cfg)
+	v.NoteOn(0.8, psalm.Message{"pitch": pitch}, psalm.CtrlTick{}, v.Config())
+
+	sum, n := 0.0, 0
+	for b := range 20 {
+		v.Synthesize()
+		if b < 5 {
+			continue
+		}
+		for _, s := range v.Output(0).Channels[0] {
+			sum += float64(s) * float64(s)
+			n++
+		}
+	}
+	return math.Sqrt(sum / float64(n))
+}
+
+func steadyConfig() Config {
+	cfg := DefaultConfig()
+	cfg.FilterEnvAmount = 0.0
+	cfg.KeyTrack = 0.0
+	cfg.Resonance = 0.0
+	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 1.0, 10.0, 1.0, 50.0)
+	return cfg
+}
+
+func TestLadderFilterType(t *testing.T) {
+	dark := steadyConfig()
+	dark.FilterType = FilterLadder
+	dark.Cutoff = 150.0
+
+	bright := dark
+	bright.Cutoff = 8000.0
+
+	// a 440 Hz saw through a 150 Hz 24 dB ladder is much quieter than through an open one
+	if d, b := renderRMS(dark, 69), renderRMS(bright, 69); d > b*0.25 {
+		t.Fatalf("expected the closed ladder to be much darker: %v vs %v", d, b)
+	}
+}
+
+func TestFormantVowelChangesSound(t *testing.T) {
+	a := steadyConfig()
+	a.FilterType = FilterFormant
+	a.Vowel = 0
+
+	i := a
+	i.Vowel = 2
+
+	ra, ri := renderRMS(a, 45), renderRMS(i, 45)
+	if ra == 0 || ri == 0 || math.Abs(ra-ri)/math.Max(ra, ri) < 0.05 {
+		t.Fatalf("expected vowels a and i to sound different: %v vs %v", ra, ri)
+	}
+}
+
+func TestSVFNotchMode(t *testing.T) {
+	// a sine right on the notch frequency is removed
+	cfg := steadyConfig()
+	cfg.Osc1Waveform = blosc.Sine
+	cfg.Osc2Level = 0.0
+	cfg.FilterMode = Notch
+	cfg.Cutoff = 440.0
+	cfg.Resonance = 0.5
+
+	open := cfg
+	open.FilterMode = LowPass
+	open.Cutoff = 15000.0
+
+	if n, o := renderRMS(cfg, 69), renderRMS(open, 69); n > o*0.1 {
+		t.Fatalf("expected the notch to remove the sine: %v vs %v", n, o)
+	}
+}
+
+func TestFilterTypesWithModulationAreStable(t *testing.T) {
+	for _, ft := range []FilterType{FilterSVF, FilterLadder, FilterFormant} {
+		cfg := DefaultConfig()
+		cfg.FilterType = ft
+		cfg.Resonance = 0.95
+		cfg.FilterDrive = 3.0
+		cfg.FilterEnvAmount = 4.0
+		cfg.LFO1 = LFOConfig{Waveform: LFOSampleHold, Rate: 10, Cutoff: 3.0}
+
+		v := New(cfg)
+		v.Note(0.4, 0.8, psalm.Message{"pitch": 40.0}, psalm.CtrlTick{}, v.Config())
+		for blocks := 0; v.IsActive(); blocks++ {
+			if blocks > 1000 {
+				t.Fatalf("filter type %d: voice never finished", ft)
+			}
+			v.Synthesize()
+			for _, s := range v.Output(0).Channels[0] {
+				if math.IsNaN(float64(s)) || math.Abs(float64(s)) > 4 {
+					t.Fatalf("filter type %d: invalid sample %v", ft, s)
+				}
+			}
+		}
 	}
 }

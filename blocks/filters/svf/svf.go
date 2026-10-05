@@ -2,11 +2,24 @@ package svf
 
 import "math"
 
+// Mode selects the output of Process
+type Mode int
+
+const (
+	LowPass Mode = iota
+	BandPass
+	HighPass
+	Notch
+	Peak
+	AllPass
+)
+
 // SVF is a zero-delay feedback (TPT) state variable filter after Andrew Simper (Cytomic)
 type SVF struct {
 	sr    float64
 	fc    float64
 	res   float64
+	q     float64 // when > 0 the damping is set from Q instead of resonance
 	g     float64
 	k     float64
 	a1    float64
@@ -41,7 +54,21 @@ func (f *SVF) SetResonance(res float64) {
 func (f *SVF) Set(fc float64, res float64) {
 	f.fc = fc
 	f.res = res
+	f.q = 0.0
 	f.update()
+}
+
+// SetFrequencyQ sets cutoff and Q directly (Q 0.5 is critically damped, higher is more resonant),
+// handy for bandpass based filters like formant filters
+func (f *SVF) SetFrequencyQ(fc float64, q float64) {
+	f.fc = fc
+	f.q = math.Max(0.1, q)
+	f.update()
+}
+
+// K returns the damping factor (1 / Q)
+func (f *SVF) K() float64 {
+	return f.k
 }
 
 func (f *SVF) update() {
@@ -49,7 +76,11 @@ func (f *SVF) update() {
 	res := math.Max(0.0, math.Min(f.res, 0.99))
 
 	f.g = math.Tan(math.Pi * fc / f.sr)
-	f.k = 2.0 - 2.0*res
+	if f.q > 0.0 {
+		f.k = 1.0 / f.q
+	} else {
+		f.k = 2.0 - 2.0*res
+	}
 	f.a1 = 1.0 / (1.0 + f.g*(f.g+f.k))
 	f.a2 = f.g * f.a1
 	f.a3 = f.g * f.a2
@@ -70,4 +101,24 @@ func (f *SVF) Tick(v0 float64) (low float64, band float64, high float64) {
 	f.ic2eq = 2.0*v2 - f.ic2eq
 
 	return v2, v1, v0 - f.k*v1 - v2
+}
+
+// Process filters a single sample and returns the output for the given mode
+func (f *SVF) Process(v0 float64, mode Mode) float64 {
+	low, band, high := f.Tick(v0)
+
+	switch mode {
+	case BandPass:
+		return band
+	case HighPass:
+		return high
+	case Notch:
+		return low + high
+	case Peak:
+		return low - high
+	case AllPass:
+		return low + high - f.k*band
+	default:
+		return low
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
+	"github.com/almerlucke/psalm/blocks/filters/ladder"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
@@ -274,7 +275,7 @@ func main() {
 			params: map[string][]float64{"fmAmount": {0, 0.5, 1, 2, 4, 8, 4, 1}},
 		},
 		{
-			name: "Filter modes (lowpass, bandpass, highpass) and resonance, cutoff swept by an external LFO",
+			name: "SVF filter modes (lowpass, bandpass, highpass, notch, peak) and resonance, cutoff swept by an external LFO",
 			cfg: func() subtractive.Config {
 				cfg := subtractive.DefaultConfig()
 				cfg.FilterEnvAmount = 0.0
@@ -285,8 +286,8 @@ func main() {
 			layers: [][]note{notes(2, A2, A2, A2, A2, A2, A2, A2, A2)},
 			params: map[string][]float64{
 				"filterMode": {float64(subtractive.LowPass), float64(subtractive.LowPass), float64(subtractive.BandPass), float64(subtractive.BandPass),
-					float64(subtractive.HighPass), float64(subtractive.HighPass), float64(subtractive.LowPass), float64(subtractive.LowPass)},
-				"resonance": {0.2, 0.85, 0.2, 0.85, 0.2, 0.85, 0.2, 0.9},
+					float64(subtractive.HighPass), float64(subtractive.HighPass), float64(subtractive.Notch), float64(subtractive.Peak)},
+				"resonance": {0.2, 0.85, 0.2, 0.85, 0.2, 0.85, 0.3, 0.6},
 			},
 			patch: func(p *psalm.Psalm, synth psalm.Modular) {
 				synth.ValueIn(lfo.New(true, 1.0, 200.0, 3000.0, lfo.Sine).AddTo(p), 0, 1)
@@ -476,6 +477,46 @@ func main() {
 			cfg:    subtractive.RiserPreset(),
 			voices: 2, amp: 0.3, legato: 0.95,
 			layers: [][]note{notes(8, A3, E4)},
+		},
+		{
+			name:   "Ladder filter modes (ladderBass preset): lowpass 24, lowpass 12, bandpass 12, highpass 12",
+			cfg:    subtractive.LadderBassPreset(),
+			voices: 2, amp: 0.35, legato: 0.6,
+			layers: [][]note{notes(1, A1, A2, A1, E3, A1, A2, A1, G3, A1, A2, A1, E3, A1, A2, C3, G3)},
+			params: map[string][]float64{"ladderMode": {
+				float64(ladder.LowPass24), float64(ladder.LowPass24), float64(ladder.LowPass24), float64(ladder.LowPass24),
+				float64(ladder.LowPass12), float64(ladder.LowPass12), float64(ladder.LowPass12), float64(ladder.LowPass12),
+				float64(ladder.BandPass12), float64(ladder.BandPass12), float64(ladder.BandPass12), float64(ladder.BandPass12),
+				float64(ladder.HighPass12), float64(ladder.HighPass12), float64(ladder.HighPass12), float64(ladder.HighPass12),
+			}},
+		},
+		{
+			name:   "Ladder lead (ladderLead preset, mono): drive, glide and delayed vibrato",
+			cfg:    subtractive.LadderLeadPreset(),
+			voices: 1, amp: 0.35, legato: 1.0,
+			layers: [][]note{{{A4, 2}, {C5, 1}, {D5, 1}, {E5, 3}, {D5, 1}, {C5, 2}, {A4, 2}, {G4, 3}, {rest, 1}}},
+		},
+		{
+			name:   "Talking synth (talkingSynth preset): an LFO sweeps the formant filter through the vowels",
+			cfg:    subtractive.TalkingSynthPreset(),
+			voices: 2, amp: 0.7, legato: 0.9,
+			layers: [][]note{notes(2, A2, A2, C3, A2, 43, A2, C3, E3)},
+		},
+		{
+			name:   "Choir pad (choirPad preset): formant filtered saws, Am F C G",
+			cfg:    subtractive.ChoirPadPreset(),
+			voices: 12, amp: 0.25, legato: 1.0,
+			layers: [][]note{
+				notes(4, A3, F4-12, C4, G3),
+				notes(4, C4, A3, E4, 59),
+				notes(4, E4, C4, G4, D4),
+			},
+		},
+		{
+			name:   "Notch pad (notchPad preset): an LFO sweeps a notch, like a phaser",
+			cfg:    subtractive.NotchPadPreset(),
+			voices: 8, amp: 0.15, legato: 1.0,
+			layers: [][]note{notes(8, A3, F4-12), notes(8, E4, C4)},
 		},
 	}
 
