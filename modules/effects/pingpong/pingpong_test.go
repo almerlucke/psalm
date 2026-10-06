@@ -179,7 +179,7 @@ func TestMessages(t *testing.T) {
 		t.Fatalf("unexpected settings %+v", s)
 	}
 	pp.ReceiveMessage(psalm.Message{"timeMs": 250})
-	pp.Receive(0.25, 0) // back to beats
+	pp.Receive(0.25, 1) // back to beats
 	if s := pp.Settings(); s.TimeMs != 0 || s.Time != 0.25 {
 		t.Fatalf("expected the time back in beats, got %+v", s)
 	}

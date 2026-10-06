@@ -103,28 +103,53 @@ darker over time, normalized so the reverb roughly keeps the input level.
 
 ### chorus
 
-`chorus.New(rate, amount, delay, feedback, width, mix, modShaper)` - a 4 tap modulated delay
-chorus (pass `nil` as `modShaper` for the default sine).
+A stereo chorus: a few copies of the input, each read with a slowly moving delay, blended with the
+input. Every side processes its own input; the modulation of the right side runs out of phase with
+the left for width. Fully wet it keeps about the level of the input.
 
-| Setting | Input | Message | Meaning |
+```go
+cfg := chorus.DefaultConfig()
+cfg.Mix = 0.35
+ens := chorus.New(cfg).AddTo(p).In(strings)
+```
+
+| Setting | Default | Input / message | Meaning |
 |---|---|---|---|
-| rate | 0 | `rate` | Modulation rate in Hz |
-| amount | 1 | `amount` | 0-1, modulation depth (up to 20 ms) |
-| delay | 2 | `delay` | 0-1, center delay (5-50 ms) |
-| feedback | 3 | `feedback` | Feedback |
-| width | 4 | `width` | Stereo width |
-| mix | 5 | `mix` | 0 dry, 1 wet |
+| `Rate` | 0.6 | input 1, `rate` | Hz, speed of the modulation (every voice a little different) |
+| `Depth` | 3 | input 2, `depth` | Milliseconds the delay moves either way (0-10) |
+| `Delay` | 15 | `delay` | Milliseconds, the center delay (5-30: short is closer to a flanger, long a doubler) |
+| `Voices` | 3 | | Delayed copies per side, 1-4 |
+| `Spread` | 1 | `spread` | 0-1, stereo width (0 both sides move together) |
+| `Feedback` | 0 | `feedback` | 0-0.9, metallic, resonant chorus |
+| `Tone` | 9000 | `tone` | Hz, lowpass on the copies (0 is off) |
+| `Mix` | 0.4 | input 3, `mix` | 0 dry, 1 wet, an equal power crossfade that keeps the loudness (0.5 is as loud as dry), glides when changed |
+
+Settings glide when they change, so moving them doesn't click.
 
 ### flanger
 
-`flanger.New(rate, depth, feedback, mix, modShaper)` (`nil` shaper is a sine). The rate is set
-at creation.
+A stereo flanger: the input mixed with a copy delayed by a few milliseconds that sweeps up and down,
+so the notches it makes sweep through the sound. The sweep follows the tempo when it is set in
+beats.
 
-| Setting | Input | Message | Meaning |
+```go
+cfg := flanger.DefaultConfig()
+cfg.Beats = 8 // a sweep every two bars
+jet := flanger.New(cfg).AddTo(p).In(drums)
+```
+
+| Setting | Default | Input / message | Meaning |
 |---|---|---|---|
-| depth | 0 | `depth` | 0-1, sweep range (1-20 ms) |
-| feedback | 1 | `feedback` | Feedback |
-| mix | 2 | `mix` | 0 dry, 1 wet |
+| `Rate` | 0.2 | input 1, `rate` | Hz, speed of the sweep |
+| `Beats` | 0 | `beats` | Length of a sweep in beats, follows the tempo; used instead of `Rate` when above 0 |
+| `Manual` | 0.5 | `manual` | Milliseconds, the shortest delay (the highest notches), 0.1-10 |
+| `Depth` | 4 | input 2, `depth` | Milliseconds the sweep reaches above `Manual`, 0-20 |
+| `Feedback` | 0.5 | input 3, `feedback` | -0.95 to 0.95: positive rings metallic, negative sounds hollow |
+| `Stereo` | 0.5 | `stereo` | 0-1, how far the right sweep is out of phase (1 is half a cycle) |
+| `Shape` | `Triangle` | | `flanger.Triangle` or `flanger.Sine` |
+| `Mix` | 0.5 | input 4, `mix` | 0 dry, 1 only the delayed copy; 0.5 makes the deepest notches |
+
+Fully wet it keeps the level of the input.
 
 ### pingpong
 
@@ -139,10 +164,10 @@ echo = pingpong.New(pingpong.DefaultConfig()).AddTo(p).In(lead)
 
 | Setting | Default | Input / message | Meaning |
 |---|---|---|---|
-| `Time` | 0.75 | input 0, `time` | Echo time in beats (0.5 an 8th, 0.75 a dotted 8th, 1 a quarter) |
+| `Time` | 0.75 | input 1, `time` | Echo time in beats (0.5 an 8th, 0.75 a dotted 8th, 1 a quarter) |
 | `TimeMs` | 0 | `timeMs` | Echo time in milliseconds instead, used when above 0, doesn't follow the tempo |
-| `Feedback` | 0.35 | input 1, `feedback` | Every echo is this much quieter than the one before (at most 0.98) |
-| `Mix` | 0.25 | input 2, `mix` | 0 dry, 1 wet |
+| `Feedback` | 0.35 | input 2, `feedback` | Every echo is this much quieter than the one before (at most 0.98) |
+| `Mix` | 0.25 | input 3, `mix` | 0 dry, 1 wet |
 | `Stereo` | 0 | `stereo` | 0 is a ping pong (everything bounces, starting on the left), 1 a plain stereo delay (each side echoes its own input) |
 | `HighCut` | 6000 | `highCut` | Hz, lowpass on every repeat, so the echoes get darker (0 is off) |
 | `LowCut` | 120 | `lowCut` | Hz, highpass on every repeat, so the echoes get thinner (0 is off) |

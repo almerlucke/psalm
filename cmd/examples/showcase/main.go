@@ -224,8 +224,8 @@ func main() {
 	violinsCfg.Unison = 3 // the chorus widens the section
 	violins := wavetable.NewPoly(violinsCfg, 16).AddTo(p)
 	violins.ValueIn(lfo.New(true, 0.05, 0.7, 0.9, lfo.Sine).AddTo(p), 0, 1) // the bowing breathes
-	violinsChorus := chorus.New(0.3, 0.3, 0.4, 0.1, 1.0, 0.35, nil).AddTo(p).In(violins)
-	mix.Channel("violins", violinsChorus, mixer.StripConfig{Pan: -0.35, Group: "strings"})
+	violinsChorus := chorus.New(chorus.Config{Rate: 0.3, Depth: 6, Delay: 23, Voices: 3, Spread: 1, Feedback: 0.1, Tone: 9000, Mix: 0.35}).AddTo(p).In(violins)
+	mix.Channel("violins", violinsChorus, mixer.StripConfig{Volume: -0.4, Pan: -0.35, Group: "strings"})
 
 	celli := subtractive.NewPoly(subtractive.StringsPreset(), 8).AddTo(p)
 	mix.Channel("celli", celli, mixer.StripConfig{Pan: 0.35, Group: "strings"})
@@ -296,9 +296,9 @@ func main() {
 	mix.Channel("voices", voc, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
 
 	bellPad := dx.NewPoly(dx.BellPad(), 12, psalm.Stereo).AddTo(p)
-	bellFlange := flanger.New(0.08, 0.5, 0.4, 0.4, nil).AddTo(p).In(bellPad)
+	bellFlange := flanger.New(flanger.Config{Rate: 0.08, Manual: 1, Depth: 9.5, Feedback: 0.4, Stereo: 0.5, Shape: flanger.Triangle, Mix: 0.4}).AddTo(p).In(bellPad)
 	// the vocoder sounds an FFT frame late: the mixer delays the other strips to line them up
-	mix.Channel("bell pad", bellFlange, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
+	mix.Channel("bell pad", bellFlange, mixer.StripConfig{Volume: 0.3, Sends: sends{"hall": 0.4}})
 
 	droplets := pulsar.NewPoly(pulsar.RaindropsPreset(), 2).AddTo(p)
 	mix.Channel("droplets", droplets, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4, "sky": 0.2}})

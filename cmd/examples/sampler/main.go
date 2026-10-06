@@ -27,7 +27,7 @@ func main() {
 		UseZeroCrossings: true,
 		Loop:             true,
 		Speed:            1.0,
-		Amp:              0.6,
+		Amp:              1.1,
 	}).AddTo(p).ValueIn(templ.New(template.Template{
 		"startOffset": bucket.New(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8).SetMode(bucket.Indexed).Loop(true),
 		"offsetRange": bucket.New(0.05, 0.1, 0.2, 0.3, 0.4).SetMode(bucket.Indexed).Loop(true),
@@ -35,7 +35,7 @@ func main() {
 
 	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.05, 0.8).AddTo(p).In(
 		pingpong.New(pingpong.Config{Time: 1.75, Feedback: 0.1, Mix: 0.125}).AddTo(p).In(
-			flanger.New(0.05, 0.95, 0.85, 0.9, nil).AddTo(p).In(pl),
+			flanger.New(flanger.Config{Rate: 0.05, Manual: 1, Depth: 18, Feedback: 0.85, Stereo: 0.5, Shape: flanger.Triangle, Mix: 0.5}).AddTo(p).In(pl),
 		),
 	))
 

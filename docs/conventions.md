@@ -54,15 +54,16 @@ an LFO or a stream (plain numbers) are on inputs from 1:
 | `filters` | 1 cutoff, 2 resonance, 3 vowel |
 | `granulator` | 1 freeze, 2 delay, 3 density, 4 grain size, 5 pitch |
 | `shimmer` | 1 shimmer |
+| `chorus` | 1 rate, 2 depth, 3 mix |
+| `flanger` | 1 rate, 2 depth, 3 feedback, 4 mix |
+| `pingpong` | 1 time (beats), 2 feedback, 3 mix |
 | `mixer` strip | 1 volume (dB), 2 pan, 3 mute |
 | `mixer` master | 1 volume (dB) |
 | `player` | 1 speed, 2 amp, 3 start offset, 4 end offset, 5 offset range |
 | `lfo` | 0 frequency, 1 min, 2 max, 3 waveform |
 
-Older effects number their settings from 0: `pan` (0 position), `pingpong` (0 time, 1 feedback,
-2 mix), `freeverb` (0 wet, 1 dry, 2 room size, 3 damp, 4 width, 5 mode), `chorus` (0 rate,
-1 amount, 2 delay, 3 feedback, 4 width, 5 mix), `flanger` (0 depth, 1 feedback, 2 mix). Their
-messages follow the convention above.
+Two older modules number their settings from 0: `pan` (0 position) and `freeverb` (0 wet, 1 dry,
+2 room size, 3 damp, 4 width, 5 mode). Their messages follow the convention above.
 
 ## Tempo, randomness and silence
 

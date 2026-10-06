@@ -1,266 +1,177 @@
+// Package chorus is a stereo chorus: a few copies of the input, each delayed by a slowly moving
+// delay, blended with the input so it sounds like several players
 package chorus
 
 import (
 	"math"
 
-	"github.com/almerlucke/genny/float/phasor"
-	"github.com/almerlucke/genny/float/shape"
-	"github.com/almerlucke/genny/float/shape/shapers/lookup"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/delay"
-	"github.com/almerlucke/psalm/tools/mmath"
-	"github.com/almerlucke/psalm/tools/timing"
+	"github.com/almerlucke/psalm/blocks/sine"
 )
 
-/*
-flanger : delay from 0.01 to 5 ms
-chorus : delay from 5 to 25 ms
-doubler : delay from 25 to 75 ms
-echo : delay from 75 to 1000 ms (and beyond)
+// Config describes a chorus
+type Config struct {
+	Rate     float64 // Hz, speed of the delay modulation
+	Depth    float64 // milliseconds the delay moves either way (0-10)
+	Delay    float64 // milliseconds, the center delay (5-30: shorter is closer to a flanger, longer a doubler)
+	Voices   int     // delayed copies per side, 1-4 (0 is 3)
+	Spread   float64 // 0-1, stereo width: how far the modulation of the right side is out of phase with the left
+	Feedback float64 // 0-0.9, for a more metallic, resonant chorus
+	Tone     float64 // Hz, lowpass on the delayed copies (0 is off)
+	Mix      float64 // 0 dry, 1 wet, an equal power crossfade: halfway keeps the loudness
+}
 
-speed : 0 - 20
-*/
-
-var defaultModTable = lookup.NewSineTable(512)
+// DefaultConfig is a lush stereo chorus
+func DefaultConfig() Config {
+	return Config{
+		Rate:   0.6,
+		Depth:  3,
+		Delay:  15,
+		Voices: 3,
+		Spread: 1,
+		Tone:   9000,
+		Mix:    0.4,
+	}
+}
 
 const (
-	_maxDelay     = 50.0
-	_minDelay     = 5.01
-	_amountRange  = 20.0
-	_mod2SpeedDiv = 2.0
-	_mod3SpeedDiv = 3.0
-	_mod4SpeedDiv = 5.0
-	_mod2Phase    = 0.5
-	_mod3Phase    = 0.0
-	_mod4Phase    = 0.5
+	maxVoices  = 4
+	maxDelayMs = 50.0
+	smoothMs   = 50.0 // settings glide this fast, so moving them doesn't click
 )
 
-type lpFilter struct {
-	cf float64
-	x1 float64
-	y1 float64
-}
+// rates of the voices relative to Rate, slightly apart so they never move together
+var voiceRates = [maxVoices]float64{1, 0.83, 1.19, 0.71}
 
-func (f *lpFilter) set(fc float64, sr float64) {
-	f.cf = math.Tan(math.Pi * fc / sr)
-}
-
-func (f *lpFilter) filter(x float64) float64 {
-	out := f.cf*x + f.cf*f.x1 - (f.cf-1.0)*f.y1
-	out /= f.cf + 1.0
-	f.y1 = out
-	f.x1 = x
-	return out
-}
-
+// Chorus is the chorus module: stereo input 0. Value inputs: 1 rate, 2 depth, 3 mix. Messages:
+// "rate", "depth", "delay", "spread", "feedback", "tone", "mix"
 type Chorus struct {
 	*psalm.Module
-	delayLineLeft  *delay.Delay
-	delayLineRight *delay.Delay
-	delayCenter    float64
-	delayRange     float64
-	modShaper      shape.Shaper
-	mods           [4]*phasor.Phasor
-	amount         float64 // 0 - 1
-	delay          float64 // 0 - 1
-	rate           float64
-	width          float64
-	mix            float64
-	fb             float64
-	lp1            lpFilter
-	lp2            lpFilter
+	cfg   Config
+	lines [2]*delay.Delay
+	phase [maxVoices]float64
+	delay float64 // smoothed settings
+	depth float64
+	mix   float64
+	tone  [2]float64 // lowpass states
 }
 
-func New(rate float64, amount float64, delayAmount float64, feedback float64, width float64, mix float64, modShaper shape.Shaper) *Chorus {
+// New creates a chorus
+func New(cfg Config) *Chorus {
 	sr := psalm.SampleRate()
-	delayLengthSamps := int(timing.MsToSamps(_maxDelay+_amountRange, sr) + 1)
-
+	n := int(math.Ceil(maxDelayMs*0.001*sr)) + 4
 	c := &Chorus{
-		Module:         psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo}),
-		delayLineLeft:  delay.New(delayLengthSamps),
-		delayLineRight: delay.New(delayLengthSamps),
-		modShaper:      modShaper,
-		amount:         amount,
-		delay:          delayAmount,
-		rate:           rate,
-		mix:            mix,
-		width:          width,
-		fb:             feedback,
+		Module: psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo}),
+		cfg:    cfg,
+		lines:  [2]*delay.Delay{delay.New(n), delay.New(n)},
+		delay:  cfg.Delay,
+		depth:  cfg.Depth,
+		mix:    cfg.Mix,
 	}
-
-	c.lp1.set(2000.0, sr)
-	c.lp2.set(2000.0, sr)
-
-	c.updateCalculations()
-
-	if modShaper == nil {
-		c.modShaper = defaultModTable
+	for v := range c.phase {
+		c.phase[v] = float64(v) / maxVoices // spread the voices over the cycle
 	}
-
-	speed := [4]float64{rate, rate / _mod2SpeedDiv, rate / _mod3SpeedDiv, rate / _mod4SpeedDiv}
-	phase := [4]float64{0, _mod2Phase, _mod3Phase, _mod4Phase}
-
-	for i := range 4 {
-		c.mods[i] = phasor.New(speed[i], sr, phase[i])
-	}
-
 	c.SetSelf(c)
-
 	return c
 }
 
-func (c *Chorus) updateCalculations() {
-	c.delayCenter, c.delayRange = c.delay*(_maxDelay-_minDelay)+_minDelay, c.amount*_amountRange
-}
+// Settings returns the settings
+func (c *Chorus) Settings() Config { return c.cfg }
 
-func (c *Chorus) Rate() float64 {
-	return c.rate
-}
-
-func (c *Chorus) SetRate(rate float64) {
-	sr := c.Config().SampleRate
-	rate = mmath.Limit(rate, 0, 1)
-	c.rate = rate
-	c.mods[0].SetFrequency(rate, sr)
-	c.mods[1].SetFrequency(rate/_mod2SpeedDiv, sr)
-	c.mods[2].SetFrequency(rate/_mod3SpeedDiv, sr)
-	c.mods[3].SetFrequency(rate/_mod4SpeedDiv, sr)
-}
-
-func (c *Chorus) Amount() float64 {
-	return c.amount
-}
-
-func (c *Chorus) SetAmount(amount float64) {
-	amount = mmath.Limit(amount, 0, 1)
-	c.amount = amount
-	c.updateCalculations()
-}
-
-func (c *Chorus) Delay() float64 {
-	return c.delay
-}
-
-func (c *Chorus) SetDelay(delayAmount float64) {
-	delayAmount = mmath.Limit(delayAmount, 0, 1)
-	c.delay = delayAmount
-	c.updateCalculations()
-}
-
-func (c *Chorus) Mix() float64 {
-	return c.mix
-}
-
-func (c *Chorus) SetMix(mix float64) {
-	mix = mmath.Limit(mix, 0, 1)
-	c.mix = mix
-}
-
-func (c *Chorus) Feedback() float64 {
-	return c.fb
-}
-
-func (c *Chorus) SetFeedback(fb float64) {
-	fb = mmath.Limit(fb, 0, 1)
-	c.fb = fb
-}
-
-func (c *Chorus) Width() float64 {
-	return c.width
-}
-
-func (c *Chorus) SetWidth(w float64) {
-	w = mmath.Limit(w, 0, 1)
-	c.width = w
-}
+func (c *Chorus) SetRate(rate float64)     { c.cfg.Rate = math.Max(0, rate) }
+func (c *Chorus) SetDepth(ms float64)      { c.cfg.Depth = math.Max(0, math.Min(ms, 10)) }
+func (c *Chorus) SetDelay(ms float64)      { c.cfg.Delay = math.Max(1, math.Min(ms, 35)) }
+func (c *Chorus) SetSpread(spread float64) { c.cfg.Spread = math.Max(0, math.Min(spread, 1)) }
+func (c *Chorus) SetFeedback(fb float64)   { c.cfg.Feedback = math.Max(0, math.Min(fb, 0.9)) }
+func (c *Chorus) SetTone(hz float64)       { c.cfg.Tone = math.Max(0, hz) }
+func (c *Chorus) SetMix(mix float64)       { c.cfg.Mix = math.Max(0, math.Min(mix, 1)) }
 
 func (c *Chorus) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		c.ReceiveMessage(msg)
 		return
 	}
-
+	v := psalm.FltVal[float64](value)
 	switch index {
-	case 0:
-		c.SetRate(psalm.FltVal[float64](value))
 	case 1:
-		c.SetAmount(psalm.FltVal[float64](value))
+		c.SetRate(v)
 	case 2:
-		c.SetDelay(psalm.FltVal[float64](value))
+		c.SetDepth(v)
 	case 3:
-		c.SetFeedback(psalm.FltVal[float64](value))
-	case 4:
-		c.SetWidth(psalm.FltVal[float64](value))
-	case 5:
-		c.SetMix(psalm.FltVal[float64](value))
+		c.SetMix(v)
 	}
 }
 
 func (c *Chorus) ReceiveMessage(msg psalm.Message) {
-	msg.IfFltVal("rate", func(v float64) {
-		c.SetRate(v)
-	})
-	msg.IfFltVal("amount", func(v float64) {
-		c.SetAmount(v)
-	})
-	msg.IfFltVal("delay", func(v float64) {
-		c.SetDelay(v)
-	})
-	msg.IfFltVal("feedback", func(v float64) {
-		c.SetFeedback(v)
-	})
-	msg.IfFltVal("width", func(v float64) {
-		c.SetWidth(v)
-	})
-	msg.IfFltVal("mix", func(v float64) {
-		c.SetMix(v)
-	})
+	msg.IfFltVal("rate", c.SetRate)
+	msg.IfFltVal("depth", c.SetDepth)
+	msg.IfFltVal("delay", c.SetDelay)
+	msg.IfFltVal("spread", c.SetSpread)
+	msg.IfFltVal("feedback", c.SetFeedback)
+	msg.IfFltVal("tone", c.SetTone)
+	msg.IfFltVal("mix", c.SetMix)
 }
 
 func (c *Chorus) Synthesize() {
-	inLeft := c.Input(0).Channels[0]
-	inRight := c.Input(0).Channels[1]
-	outLeft := c.Output(0).Channels[0]
-	outRight := c.Output(0).Channels[1]
-	config := c.Config()
-	msSamps := config.SampleRate * 0.001
+	var (
+		cfg    = &c.cfg
+		sr     = c.Config().SampleRate
+		in     = c.Input(0).Channels
+		out    = c.Output(0).Channels
+		voices = max(1, min(cfg.Voices, maxVoices))
+		smooth = 1 - math.Exp(-1/(smoothMs*0.001*sr))
+		msToS  = 0.001 * sr
+		fb     = math.Max(0, math.Min(cfg.Feedback, 0.9))
+		offset = 0.25 * math.Max(0, math.Min(cfg.Spread, 1)) // quarter cycle at full spread
+		lp     = 1.0
+	)
+	if cfg.Voices == 0 {
+		voices = 3
+	}
+	if cfg.Tone > 0 {
+		lp = 1 - math.Exp(-2*math.Pi*math.Min(cfg.Tone, sr*0.45)/sr)
+	}
+	outGain := math.Sqrt(float64(voices))
 
-	for i := 0; i < config.BufferSize; i++ {
-		d1Loc := math.Abs(msSamps * (c.delayCenter + c.delayRange*c.modShaper.Shape(c.mods[0].Generate())))
-		d2Loc := math.Abs(msSamps * (c.delayCenter + c.delayRange*c.modShaper.Shape(c.mods[1].Generate())))
-		d3Loc := math.Abs(msSamps * (c.delayCenter + c.delayRange*c.modShaper.Shape(c.mods[2].Generate())))
-		d4Loc := math.Abs(msSamps * (c.delayCenter + c.delayRange*c.modShaper.Shape(c.mods[3].Generate())))
+	for i := range out[0] {
+		c.delay += (cfg.Delay - c.delay) * smooth
+		c.depth += (cfg.Depth - c.depth) * smooth
+		c.mix += (cfg.Mix - c.mix) * smooth
+		// the voices hardly correlate with the input, so their powers add: an equal power
+		// crossfade keeps the loudness at every mix
+		dryGain := sine.CosCycle(0.25 * c.mix)
+		wetGain := sine.Cycle(0.25*c.mix) * outGain
 
-		d1Left := c.delayLineLeft.ReadLinear(d1Loc)
-		d2Left := c.delayLineLeft.ReadLinear(d2Loc)
-		d3Left := c.delayLineLeft.ReadLinear(d3Loc)
-		d4Left := c.delayLineLeft.ReadLinear(d4Loc)
+		var wet [2]float64
+		for v := range voices {
+			ph := c.phase[v]
+			c.phase[v] += cfg.Rate * voiceRates[v] / sr
+			c.phase[v] -= math.Floor(c.phase[v])
+			for ch := range 2 {
+				p := ph
+				if ch == 1 {
+					p += offset
+				}
+				d := (c.delay + c.depth*sine.Cycle(p)) * msToS
+				wet[ch] += c.lines[ch].ReadHermite(math.Max(1, d))
+			}
+		}
 
-		d1Right := c.delayLineRight.ReadLinear(d1Loc)
-		d2Right := c.delayLineRight.ReadLinear(d2Loc)
-		d3Right := c.delayLineRight.ReadLinear(d3Loc)
-		d4Right := c.delayLineRight.ReadLinear(d4Loc)
-
-		im1Left := d1Left + d3Left
-		im2Left := d2Left + d4Left
-
-		im1Right := d1Right + d3Right
-		im2Right := d2Right + d4Right
-
-		c.delayLineLeft.Write(float64(inLeft[i]) + c.fb*c.lp1.filter((im1Left+im2Left)*0.25))
-		c.delayLineRight.Write(float64(inRight[i]) + c.fb*c.lp2.filter((im1Right+im2Right)*0.25))
-
-		out1 := im1Left + im2Left*(1.0-c.width)
-		out2 := im1Left*(1.0-c.width) + im2Left
-		out1 += im1Right + im2Right*(1.0-c.width)
-		out2 += im1Right*(1.0-c.width) + im2Right
-
-		outLeft[i] = float32(float64(inLeft[i])*(1.0-c.mix) + c.mix*out1)
-		outRight[i] = float32(float64(inRight[i])*(1.0-c.mix) + c.mix*out2)
+		for ch := range 2 {
+			x := float64(in[ch][i])
+			// the average of the voices feeds back (a loop gain below the feedback amount, also for
+			// low notes where the voices add up in phase), the output gets the voices at the level
+			// of unrelated signals, which keeps the loudness of the input
+			avg := wet[ch] / float64(voices)
+			c.tone[ch] += lp * (avg - c.tone[ch])
+			c.lines[ch].Write(x + fb*c.tone[ch])
+			out[ch][i] = float32(x*dryGain + c.tone[ch]*wetGain)
+		}
 	}
 }
 
-// Tail lets the chorus rest while silent: its delays are shorter than this
+// Tail lets the chorus rest while silent: its longest delay
 func (c *Chorus) Tail() float64 {
-	return 0.1
+	return (c.cfg.Delay+c.cfg.Depth)/1000 + 0.02
 }

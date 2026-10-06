@@ -39,8 +39,8 @@ const maxFeedback = 0.98
 // glideMs is how fast the echo time follows a change (of the time or the tempo), like tape
 const glideMs = 60.0
 
-// PingPong is the delay module: input 0 is stereo audio. Value inputs: 0 time (beats), 1 feedback,
-// 2 mix
+// PingPong is the delay module: input 0 is stereo audio. Value inputs: 1 time (beats), 2 feedback,
+// 3 mix
 type PingPong struct {
 	*psalm.Module
 	cfg     Config
@@ -110,11 +110,11 @@ func (pp *PingPong) Receive(value any, index int) {
 	}
 	v := psalm.FltVal[float64](value)
 	switch index {
-	case 0:
-		pp.SetTime(v)
 	case 1:
-		pp.SetFeedback(v)
+		pp.SetTime(v)
 	case 2:
+		pp.SetFeedback(v)
+	case 3:
 		pp.SetMix(v)
 	}
 }
