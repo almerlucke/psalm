@@ -184,3 +184,34 @@ func TestMessages(t *testing.T) {
 		t.Fatalf("expected the time back in beats, got %+v", s)
 	}
 }
+
+// Jumping the mix and feedback glides: no steps in the output
+func TestSettingsGlide(t *testing.T) {
+	pp := New(DefaultConfig())
+	bs := pp.Config().BufferSize
+	n := 0
+	play := func(buffers int) []float64 {
+		var out []float64
+		for range buffers {
+			for i := range bs {
+				v := float32(0.5 * math.Sin(2*math.Pi*110*float64(n)/pp.Config().SampleRate))
+				pp.Input(0).Channels[0][i], pp.Input(0).Channels[1][i] = v, v
+				n++
+			}
+			pp.Synthesize()
+			for i := range bs {
+				out = append(out, float64(pp.Output(0).Channels[0][i]))
+			}
+		}
+		return out
+	}
+	play(40)
+	pp.ReceiveMessage(psalm.Message{"mix": 1.0, "feedback": 0.9})
+	out := play(10)
+	for i := 1; i < len(out); i++ {
+		// a 110 Hz sine of 0.5 moves at most 0.008 per sample, echoes add a few
+		if d := math.Abs(out[i] - out[i-1]); d > 0.03 {
+			t.Fatalf("the output stepped by %v at %d", d, i)
+		}
+	}
+}

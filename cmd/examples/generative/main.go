@@ -40,17 +40,17 @@ import (
 // and to the granulator (mix, freeze, octave)
 var form = arrange.NewForm(
 	arrange.Section{Name: "Mist", Bars: 8, Params: map[string]any{
-		"formant": 2400.0, "cutoff": 300.0, "mix": 0.3, "freeze": 0.0, "octave": 0.0}},
+		"formant": 2400.0, "cutoff": 300.0, "mix": 0.26, "freeze": 0.0, "octave": 0.0}},
 	arrange.Section{Name: "Drops", Bars: 8, Params: map[string]any{
-		"formant": 2400.0, "cutoff": 300.0, "mix": 0.4, "freeze": 0.0, "octave": 0.1}},
+		"formant": 2400.0, "cutoff": 300.0, "mix": 0.37, "freeze": 0.0, "octave": 0.1}},
 	arrange.Section{Name: "Pulse", Bars: 8, Params: map[string]any{
-		"formant": 3200.0, "cutoff": 600.0, "mix": 0.3, "freeze": 0.0, "octave": 0.0}},
+		"formant": 3200.0, "cutoff": 600.0, "mix": 0.26, "freeze": 0.0, "octave": 0.0}},
 	arrange.Section{Name: "Freeze", Bars: 8, Params: map[string]any{
-		"formant": 2000.0, "cutoff": 900.0, "mix": 0.7, "freeze": 1.0, "octave": 0.3}},
+		"formant": 2000.0, "cutoff": 900.0, "mix": 0.74, "freeze": 1.0, "octave": 0.3}},
 	arrange.Section{Name: "Bloom", Bars: 8, Dynamics: 1.1, Params: map[string]any{
 		"formant": 1800.0, "cutoff": 1200.0, "mix": 0.5, "freeze": 0.0, "octave": 0.2}},
 	arrange.Section{Name: "Fade", Bars: 8, Params: map[string]any{
-		"formant": 2400.0, "cutoff": 300.0, "mix": 0.6, "freeze": 0.0, "octave": 0.1}},
+		"formant": 2400.0, "cutoff": 300.0, "mix": 0.63, "freeze": 0.0, "octave": 0.1}},
 )
 
 // choose picks one of the values at random every time, from the patch seed
@@ -184,7 +184,7 @@ func main() {
 	gcfg.Density = 30
 	gran := granulator.New(gcfg)
 	gran.AddTo(p)
-	mix.Group("atmos", mixer.StripConfig{Sends: map[string]float64{"hall": 0.4}}, gran)
+	mix.Group("atmos", mixer.StripConfig{Volume: -2.6, Sends: map[string]float64{"hall": 0.4}}, gran)
 	mix.Channel("pad", pad, mixer.StripConfig{Group: "atmos", Pan: -0.2})
 	mix.Channel("glass", glass, mixer.StripConfig{Group: "atmos", Pan: 0.3, Volume: -4})
 	mix.Channel("bass", bass, mixer.StripConfig{Sends: map[string]float64{"hall": 0.1}})

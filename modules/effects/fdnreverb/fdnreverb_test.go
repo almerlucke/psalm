@@ -171,3 +171,35 @@ func TestDryMixPassesInput(t *testing.T) {
 		}
 	}
 }
+
+// Jumping the mix glides: no steps in the output
+func TestMixGlides(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Mix = 0
+	r := New(cfg)
+	bs := r.Config().BufferSize
+	n := 0
+	play := func(buffers int) []float64 {
+		var out []float64
+		for range buffers {
+			for i := range bs {
+				v := float32(0.5 * math.Sin(2*math.Pi*110*float64(n)/r.Config().SampleRate))
+				r.Input(0).Channels[0][i], r.Input(0).Channels[1][i] = v, v
+				n++
+			}
+			r.Synthesize()
+			for i := range bs {
+				out = append(out, float64(r.Output(0).Channels[0][i]))
+			}
+		}
+		return out
+	}
+	play(40)
+	r.ReceiveMessage(map[string]any{"mix": 1.0})
+	out := play(10)
+	for i := 1; i < len(out); i++ {
+		if d := math.Abs(out[i] - out[i-1]); d > 0.03 {
+			t.Fatalf("the output stepped by %v at %d", d, i)
+		}
+	}
+}

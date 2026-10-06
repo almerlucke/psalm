@@ -1,10 +1,11 @@
 package fdnreverb
 
 import (
-	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/mix"
+	"github.com/almerlucke/psalm/blocks/sine"
 )
 
 // Config for the FDN reverb
@@ -17,7 +18,7 @@ type Config struct {
 	ModDepth  float64 // delay modulation depth in milliseconds, removes metallic ringing
 	ModRate   float64 // delay modulation rate in Hz
 	Width     float64 // 0 is mono, 1 is full stereo
-	Mix       float64 // 0 is dry only, 1 is wet only
+	Mix       float64 // 0 is dry only, 1 is wet only, an equal power crossfade that keeps the loudness
 }
 
 func DefaultConfig() Config {
@@ -30,7 +31,7 @@ func DefaultConfig() Config {
 		ModDepth:  0.4,
 		ModRate:   0.6,
 		Width:     1.0,
-		Mix:       0.3,
+		Mix:       0.26,
 	}
 }
 
@@ -145,6 +146,8 @@ type FDNReverb struct {
 	out       [numLines]float64
 	preDelayN float64 // pre-delay in samples
 	width     float64
+	widthS    mix.Smoother // width and mix glide when they change
+	mix       mix.Smoother
 }
 
 func New(cfg Config) *FDNReverb {
@@ -172,6 +175,8 @@ func New(cfg Config) *FDNReverb {
 	}
 
 	r.update()
+	r.widthS = mix.NewSmoother(r.width, mix.SmoothMs, r.sr)
+	r.mix = mix.NewSmoother(math.Max(0, math.Min(cfg.Mix, 1)), mix.SmoothMs, r.sr)
 	r.SetSelf(r)
 
 	return r
@@ -305,7 +310,7 @@ func (r *FDNReverb) ProcessSample(inL float64, inR float64) (float64, float64) {
 	right *= outScale
 
 	mid := (left + right) * 0.5
-	side := (left - right) * 0.5 * r.width
+	side := (left - right) * 0.5 * r.widthS.Next(r.width)
 
 	// mix the lines and feed them back with the input (left into even, right into odd lines)
 	r.feedback = r.out
@@ -320,10 +325,11 @@ func (r *FDNReverb) ProcessSample(inL float64, inR float64) (float64, float64) {
 func (r *FDNReverb) Synthesize() {
 	ins := r.Input(0).Channels
 	outs := r.Output(0).Channels
-	wet, dry := r.cfg.Mix, 1.0-r.cfg.Mix
+	mixTo := math.Max(0, math.Min(r.cfg.Mix, 1))
 
 	for i := range r.Config().BufferSize {
 		inL, inR := float64(ins[0][i]), float64(ins[1][i])
+		dry, wet := mix.EqualPower(r.mix.Next(mixTo))
 		left, right := r.ProcessSample(inL, inR)
 		outs[0][i] = float32(dry*inL + wet*left)
 		outs[1][i] = float32(dry*inR + wet*right)

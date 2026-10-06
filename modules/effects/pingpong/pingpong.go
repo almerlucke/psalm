@@ -7,6 +7,7 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/delay"
+	"github.com/almerlucke/psalm/blocks/mix"
 )
 
 // Config describes a ping pong delay
@@ -14,7 +15,7 @@ type Config struct {
 	Time       float64 // echo time in beats, follows the tempo (0.75 is a dotted 8th)
 	TimeMs     float64 // echo time in milliseconds instead, used when above 0 (doesn't follow the tempo)
 	Feedback   float64 // 0-1, every echo is this much quieter than the one before (at most 0.98)
-	Mix        float64 // 0 dry, 1 wet
+	Mix        float64 // 0 dry, 1 wet, an equal power crossfade that keeps the loudness
 	Stereo     float64 // 0-1: 0 bounces every echo to the other side (ping pong), 1 is a plain stereo delay
 	HighCut    float64 // Hz, lowpass on every repeat, the echoes get darker (0 is off)
 	LowCut     float64 // Hz, highpass on every repeat, the echoes get thinner (0 is off)
@@ -26,7 +27,7 @@ func DefaultConfig() Config {
 	return Config{
 		Time:       0.75,
 		Feedback:   0.35,
-		Mix:        0.25,
+		Mix:        0.2,
 		HighCut:    6000,
 		LowCut:     120,
 		MaxSeconds: 4,
@@ -51,6 +52,9 @@ type PingPong struct {
 	lpR     float64
 	hpL     float64
 	hpR     float64
+	mix     mix.Smoother // feedback, mix and stereo glide when they change
+	fb      mix.Smoother
+	stereo  mix.Smoother
 }
 
 // New creates a ping pong delay
@@ -65,6 +69,9 @@ func New(cfg Config) *PingPong {
 		cfg:    cfg,
 		left:   delay.New(length),
 		right:  delay.New(length),
+		mix:    mix.NewSmoother(clamp(cfg.Mix, 0, 1), mix.SmoothMs, sr),
+		fb:     mix.NewSmoother(clamp(cfg.Feedback, 0, maxFeedback), mix.SmoothMs, sr),
+		stereo: mix.NewSmoother(clamp(cfg.Stereo, 0, 1), mix.SmoothMs, sr),
 	}
 	pp.samples = pp.target()
 	pp.SetSelf(pp)
@@ -129,6 +136,8 @@ func (pp *PingPong) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("lowCut", func(f float64) { pp.cfg.LowCut = f })
 }
 
+func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+
 // onePole returns the coefficient of a one pole lowpass at fc
 func onePole(fc float64, sr float64) float64 {
 	return 1.0 - math.Exp(-2.0*math.Pi*fc/sr)
@@ -144,10 +153,9 @@ func (pp *PingPong) Synthesize() {
 		outRight = pp.Output(0).Channels[1]
 		target   = pp.target()
 		glide    = 1.0 - math.Exp(-1.0/(glideMs*0.001*sr))
-		fb       = math.Max(0, math.Min(cfg.Feedback, maxFeedback))
-		w        = 1 - math.Max(0, math.Min(cfg.Stereo, 1)) // how much the echoes bounce
-		dry      = 1.0 - cfg.Mix
-		wet      = cfg.Mix
+		fbTarget = clamp(cfg.Feedback, 0, maxFeedback)
+		stTarget = clamp(cfg.Stereo, 0, 1)
+		mixTo    = clamp(cfg.Mix, 0, 1)
 		lpCoef   = 1.0
 		hpCoef   = 0.0
 	)
@@ -171,6 +179,9 @@ func (pp *PingPong) Synthesize() {
 
 	for i := range len(outLeft) {
 		pp.samples += (target - pp.samples) * glide
+		fb := pp.fb.Next(fbTarget)
+		w := 1 - pp.stereo.Next(stTarget) // how much the echoes bounce
+		dry, wet := mix.EqualPower(pp.mix.Next(mixTo))
 
 		l := pp.left.ReadLinear(pp.samples)
 		r := pp.right.ReadLinear(pp.samples)

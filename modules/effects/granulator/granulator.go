@@ -1,10 +1,11 @@
 package granulator
 
 import (
-	fastsine "github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/mix"
+	fastsine "github.com/almerlucke/psalm/blocks/sine"
 )
 
 // Config for the granulator
@@ -22,7 +23,7 @@ type Config struct {
 	Jitter        float64 // 0-1, randomness of the time between grains
 	StereoSpread  float64 // 0-1, random pan per grain
 	Feedback      float64 // 0-1, grains fed back into the buffer
-	Mix           float64 // 0 is dry only, 1 is wet only
+	Mix           float64 // 0 is dry only, 1 is wet only, an equal power crossfade that keeps the loudness
 	Freeze        bool    // stop recording, the grains keep playing what is in the buffer
 }
 
@@ -65,6 +66,9 @@ type Granulator struct {
 	grains    []grain
 	countdown float64
 	fbL, fbR  float64
+	mix       mix.Smoother // mix, feedback and the grain level glide when they change
+	fb        mix.Smoother
+	norm      mix.Smoother
 }
 
 func New(cfg Config) *Granulator {
@@ -82,6 +86,10 @@ func New(cfg Config) *Granulator {
 	g.buf[0] = make([]float32, n)
 	g.buf[1] = make([]float32, n)
 
+	sr := g.Config().SampleRate
+	g.mix = mix.NewSmoother(math.Max(0, math.Min(cfg.Mix, 1)), mix.SmoothMs, sr)
+	g.fb = mix.NewSmoother(math.Max(0, math.Min(cfg.Feedback, 0.98)), mix.SmoothMs, sr)
+	g.norm = mix.NewSmoother(g.grainNorm(), mix.SmoothMs, sr)
 	g.SetSelf(g)
 
 	return g
@@ -204,6 +212,12 @@ func (g *Granulator) spawn(sr float64) {
 	})
 }
 
+// grainNorm returns the grain level: overlapping grains add up, scaled by the square root of the
+// overlap the level stays steady
+func (g *Granulator) grainNorm() float64 {
+	return 1.0 / math.Sqrt(math.Max(1.0, math.Max(0.1, g.cfg.Density)*g.cfg.GrainSize*0.001))
+}
+
 // read returns the buffer at an absolute position with linear interpolation
 func (g *Granulator) read(ch int, pos float64) float64 {
 	buf := g.buf[ch]
@@ -223,17 +237,17 @@ func (g *Granulator) Synthesize() {
 		outs    = g.Output(0).Channels
 		n       = int64(len(g.buf[0]))
 		density = math.Max(0.1, cfg.Density)
-		wet     = cfg.Mix
-		dry     = 1.0 - cfg.Mix
-		fb      = math.Max(0, math.Min(cfg.Feedback, 0.98))
+		mixTo   = math.Max(0, math.Min(cfg.Mix, 1))
+		fbTo    = math.Max(0, math.Min(cfg.Feedback, 0.98))
+		normTo  = g.grainNorm()
 	)
-
-	// overlapping grains add up, scale by the square root of the overlap to keep the level steady
-	norm := 1.0 / math.Sqrt(math.Max(1.0, density*cfg.GrainSize*0.001))
 	interval := sr / density
 
 	for i := range g.Config().BufferSize {
 		inL, inR := float64(ins[0][i]), float64(ins[1][i])
+		dry, wet := mix.EqualPower(g.mix.Next(mixTo))
+		fb := g.fb.Next(fbTo)
+		norm := g.norm.Next(normTo)
 
 		// record the input (plus feedback), unless frozen
 		if !cfg.Freeze {

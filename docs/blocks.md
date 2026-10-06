@@ -101,6 +101,15 @@ aliasing of naive waveforms.
 `blocks/delay` - a simple delay line: `delay.New(length)`, `Write(x)`, and fractional reads
 `ReadLinear(location)` and `ReadHermite(location)`. Used by chorus, flanger and pingpong.
 
+## mix
+
+`blocks/mix` - what effects share to blend and change their settings. `mix.EqualPower(m)` returns
+the dry and wet gains of an equal power crossfade (they keep the loudness when the wet signal
+doesn't correlate with the dry one). `mix.LinearToEqualPower(m)` converts the mix of a linear
+crossfade into the equal power mix with the same balance, plus the gain that makes it as loud.
+`mix.NewSmoother(value, ms, sampleRate)` glides a setting: `Next(target)` every sample
+(`mix.SmoothMs`, 30 ms, is the default speed).
+
 ## sine
 
 `blocks/sine`

@@ -11,6 +11,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
+	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/modules/effects/latency"
 	"github.com/almerlucke/psalm/modules/effects/pan"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
@@ -184,7 +185,7 @@ func main() {
 	starsPanned := pan.New(0.0).AddTo(p).In(stars)
 	starsPanned.ValueIn(lfo.New(true, 0.3, -0.7, 0.7, lfo.Saw).AddTo(p), 0, 0)
 
-	starRipples := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.5, Mix: 0.5}).AddTo(p).In(starsPanned)
+	starRipples := gain.New(-3).AddTo(p).In(pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.5, Mix: 0.5}).AddTo(p).In(starsPanned))
 
 	// Delay the piano and pad by the vocoder latency so everything lines up
 	// Panning: the voice stays in the center, the piano sits to the left and the pad to the right

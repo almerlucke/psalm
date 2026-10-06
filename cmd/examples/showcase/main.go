@@ -214,8 +214,8 @@ func main() {
 	choirClean := filters.NewSVF(svf.HighPass, 120, 0.1)
 	choirClean.AddTo(p)
 	church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
-	mix.Group("choir", mixer.StripConfig{}, choirClean,
-		convolver.New(church, convolver.Config{PartitionSize: 4096, Mix: 0.4, Gain: 2.27}).AddTo(p))
+	mix.Group("choir", mixer.StripConfig{Volume: -2.8}, choirClean,
+		convolver.New(church, convolver.Config{PartitionSize: 4096, Mix: 0.37, Gain: 2.27}).AddTo(p))
 
 	// --- strings ---
 
@@ -247,13 +247,13 @@ func main() {
 	gran := granulator.New(gcfg)
 	gran.AddTo(p)
 	gran.In(harpRoom)
-	mix.Channel("harp", gran, mixer.StripConfig{Volume: -3, Pan: 0.55, Sends: sends{"hall": 0.5}})
+	harpStrip := mix.Channel("harp", gran, mixer.StripConfig{Volume: -3, Pan: 0.55, Sends: sends{"hall": 0.5}})
 
 	// --- winds and brass ---
 
 	flute := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
-	piccolo := pitchshift.New(12, 60, 0.15).AddTo(p).In(flute) // an octave shadow above
-	mix.Channel("flute", piccolo, mixer.StripConfig{Volume: -3, Pan: -0.1, Sends: sends{"hall": 0.4, "sky": 0.1}})
+	piccolo := pitchshift.New(12, 60, 0.11).AddTo(p).In(flute) // an octave shadow above
+	mix.Channel("flute", piccolo, mixer.StripConfig{Volume: -4.3, Pan: -0.1, Sends: sends{"hall": 0.4, "sky": 0.1}})
 
 	horns := dx.NewPoly(dx.SoftBrass(), 12, psalm.Stereo).AddTo(p)
 	mix.Channel("horns", horns, mixer.StripConfig{Volume: -3, Pan: -0.2, Sends: sends{"hall": 0.45}})
@@ -274,8 +274,8 @@ func main() {
 	// --- interlude colours: celesta, bell pad, vocoder, droplets ---
 
 	celesta := fm.NewPoly(fm.CelestaPreset(), 8).AddTo(p)
-	celestaEcho := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.3, HighCut: 5000, LowCut: 200}).AddTo(p).In(celesta)
-	mix.Channel("celesta", celestaEcho, mixer.StripConfig{Volume: -5, Pan: 0.3, Sends: sends{"sky": 0.8}})
+	celestaEcho := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.26, HighCut: 5000, LowCut: 200}).AddTo(p).In(celesta)
+	mix.Channel("celesta", celestaEcho, mixer.StripConfig{Volume: -7.4, Pan: 0.3, Sends: sends{"sky": 0.8}})
 
 	speech := player.New(player.Config{
 		SndFile: sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4),
@@ -513,7 +513,9 @@ func main() {
 			"Prelude": arrange.Exp(250, 12000),
 			"Coda":    arrange.Exp(12000, 400),
 		}}, stringFilter, 1).
-		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{"Interlude": arrange.Const(0.6)}}, gran, "mix").
+		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{"Interlude": arrange.Const(0.63)}}, gran, "mix").
+		// the granulator mixes in at equal power, the harp strip takes back the level it adds
+		Automate(arrange.Lane{Default: -3, Sections: map[string]arrange.Curve{"Interlude": arrange.Const(-5.8)}}, harpStrip, 1).
 		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{"Interlude": func(progress float64) float64 {
 			if progress >= 0.5 {
 				return 1

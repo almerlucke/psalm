@@ -6,13 +6,14 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/fft"
+	"github.com/almerlucke/psalm/blocks/mix"
 	"github.com/almerlucke/sndfile"
 )
 
 // Config for the convolver
 type Config struct {
 	PartitionSize int     // block size, power of 2, the latency of the wet signal in samples
-	Mix           float64 // 0 is dry only, 1 is wet only
+	Mix           float64 // 0 is dry only, 1 is wet only, an equal power crossfade that keeps the loudness
 	Gain          float64 // wet gain
 }
 
@@ -48,6 +49,8 @@ type Convolver struct {
 	channels []*channel
 	re, im   []float64
 	irLength int // samples
+	mix      mix.Smoother // mix and gain glide when they change
+	gain     mix.Smoother
 }
 
 // New creates a convolver for the impulse response (one slice per channel, at the current sample rate)
@@ -76,6 +79,9 @@ func New(ir [][]float64, cfg Config) *Convolver {
 		c.irLength = max(c.irLength, len(ir[ch%len(ir)]))
 	}
 
+	sr := c.Config().SampleRate
+	c.mix = mix.NewSmoother(math.Max(0, math.Min(cfg.Mix, 1)), mix.SmoothMs, sr)
+	c.gain = mix.NewSmoother(cfg.Gain, mix.SmoothMs, sr)
 	c.SetSelf(c)
 
 	return c
@@ -176,10 +182,11 @@ func (c *Convolver) process(ch *channel) {
 func (c *Convolver) Synthesize() {
 	ins := c.Input(0).Channels
 	outs := c.Output(0).Channels
-	wet := c.cfg.Mix * c.cfg.Gain
-	dry := 1.0 - c.cfg.Mix
+	mixTo := math.Max(0, math.Min(c.cfg.Mix, 1))
 
 	for i := range c.Config().BufferSize {
+		dry, wet := mix.EqualPower(c.mix.Next(mixTo))
+		wet *= c.gain.Next(c.cfg.Gain)
 		for ci, ch := range c.channels {
 			in := float64(ins[ci][i])
 			ch.inBlock[c.pos] = in

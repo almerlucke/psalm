@@ -2,6 +2,16 @@
 
 All effects in `modules/effects` have one stereo input (0) and one stereo output (0), unless noted.
 
+**Mix.** `Mix` blends dry and wet with an equal power crossfade (`blocks/mix`): the wet signal of
+a reverb, delay, chorus, granulator or pitch shifter doesn't correlate with the dry one, so their
+powers add and the loudness stays the same at every mix (0.5 is as loud as dry, where a linear
+crossfade dips 3 dB). The flanger keeps a linear crossfade: its sound is the delayed copy cancelling
+against the dry signal, deepest at 0.5.
+
+**Smooth changes.** Mixes, feedback, levels and widths glide to a new value in about 30 ms (the
+chorus and flanger also glide their delay times), so they can be automated or driven by an LFO
+without zipper noise or clicks.
+
 ## Reverbs
 
 | Module | Character | Use it for |
@@ -45,7 +55,7 @@ reverb := fdnreverb.New(cfg).AddTo(p).In(synth)
 | `ModDepth` | 0.4 | `modDepth` | Delay modulation in milliseconds (max 4), removes metallic ringing |
 | `ModRate` | 0.6 | `modRate` | Delay modulation rate in Hz |
 | `Width` | 1 | `width` | 0 mono, 1 full stereo |
-| `Mix` | 0.3 | `mix` | 0 dry, 1 wet |
+| `Mix` | 0.26 | `mix` | 0 dry, 1 wet |
 
 `ProcessSample(left, right)` processes one sample and returns the wet signal, for building other
 effects around the reverb (the shimmer uses it).
@@ -71,7 +81,7 @@ reverb := shimmer.New(cfg).AddTo(p).In(pad)
 | `Semitones` | 12 | `semitones` | Shift in the loop, try 7 (fifth), 19 or -12 |
 | `LowCut` | 300 | `lowCut` | Hz, high pass in the loop |
 | `Window` | 60 | - | Pitch shifter grain size in ms |
-| `Mix` | 0.4 | `mix` | 0 dry, 1 wet |
+| `Mix` | 0.37 | `mix` | 0 dry, 1 wet |
 
 ### convolver
 
@@ -81,7 +91,7 @@ only add one partition of latency.
 ```go
 ir := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
 // or a generated one: ir := convolver.SyntheticReverbIR(3.0, 0.6, psalm.SampleRate(), 1)
-reverb := convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.35, Gain: 1.0})
+reverb := convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.3, Gain: 1.0})
 ```
 
 | Setting | Default | Message | Meaning |
@@ -122,7 +132,7 @@ ens := chorus.New(cfg).AddTo(p).In(strings)
 | `Spread` | 1 | `spread` | 0-1, stereo width (0 both sides move together) |
 | `Feedback` | 0 | `feedback` | 0-0.9, metallic, resonant chorus |
 | `Tone` | 9000 | `tone` | Hz, lowpass on the copies (0 is off) |
-| `Mix` | 0.4 | input 3, `mix` | 0 dry, 1 wet, an equal power crossfade that keeps the loudness (0.5 is as loud as dry), glides when changed |
+| `Mix` | 0.4 | input 3, `mix` | 0 dry, 1 wet |
 
 Settings glide when they change, so moving them doesn't click.
 
@@ -167,7 +177,7 @@ echo = pingpong.New(pingpong.DefaultConfig()).AddTo(p).In(lead)
 | `Time` | 0.75 | input 1, `time` | Echo time in beats (0.5 an 8th, 0.75 a dotted 8th, 1 a quarter) |
 | `TimeMs` | 0 | `timeMs` | Echo time in milliseconds instead, used when above 0, doesn't follow the tempo |
 | `Feedback` | 0.35 | input 2, `feedback` | Every echo is this much quieter than the one before (at most 0.98) |
-| `Mix` | 0.25 | input 3, `mix` | 0 dry, 1 wet |
+| `Mix` | 0.2 | input 3, `mix` | 0 dry, 1 wet |
 | `Stereo` | 0 | `stereo` | 0 is a ping pong (everything bounces, starting on the left), 1 a plain stereo delay (each side echoes its own input) |
 | `HighCut` | 6000 | `highCut` | Hz, lowpass on every repeat, so the echoes get darker (0 is off) |
 | `LowCut` | 120 | `lowCut` | Hz, highpass on every repeat, so the echoes get thinner (0 is off) |
@@ -257,6 +267,16 @@ frequencies get a slight warble (sidebands at the head rate, about 20 Hz for an 
 `pan.New(position)` - places a mono input (stereo is mixed down) in the stereo field with an
 equal power pan law, scaled so a centered signal keeps its level. Position -1 is left, 1 right.
 Changes glide over a buffer, so it can be driven by an LFO on value input 0 (or message `pan`).
+
+## gain
+
+`gain.New(volume)` - a volume in dB (0 is unity, -120 is silence): a trim at the end of a chain
+that has no [mixer](mixer.md), or a level to automate (value input 1, or message `volume`).
+Changes glide.
+
+```go
+p.Out(gain.New(-2).AddTo(p).In(reverb))
+```
 
 ## latency
 

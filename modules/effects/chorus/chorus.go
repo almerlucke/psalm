@@ -7,6 +7,7 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/delay"
+	"github.com/almerlucke/psalm/blocks/mix"
 	"github.com/almerlucke/psalm/blocks/sine"
 )
 
@@ -140,8 +141,8 @@ func (c *Chorus) Synthesize() {
 		c.mix += (cfg.Mix - c.mix) * smooth
 		// the voices hardly correlate with the input, so their powers add: an equal power
 		// crossfade keeps the loudness at every mix
-		dryGain := sine.CosCycle(0.25 * c.mix)
-		wetGain := sine.Cycle(0.25*c.mix) * outGain
+		dryGain, wetGain := mix.EqualPower(c.mix)
+		wetGain *= outGain
 
 		var wet [2]float64
 		for v := range voices {

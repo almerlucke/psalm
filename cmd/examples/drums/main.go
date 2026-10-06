@@ -106,8 +106,8 @@ func main() {
 		"sound": "angels",
 	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 30)).AddTo(p)))
 
-	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.05, 0.7).AddTo(p).In(
-		pingpong.New(pingpong.Config{Time: 1.75, Feedback: 0.1, Mix: 0.125}).AddTo(p).In(drms),
+	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.044, 0.62).AddTo(p).In(
+		pingpong.New(pingpong.Config{Time: 1.75, Feedback: 0.1, Mix: 0.09}).AddTo(p).In(drms),
 	))
 
 	//err := p.ToSoundFile("7x7.wav", writer.WAV, 60*6, 44100.0, true)

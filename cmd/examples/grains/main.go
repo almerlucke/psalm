@@ -11,6 +11,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
+	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/sndfile"
@@ -237,9 +238,9 @@ func main() {
 
 	rcfg := fdnreverb.DefaultConfig()
 	rcfg.Decay = 3.0
-	rcfg.Mix = 0.25
+	rcfg.Mix = 0.2
 
-	p.Out(fdnreverb.New(rcfg).AddTo(p).In(mix...))
+	p.Out(gain.New(-2).AddTo(p).In(fdnreverb.New(rcfg).AddTo(p).In(mix...)))
 
 	_ = p.Listen()
 }

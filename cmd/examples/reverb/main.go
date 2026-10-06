@@ -9,6 +9,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
+	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/synths/subtractive"
 )
 
@@ -70,10 +71,10 @@ func main() {
 		ModDepth:  0.5,
 		ModRate:   0.5,
 		Width:     1.0,
-		Mix:       0.4,
+		Mix:       0.37,
 	}).AddTo(p).In(plucks, 0, 0, pad, 0, 0)
 
-	p.Out(reverb)
+	p.Out(gain.New(-2.8).AddTo(p).In(reverb))
 
 	//err := p.ToSoundFile("reverb.wav", writer.WAV, 30, 44100.0, true)
 	//if err != nil {

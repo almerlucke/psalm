@@ -153,8 +153,8 @@ func main() {
 		NewParamGen(),
 	).AddTo(p)
 
-	p.Out(freeverb.New(0.9, 0.5, 0.95, 0.3, 0.6).AddTo(p).In(
-		pingpong.New(pingpong.Config{TimeMs: 2000.0, Feedback: 0.1, Mix: 0.175, MaxSeconds: 4.0}).AddTo(p).In(gl),
+	p.Out(freeverb.New(0.9, 0.5, 0.95, 0.25, 0.51).AddTo(p).In(
+		pingpong.New(pingpong.Config{TimeMs: 2000.0, Feedback: 0.1, Mix: 0.13, MaxSeconds: 4.0}).AddTo(p).In(gl),
 	))
 
 	_ = p.Listen()

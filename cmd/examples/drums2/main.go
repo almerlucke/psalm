@@ -153,8 +153,8 @@ func main() {
 	// the mix: every part on its own strip, all through the pingpong delay into the reverb
 	mix := mixer.New(p)
 	mix.Group("fx", mixer.StripConfig{},
-		pingpong.New(pingpong.Config{Time: 1.25, Feedback: 0.075, Mix: 0.125}).AddTo(p),
-		freeverb.New(0.8, 0.7, 0.9, 0.075, 0.8).AddTo(p),
+		pingpong.New(pingpong.Config{Time: 1.25, Feedback: 0.075, Mix: 0.09}).AddTo(p),
+		freeverb.New(0.8, 0.7, 0.9, 0.066, 0.71).AddTo(p),
 	)
 	mix.Channel("drums", drms, mixer.StripConfig{Group: "fx"})
 	// the voices start muted, their sections unmute them

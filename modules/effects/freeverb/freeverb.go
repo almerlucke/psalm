@@ -2,6 +2,7 @@ package freeverb
 
 import (
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/mix"
 	"github.com/almerlucke/psalm/tools/float"
 )
 
@@ -155,6 +156,7 @@ type FreeVerb struct {
 	dry       float64
 	width     float64
 	mode      float64
+	gains     [4]mix.Smoother // wet1, wet2, dry and the input gain glide when they change
 }
 
 // New generate new freeverb module
@@ -202,6 +204,9 @@ func New(roomSize float64, damp float64, width float64, wet float64, dry float64
 	fv.SetWidth(width)
 	fv.SetMode(initialmode)
 
+	for k, v := range fv.targets() {
+		fv.gains[k] = mix.NewSmoother(v, mix.SmoothMs, psalm.SampleRate())
+	}
 	fv.SetSelf(fv)
 
 	return fv
@@ -301,18 +306,29 @@ func (fv *FreeVerb) ReceiveMessage(msg psalm.Message) {
 	})
 }
 
+// targets returns the gains the smoothers glide to: wet1, wet2, dry and the input gain
+func (fv *FreeVerb) targets() [4]float64 {
+	return [4]float64{fv.wet1, fv.wet2, fv.dry, fv.gain}
+}
+
 func (fv *FreeVerb) Synthesize() {
 	buflen := fv.Config().BufferSize
 	inChans := fv.Input(0).Channels
 	outChans := fv.Output(0).Channels
 
+	targets := fv.targets()
+
 	for i := range buflen {
 		outL, outR, inputL, inputR, input := 0.0, 0.0, 0.0, 0.0, 0.0
+		wet1 := fv.gains[0].Next(targets[0])
+		wet2 := fv.gains[1].Next(targets[1])
+		dry := fv.gains[2].Next(targets[2])
+		gain := fv.gains[3].Next(targets[3])
 
 		inputL = float64(inChans[0][i])
 		inputR = float64(inChans[1][i])
 
-		input = (inputL + inputR) * fv.gain
+		input = (inputL + inputR) * gain
 
 		for j := range numcombs {
 			outL += fv.combL[j].process(input)
@@ -324,8 +340,8 @@ func (fv *FreeVerb) Synthesize() {
 			outR = fv.allpassR[j].process(outR)
 		}
 
-		outChans[0][i] = float32(outL*fv.wet1 + outR*fv.wet2 + inputL*fv.dry)
-		outChans[1][i] = float32(outR*fv.wet1 + outL*fv.wet2 + inputR*fv.dry)
+		outChans[0][i] = float32(outL*wet1 + outR*wet2 + inputL*dry)
+		outChans[1][i] = float32(outR*wet1 + outL*wet2 + inputR*dry)
 	}
 }
 

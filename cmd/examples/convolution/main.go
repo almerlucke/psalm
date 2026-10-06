@@ -8,6 +8,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
+	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/sndfile"
 )
@@ -41,9 +42,9 @@ func main() {
 	ir := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
 	//ir := convolver.SyntheticReverbIR(3.0, 0.6, psalm.SampleRate(), 1)
 
-	reverb := convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.35, Gain: 0.3}).AddTo(p).In(plucks)
+	reverb := convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.31, Gain: 0.3}).AddTo(p).In(plucks)
 
-	p.Out(reverb)
+	p.Out(gain.New(-2.6).AddTo(p).In(reverb))
 
 	//err := p.ToSoundFile("convolution.wav", writer.WAV, 30, 44100.0, true)
 	//if err != nil {

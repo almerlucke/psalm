@@ -59,11 +59,19 @@ an LFO or a stream (plain numbers) are on inputs from 1:
 | `pingpong` | 1 time (beats), 2 feedback, 3 mix |
 | `mixer` strip | 1 volume (dB), 2 pan, 3 mute |
 | `mixer` master | 1 volume (dB) |
+| `gain` | 1 volume (dB) |
 | `player` | 1 speed, 2 amp, 3 start offset, 4 end offset, 5 offset range |
 | `lfo` | 0 frequency, 1 min, 2 max, 3 waveform |
 
 Two older modules number their settings from 0: `pan` (0 position) and `freeverb` (0 wet, 1 dry,
 2 room size, 3 damp, 4 width, 5 mode). Their messages follow the convention above.
+
+## Mix and smooth changes
+
+An effect's `Mix` (0 dry, 1 wet) is an equal power crossfade, so changing it keeps the loudness;
+only the flanger, which works by cancelling, crossfades linearly. Settings that scale a signal (mix,
+feedback, levels, widths) glide in about 30 ms when they change, so they can be automated without
+clicks. New effects use `blocks/mix` for both.
 
 ## Tempo, randomness and silence
 

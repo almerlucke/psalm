@@ -8,6 +8,7 @@ import (
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
+	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/modules/effects/shimmer"
 	"github.com/almerlucke/psalm/synths/subtractive"
 )
@@ -49,7 +50,7 @@ func main() {
 
 	reverb := shimmer.New(cfg).AddTo(p).In(voice)
 
-	p.Out(reverb)
+	p.Out(gain.New(-3).AddTo(p).In(reverb))
 
 	//err := p.ToSoundFile("shimmer.wav", writer.WAV, 40, 44100.0, true)
 	//if err != nil {

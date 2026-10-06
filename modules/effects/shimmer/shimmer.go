@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/mix"
 	"github.com/almerlucke/psalm/blocks/pitchshift"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
 )
@@ -15,7 +16,7 @@ type Config struct {
 	Shimmer   float64          // 0-1, amount of shifted signal fed back into the reverb
 	Window    float64          // pitch shifter grain size in milliseconds
 	LowCut    float64          // Hz, high pass in the feedback loop to keep the tail from getting muddy
-	Mix       float64          // 0 is dry only, 1 is wet only
+	Mix       float64          // 0 is dry only, 1 is wet only, an equal power crossfade that keeps the loudness
 }
 
 func DefaultConfig() Config {
@@ -32,7 +33,7 @@ func DefaultConfig() Config {
 		Shimmer:   0.5,
 		Window:    60.0,
 		LowCut:    300.0,
-		Mix:       0.4,
+		Mix:       0.37,
 	}
 }
 
@@ -67,6 +68,8 @@ type Shimmer struct {
 	env      float64 // level of the wet signal, used to back off the feedback when it gets loud
 	envAtt   float64
 	envRel   float64
+	amount   mix.Smoother // shimmer and mix glide when they change
+	mix      mix.Smoother
 }
 
 // feedbackLevel is the wet level above which the feedback is backed off
@@ -92,6 +95,8 @@ func New(cfg Config) *Shimmer {
 
 	s.envAtt = 1.0 - math.Exp(-1.0/(0.01*sr))
 	s.envRel = 1.0 - math.Exp(-1.0/(0.3*sr))
+	s.amount = mix.NewSmoother(math.Max(0, math.Min(cfg.Shimmer, 1)), mix.SmoothMs, sr)
+	s.mix = mix.NewSmoother(math.Max(0, math.Min(cfg.Mix, 1)), mix.SmoothMs, sr)
 
 	s.SetSelf(s)
 
@@ -141,11 +146,13 @@ func (s *Shimmer) ReceiveMessage(msg psalm.Message) {
 func (s *Shimmer) Synthesize() {
 	ins := s.Input(0).Channels
 	outs := s.Output(0).Channels
-	wet, dry := s.cfg.Mix, 1.0-s.cfg.Mix
-	amount := math.Max(0.0, math.Min(s.cfg.Shimmer, 1.0))
+	mixTo := math.Max(0, math.Min(s.cfg.Mix, 1))
+	amountTo := math.Max(0.0, math.Min(s.cfg.Shimmer, 1.0))
 
 	for i := range s.Config().BufferSize {
 		inL, inR := float64(ins[0][i]), float64(ins[1][i])
+		dry, wet := mix.EqualPower(s.mix.Next(mixTo))
+		amount := s.amount.Next(amountTo)
 
 		// the shifted feedback of the previous sample joins the input of the reverb
 		left, right := s.reverb.ProcessSample(inL+s.fb[0], inR+s.fb[1])

@@ -12,6 +12,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
+	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/modules/effects/granulator"
 	"github.com/almerlucke/psalm/synths/drums"
 	"github.com/almerlucke/psalm/synths/fm"
@@ -42,7 +43,7 @@ type scene struct {
 
 var scenes = []scene{
 	{"Cloud: a soft granular halo around the music", map[string]float64{
-		"mix": 0.4, "delay": 150, "spray": 80, "density": 25, "grainSize": 120, "pitch": 0,
+		"mix": 0.37, "delay": 150, "spray": 80, "density": 25, "grainSize": 120, "pitch": 0,
 		"pitchSpread": 0.1, "octave": 0, "reverse": 0, "shape": 0, "feedback": 0,
 	}, [sceneBars]float64{}},
 	{"Shimmer: grains an octave up", map[string]float64{
@@ -50,15 +51,15 @@ var scenes = []scene{
 		"pitchSpread": 0.1, "octave": 0, "reverse": 0, "shape": 0, "feedback": 0.2,
 	}, [sceneBars]float64{}},
 	{"Freeze: the first bar is captured and held while the music moves on", map[string]float64{
-		"mix": 0.6, "delay": 300, "spray": 300, "density": 40, "grainSize": 250, "pitch": 0,
+		"mix": 0.63, "delay": 300, "spray": 300, "density": 40, "grainSize": 250, "pitch": 0,
 		"pitchSpread": 0.15, "octave": 0.2, "reverse": 0, "shape": 0, "feedback": 0,
 	}, [sceneBars]float64{0, 1, 1, 1}},
 	{"Reverse smear: long backward grains with a wide spray", map[string]float64{
-		"mix": 0.6, "delay": 600, "spray": 400, "density": 20, "grainSize": 300, "pitch": 0,
+		"mix": 0.63, "delay": 600, "spray": 400, "density": 20, "grainSize": 300, "pitch": 0,
 		"pitchSpread": 0.2, "octave": 0, "reverse": 0.8, "shape": 0, "feedback": 0,
 	}, [sceneBars]float64{}},
 	{"Stutter: short percussive grains just behind the input chop up the drums", map[string]float64{
-		"mix": 0.7, "delay": 40, "spray": 10, "density": 16, "grainSize": 50, "pitch": 0,
+		"mix": 0.74, "delay": 40, "spray": 10, "density": 16, "grainSize": 50, "pitch": 0,
 		"pitchSpread": 0, "octave": 0, "reverse": 0, "shape": 1, "feedback": 0,
 	}, [sceneBars]float64{}},
 	{"Feedback cascade: grains a fifth up fed back, stacking fifths", map[string]float64{
@@ -143,9 +144,9 @@ func main() {
 
 	rcfg := fdnreverb.DefaultConfig()
 	rcfg.Decay = 2.5
-	rcfg.Mix = 0.2
+	rcfg.Mix = 0.16
 
-	p.Out(fdnreverb.New(rcfg).AddTo(p).In(gran))
+	p.Out(gain.New(-4.5).AddTo(p).In(fdnreverb.New(rcfg).AddTo(p).In(gran)))
 
 	_ = p.Listen()
 }

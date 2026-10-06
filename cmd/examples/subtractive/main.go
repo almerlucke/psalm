@@ -14,6 +14,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
+	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/synths/drums"
@@ -265,11 +266,11 @@ func main() {
 
 	ir := convolver.SyntheticReverbIR(3.0, 0.6, psalm.SampleRate(), 1)
 
-	p.Out(convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.45, Gain: 0.3}).AddTo(p).In(
+	p.Out(gain.New(-3).AddTo(p).In(convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.44, Gain: 0.3}).AddTo(p).In(
 		bass, 0, 0,
 		drms, 0, 0,
-		pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.25}).AddTo(p).In(lead), 0, 0,
-	))
+		gain.New(-2).AddTo(p).In(pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.2}).AddTo(p).In(lead)), 0, 0,
+	)))
 
 	//err := p.ToSoundFile("subtractive.wav", writer.WAV, 60, 44100.0, true)
 	//if err != nil {

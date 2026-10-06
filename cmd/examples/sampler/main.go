@@ -33,8 +33,8 @@ func main() {
 		"offsetRange": bucket.New(0.05, 0.1, 0.2, 0.3, 0.4).SetMode(bucket.Indexed).Loop(true),
 	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 8)).AddTo(p)))
 
-	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.05, 0.8).AddTo(p).In(
-		pingpong.New(pingpong.Config{Time: 1.75, Feedback: 0.1, Mix: 0.125}).AddTo(p).In(
+	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.044, 0.71).AddTo(p).In(
+		pingpong.New(pingpong.Config{Time: 1.75, Feedback: 0.1, Mix: 0.09}).AddTo(p).In(
 			flanger.New(flanger.Config{Rate: 0.05, Manual: 1, Depth: 18, Feedback: 0.85, Stereo: 0.5, Shape: flanger.Triangle, Mix: 0.5}).AddTo(p).In(pl),
 		),
 	))

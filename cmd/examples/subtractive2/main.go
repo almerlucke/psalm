@@ -559,8 +559,8 @@ func main() {
 
 	fmt.Printf("%6.1fs  (tour loops)\n", float64(len(sections))*sectionSec)
 
-	p.Out(freeverb.New(0.7, 0.6, 0.9, 0.12, 0.8).AddTo(p).In(
-		pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.2, Mix: 0.15}).AddTo(p).In(mix...),
+	p.Out(freeverb.New(0.7, 0.6, 0.9, 0.104, 0.69).AddTo(p).In(
+		pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.2, Mix: 0.11}).AddTo(p).In(mix...),
 	))
 
 	//err := p.ToSoundFile("subtractive2.wav", writer.WAV, float64(len(sections))*sectionSec, 44100.0, true)

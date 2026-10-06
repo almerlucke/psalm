@@ -14,6 +14,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
+	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/synths/fm"
 )
@@ -451,9 +452,9 @@ func main() {
 	// A warm room
 	rcfg := fdnreverb.DefaultConfig()
 	rcfg.Decay = 2.2
-	rcfg.Mix = 0.25
+	rcfg.Mix = 0.2
 
-	p.Out(fdnreverb.New(rcfg).AddTo(p).In(mix...))
+	p.Out(gain.New(-2).AddTo(p).In(fdnreverb.New(rcfg).AddTo(p).In(mix...)))
 
 	//err := p.ToSoundFile("fm.wav", writer.WAV, beatsToSec(totalBeats), 44100.0, true)
 	//if err != nil {
