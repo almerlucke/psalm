@@ -80,7 +80,9 @@ convolver.Convolver                                  1    5711.4 ms   12.2%
 ```
 
 A module's time is its own work, not that of the modules feeding it; a poly synth includes its
-voices. Modules show their ID when they have one (mixer strips are named after their strip, set
+voices. Effects rest while they and their input are silent (see
+[conventions](conventions.md#tempo-randomness-and-silence)), so a reverb in a section where nothing
+plays costs nothing. Modules show their ID when they have one (mixer strips are named after their strip, set
 others with `SetID`). Underneath, `psalm.SetProfiling(true)` makes every module measure its time
 (`CPUTime()`, `ResetCPUTime()`).
 

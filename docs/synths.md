@@ -2,6 +2,9 @@
 
 Synths: [poly](#poly) (voice allocation), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [drums](#drums).
 
+Presets of all synths are calibrated to the same loudness: a note at amplitude 1 plays at -12 LUFS
+(or peaks at -1 dBFS for percussive sounds), see [conventions](conventions.md#levels).
+
 ## poly
 
 `modules/poly`

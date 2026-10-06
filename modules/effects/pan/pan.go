@@ -71,3 +71,8 @@ func (p *Pan) Synthesize() {
 
 	p.pan = p.target
 }
+
+// Tail lets the pan rest while silent
+func (p *Pan) Tail() float64 {
+	return 0
+}

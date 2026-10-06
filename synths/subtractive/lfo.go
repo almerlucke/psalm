@@ -2,6 +2,7 @@ package subtractive
 
 import (
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 	"math/rand/v2"
 )
@@ -79,7 +80,7 @@ func (l *lfo) tick(cfg *LFOConfig, sr float64) float64 {
 	case LFOSampleHold:
 		v = l.sh
 	default:
-		v = math.Sin(2.0 * math.Pi * l.phase)
+		v = sine.Cycle(l.phase)
 	}
 
 	l.phase += cfg.Rate / sr

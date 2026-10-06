@@ -47,8 +47,8 @@ func PadPreset(table *Table) Config {
 	cfg.Cutoff = 3000
 	cfg.Resonance = 0.1
 	cfg.KeyTrack = 0.3
-	cfg.Level = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 900.0, 0.9, 500.0, 1.0, 1800.0)
+	cfg.Level = 0.5124 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -69,6 +69,7 @@ func LeadPreset(table *Table) Config {
 	cfg.VibratoDepth = 0.12
 	cfg.Glide = 60
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 10.0, 0.85, 200.0, 1.0, 250.0)
+	cfg.Level = 0.4749 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -88,6 +89,7 @@ func PluckPreset(table *Table) Config {
 	cfg.FilterEnvAmount = 4
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 250.0, 1.0, 200.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.0, 700.0, 1.0, 200.0)
+	cfg.Level = 0.8286 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -103,8 +105,8 @@ func BassPreset(table *Table) Config {
 	cfg.FilterEnvAmount = 3
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 2.0, 0.1, 220.0, 1.0, 150.0)
 	cfg.Glide = 20
-	cfg.Level = 0.7
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 3.0, 0.8, 200.0, 1.0, 100.0)
+	cfg.Level = 0.5003 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -122,8 +124,8 @@ func GrowlPreset(table *Table) Config {
 	cfg.Cutoff = 1800
 	cfg.Resonance = 0.35
 	cfg.Glide = 30
-	cfg.Level = 0.6
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 3.0, 0.9, 200.0, 1.0, 120.0)
+	cfg.Level = 0.4101 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -137,8 +139,8 @@ func SweepPreset(table *Table) Config {
 	cfg.Unison = 3
 	cfg.Detune = 10
 	cfg.Spread = 0.8
-	cfg.Level = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 600.0, 0.9, 500.0, 1.0, 2500.0)
+	cfg.Level = 0.4564 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -152,8 +154,8 @@ func KeysPreset(table *Table) Config {
 	cfg.Unison = 2
 	cfg.Detune = 6
 	cfg.Spread = 0.5
-	cfg.Level = 0.55
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.0, 1800.0, 1.0, 500.0)
+	cfg.Level = 0.6712 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -169,8 +171,8 @@ func AnthemPreset(table *Table) Config {
 	cfg.Resonance = 0.15
 	cfg.FilterEnvAmount = 0.5
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 300.0, 0.5, 800.0, 1.0, 600.0)
-	cfg.Level = 0.45
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 30.0, 0.9, 300.0, 1.0, 700.0)
+	cfg.Level = 0.4572 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -190,8 +192,8 @@ func StringsPreset(table *Table) Config {
 	cfg.KeyTrack = 0.6
 	cfg.VibratoRate = 5
 	cfg.VibratoDepth = 0.06
-	cfg.Level = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 350.0, 0.9, 300.0, 1.0, 700.0)
+	cfg.Level = 0.4759 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -212,8 +214,8 @@ func VoxPreset(table *Table) Config {
 	cfg.VibratoRate = 5.2
 	cfg.VibratoDepth = 0.15
 	cfg.Glide = 50
-	cfg.Level = 0.9 // the bandpass passes only a part of the sound
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 60.0, 0.85, 300.0, 1.0, 350.0)
+	cfg.Level = 0.7487 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -233,8 +235,8 @@ func BrassPreset(table *Table) Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 90.0, 0.5, 400.0, 1.0, 250.0)
 	cfg.VibratoRate = 4.5
 	cfg.VibratoDepth = 0.05
-	cfg.Level = 0.55
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 50.0, 0.85, 300.0, 1.0, 250.0)
+	cfg.Level = 0.5112 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -244,8 +246,8 @@ func OrganPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.15
 	cfg.SubLevel = 0.3
-	cfg.Level = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 8.0, 1.0, 10.0, 1.0, 60.0)
+	cfg.Level = 0.3758 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -265,8 +267,8 @@ func ReesePreset(table *Table) Config {
 	cfg.Resonance = 0.2
 	cfg.KeyTrack = 0.3
 	cfg.Glide = 40
-	cfg.Level = 0.65
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 0.9, 200.0, 1.0, 150.0)
+	cfg.Level = 0.4332 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -282,8 +284,8 @@ func AcidPreset(table *Table) Config {
 	cfg.FilterEnvAmount = 4
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 180.0, 1.0, 100.0)
 	cfg.Glide = 60
-	cfg.Level = 0.55
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.7, 200.0, 1.0, 60.0)
+	cfg.Level = 0.299 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -299,8 +301,8 @@ func StabPreset(table *Table) Config {
 	cfg.Resonance = 0.25
 	cfg.FilterEnvAmount = 3
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 200.0, 1.0, 100.0)
-	cfg.Level = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.0, 350.0, 1.0, 150.0)
+	cfg.Level = 0.8376 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -319,8 +321,8 @@ func DronePreset(table *Table) Config {
 	cfg.Cutoff = 1500
 	cfg.Resonance = 0.2
 	cfg.KeyTrack = 0.2
-	cfg.Level = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 3000.0, 1.0, 10.0, 1.0, 4000.0)
+	cfg.Level = 0.7687 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -338,8 +340,8 @@ func GlassPreset(table *Table) Config {
 	cfg.Cutoff = 700
 	cfg.Resonance = 0.2
 	cfg.KeyTrack = 1
-	cfg.Level = 0.7
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 2200.0, 1.0, 800.0)
+	cfg.Level = 0.4878 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -359,7 +361,7 @@ func RiserPreset(table *Table) Config {
 	cfg.KeyTrack = 0
 	cfg.FilterEnvAmount = 5
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 6000.0, 1.0, 10.0, 1.0, 500.0)
-	cfg.Level = 0.3 // loud once the filter is open
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2000.0, 1.0, 10.0, 1.0, 600.0)
+	cfg.Level = 0.6774 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }

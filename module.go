@@ -60,6 +60,49 @@ type Module struct {
 	env          *Env          // the environment of the patch the module belongs to
 	rng          *rand.Rand    // the module's own random stream, taken on first use
 	cpu          time.Duration // time spent in Synthesize while profiling
+	quietIn      int           // samples the input and output have been silent (modules with a tail)
+	quietOut     bool          // the last output was silent
+	skipping     bool          // skipping its work while silent
+}
+
+// Tailer is a module that can skip its work while it is silent: when its input and output have
+// been silent for longer than its tail (in seconds), it stops synthesizing and outputs silence,
+// until the input sounds again. The tail is the longest silence after which sound can still come
+// out, like the echo time of a delay or the pre delay of a reverb (a ringing reverb keeps
+// sounding, so it keeps working until its tail is silent anyway).
+// A negative tail never skips, for example a frozen granulator
+type Tailer interface {
+	Tail() float64
+}
+
+// TailInputs is a Tailer whose silence depends on some of its inputs only: a vocoder is silent
+// when its carrier is, whatever its modulator does
+type TailInputs interface {
+	TailInputs() []int
+}
+
+// Latent is a module whose whole signal comes out late (a vocoder sounds a frame late): the mixer
+// delays the other strips to line them up. Modules that are only partly late (a reverb mixed with
+// its dry signal) report 0, their latency is a pre delay
+type Latent interface {
+	SignalLatency() int
+}
+
+// silence is the level below which audio counts as silent (-120 dB)
+const silence = 1e-6
+
+// channelsSilent returns true when every sample of the sockets is silent
+func channelsSilent(sockets []*Socket) bool {
+	for _, s := range sockets {
+		for _, ch := range s.Channels {
+			for _, x := range ch {
+				if x > silence || x < -silence {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // profiling makes every module measure the time it spends synthesizing
@@ -162,12 +205,47 @@ func (m *Module) Run() {
 		input.ProcessIncoming()
 	}
 
+	// a module with a tail skips its work while its input and its output are silent
+	tailer, quiet := m.self.(Tailer)
+	if quiet {
+		inputs := m.inputs
+		if ti, ok := m.self.(TailInputs); ok {
+			inputs = inputs[:0:0]
+			for _, i := range ti.TailInputs() {
+				inputs = append(inputs, m.inputs[i])
+			}
+		}
+		if channelsSilent(inputs) {
+			m.quietIn += m.config.BufferSize
+		} else {
+			m.quietIn = 0
+		}
+		tail := tailer.Tail()
+		if tail >= 0 && m.quietOut && float64(m.quietIn) > tail*m.config.SampleRate {
+			if !m.skipping {
+				for _, out := range m.outputs {
+					out.Clear()
+				}
+				m.skipping = true
+			}
+			return
+		}
+		m.skipping = false
+	}
+
 	if profiling {
 		start := time.Now()
 		m.self.Synthesize()
 		m.cpu += time.Since(start)
 	} else {
 		m.self.Synthesize()
+	}
+
+	if quiet {
+		m.quietOut = channelsSilent(m.outputs)
+		if !m.quietOut {
+			m.quietIn = 0 // the tail counts from the last sound in or out (a delay between echoes)
+		}
 	}
 
 	if m.muted {

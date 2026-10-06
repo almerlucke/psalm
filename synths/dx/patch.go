@@ -43,6 +43,7 @@ type Patch struct {
 	LFOWaveform   int                    // 0-5: triangle, saw down, saw up, square, sine, sample & hold
 	PitchModSens  int                    // 0-7
 	Transpose     int                    // 0-48, 24 is no transposition
+	Level         float64                // output gain (0 is 1), for calibrating, not part of the SysEx data
 }
 
 // InitVoice returns the classic initial voice: a single sine (operator 1 at full level)

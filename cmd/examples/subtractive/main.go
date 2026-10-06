@@ -196,13 +196,13 @@ func main() {
 
 	// Bass 303: 2 bar 16th note line with octave jumps, minor third and flat seventh,
 	// accents marked with ! and slides with ~
-	bassLine := newAcidLine(root, 0.2, 0.3,
+	bassLine := newAcidLine(root, 0.118, 0.177,
 		"0!", "0", "12~", "-", "0", "0!", "3", "-", "0", "12!~", "0", "7", "-", "0", "10", "12!~",
 		"0!", "0", "12~", "-", "0", "0!", "3~", "-", "0", "12!", "0~", "7", "3!", "-", "5", "7~",
 	)
 
 	// Lead 303: sparser answering line an octave up, square wave like the 303's second waveform
-	leadLine := newAcidLine(root+12, 0.12, 0.18,
+	leadLine := newAcidLine(root+12, 0.0707, 0.106,
 		"-", "-", "12!", "15~", "-", "15", "-", "12", "-", "-", "19!", "17~", "-", "-", "15", "-",
 		"-", "-", "12!", "15~", "-", "15", "-", "12", "-", "10", "7!~", "-", "-", "-", "3", "-",
 	)

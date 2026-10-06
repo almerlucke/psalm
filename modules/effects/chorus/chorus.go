@@ -259,3 +259,8 @@ func (c *Chorus) Synthesize() {
 		outRight[i] = float32(float64(inRight[i])*(1.0-c.mix) + c.mix*out2)
 	}
 }
+
+// Tail lets the chorus rest while silent: its delays are shorter than this
+func (c *Chorus) Tail() float64 {
+	return 0.1
+}

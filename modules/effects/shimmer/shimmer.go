@@ -172,3 +172,8 @@ func (s *Shimmer) Synthesize() {
 		outs[1][i] = float32(dry*inR + wet*right)
 	}
 }
+
+// Tail lets the shimmer rest while silent (see the reverb)
+func (s *Shimmer) Tail() float64 {
+	return s.cfg.Reverb.PreDelay/1000 + s.cfg.Window/1000 + 0.25
+}

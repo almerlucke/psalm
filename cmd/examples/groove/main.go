@@ -115,8 +115,8 @@ func main() {
 		"hats":  form.Part(p, drumKit, "hats", score.Config{Amp: 0.2}, loop(drum("hat", 0.25, "x.xxx.xxx.xxx.xx"))), // 16ths
 		"snare": form.Part(p, drumKit, "snare", score.Config{Amp: 0.4}, loop(drum("snare", 0.5, "..x...x."))),
 		"kick":  form.Part(p, drumKit, "kick", score.Config{Amp: 0.55}, loop(drum("kick", 0.5, "x.....x."))),
-		"bass":  form.Part(p, bass, "bass", score.Config{Amp: 0.45, Legato: 0.85}, loop(walk)),
-		"keys":  form.Part(p, keys, "keys", score.Config{Amp: 0.12, Legato: 0.6, Velocity: 0.7}, loop(comp)),
+		"bass":  form.Part(p, bass, "bass", score.Config{Amp: 0.586, Legato: 0.85}, loop(walk)),
+		"keys":  form.Part(p, keys, "keys", score.Config{Amp: 0.106, Legato: 0.6, Velocity: 0.7}, loop(comp)),
 	}
 
 	// the walking bass and the comping fit the chords

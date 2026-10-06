@@ -1,6 +1,7 @@
 package wavetable
 
 import (
+	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
@@ -266,7 +267,6 @@ func (v *Voice) Synthesize() {
 		sr      = v.Config().SampleRate
 		outs    = outSocket.Channels
 		bufSize = v.Config().BufferSize
-		twoPi   = 2.0 * math.Pi
 		table   = cfg.Table
 		level   = cfg.Level
 		stereo  = len(outs) > 1
@@ -317,7 +317,7 @@ func (v *Voice) Synthesize() {
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
 		freq := v.glideFreq
 		if cfg.VibratoDepth != 0 && cfg.VibratoRate > 0 {
-			freq *= math.Exp2(cfg.VibratoDepth * math.Sin(twoPi*v.vibPhase) / 12.0)
+			freq *= math.Exp2(cfg.VibratoDepth * sine.Cycle(v.vibPhase) / 12.0)
 			v.vibPhase += cfg.VibratoRate / sr
 			v.vibPhase -= math.Floor(v.vibPhase)
 		}
@@ -326,7 +326,7 @@ func (v *Voice) Synthesize() {
 		v.position += (cfg.Position - v.position) * posCoef
 		pos := v.position + cfg.PositionEnvAmount*penv
 		if cfg.PositionLFODepth != 0 && cfg.PositionLFORate > 0 {
-			pos += cfg.PositionLFODepth * math.Sin(twoPi*v.lfoPhase)
+			pos += cfg.PositionLFODepth * sine.Cycle(v.lfoPhase)
 			v.lfoPhase += cfg.PositionLFORate / sr
 			v.lfoPhase -= math.Floor(v.lfoPhase)
 		}
@@ -347,7 +347,7 @@ func (v *Voice) Synthesize() {
 			v.phases[u] -= math.Floor(v.phases[u])
 		}
 		if cfg.SubLevel > 0 {
-			sub := cfg.SubLevel * math.Sin(twoPi*v.subPhase)
+			sub := cfg.SubLevel * sine.Cycle(v.subPhase)
 			l += sub
 			r += sub
 		}

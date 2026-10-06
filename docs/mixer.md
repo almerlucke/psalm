@@ -54,6 +54,15 @@ too, with the same settings. `mix.Strip(name)` finds one.
 them: `arrangement.Automate(lane, mix.Strip("strings"), 1)`. **Messages**: `volume`, `pan`,
 `mute`, `solo` and `send.<bus>`.
 
+## Latency
+
+A strip whose signal is late (a vocoder, a fully wet convolver: anything implementing
+`psalm.Latent` along its sources and inserts) makes the mixer delay the other strips playing into
+the same group or the master, so they arrive together. The strips delay their input, so their
+sends stay lined up too. Effect bus returns are not compensated: the latency of a reverb is a
+natural pre delay. It happens by itself before the first buffer; `mix.Align()` does it again after
+adding strips, `strip.Delay()` returns the delay of a strip in samples.
+
 ## Master
 
 `mix.Master()` sums everything into the master volume and a lookahead limiter: it sees peaks

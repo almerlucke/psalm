@@ -78,6 +78,8 @@ type Config struct {
 	// Modulation
 	LFO1 LFOConfig
 	LFO2 LFOConfig
+
+	Level float64 // output level (0 is treated as 1)
 }
 
 func DefaultConfig() Config {
@@ -129,7 +131,7 @@ type Voice struct {
 
 func New(cfg Config) *Voice {
 	if cfg.NumChannels == 0 {
-		cfg.NumChannels = psalm.Mono
+		cfg.NumChannels = psalm.Stereo
 	}
 
 	v := &Voice{
@@ -199,6 +201,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("osc2Octave", func(o int) { v.cfg.Osc2Octave = o })
 	msg.IfFltVal("pulseWidth", v.SetPulseWidth)
 	msg.IfFltVal("subLevel", func(f float64) { v.cfg.SubLevel = f })
+	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
 	msg.IfFltVal("noiseLevel", func(f float64) { v.cfg.NoiseLevel = f })
 	msg.IfIntVal("noiseType", func(t int) { v.cfg.NoiseType = NoiseType(t) })
 	msg.IfFltVal("ringModLevel", func(f float64) { v.cfg.RingModLevel = f })
@@ -324,6 +327,10 @@ func (v *Voice) Synthesize() {
 		drive = 1.0
 	}
 	driveComp := 1.0 / math.Tanh(drive)
+	level := cfg.Level
+	if level <= 0 {
+		level = 1
+	}
 
 	glideCoef := 1.0
 	if cfg.Glide > 0.0 {
@@ -414,7 +421,7 @@ func (v *Voice) Synthesize() {
 			amp *= 1.0 - cfg.LFO2.Amp*(1.0-l2)*0.5
 		}
 
-		val := float32(s * amp)
+		val := float32(s * amp * level)
 		for _, channel := range outChannels {
 			channel[i] = val
 		}
@@ -494,7 +501,7 @@ func (v *Voice) processFilter(s float64) float64 {
 // NewPoly creates a polyphonic subtractive synth
 func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 	if cfg.NumChannels == 0 {
-		cfg.NumChannels = psalm.Mono
+		cfg.NumChannels = psalm.Stereo
 	}
 
 	voices := make([]*Voice, numVoices)

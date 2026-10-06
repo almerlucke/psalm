@@ -132,3 +132,8 @@ func (f *Flanger) Synthesize() {
 		outBufRight[i] = float32(inRight*dry + flangOutRight*wet)
 	}
 }
+
+// Tail lets the flanger rest while silent: its delay is shorter than this
+func (f *Flanger) Tail() float64 {
+	return 0.05
+}

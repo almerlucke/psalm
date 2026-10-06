@@ -190,26 +190,26 @@ func main() {
 		{
 			name:   "Pad on DN Harm: chords drifting slowly through 256 dark harmonic frames",
 			cfg:    wavetable.PadPreset(load("DN Harm")),
-			voices: 16, amp: 0.6, legato: 1.0,
+			voices: 16, amp: 0.586, legato: 1.0,
 			notes: chordNotes(4, am, fm, cm, gm),
 		},
 		{
 			name:   "Sweep on OPFoldFMFB: the position envelope travels from a soft fold to a harsh one",
 			cfg:    wavetable.SweepPreset(load("OPFoldFMFB")),
-			voices: 8, amp: 0.6, legato: 0.75,
+			voices: 8, amp: 0.657, legato: 0.75,
 			notes: chordNotes(8, []float64{A2, E3, A3}, []float64{F2, C4 - 12, A3}),
 		},
 		{
 			name:   "Lead on VS Morph3: every note at another position",
 			cfg:    wavetable.LeadPreset(load("VS Morph3")),
-			voices: 2, amp: 0.7, legato: 0.95,
+			voices: 2, amp: 0.884, legato: 0.95,
 			notes:  phrase(notes(1, E4, G4, A4, 0, A4, C5, B4, G4), notes(2, A4, E4), notes(1, D4, E4, 0, 0)),
 			params: map[string][]float64{"position": {0, 0.1, 0.2, 0.3, 0.45, 0.6, 0.75, 0.9, 1, 0.5, 0.2, 0}},
 		},
 		{
 			name:   "Pluck on Terra Bend+PD: the position envelope reaches further up the table every bar",
 			cfg:    wavetable.PluckPreset(load("Terra Bend+PD")),
-			voices: 8, amp: 1.0, legato: 0.8,
+			voices: 8, amp: 0.724, legato: 0.8,
 			notes: notes(0.5,
 				A3, C4, E4, A4, E4, C4, A4, E4, F4-12, A3, C4, F4, C4, A3, F4, C4,
 				C4, E4, G4, C5, G4, E4, C5, G4, G3, B3, D4, G4, D4, B3, G4, D4),
@@ -221,7 +221,7 @@ func main() {
 		{
 			name:   "Bass on MS 20 Pulse2: the cutoff opens note by note",
 			cfg:    wavetable.BassPreset(load("MS 20 Pulse2 PS1")),
-			voices: 2, amp: 0.9, legato: 0.7,
+			voices: 2, amp: 1.26, legato: 0.7,
 			notes: notes(1, A1, A1, A2, A1, C2, C2, D2, E2, F2, F2, A2, F2, G2, G2, E2, G2),
 			params: map[string][]float64{"cutoff": {
 				150, 180, 220, 260, 300, 350, 400, 470, 550, 650, 750, 850, 1000, 1200, 1400, 1700,
@@ -230,20 +230,20 @@ func main() {
 		{
 			name:   "Growl on MSelfFB02: the position LFO speeds up, 1, 2, 4 and 8 Hz",
 			cfg:    wavetable.GrowlPreset(load("MSelfFB02")),
-			voices: 2, amp: 1.0, legato: 0.95,
+			voices: 2, amp: 1.46, legato: 0.95,
 			notes:  notes(4, A1, C2, D2, E2),
 			params: map[string][]float64{"positionLFORate": {1, 2, 4, 8}},
 		},
 		{
 			name:   "Keys on Melda IcarusBell: a bell melody",
 			cfg:    wavetable.KeysPreset(load("Melda CustumWave3 IcarusBell")),
-			voices: 8, amp: 0.8, legato: 0.9,
+			voices: 8, amp: 0.656, legato: 0.9,
 			notes: phrase(notes(1, A4, E5, C5, A4, B4, D5, B4, G4), notes(1, A4, C5, E5, D5), notes(2, C5, A4)),
 		},
 		{
 			name:   "Anthem on Add Synth3 Icarus: unison grows from 1 to 3, 5 and 7 oscillators",
 			cfg:    wavetable.AnthemPreset(load("Add Synth3 Icarus")),
-			voices: 16, amp: 0.7, legato: 0.95,
+			voices: 16, amp: 0.689, legato: 0.95,
 			notes:  chordNotes(4, am, fm, cm, gm),
 			params: map[string][]float64{"unison": {1, 3, 5, 7}},
 		},
@@ -253,7 +253,7 @@ func main() {
 				cfg.PositionLFODepth = 0
 				cfg.AmpEnv.AttackDuration = 300
 			}),
-			voices: 8, amp: 0.7, legato: 1.0,
+			voices: 8, amp: 0.683, legato: 1.0,
 			notes: chordNotes(8, []float64{A2, E3, A3, C4}, []float64{F2, C4 - 12, A3, E4}),
 			patch: func(p *psalm.Psalm, synth psalm.Modular) {
 				synth.ValueIn(lfo.New(true, 0.125, 0, 1, lfo.Triangle).AddTo(p), 0, 1)
@@ -265,7 +265,7 @@ func main() {
 				cfg.PositionEnvAmount = 0
 				cfg.AmpEnv.DecayDuration = 180
 			}),
-			voices: 6, amp: 1.0, legato: 0.5,
+			voices: 6, amp: 0.819, legato: 0.5,
 			notes: notes(0.5,
 				A2, 0, A2, A3, 0, A2, E3, 0, A2, 0, A2, A3, 0, G3, E3, 50,
 				A2, 0, A2, A3, 0, A2, E3, 0, A2, A3, A2, A3, G3, E3, 50, C4-12),
@@ -282,43 +282,43 @@ func main() {
 		{
 			name:   "Parade, strings on DN Harm: a slow bowed Am and F",
 			cfg:    wavetable.StringsPreset(load("DN Harm")),
-			voices: 8, amp: 0.8, legato: 1.0,
+			voices: 8, amp: 0.841, legato: 1.0,
 			notes: chordNotes(4, am, fm),
 		},
 		{
 			name:   "Parade, vox on VS Morph3: a sung line",
 			cfg:    wavetable.VoxPreset(load("VS Morph3")),
-			voices: 2, amp: 0.7, legato: 0.95,
+			voices: 2, amp: 0.842, legato: 0.95,
 			notes: phrase(notes(1, E4, G4, A4, G4, E4, D4), notes(2, E4)),
 		},
 		{
 			name:   "Parade, brass on OPFoldFMFB: a fanfare",
 			cfg:    wavetable.BrassPreset(load("OPFoldFMFB")),
-			voices: 8, amp: 0.8, legato: 0.85,
+			voices: 8, amp: 0.861, legato: 0.85,
 			notes: phrase(chordNotes(1.5, cm), chordNotes(0.5, cm), chordNotes(2, fm), chordNotes(4, gm)),
 		},
 		{
 			name:   "Parade, organ on FMAdditive1: Am F C G",
 			cfg:    wavetable.OrganPreset(load("FMAdditive1")),
-			voices: 8, amp: 0.65, legato: 0.95,
+			voices: 8, amp: 0.865, legato: 0.95,
 			notes: chordNotes(2, am, fm, cm, gm),
 		},
 		{
 			name:   "Parade, reese on MSelfFB02: a beating, phasing bass",
 			cfg:    wavetable.ReesePreset(load("MSelfFB02")),
-			voices: 2, amp: 0.9, legato: 0.95,
+			voices: 2, amp: 1.35, legato: 0.95,
 			notes: notes(2, A1, C2, D2, A1),
 		},
 		{
 			name:   "Parade, acid on MS 20 Pulse2: a squelching line",
 			cfg:    wavetable.AcidPreset(load("MS 20 Pulse2 PS1")),
-			voices: 1, amp: 0.9, legato: 0.9,
+			voices: 1, amp: 1.66, legato: 0.9,
 			notes: notes(0.5, A1, A2, A1, C2, A1, A2, E2, A1, G2, A1, A2, C2, A1, E2, D2, C2),
 		},
 		{
 			name:   "Parade, stab on Terra Bend+PD: offbeat chord stabs",
 			cfg:    wavetable.StabPreset(load("Terra Bend+PD")),
-			voices: 12, amp: 0.8, legato: 0.8,
+			voices: 12, amp: 0.478, legato: 0.8,
 			notes: []note{
 				{am, 0.75}, rest(0.75), {am, 0.5}, rest(1),
 				{fm, 0.75}, rest(0.75), {fm, 0.5}, rest(1),
@@ -328,19 +328,19 @@ func main() {
 		{
 			name:   "Parade, drone on Add Synth3 Icarus: a slowly breathing fifth",
 			cfg:    wavetable.DronePreset(load("Add Synth3 Icarus")),
-			voices: 4, amp: 0.9, legato: 1.0,
+			voices: 4, amp: 0.585, legato: 1.0,
 			notes: chordNotes(8, []float64{A1, E2, A2}),
 		},
 		{
 			name:   "Parade, glass on Add Bell: an airy bell melody",
 			cfg:    wavetable.GlassPreset(load("Add Bell")),
-			voices: 8, amp: 0.8, legato: 0.9,
+			voices: 8, amp: 1.15, legato: 0.9,
 			notes: phrase(notes(1, E5, B4, A4, E5, D5, B4, A4), []note{rest(1)}),
 		},
 		{
 			name:   "Parade, riser on OPFoldFMFB: hold a chord and ride it up",
 			cfg:    wavetable.RiserPreset(load("OPFoldFMFB")),
-			voices: 4, amp: 0.9, legato: 1.0,
+			voices: 4, amp: 0.399, legato: 1.0,
 			notes: chordNotes(8, []float64{A2, E3, A3}),
 		},
 	}

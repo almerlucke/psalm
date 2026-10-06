@@ -15,6 +15,7 @@ play it live through an audio engine or render it to a sound file.
 | [Effects](effects.md) | Reverbs (`freeverb`, `fdnreverb`, `shimmer`, `convolver`), `chorus`, `flanger`, `pingpong`, `vocoder`, `granulator` (with freeze), `pitchshift`, `pan`, `latency` |
 | [Harmony](harmony.md) | `tools/harmony`: chords from symbols, voicings and voice leading, scales and keys with roman numerals, an arpeggiator and a check for clashing notes |
 | [Rendering](rendering.md) | Offline rendering with reverb tails, stems, repeatable renders (`psalm.Seed`), profiling per module and the `meter` module (peak, RMS, LUFS) |
+| [Conventions](conventions.md) | Channels, units, messages, value inputs per module, tempo, randomness, silence and latency |
 | [Mixer](mixer.md) | The `mixer`: channel strips (volume, pan, mute, solo, sends, meters), effect buses, groups with inserts and a master with a lookahead limiter |
 | [Filters](filters.md) | The `filters` module: SVF, Moog style ladder, biquad EQ and formant (vowel) filters |
 | [Blocks](blocks.md) | Low level DSP building blocks used by the modules (`fft`, filters, `pitchshift`, `blosc`, `delay`) |

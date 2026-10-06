@@ -1,6 +1,10 @@
 package pitchshift
 
-import "math"
+import (
+	"math"
+
+	"github.com/almerlucke/psalm/blocks/sine"
+)
 
 // numHeads is the number of overlapping read heads. More evenly spaced heads don't help: their
 // phases can then sum to zero for some frequencies (four heads at 0, 90, 180 and 270 degrees)
@@ -80,7 +84,7 @@ func (p *PitchShift) Process(x float64) float64 {
 		ph := p.phase + float64(head)/numHeads
 		ph -= math.Floor(ph)
 
-		w := math.Sin(math.Pi * ph)
+		w := sine.Cycle(0.5 * ph)
 		out += p.read(1.0+ph*p.window) * w * w
 	}
 

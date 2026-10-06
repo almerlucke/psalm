@@ -91,7 +91,11 @@ reverb := convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.35, Gain
 | `Gain` | 1 | `gain` | Wet gain |
 
 A mono impulse response is used for both channels, a stereo one maps left to left and right to
-right. `IRFromSoundFile` doesn't resample, so use a file at the patch sample rate.
+right. `IRFromSoundFile` doesn't resample, so use a file at the patch sample rate. It normalizes
+the response to unit energy (`NormalizeIR`), like the synthetic ones, so `Gain` 1 roughly keeps
+the input level whatever the recording; recorded responses otherwise differ a lot in level. A fully
+wet convolver reports its latency to the mixer (`SignalLatency`), which lines up the other strips;
+mixed with its dry signal the latency is a pre delay.
 `SyntheticReverbIR(seconds, damping, sampleRate, seed)` generates decaying stereo noise that gets
 darker over time, normalized so the reverb roughly keeps the input level.
 
@@ -166,12 +170,13 @@ voc.In(speech, 0, 0, carrier, 0, 1)
 | `NumBands`, `MinFreq`, `MaxFreq` | 32, 80, 10000 | - | Log spaced analysis bands |
 | `Attack`, `Release` | 5, 50 | `attack`, `release` | How fast the bands follow the voice (ms) |
 | `Flatten` | 1 | `flatten` | 0-1, how much of the carrier's own tone is removed first |
-| `Sibilance`, `SibilanceFreq` | 0.25, 5000 | `sibilance`, `sibilanceFreq` | The voice above this frequency passes straight through, for consonants |
+| `Sibilance`, `SibilanceFreq` | 0.25, 5000 | `sibilance`, `sibilanceFreq` | The voice above this frequency passes straight through, for consonants (only while a carrier plays: without a carrier the vocoder is silent) |
 | `FormantShift` | 1 | `formantShift` | Above 1 a smaller voice, below 1 a bigger one |
 | `Gain` | 1 | `gain` | Output level |
 
-Carriers need lots of harmonics: detuned saws, a little noise, an open filter. To line up other
-parts with the vocoded output, delay them with the [latency](#latency) module by `voc.Latency()`.
+Carriers need lots of harmonics: detuned saws, a little noise, an open filter. In a
+[mixer](mixer.md#latency) the other strips are lined up with the vocoder by themselves; outside a
+mixer delay them with the [latency](#latency) module by `voc.Latency()`.
 
 ## granulator
 

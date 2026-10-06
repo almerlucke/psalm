@@ -41,6 +41,7 @@ func GlassKeys() Patch {
 	p.Ops[4] = opr(4, 70, [4]int{96, 40, 25, 55}, [4]int{99, 55, 0, 0})
 	p.Ops[5] = opr(3, 60, [4]int{96, 50, 30, 55}, [4]int{99, 40, 0, 0})
 	p.Ops[5].VelocitySens = 4
+	p.Level = 1.03 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return p
 }
 
@@ -58,6 +59,7 @@ func WoodBass() Patch {
 	p.Ops[3] = opr(1, 70, [4]int{99, 75, 40, 70}, [4]int{99, 50, 0, 0})
 	p.Ops[4] = opr(3, 55, [4]int{99, 85, 40, 70}, [4]int{99, 0, 0, 0})
 	p.Ops[5] = opr(1, 50, [4]int{99, 80, 40, 70}, [4]int{99, 0, 0, 0})
+	p.Level = 0.9622 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return p
 }
 
@@ -84,6 +86,7 @@ func SoftBrass() Patch {
 	p.LFOPitchDepth = 8
 	p.PitchModSens = 3
 	p.LFOWaveform = 0
+	p.Level = 0.9517 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return p
 }
 
@@ -107,5 +110,6 @@ func BellPad() Patch {
 	p.LFOWaveform = 4
 	p.Ops[0].AmpModSens = 1
 	p.Ops[2].AmpModSens = 1
+	p.Level = 1.061 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return p
 }

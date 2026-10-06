@@ -47,6 +47,7 @@ type Convolver struct {
 	pos      int
 	channels []*channel
 	re, im   []float64
+	irLength int // samples
 }
 
 // New creates a convolver for the impulse response (one slice per channel, at the current sample rate)
@@ -72,6 +73,7 @@ func New(ir [][]float64, cfg Config) *Convolver {
 
 	for ch := range psalm.Stereo {
 		c.channels = append(c.channels, c.newChannel(ir[ch%len(ir)]))
+		c.irLength = max(c.irLength, len(ir[ch%len(ir)]))
 	}
 
 	c.SetSelf(c)
@@ -194,8 +196,9 @@ func (c *Convolver) Synthesize() {
 	}
 }
 
-// IRFromSoundFile returns the channels of a sound file as impulse response. The sound file is
-// not resampled, so it should have the same sample rate as the patch
+// IRFromSoundFile returns the channels of a sound file as impulse response, normalized to unit
+// energy (see NormalizeIR), so a gain of 1 roughly keeps the input level whatever the recording.
+// The sound file is not resampled, so it should have the same sample rate as the patch
 func IRFromSoundFile(sf sndfile.SoundFiler[float32]) [][]float64 {
 	ir := make([][]float64, sf.NumChannels())
 	for ch := range ir {
@@ -203,6 +206,28 @@ func IRFromSoundFile(sf sndfile.SoundFiler[float32]) [][]float64 {
 		ir[ch] = make([]float64, len(buf))
 		for i, v := range buf {
 			ir[ch][i] = float64(v)
+		}
+	}
+	return NormalizeIR(ir)
+}
+
+// NormalizeIR scales an impulse response to unit energy (the mean of its channels, so the stereo
+// balance stays): convolving keeps about the loudness of the input, as with SyntheticReverbIR.
+// Recorded impulse responses differ a lot in level, normalized a gain means the same for all
+func NormalizeIR(ir [][]float64) [][]float64 {
+	energy := 0.0
+	for _, ch := range ir {
+		for _, x := range ch {
+			energy += x * x
+		}
+	}
+	if len(ir) == 0 || energy <= 0 {
+		return ir
+	}
+	scale := 1 / math.Sqrt(energy/float64(len(ir)))
+	for _, ch := range ir {
+		for i := range ch {
+			ch[i] *= scale
 		}
 	}
 	return ir
@@ -244,4 +269,20 @@ func SyntheticReverbIR(seconds float64, damping float64, sampleRate float64, see
 	}
 
 	return ir
+}
+
+// Tail lets the convolver rest while silent: sound can come out up to the length of the impulse
+// response (which can hold silent gaps before late reflections) after the input stopped
+func (c *Convolver) Tail() float64 {
+	return float64(c.irLength+c.block) / c.Config().SampleRate
+}
+
+// SignalLatency: a fully wet convolver (a cabinet, a creative convolution) is late as a whole, the
+// mixer lines the other strips up with it. Mixed with its dry signal the latency is a pre delay
+// of the reverb, nothing to line up
+func (c *Convolver) SignalLatency() int {
+	if c.cfg.Mix >= 1 {
+		return c.block
+	}
+	return 0
 }

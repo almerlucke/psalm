@@ -101,7 +101,7 @@ func main() {
 	carrier := subtractive.NewPoly(carrierCfg, 12).AddTo(p)
 
 	// Am F C G, two bars per chord
-	chords(p, carrier, 8, 0.2,
+	chords(p, carrier, 8, 0.31,
 		[]float64{45, 57, 60, 64}, // Am: A2 A3 C4 E4
 		[]float64{41, 57, 60, 65}, // F:  F2 A3 C4 F4
 		[]float64{48, 55, 60, 64}, // C:  C3 G3 C4 E4
@@ -134,7 +134,7 @@ func main() {
 
 	flute := subtractive.NewPoly(subtractive.FlutePreset(), 6).AddTo(p)
 
-	melody(p, flute, 0.1, 0.95,
+	melody(p, flute, 0.145, 0.95,
 		note{E4, 3}, note{D4, 1}, note{C4, 4}, // Am, low
 		note{F5, 3}, note{E5, 1}, note{C5, 2}, note{A4, 2}, // F, an octave up
 		note{E5, 3}, note{D5, 1}, note{E5, 2}, note{G5, 2}, // C, the peak
@@ -147,7 +147,7 @@ func main() {
 
 	pad := subtractive.NewPoly(padCfg, 12).AddTo(p)
 
-	chords(p, pad, 8, 0.05,
+	chords(p, pad, 8, 0.124,
 		[]float64{57, 64, 72}, // A3 E4 C5
 		[]float64{43, 60, 69}, // G2 C4 A4
 		[]float64{60, 67, 76}, // C4 G4 E5
@@ -175,7 +175,7 @@ func main() {
 	)).AddTo(p)
 
 	// notes last long enough for the whole fall, the envelopes decay to silence by themselves
-	stars.ValueIn(templ.NewDurationTrigger(1.6, random(0.02, 0.035, 0.04, 0.055), template.Template{
+	stars.ValueIn(templ.NewDurationTrigger(1.6, random(0.0227, 0.0397, 0.0454, 0.0624), template.Template{
 		"pitch":            random(81.0, 84.0, 86.0, 88.0, 91.0, 93.0, 96.0), // A5 C6 D6 E6 G6 A6 C7
 		"filterEnvToPitch": random(5.0, 7.0, 12.0),                           // how far each star falls (semitones)
 	}).ValueIn(starTimer))

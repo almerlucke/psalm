@@ -1,6 +1,7 @@
 package dx
 
 import (
+	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/psalm"
@@ -55,7 +56,7 @@ type Voice struct {
 
 func New(patch Patch, numChannels int) *Voice {
 	if numChannels == 0 {
-		numChannels = psalm.Mono
+		numChannels = psalm.Stereo
 	}
 
 	v := &Voice{
@@ -172,6 +173,9 @@ func (v *Voice) start(duration float64, amplitude float64, message psalm.Message
 		carrierSum += v.opLevel[c]
 	}
 	v.outScale = amplitude / math.Max(1.0, carrierSum)
+	if v.patch.Level > 0 {
+		v.outScale *= v.patch.Level
+	}
 
 	if p.OscKeySync || !wasActive {
 		v.phase = [NumOperators]float64{}
@@ -238,7 +242,7 @@ func (v *Voice) lfo() float64 {
 	case 5: // sample & hold
 		return v.lfoSH
 	default: // sine
-		return math.Sin(2.0 * math.Pi * ph)
+		return sine.Cycle(ph)
 	}
 }
 
@@ -255,7 +259,6 @@ func (v *Voice) Synthesize() {
 		sr       = v.Config().SampleRate
 		outs     = outSocket.Channels
 		bufSize  = v.Config().BufferSize
-		twoPi    = 2.0 * math.Pi
 		note     = v.note + float64(p.Transpose-24)
 		baseFreq = 440.0 * math.Pow(2.0, (note-69.0)/12.0)
 		fbAmount = feedbackAmount(p.Feedback)
@@ -306,7 +309,7 @@ func (v *Voice) Synthesize() {
 				pm += (v.fb[0] + v.fb[1]) * 0.5 * fbAmount
 			}
 
-			s := math.Sin(twoPi * (v.phase[op] + pm))
+			s := sine.Cycle(v.phase[op] + pm)
 			level := v.envs[op].next()
 			if v.ampCount == 0 {
 				v.opAmpInc[op] = (levelToAmp(level)*v.opLevel[op] - v.opAmp[op]) / ampUpdate

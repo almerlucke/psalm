@@ -251,3 +251,95 @@ func TestRoutingMistakesPanic(t *testing.T) {
 		}()
 	}
 }
+
+// late delays its input by some samples and reports it, like a vocoder
+type late struct {
+	*psalm.Module
+	buf [][]float32
+	pos int
+}
+
+func newLate(samples int) *late {
+	l := &late{Module: psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo}), buf: [][]float32{make([]float32, samples), make([]float32, samples)}}
+	l.SetSelf(l)
+	return l
+}
+
+func (l *late) SignalLatency() int { return len(l.buf[0]) }
+
+func (l *late) Synthesize() {
+	in, out := l.Input(0).Channels, l.Output(0).Channels
+	for i := range in[0] {
+		for c := range 2 {
+			out[c][i] = l.buf[c][l.pos]
+			l.buf[c][l.pos] = in[c][i]
+		}
+		l.pos = (l.pos + 1) % len(l.buf[0])
+	}
+}
+
+// click is a single click at sample 0
+func click(n int, _ int) float64 {
+	if n == 0 {
+		return 0.25
+	}
+	return 0
+}
+
+// peaks returns the sample positions where the output is not silent
+func peaks(x []float64) []int {
+	var at []int
+	for i, v := range x {
+		if math.Abs(v) > 1e-6 {
+			at = append(at, i)
+		}
+	}
+	return at
+}
+
+func TestLatencyIsLinedUp(t *testing.T) {
+	p, mix := setup()
+	lateSrc := newLate(300)
+	lateSrc.AddTo(p)
+	lateSrc.In(newSource(psalm.Stereo, click).AddTo(p))
+	mix.Channel("vocoder", lateSrc, StripConfig{})
+	mix.Channel("piano", newSource(psalm.Stereo, click).AddTo(p), StripConfig{})
+	l, _ := render(p, mix, 4)
+	if at := peaks(l); len(at) != 1 || at[0] != 300 || math.Abs(l[300]-0.5) > 1e-6 {
+		t.Fatalf("expected both clicks together at sample 300, got %v", at)
+	}
+	if mix.Strip("piano").Delay() != 300 || mix.Strip("vocoder").Delay() != 0 {
+		t.Fatalf("delays %d %d", mix.Strip("piano").Delay(), mix.Strip("vocoder").Delay())
+	}
+}
+
+func TestLatencyInGroups(t *testing.T) {
+	p, mix := setup()
+	mix.Group("voices", StripConfig{})
+	lateSrc := newLate(200)
+	lateSrc.AddTo(p)
+	lateSrc.In(newSource(psalm.Stereo, click).AddTo(p))
+	mix.Channel("vocoder", lateSrc, StripConfig{Group: "voices"})
+	mix.Channel("choir", newSource(psalm.Stereo, click).AddTo(p), StripConfig{Group: "voices"})
+	mix.Channel("bass", newSource(psalm.Stereo, click).AddTo(p), StripConfig{})
+	l, _ := render(p, mix, 4)
+	if at := peaks(l); len(at) != 1 || at[0] != 200 {
+		t.Fatalf("expected all clicks together at sample 200, got %v", at)
+	}
+	if mix.Strip("choir").Delay() != 200 || mix.Strip("bass").Delay() != 200 || mix.Strip("voices").Delay() != 0 {
+		t.Fatal("expected the choir lined up in the group and the bass with the group")
+	}
+}
+
+// A late effect on a bus is a pre delay, the dry signal isn't held back for it
+func TestBusLatencyIsNotCompensated(t *testing.T) {
+	p, mix := setup()
+	fx := newLate(500)
+	fx.AddTo(p)
+	mix.Bus("reverb", StripConfig{}, fx)
+	mix.Channel("piano", newSource(psalm.Stereo, click).AddTo(p), StripConfig{Sends: map[string]float64{"reverb": 1}})
+	l, _ := render(p, mix, 4)
+	if at := peaks(l); len(at) != 2 || at[0] != 0 || at[1] != 500 {
+		t.Fatalf("expected the dry click at 0 and the wet one at 500, got %v", at)
+	}
+}

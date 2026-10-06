@@ -193,3 +193,9 @@ func (pp *PingPong) Synthesize() {
 		outRight[i] = float32(ir*dry + r*wet)
 	}
 }
+
+// Tail lets the delay rest while silent: the echoes are spaced by the echo time, silent in
+// between
+func (pp *PingPong) Tail() float64 {
+	return pp.target()/pp.Config().SampleRate + 0.05
+}

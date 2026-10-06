@@ -47,13 +47,13 @@ func main() {
 	plucks := subtractive.NewPoly(subtractive.PluckPreset(), 8).AddTo(p)
 
 	ppq := float64(psalm.PPQ())
-	plucks.ValueIn(templ.NewDurationTrigger(0.2, random(0.2, 0.3, 0.4), template.Template{
+	plucks.ValueIn(templ.NewDurationTrigger(0.2, random(0.23, 0.344, 0.459), template.Template{
 		"pitch": random(64.0, 67.0, 69.0, 71.0, 74.0, 76.0, 79.0),
 	}).ValueIn(timer.New(random(0.5*ppq, ppq, 1.5*ppq, 2*ppq, -ppq, -2*ppq)).AddTo(p)))
 
 	// A soft pad underneath: Em C G D, one bar per chord
 	pad := subtractive.NewPoly(subtractive.HollowPadPreset(), 12).AddTo(p)
-	chords(p, pad, 4, 0.08,
+	chords(p, pad, 4, 0.169,
 		[]float64{52, 59, 64}, // Em: E3 B3 E4
 		[]float64{48, 55, 64}, // C:  C3 G3 E4
 		[]float64{55, 59, 62}, // G:  G3 B3 D4

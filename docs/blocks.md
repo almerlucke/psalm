@@ -100,3 +100,13 @@ aliasing of naive waveforms.
 
 `blocks/delay` - a simple delay line: `delay.New(length)`, `Write(x)`, and fractional reads
 `ReadLinear(location)` and `ReadHermite(location)`. Used by chorus, flanger and pingpong.
+
+## sine
+
+`blocks/sine`
+
+A fast sine for audio loops: a table of one cycle read with linear interpolation, accurate to
+about 3e-7 (-130 dB) and about 2.5 times faster than `math.Sin`. `sine.Cycle(phase)` takes the
+phase in cycles (1 is a full turn), `sine.Sin(x)` and `sine.Cos(x)` radians. The FM and DX
+operators, the oscillators, LFOs, windows and pulsar pulses use it; use it where a sine is computed
+every sample, keep `math.Sin` for coefficients and tables.

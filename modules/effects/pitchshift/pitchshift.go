@@ -64,3 +64,8 @@ func (p *PitchShift) Synthesize() {
 		}
 	}
 }
+
+// Tail lets the pitch shifter rest while silent: its window is shorter than this
+func (p *PitchShift) Tail() float64 {
+	return 0.2
+}

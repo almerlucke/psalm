@@ -236,3 +236,9 @@ func (p *formantProc) apply(params *Params) {
 
 func (p *formantProc) process(x float64) float64 { return p.filter.Process(x) }
 func (p *formantProc) clear()                    { p.filter.Clear() }
+
+// Tail lets the filter rest while silent: a resonance rings on, keeping its output (and the filter)
+// going until it is silent
+func (f *Filter) Tail() float64 {
+	return 0.01
+}

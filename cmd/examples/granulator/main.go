@@ -80,7 +80,7 @@ func main() {
 	chords := [][]float64{{57, 60, 64}, {53, 57, 60}, {48, 55, 64}, {55, 59, 62}} // Am F C G
 
 	epiano := fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)
-	epiano.ValueIn(templ.NewDurationTrigger(seq(1.2*beatSec, 2.2*beatSec), 0.15, template.Template{
+	epiano.ValueIn(templ.NewDurationTrigger(seq(1.2*beatSec, 2.2*beatSec), 0.132, template.Template{
 		"pitch":    seq(chords[0], chords[0], chords[1], chords[1], chords[2], chords[2], chords[3], chords[3]),
 		"velocity": random(0.6, 0.8, 1.0),
 	}).ValueIn(timer.WithSteps(steps.QuickSteps(1.5, 2.5)).AddTo(p)))
@@ -91,7 +91,7 @@ func main() {
 		arp = append(arp, append(up, up...)...)
 	}
 	mallet := fm.NewPoly(fm.MalletPreset(), 8).AddTo(p)
-	mallet.ValueIn(templ.NewDurationTrigger(0.3, 0.2, template.Template{
+	mallet.ValueIn(templ.NewDurationTrigger(0.3, 0.157, template.Template{
 		"pitch":    seq(arp...),
 		"velocity": seq(1.0, 0.6, 0.8, 0.6),
 	}).ValueIn(timer.WithTicks(ppq / 2).AddTo(p)))

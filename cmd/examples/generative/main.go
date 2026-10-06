@@ -119,7 +119,7 @@ func main() {
 	padStream := &arrange.Stream{
 		Rhythm:  sequence.NewLoop(8.0),
 		Message: template.Template{"pitch": function.New(func() []float64 { return voicing })}, // a slice: a chord
-		Amp:     0.25,
+		Amp:     0.244,
 		Legato:  1.0,
 	}
 	form.Stream(p, pad, "pad", func(s arrange.Section) *arrange.Stream {
@@ -143,7 +143,7 @@ func main() {
 			}),
 			"formant": template.NewParameter("formant", 2400.0), // from the section
 		},
-		Amp:    choose(0.15, 0.2, 0.25, 0.3),
+		Amp:    choose(0.306, 0.408, 0.51, 0.613),
 		Legato: 0.8,
 	}
 	form.Stream(p, glass, "glass", func(s arrange.Section) *arrange.Stream {
@@ -160,7 +160,7 @@ func main() {
 			"pitch":  function.New(func() float64 { return chord.BassPitch(36) + choose(0.0, 0.0, 0.0, 12.0).Generate() }),
 			"cutoff": template.NewParameter("cutoff", 300.0), // from the section
 		},
-		Amp:    choose(0.35, 0.4, 0.45),
+		Amp:    choose(0.456, 0.521, 0.586),
 		Legato: 0.7,
 	}
 	form.Stream(p, bass, "bass", func(s arrange.Section) *arrange.Stream {

@@ -263,7 +263,7 @@ func main() {
 				cfg.Osc2Level = 0.0
 				return cfg
 			}(),
-			voices: 2, amp: 0.3, legato: 0.6,
+			voices: 2, amp: 0.392, legato: 0.6,
 			notes: notes(1, A2, A2, E3, A2, A2, A2, G3, A2, A2, A2, E3, A2, A2, A2, G3, A2),
 			params: map[string][]float64{
 				"subLevel":   {0, 0, 0, 0, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6},
@@ -276,13 +276,13 @@ func main() {
 		{
 			name:   "Ring modulation (ringBell preset)",
 			cfg:    subtractive.RingBellPreset(),
-			voices: 8, amp: 0.3, legato: 0.5,
+			voices: 8, amp: 0.398, legato: 0.5,
 			notes: notes(1, A4, C5, E5, G5, A5, G5, E5, C5, A4, C5, D5, E5, G5, E5, D5, C5),
 		},
 		{
 			name:   "Hard sync (syncLead preset): sweeping the osc 2 pitch against osc 1",
 			cfg:    subtractive.SyncLeadPreset(),
-			voices: 2, amp: 0.3, legato: 0.9,
+			voices: 2, amp: 0.424, legato: 0.9,
 			notes:  notes(2, A3, A3, A3, A3, A3, A3, A3, A3),
 			params: map[string][]float64{"osc2Detune": {0, 4, 7, 12, 17, 24, 19, 12}},
 		},
@@ -321,7 +321,7 @@ func main() {
 		{
 			name:   "Filter envelope amount (pluck preset)",
 			cfg:    subtractive.PluckPreset(),
-			voices: 4, amp: 0.3, legato: 0.5,
+			voices: 4, amp: 0.345, legato: 0.5,
 			notes:  notes(1, A3, C4, E4, A4, A3, C4, E4, A4, G3, B4, D4, G4, G3, B4, D4, G4),
 			params: map[string][]float64{"filterEnvAmount": {0.5, 1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5}},
 		},
@@ -329,7 +329,7 @@ func main() {
 			name: "Glide: alternating jumps and slides (acidBass preset, mono)",
 			cfg:  subtractive.AcidBassPreset(),
 			// one voice, so every note glides from the previous one
-			voices: 1, amp: 0.25, legato: 0.6,
+			voices: 1, amp: 0.147, legato: 0.6,
 			notes:  notes(1, A1, A2, A1, E3, A1, A2, G3, A2, A1, A2, A1, E3, C3, A2, G3, A2),
 			params: map[string][]float64{"glide": {0, 0, 0, 0, 0, 0, 0, 0, 0, 120, 0, 120, 120, 120, 120, 120}},
 		},
@@ -341,7 +341,7 @@ func main() {
 				cfg.LFO2 = subtractive.LFOConfig{Waveform: subtractive.LFOSquare, Rate: 8.0, KeySync: true}
 				return cfg
 			}(),
-			voices: 2, amp: 0.25, legato: 0.9,
+			voices: 2, amp: 0.478, legato: 0.9,
 			notes: notes(4, E4, D4, C4, A3),
 			params: map[string][]float64{
 				"lfo1Pitch": {0.4, 0.4, 0, 0},
@@ -370,7 +370,7 @@ func main() {
 		{
 			name:   "PWM pad (pwmPad preset): Am F C G chords",
 			cfg:    subtractive.PWMPadPreset(),
-			voices: 12, amp: 0.15, legato: 1.0,
+			voices: 12, amp: 0.372, legato: 1.0,
 			notes: chordNotes(4,
 				[]float64{A3, C4, E4},      // Am
 				[]float64{F4 - 12, A3, C4}, // F
@@ -381,7 +381,7 @@ func main() {
 		{
 			name:   "Filter envelope to pitch (zap preset)",
 			cfg:    subtractive.ZapPreset(),
-			voices: 4, amp: 0.25, legato: 0.5,
+			voices: 4, amp: 0.298, legato: 0.5,
 			notes: line(A3, 1, rest, 1, A3, 0.5, A3, 0.5, rest, 1,
 				E4, 1, rest, 1, A3, 0.5, E4, 0.5, rest, 1,
 				A3, 1, rest, 1, A3, 0.5, A3, 0.5, rest, 1,
@@ -396,60 +396,60 @@ func main() {
 				cfg.Cutoff = 600.0
 				return cfg
 			}(),
-			voices: 2, amp: 0.25, legato: 0.6,
+			voices: 2, amp: 0.327, legato: 0.6,
 			notes:  notes(1, A2, A2, C3, A2, A2, A2, E3, A2, A2, A2, C3, A2, A2, A2, G3, A2),
 			params: map[string][]float64{"drive": {1, 1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 8, 8, 8, 8}},
 		},
 		{
 			name:   "Noise only through a resonant bandpass (wind preset)",
 			cfg:    subtractive.WindPreset(),
-			voices: 2, amp: 0.3, legato: 0.8,
+			voices: 2, amp: 0.259, legato: 0.8,
 			notes: notes(8, C5, G5),
 		},
 		{
 			name:   "Reese bass (reeseBass preset): detuned saws with a slow internal cutoff LFO",
 			cfg:    subtractive.ReeseBassPreset(),
-			voices: 2, amp: 0.3, legato: 0.95,
+			voices: 2, amp: 0.48, legato: 0.95,
 			notes: notes(4, A1, A1, 29, 31),
 		},
 		{
 			name:   "FM bass (fmBass preset) with changing FM amount",
 			cfg:    subtractive.FMBassPreset(),
-			voices: 2, amp: 0.3, legato: 0.6,
+			voices: 2, amp: 0.584, legato: 0.6,
 			notes:  notes(1, A1, A2, A1, A2, 36, C3, 36, 43, A1, A2, A1, A2, 31, 43, 31, 40),
 			params: map[string][]float64{"fmAmount": {2, 3, 4, 3}},
 		},
 		{
 			name:   "Square bass with short glide (squareBass preset, mono)",
 			cfg:    subtractive.SquareBassPreset(),
-			voices: 1, amp: 0.3, legato: 0.7,
+			voices: 1, amp: 0.469, legato: 0.7,
 			notes: notes(1, A2, A2, E3, A2, 43, A2, C3, 50, A2, A2, E3, A3, G3, E3, 50, C3),
 		},
 		{
 			name:   "LFO wobble bass (lfoWobble preset): wobble rate set per note",
 			cfg:    subtractive.LFOWobblePreset(),
-			voices: 2, amp: 0.25, legato: 0.95,
+			voices: 2, amp: 0.681, legato: 0.95,
 			notes:  notes(4, A1, A1, 29, 31),
 			params: map[string][]float64{"lfo1Rate": {2, 4, 6, 8}},
 		},
 		{
 			name: "Synth drums (synthKick, synthSnare, synthHat, synthTom presets)",
-			cfg:  subtractive.SynthKickPreset(), voices: 2, amp: 0.45, legato: 0.5,
+			cfg:  subtractive.SynthKickPreset(), voices: 2, amp: 0.648, legato: 0.5,
 			notes: hits(36,
 				"x.....x...x.....", "x.....x...x.....", "x.....x...x.....", "x.....x.x.x....."),
 			with: []*section{
 				{
-					name: "snare", cfg: subtractive.SynthSnarePreset(), voices: 2, amp: 0.3, legato: 0.5,
+					name: "snare", cfg: subtractive.SynthSnarePreset(), voices: 2, amp: 0.295, legato: 0.5,
 					notes: hits(50,
 						"....x.......x...", "....x.......x...", "....x.......x...", "....x.......x.xx"),
 				},
 				{
-					name: "hat", cfg: subtractive.SynthHatPreset(), voices: 4, amp: 0.12, legato: 0.5,
+					name: "hat", cfg: subtractive.SynthHatPreset(), voices: 4, amp: 0.123, legato: 0.5,
 					notes: hits(60,
 						"x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x.x.xx", "x.x.x.x.x.x....."),
 				},
 				{
-					name: "tom", cfg: subtractive.SynthTomPreset(), voices: 4, amp: 0.3, legato: 0.5,
+					name: "tom", cfg: subtractive.SynthTomPreset(), voices: 4, amp: 0.39, legato: 0.5,
 					notes: line(rest, 14, G3, 0.5, E3, 0.5, C3, 0.5, A2, 0.5),
 				},
 			},
@@ -457,25 +457,25 @@ func main() {
 		{
 			name:   "Flute (flute preset): breath noise and delayed vibrato",
 			cfg:    subtractive.FlutePreset(),
-			voices: 2, amp: 0.3, legato: 0.95,
+			voices: 2, amp: 0.432, legato: 0.95,
 			notes: line(E5, 2, D5, 1, C5, 1, A4, 3, rest, 1, C5, 1, D5, 1, E5, 2, G5, 3, rest, 1),
 		},
 		{
 			name:   "Clarinet (clarinet preset)",
 			cfg:    subtractive.ClarinetPreset(),
-			voices: 2, amp: 0.3, legato: 0.95,
+			voices: 2, amp: 0.644, legato: 0.95,
 			notes: line(A3, 1, C4, 1, E4, 2, D4, 1, C4, 1, 59, 2, C4, 1, D4, 1, E4, 1, F4, 1, E4, 4),
 		},
 		{
 			name:   "Theremin (theremin preset, mono): long glides and wide vibrato",
 			cfg:    subtractive.ThereminPreset(),
-			voices: 1, amp: 0.3, legato: 1.0,
+			voices: 1, amp: 0.735, legato: 1.0,
 			notes: line(A4, 3, E5, 3, D5, 2, C5, 3, A4, 3, rest, 2),
 		},
 		{
 			name:   "Electric piano (ePiano preset): FM tone with tremolo, chords",
 			cfg:    subtractive.EPianoPreset(),
-			voices: 12, amp: 0.15, legato: 0.9,
+			voices: 12, amp: 0.123, legato: 0.9,
 			notes: chordNotes(4,
 				[]float64{A3, C4, E4}, // Am
 				[]float64{D4, F4, A4}, // Dm
@@ -486,7 +486,7 @@ func main() {
 		{
 			name:   "Glass keys (glassKeys preset): FM bell arpeggio",
 			cfg:    subtractive.GlassKeysPreset(),
-			voices: 8, amp: 0.2, legato: 0.5,
+			voices: 8, amp: 0.228, legato: 0.5,
 			notes: notes(0.5,
 				A4, C5, E5, G5, A5, G5, E5, C5, A4, C5, E5, G5, A5, G5, E5, C5,
 				G4, B4, D5, G5, D5, B4, G4, D5, A4, C5, E5, A5, E5, C5, A4, E5),
@@ -494,19 +494,19 @@ func main() {
 		{
 			name:   "Vibes (vibes preset): mallet tone with tremolo",
 			cfg:    subtractive.VibesPreset(),
-			voices: 6, amp: 0.3, legato: 0.9,
+			voices: 6, amp: 0.35, legato: 0.9,
 			notes: notes(2, C5, E5, G5, B4, A4, C5, E5, G5),
 		},
 		{
 			name:   "Riser FX (riser preset): pitch and filter swell",
 			cfg:    subtractive.RiserPreset(),
-			voices: 2, amp: 0.3, legato: 0.95,
+			voices: 2, amp: 0.112, legato: 0.95,
 			notes: notes(8, A3, E4),
 		},
 		{
 			name:   "Ladder filter modes (ladderBass preset): lowpass 24, lowpass 12, bandpass 12, highpass 12",
 			cfg:    subtractive.LadderBassPreset(),
-			voices: 2, amp: 0.35, legato: 0.6,
+			voices: 2, amp: 0.265, legato: 0.6,
 			notes: notes(1, A1, A2, A1, E3, A1, A2, A1, G3, A1, A2, A1, E3, A1, A2, C3, G3),
 			params: map[string][]float64{"ladderMode": {
 				float64(ladder.LowPass24), float64(ladder.LowPass24), float64(ladder.LowPass24), float64(ladder.LowPass24),
@@ -524,13 +524,13 @@ func main() {
 		{
 			name:   "Talking synth (talkingSynth preset): an LFO sweeps the formant filter through the vowels",
 			cfg:    subtractive.TalkingSynthPreset(),
-			voices: 2, amp: 0.7, legato: 0.9,
+			voices: 2, amp: 0.362, legato: 0.9,
 			notes: notes(2, A2, A2, C3, A2, 43, A2, C3, E3),
 		},
 		{
 			name:   "Choir pad (choirPad preset): formant filtered saws, Am F C G",
 			cfg:    subtractive.ChoirPadPreset(),
-			voices: 12, amp: 0.25, legato: 1.0,
+			voices: 12, amp: 0.0776, legato: 1.0,
 			notes: chordNotes(4,
 				[]float64{A3, C4, E4},      // Am
 				[]float64{F4 - 12, A3, C4}, // F
@@ -541,7 +541,7 @@ func main() {
 		{
 			name:   "Notch pad (notchPad preset): an LFO sweeps a notch, like a phaser",
 			cfg:    subtractive.NotchPadPreset(),
-			voices: 8, amp: 0.15, legato: 1.0,
+			voices: 8, amp: 0.243, legato: 1.0,
 			notes: chordNotes(8, []float64{A3, E4}, []float64{F4 - 12, C4}),
 		},
 	}

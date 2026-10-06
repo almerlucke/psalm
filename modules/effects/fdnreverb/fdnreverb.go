@@ -1,6 +1,7 @@
 package fdnreverb
 
 import (
+	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/psalm"
@@ -276,8 +277,8 @@ func (r *FDNReverb) ProcessSample(inL float64, inR float64) (float64, float64) {
 	// the slow modulation is evaluated every modUpdate samples and interpolated in between
 	if r.modCount == 0 {
 		for l := range numLines {
-			now := math.Sin(2.0 * math.Pi * r.modPhase[l])
-			next := math.Sin(2.0 * math.Pi * (r.modPhase[l] + modUpdate*r.modInc[l]))
+			now := sine.Cycle(r.modPhase[l])
+			next := sine.Cycle(r.modPhase[l] + modUpdate*r.modInc[l])
 			r.modVal[l] = now * r.modDepth
 			r.modStep[l] = (next - now) * r.modDepth / modUpdate
 		}
@@ -327,4 +328,10 @@ func (r *FDNReverb) Synthesize() {
 		outs[0][i] = float32(dry*inL + wet*left)
 		outs[1][i] = float32(dry*inR + wet*right)
 	}
+}
+
+// Tail lets the reverb rest while silent: after the pre delay and the longest delay line the
+// first reflections arrive, after that it rings (and works) until its tail is silent
+func (r *FDNReverb) Tail() float64 {
+	return r.cfg.PreDelay/1000 + 0.25
 }

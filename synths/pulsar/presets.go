@@ -37,6 +37,7 @@ func VowelLeadPreset() Config {
 	cfg.VibratoDepth = 0.15
 	cfg.Glide = 40
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 15.0, 0.85, 200.0, 1.0, 250.0)
+	cfg.Level = 0.4413 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -51,9 +52,9 @@ func BuzzBassPreset() Config {
 	cfg.Window = Tapered
 	cfg.FormantEnvAmount = 2
 	cfg.FormantEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 180.0, 1.0, 100.0)
-	cfg.Level = 0.8
 	cfg.Glide = 15
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.7, 250.0, 1.0, 80.0)
+	cfg.Level = 0.6505 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -70,8 +71,8 @@ func GlassPreset() Config {
 	cfg.FormantEnvAmount = 0.5
 	cfg.FormantEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 400.0, 1.0, 300.0)
 	cfg.NoteSpread = 0.3
-	cfg.Level = 0.7
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.0, 1800.0, 1.0, 600.0)
+	cfg.Level = 0.3449 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -88,8 +89,8 @@ func FormantPadPreset() Config {
 	cfg.NoteSpread = 0.6
 	cfg.VibratoRate = 0.3
 	cfg.VibratoDepth = 0.08
-	cfg.Level = 0.6
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 900.0, 0.9, 500.0, 1.0, 1800.0)
+	cfg.Level = 0.4209 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -101,8 +102,8 @@ func LaserPreset() Config {
 	cfg.FormantEnvAmount = 4
 	cfg.FormantEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 220.0, 1.0, 100.0)
 	cfg.NoteSpread = 0.4
-	cfg.Level = 0.7
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 400.0, 1.0, 100.0)
+	cfg.Level = 0.4045 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -117,8 +118,8 @@ func RhythmPreset() Config {
 	cfg.Window = Percussive
 	cfg.Jitter = 0.03
 	cfg.StereoSpread = 0.5
-	cfg.Level = 0.45 // sparse pulses have a high peak for their loudness
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 1.0, 10.0, 1.0, 200.0)
+	cfg.Level = 0.3101 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -134,8 +135,8 @@ func CracklePreset() Config {
 	cfg.StereoSpread = 1
 	cfg.FormantLFORate = 0.2
 	cfg.FormantLFODepth = 0.7
-	cfg.Level = 0.6
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 300.0, 1.0, 10.0, 1.0, 1000.0)
+	cfg.Level = 0.3281 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -154,8 +155,8 @@ func ChoirPreset() Config {
 	cfg.FormantLFODepth = 0.15
 	cfg.VibratoRate = 4.5
 	cfg.VibratoDepth = 0.12
-	cfg.Level = 0.6
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 600.0, 0.9, 400.0, 1.0, 1200.0)
+	cfg.Level = 0.4429 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -172,8 +173,8 @@ func StringsPreset() Config {
 	cfg.NoteSpread = 0.4
 	cfg.VibratoRate = 5.2
 	cfg.VibratoDepth = 0.1
-	cfg.Level = 0.6
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 250.0, 0.85, 300.0, 1.0, 600.0)
+	cfg.Level = 0.3257 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -191,8 +192,8 @@ func BrassPreset() Config {
 	cfg.VibratoRate = 5
 	cfg.VibratoDepth = 0.06
 	cfg.Glide = 20
-	cfg.Level = 0.7
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 40.0, 0.85, 200.0, 1.0, 150.0)
+	cfg.Level = 0.4071 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -207,8 +208,8 @@ func MalletPreset() Config {
 	cfg.FormantEnvAmount = 1
 	cfg.FormantEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 60.0, 1.0, 50.0)
 	cfg.NoteSpread = 0.2
-	cfg.Level = 0.8
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 600.0, 1.0, 200.0)
+	cfg.Level = 0.4307 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -222,8 +223,8 @@ func SubBassPreset() Config {
 	cfg.FormantTracking = 1
 	cfg.Duty = 1
 	cfg.Glide = 30
-	cfg.Level = 0.9
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 0.9, 200.0, 1.0, 120.0)
+	cfg.Level = 0.4594 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -238,8 +239,8 @@ func WobbleBassPreset() Config {
 	cfg.FormantLFORate = 3
 	cfg.FormantLFODepth = 1.5
 	cfg.Glide = 25
-	cfg.Level = 0.7
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 3.0, 0.9, 200.0, 1.0, 100.0)
+	cfg.Level = 0.4668 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -257,8 +258,8 @@ func InsectsPreset() Config {
 	cfg.StereoSpread = 0.8
 	cfg.VibratoRate = 7
 	cfg.VibratoDepth = 4
-	cfg.Level = 0.4
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 500.0, 1.0, 10.0, 1.0, 1000.0)
+	cfg.Level = 0.2324 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -274,8 +275,8 @@ func RaindropsPreset() Config {
 	cfg.StereoSpread = 1
 	cfg.FormantLFORate = 3.7
 	cfg.FormantLFODepth = 1
-	cfg.Level = 0.4
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 800.0, 1.0, 10.0, 1.0, 1500.0)
+	cfg.Level = 0.3 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -290,7 +291,7 @@ func MotorPreset() Config {
 	cfg.Window = Rectangle
 	cfg.Jitter = 0.15
 	cfg.Glide = 400
-	cfg.Level = 0.6
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 200.0, 1.0, 10.0, 1.0, 500.0)
+	cfg.Level = 0.4357 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }

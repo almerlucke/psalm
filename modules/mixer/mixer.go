@@ -23,10 +23,11 @@ import (
 
 // Mixer holds the strips and the master
 type Mixer struct {
-	p      psalm.Patcher
-	master *Master
-	strips []*Strip // in the order they were created
-	inputs map[string]psalm.Modular
+	aligned bool
+	p       psalm.Patcher
+	master  *Master
+	strips  []*Strip // in the order they were created
+	inputs  map[string]psalm.Modular
 }
 
 // New creates a mixer with a master, added to the patch
@@ -60,6 +61,7 @@ func (m *Mixer) Strips() []*Strip {
 // Channel adds a strip for a source (any module with an audio output 0)
 func (m *Mixer) Channel(name string, source psalm.Modular, cfg StripConfig) *Strip {
 	s := m.add(name, cfg, false)
+	s.kind = channelStrip
 	s.In(source)
 	return s
 }
@@ -71,6 +73,7 @@ func (m *Mixer) Group(name string, cfg StripConfig, inserts ...psalm.Modular) *S
 	in.AddTo(m.p)
 	m.inputs[name] = in
 	s := m.add(name, cfg, true)
+	s.kind = groupStrip
 	s.In(chain(in, inserts))
 	return s
 }
@@ -83,6 +86,7 @@ func (m *Mixer) Bus(name string, cfg StripConfig, effects ...psalm.Modular) *Str
 	in.AddTo(m.p)
 	m.inputs["bus:"+name] = in
 	s := m.add(name, cfg, true)
+	s.kind = busStrip
 	s.In(chain(in, effects))
 	return s
 }
@@ -121,6 +125,68 @@ func (m *Mixer) add(name string, cfg StripConfig, safe bool) *Strip {
 		m.inputs["bus:"+bus].In(s, i+1, 0)
 	}
 	return s
+}
+
+// Align lines up the strips that play into the same group or the master: a strip whose signal is
+// late (a vocoder, a fully wet convolver, anything reporting psalm.Latent along its sources and
+// inserts) makes the mixer delay the other strips by the difference, so they arrive together. The
+// strips delay their input, so their sends stay lined up too. Effect bus returns are left as they
+// are, the latency of a reverb is a natural pre delay. It runs by itself before the first buffer,
+// call it again after adding strips while playing
+func (m *Mixer) Align() {
+	m.aligned = true
+	for _, s := range m.strips {
+		s.setDelay(0)
+	}
+	var align func(dest string)
+	align = func(dest string) {
+		var members []*Strip
+		for _, s := range m.strips {
+			if s.cfg.Group == dest && s.kind != busStrip {
+				members = append(members, s)
+			}
+		}
+		arrivals := make([]int, len(members))
+		latest := 0
+		for i, s := range members {
+			if s.kind == groupStrip {
+				align(s.name) // its members first
+			}
+			arrivals[i] = upstreamLatency(s, map[psalm.Modular]int{})
+			latest = max(latest, arrivals[i])
+		}
+		for i, s := range members {
+			s.setDelay(latest - arrivals[i])
+		}
+	}
+	align("")
+}
+
+// upstreamLatency returns the latency of the signal arriving at the input of a module: the most
+// over every path of the latencies reported along it
+func upstreamLatency(mod psalm.Modular, memo map[psalm.Modular]int) int {
+	most := 0
+	for _, in := range mod.Inputs() {
+		for _, c := range in.Connections {
+			most = max(most, pathLatency(c.Module, memo))
+		}
+	}
+	return most
+}
+
+// pathLatency returns the latency at the output of a module
+func pathLatency(mod psalm.Modular, memo map[psalm.Modular]int) int {
+	if v, ok := memo[mod]; ok {
+		return v
+	}
+	memo[mod] = 0 // a loop counts as no latency
+	own := 0
+	if l, ok := mod.(psalm.Latent); ok {
+		own = l.SignalLatency()
+	}
+	v := own + upstreamLatency(mod, memo)
+	memo[mod] = v
+	return v
 }
 
 // chain connects modules in series after a first one and returns the last
@@ -368,4 +434,9 @@ func (ms *Master) Synthesize() {
 		ms.loud.Add(ol, or)
 		ms.reduction = math.Max(ms.reduction, 1-ms.gain)
 	}
+}
+
+// Tail lets a summing point rest while silent
+func (s *sum) Tail() float64 {
+	return 0
 }

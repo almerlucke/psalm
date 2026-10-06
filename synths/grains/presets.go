@@ -39,6 +39,7 @@ func ChoirPad(sample sndfile.SoundFiler[float32], rootNote float64) Config {
 	cfg.StereoSpread = 0.9
 	cfg.Jitter = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 800.0, 0.9, 500.0, 1.0, 2000.0)
+	cfg.Level = 3.151 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -54,6 +55,7 @@ func FrozenDrone(sample sndfile.SoundFiler[float32], rootNote float64) Config {
 	cfg.StereoSpread = 0.8
 	cfg.Jitter = 0.6
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1500.0, 0.9, 500.0, 1.0, 2500.0)
+	cfg.Level = 3.176 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -70,6 +72,7 @@ func GlassKeys(sample sndfile.SoundFiler[float32], rootNote float64) Config {
 	cfg.Jitter = 0.2
 	cfg.VelocityDensity = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 0.2, 600.0, 1.0, 400.0)
+	cfg.Level = 5.283 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -86,6 +89,7 @@ func Texture(sample sndfile.SoundFiler[float32], rootNote float64) Config {
 	cfg.Reverse = 0.3
 	cfg.Jitter = 0.8
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 600.0, 0.9, 500.0, 1.0, 1500.0)
+	cfg.Level = 2.295 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -101,6 +105,7 @@ func Stutter(sample sndfile.SoundFiler[float32], rootNote float64) Config {
 	cfg.StereoSpread = 0.6
 	cfg.Jitter = 0
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 0.9, 100.0, 1.0, 200.0)
+	cfg.Level = 1.167 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -110,6 +115,7 @@ func Shimmer(sample sndfile.SoundFiler[float32], rootNote float64) Config {
 	cfg.Octave = 0.35
 	cfg.GrainSize = 200
 	cfg.Density = 50
+	cfg.Level = 2.883 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -126,5 +132,6 @@ func Pluck(sample sndfile.SoundFiler[float32], rootNote float64) Config {
 	cfg.Jitter = 0.3
 	cfg.VelocityDensity = 0.6
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.0, 350.0, 1.0, 150.0)
+	cfg.Level = 12.48 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }

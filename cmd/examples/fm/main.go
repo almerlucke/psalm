@@ -232,45 +232,45 @@ func paradeSections() []*section {
 		mono                   bool
 		gain                   float64 // level boost for quieter presets, 0 is 1
 	}{
-		{"pianos and keys", "grandPiano", "chords", 0, false, 2.0},
-		{"pianos and keys", "honkyTonk", "chords", 0, false, 2.0},
-		{"pianos and keys", "harpsichord", "arp", -12, false, 0},
-		{"pianos and keys", "clavinet", "melody", 0, false, 0},
-		{"chromatic percussion", "celesta", "arp", 0, false, 0},
-		{"chromatic percussion", "glockenspiel", "arp", 12, false, 0},
-		{"chromatic percussion", "musicBox", "arp", 12, false, 1.6},
-		{"chromatic percussion", "xylophone", "arp", 0, false, 1.8},
-		{"chromatic percussion", "tubularBells", "melody", 12, false, 0},
-		{"organs", "percussiveOrgan", "chords", 0, false, 0},
-		{"organs", "churchOrgan", "chords", 0, false, 0},
-		{"organs", "accordion", "chords", 0, false, 0},
-		{"guitars", "nylonGuitar", "arp", -12, false, 0},
-		{"guitars", "steelGuitar", "arp", -12, false, 0},
-		{"guitars", "overdriveGuitar", "melody", 0, false, 0},
-		{"basses", "uprightBass", "bass", 0, false, 0},
-		{"basses", "slapBass", "bass", 0, false, 0},
-		{"basses", "fretlessBass", "bass", 0, true, 0},
-		{"strings", "strings", "chords", 0, false, 2.0},
-		{"strings", "pizzicato", "arp", -12, false, 1.8},
-		{"strings", "harp", "arp", -12, false, 0},
-		{"brass", "trumpet", "melody", 0, false, 0},
-		{"brass", "frenchHorn", "melody", -12, false, 0},
-		{"reeds and pipes", "saxophone", "melody", 0, false, 0},
-		{"reeds and pipes", "clarinet", "melody", 0, false, 0},
-		{"reeds and pipes", "oboe", "melody", 12, false, 0},
-		{"reeds and pipes", "flute", "melody", 12, false, 0},
-		{"reeds and pipes", "panFlute", "melody", 12, false, 0},
-		{"synth leads and pads", "squareLead", "melody", 12, true, 0},
-		{"synth leads and pads", "sawLead", "melody", 0, true, 0},
-		{"synth leads and pads", "warmPad", "pad", 0, false, 0},
-		{"synth leads and pads", "sweepPad", "pad", 0, false, 0},
-		{"ethnic", "sitar", "melody", 0, false, 0},
-		{"ethnic", "kalimba", "arp", 0, false, 1.5},
-		{"ethnic", "steelDrum", "arp", 0, false, 0},
-		{"ethnic", "koto", "arp", -12, false, 0},
-		{"percussion", "timpani", "drums", 0, false, 0},
-		{"percussion", "woodblock", "drums", 24, false, 3.0},
-		{"percussion", "taiko", "drums", -12, false, 0},
+		{"pianos and keys", "grandPiano", "chords", 0, false, 2.16},
+		{"pianos and keys", "honkyTonk", "chords", 0, false, 2.45},
+		{"pianos and keys", "harpsichord", "arp", -12, false, 2.11},
+		{"pianos and keys", "clavinet", "melody", 0, false, 1.55},
+		{"chromatic percussion", "celesta", "arp", 0, false, 0.987},
+		{"chromatic percussion", "glockenspiel", "arp", 12, false, 1.08},
+		{"chromatic percussion", "musicBox", "arp", 12, false, 1.11},
+		{"chromatic percussion", "xylophone", "arp", 0, false, 1.19},
+		{"chromatic percussion", "tubularBells", "melody", 12, false, 3.22},
+		{"organs", "percussiveOrgan", "chords", 0, false, 1.63},
+		{"organs", "churchOrgan", "chords", 0, false, 1.97},
+		{"organs", "accordion", "chords", 0, false, 1.79},
+		{"guitars", "nylonGuitar", "arp", -12, false, 1.99},
+		{"guitars", "steelGuitar", "arp", -12, false, 1.92},
+		{"guitars", "overdriveGuitar", "melody", 0, false, 3.28},
+		{"basses", "uprightBass", "bass", 0, false, 1.87},
+		{"basses", "slapBass", "bass", 0, false, 1.62},
+		{"basses", "fretlessBass", "bass", 0, true, 2.47},
+		{"strings", "strings", "chords", 0, false, 2.25},
+		{"strings", "pizzicato", "arp", -12, false, 1.33},
+		{"strings", "harp", "arp", -12, false, 1.08},
+		{"brass", "trumpet", "melody", 0, false, 2.6},
+		{"brass", "frenchHorn", "melody", -12, false, 2.36},
+		{"reeds and pipes", "saxophone", "melody", 0, false, 2.2},
+		{"reeds and pipes", "clarinet", "melody", 0, false, 3.45},
+		{"reeds and pipes", "oboe", "melody", 12, false, 1.69},
+		{"reeds and pipes", "flute", "melody", 12, false, 1.5},
+		{"reeds and pipes", "panFlute", "melody", 12, false, 1.49},
+		{"synth leads and pads", "squareLead", "melody", 12, true, 2.8},
+		{"synth leads and pads", "sawLead", "melody", 0, true, 2.45},
+		{"synth leads and pads", "warmPad", "pad", 0, false, 2.1},
+		{"synth leads and pads", "sweepPad", "pad", 0, false, 2.62},
+		{"ethnic", "sitar", "melody", 0, false, 2.36},
+		{"ethnic", "kalimba", "arp", 0, false, 1.31},
+		{"ethnic", "steelDrum", "arp", 0, false, 1},
+		{"ethnic", "koto", "arp", -12, false, 1.91},
+		{"percussion", "timpani", "drums", 0, false, 1.01},
+		{"percussion", "woodblock", "drums", 24, false, 2.23},
+		{"percussion", "taiko", "drums", -12, false, 0.873},
 	}
 
 	var sections []*section
@@ -312,7 +312,7 @@ func main() {
 	sections := []*section{
 		{
 			name: "Electric piano: velocity rising from soft to hard, harder is brighter",
-			cfg:  fm.EPianoPreset(), voices: 16, amp: 0.12, legato: 0.9,
+			cfg:  fm.EPianoPreset(), voices: 16, amp: 0.106, legato: 0.9,
 			notes: chordNotes(2,
 				[]float64{62, 65, 69, 72}, []float64{62, 65, 69, 72},
 				[]float64{59, 62, 65, 67}, []float64{59, 62, 65, 67},
@@ -323,13 +323,13 @@ func main() {
 		},
 		{
 			name: "Bell: the ratio of operator 2 changes the color (3.5, 2, 1.41, 5)",
-			cfg:  fm.BellPreset(), voices: 6, amp: 0.25, legato: 0.5,
+			cfg:  fm.BellPreset(), voices: 6, amp: 0.359, legato: 0.5,
 			notes:  notes(4, 72, 79, 76, 72),
 			params: map[string][]float64{"op2Ratio": {3.5, 2.0, 1.41, 5.0}},
 		},
 		{
 			name: "Bass: mod depth (brightness) rising note by note",
-			cfg:  fm.BassPreset(), voices: 2, amp: 0.35, legato: 0.7,
+			cfg:  fm.BassPreset(), voices: 2, amp: 0.874, legato: 0.7,
 			notes: notes(1, 36, 36, 48, 36, 43, 43, 55, 43, 41, 41, 53, 41, 43, 43, 55, 47),
 			params: map[string][]float64{"modDepth": {
 				0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7,
@@ -337,14 +337,14 @@ func main() {
 		},
 		{
 			name: "Brass: swelling chords with delayed vibrato",
-			cfg:  fm.BrassPreset(), voices: 12, amp: 0.15, legato: 0.9,
+			cfg:  fm.BrassPreset(), voices: 12, amp: 0.367, legato: 0.9,
 			notes: chordNotes(4,
 				[]float64{60, 64, 67}, []float64{58, 62, 65}, []float64{57, 60, 65}, []float64{55, 60, 64},
 			),
 		},
 		{
 			name: "Organ: pulling out drawbars (the levels of operators 3 and 4) chord by chord",
-			cfg:  fm.OrganPreset(), voices: 16, amp: 0.1, legato: 0.95,
+			cfg:  fm.OrganPreset(), voices: 16, amp: 0.182, legato: 0.95,
 			notes: chordNotes(4,
 				[]float64{48, 60, 64, 67}, []float64{48, 60, 64, 67}, []float64{53, 60, 65, 69}, []float64{55, 59, 62, 67},
 			),
@@ -355,7 +355,7 @@ func main() {
 		},
 		{
 			name: "Mallet: an arpeggio with accents (velocity)",
-			cfg:  fm.MalletPreset(), voices: 8, amp: 0.3, legato: 0.5,
+			cfg:  fm.MalletPreset(), voices: 8, amp: 0.237, legato: 0.5,
 			notes: notes(1, 60, 64, 67, 72, 76, 72, 67, 64, 62, 65, 69, 74, 77, 74, 69, 65),
 			params: map[string][]float64{"velocity": {
 				1.0, 0.4, 0.6, 0.4, 1.0, 0.4, 0.6, 0.4, 1.0, 0.4, 0.6, 0.4, 1.0, 0.5, 0.7, 0.5,
@@ -363,7 +363,7 @@ func main() {
 		},
 		{
 			name: "Pad: an LFO on value input 1 sweeps the mod depth",
-			cfg:  fm.PadPreset(), voices: 12, amp: 0.15, legato: 1.0,
+			cfg:  fm.PadPreset(), voices: 12, amp: 0.178, legato: 1.0,
 			notes: chordNotes(8, []float64{57, 60, 64, 69}, []float64{53, 57, 60, 65}),
 			patch: func(p *psalm.Psalm, synth psalm.Modular) {
 				synth.ValueIn(lfo.New(true, 0.3, 0.1, 2.0, lfo.Sine).AddTo(p), 0, 1)
@@ -371,7 +371,7 @@ func main() {
 		},
 		{
 			name: "Pluck: feedback rising note by note, from round to buzzing",
-			cfg:  fm.PluckPreset(), voices: 8, amp: 0.3, legato: 0.6,
+			cfg:  fm.PluckPreset(), voices: 8, amp: 0.537, legato: 0.6,
 			notes: notes(1, 64, 67, 71, 72, 64, 67, 71, 74, 64, 67, 71, 76, 64, 67, 71, 72),
 			params: map[string][]float64{"feedback": {
 				0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 0.8, 0.9,
@@ -379,13 +379,13 @@ func main() {
 		},
 		{
 			name: "Algorithms: the metallic preset's operators through all 8 routings",
-			cfg:  fm.MetallicPreset(), voices: 4, amp: 0.25, legato: 0.6,
+			cfg:  fm.MetallicPreset(), voices: 4, amp: 0.81, legato: 0.6,
 			notes:  notes(2, 48, 48, 48, 48, 48, 48, 48, 48),
 			params: map[string][]float64{"algorithm": {0, 1, 2, 3, 4, 5, 6, 7}},
 		},
 		{
 			name: "Lead (mono): glide and vibrato, feedback rising per phrase",
-			cfg:  fm.LeadPreset(), voices: 1, amp: 0.25, legato: 1.0,
+			cfg:  fm.LeadPreset(), voices: 1, amp: 0.734, legato: 1.0,
 			notes:  line(72, 2, 74, 1, 76, 1, 79, 3, 76, 1, 74, 2, 72, 2, 69, 3, rest, 1),
 			params: map[string][]float64{"feedback": {0.2, 0.2, 0.4, 0.4, 0.6, 0.6, 0.85, 0.85}},
 		},
@@ -415,7 +415,7 @@ func main() {
 
 	jamPattern := func() *steps.Steps { return steps.New(seq(steps.QuickSteps(1.5, 2.5)...)) }
 
-	epiano.ValueIn(templ.NewDurationTrigger(seq(1.2*beatSec, 2.3*beatSec), 0.12, template.Template{
+	epiano.ValueIn(templ.NewDurationTrigger(seq(1.2*beatSec, 2.3*beatSec), 0.106, template.Template{
 		"pitch":    chords,
 		"velocity": random(0.5, 0.7, 0.9, 1.0),
 	}).ValueIn(timer.New(inSlot(jamPattern(), 0, introBeats, totalBeats)).AddTo(p)))
@@ -423,7 +423,7 @@ func main() {
 	// Bass: roots and fifths on the FM bass
 	bass := fm.NewPoly(fm.BassPreset(), 2).AddTo(p)
 
-	bass.ValueIn(templ.NewDurationTrigger(0.8*beatSec, 0.3, template.Template{
+	bass.ValueIn(templ.NewDurationTrigger(0.8*beatSec, 0.753, template.Template{
 		"pitch":    seq(38.0, 45.0, 43.0, 50.0, 36.0, 43.0, 45.0, 40.0),
 		"velocity": random(0.7, 0.85, 1.0),
 	}).ValueIn(timer.New(inSlot(jamPattern(), 0, introBeats, totalBeats)).AddTo(p)))
@@ -431,7 +431,7 @@ func main() {
 	// Bells: sparse, random notes from the C major pentatonic, high up
 	bells := fm.NewPoly(fm.BellPreset(), 8).AddTo(p)
 
-	bells.ValueIn(templ.NewDurationTrigger(0.5, random(0.05, 0.07, 0.09), template.Template{
+	bells.ValueIn(templ.NewDurationTrigger(0.5, random(0.0714, 0.1, 0.129), template.Template{
 		"pitch":    random(84.0, 86.0, 88.0, 91.0, 93.0, 96.0),
 		"velocity": random(0.4, 0.6, 0.8),
 	}).ValueIn(timer.New(inSlot(random(2*ppq, 3*ppq, -4*ppq, -6*ppq), 0, introBeats, totalBeats)).AddTo(p)))

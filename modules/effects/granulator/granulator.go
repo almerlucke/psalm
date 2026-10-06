@@ -1,6 +1,7 @@
 package granulator
 
 import (
+	fastsine "github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/psalm"
@@ -132,7 +133,7 @@ func (g *Granulator) ReceiveMessage(msg psalm.Message) {
 
 // window returns the grain envelope at t (0-1), from a smooth sin^2 window to a percussive shape
 func window(t float64, shape float64) float64 {
-	smooth := math.Sin(math.Pi * t)
+	smooth := fastsine.Cycle(0.5 * t)
 	smooth *= smooth
 	if shape <= 0 {
 		return smooth
@@ -274,4 +275,13 @@ func (g *Granulator) Synthesize() {
 		outs[0][i] = float32(dry*inL + wet*left)
 		outs[1][i] = float32(dry*inR + wet*right)
 	}
+}
+
+// Tail lets the granulator rest while silent: grains read up to the delay and spray behind the
+// input, a frozen granulator plays its buffer and never rests
+func (g *Granulator) Tail() float64 {
+	if g.cfg.Freeze {
+		return -1
+	}
+	return (g.cfg.Delay+g.cfg.Spray+g.cfg.GrainSize)/1000 + 0.05
 }

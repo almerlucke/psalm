@@ -68,6 +68,7 @@ func BassPreset() Config {
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.8, 150.0, 1.0, 80.0)
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
+	cfg.Level = 0.7653 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -87,6 +88,7 @@ func AcidBassPreset() Config {
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
 	cfg.FilterDrive = 1.5
+	cfg.Level = 1.699 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -103,6 +105,7 @@ func SubBassPreset() Config {
 	cfg.FilterEnvAmount = 0.0
 	cfg.KeyTrack = 0.0
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 1.0, 10.0, 1.0, 120.0)
+	cfg.Level = 0.3798 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -121,6 +124,7 @@ func LeadPreset() Config {
 	cfg.KeyTrack = 0.8
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 10.0, 0.5, 300.0, 1.0, 200.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 8.0, 0.8, 200.0, 1.0, 250.0)
+	cfg.Level = 0.5228 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -139,6 +143,7 @@ func ChipLeadPreset() Config {
 	cfg.KeyTrack = 1.0
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 2.0, 0.6, 150.0, 1.0, 100.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.8, 150.0, 1.0, 120.0)
+	cfg.Level = 0.4905 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -155,6 +160,7 @@ func ChipArpPreset() Config {
 	cfg.KeyTrack = 1.0
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.2, 60.0, 1.0, 40.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.5, 60.0, 1.0, 40.0)
+	cfg.Level = 0.9935 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -172,6 +178,7 @@ func PluckPreset() Config {
 	cfg.KeyTrack = 0.7
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 250.0, 1.0, 150.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 400.0, 1.0, 200.0)
+	cfg.Level = 0.8696 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -190,6 +197,7 @@ func PadPreset() Config {
 	cfg.KeyTrack = 0.5
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1200.0, 0.6, 1500.0, 1.0, 2000.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 800.0, 0.9, 1000.0, 1.0, 1800.0)
+	cfg.Level = 0.6421 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -208,6 +216,7 @@ func HollowPadPreset() Config {
 	cfg.KeyTrack = 0.6
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1500.0, 0.5, 1500.0, 1.0, 2000.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1000.0, 0.85, 1000.0, 1.0, 2500.0)
+	cfg.Level = 0.4707 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -225,6 +234,7 @@ func StringsPreset() Config {
 	cfg.KeyTrack = 0.8
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 300.0, 0.8, 500.0, 1.0, 600.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 250.0, 0.9, 400.0, 1.0, 700.0)
+	cfg.Level = 0.5524 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -245,6 +255,7 @@ func BrassPreset() Config {
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 40.0, 0.85, 300.0, 1.0, 200.0)
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass12
+	cfg.Level = 0.6206 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -262,6 +273,7 @@ func OrganPreset() Config {
 	cfg.FilterEnvAmount = 0.0
 	cfg.KeyTrack = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 3.0, 1.0, 10.0, 1.0, 40.0)
+	cfg.Level = 0.4175 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -281,6 +293,7 @@ func WobblePreset() Config {
 	cfg.KeyTrack = 0.2
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 5.0, 0.8, 100.0, 1.0, 100.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 3.0, 0.9, 100.0, 1.0, 80.0)
+	cfg.Level = 0.3356 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -297,6 +310,7 @@ func WindPreset() Config {
 	cfg.KeyTrack = 1.0
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1500.0, 0.3, 2000.0, 1.0, 2000.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1000.0, 0.8, 1000.0, 1.0, 2000.0)
+	cfg.Level = 1.16 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -316,6 +330,7 @@ func SyncLeadPreset() Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 5.0, 0.4, 400.0, 1.0, 300.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 5.0, 0.8, 200.0, 1.0, 250.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 5.5, Delay: 300.0, Pitch: 0.25}
+	cfg.Level = 0.7081 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -333,6 +348,7 @@ func RingBellPreset() Config {
 	cfg.FilterEnvAmount = 0.0
 	cfg.KeyTrack = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 1500.0, 1.0, 800.0)
+	cfg.Level = 0.7534 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -354,6 +370,7 @@ func PWMPadPreset() Config {
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 700.0, 0.9, 1000.0, 1.0, 1800.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 0.4, PulseWidth: 0.35}
 	cfg.LFO2 = LFOConfig{Waveform: LFOSine, Rate: 4.5, Delay: 600.0, Pitch: 0.1, Cutoff: 0.2}
+	cfg.Level = 0.4028 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -369,6 +386,7 @@ func ZapPreset() Config {
 	cfg.FilterEnvAmount = 1.0
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 120.0, 1.0, 50.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 250.0, 1.0, 80.0)
+	cfg.Level = 0.8382 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -391,6 +409,7 @@ func ReeseBassPreset() Config {
 	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 0.3, Cutoff: 1.2}
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
+	cfg.Level = 0.6246 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -410,6 +429,7 @@ func FMBassPreset() Config {
 	cfg.KeyTrack = 0.4
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 2.0, 0.2, 200.0, 1.0, 100.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.8, 150.0, 1.0, 100.0)
+	cfg.Level = 0.5135 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -430,6 +450,7 @@ func SquareBassPreset() Config {
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.85, 150.0, 1.0, 100.0)
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
+	cfg.Level = 0.6396 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -439,6 +460,7 @@ func LFOWobblePreset() Config {
 	cfg.Cutoff = 250.0
 	cfg.Resonance = 0.65
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 4.0, KeySync: true, Cutoff: 2.5}
+	cfg.Level = 0.3672 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -456,6 +478,7 @@ func SynthKickPreset() Config {
 	cfg.KeyTrack = 0.0
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 45.0, 1.0, 20.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 350.0, 1.0, 60.0)
+	cfg.Level = 0.6942 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -473,6 +496,7 @@ func SynthSnarePreset() Config {
 	cfg.KeyTrack = 0.0
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 60.0, 1.0, 30.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 180.0, 1.0, 50.0)
+	cfg.Level = 1.019 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -488,6 +512,7 @@ func SynthHatPreset() Config {
 	cfg.FilterEnvAmount = 0.0
 	cfg.KeyTrack = 0.0
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 50.0, 1.0, 30.0)
+	cfg.Level = 0.9793 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -507,6 +532,7 @@ func SynthTomPreset() Config {
 	cfg.KeyTrack = 0.5
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 120.0, 1.0, 40.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 400.0, 1.0, 80.0)
+	cfg.Level = 0.7689 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -528,6 +554,7 @@ func FlutePreset() Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 80.0, 0.7, 300.0, 1.0, 200.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 70.0, 0.85, 200.0, 1.0, 180.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 5.0, Delay: 350.0, KeySync: true, Pitch: 0.15, Amp: 0.1}
+	cfg.Level = 0.6954 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -546,6 +573,7 @@ func ClarinetPreset() Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 60.0, 0.6, 300.0, 1.0, 150.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 50.0, 0.85, 200.0, 1.0, 150.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 4.5, Delay: 500.0, KeySync: true, Pitch: 0.08}
+	cfg.Level = 0.4662 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -564,6 +592,7 @@ func ThereminPreset() Config {
 	cfg.KeyTrack = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 150.0, 0.9, 200.0, 1.0, 400.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 6.0, Delay: 200.0, Pitch: 0.35}
+	cfg.Level = 0.4082 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -583,6 +612,7 @@ func EPianoPreset() Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 2.0, 0.3, 600.0, 1.0, 300.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 3.0, 0.4, 1500.0, 1.0, 500.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 4.0, Amp: 0.25}
+	cfg.Level = 1.214 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -601,6 +631,7 @@ func GlassKeysPreset() Config {
 	cfg.FilterEnvAmount = 0.0
 	cfg.KeyTrack = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 1200.0, 1.0, 600.0)
+	cfg.Level = 0.8784 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -618,6 +649,7 @@ func VibesPreset() Config {
 	cfg.KeyTrack = 0.5
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.0, 1800.0, 1.0, 800.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 5.5, Amp: 0.5}
+	cfg.Level = 0.8581 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -639,6 +671,7 @@ func RiserPreset() Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 4000.0, 1.0, 10.0, 1.0, 300.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 3500.0, 1.0, 10.0, 1.0, 300.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 6.0, Amp: 0.3}
+	cfg.Level = 2.68 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -661,6 +694,7 @@ func LadderBassPreset() Config {
 	cfg.KeyTrack = 0.4
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 2.0, 0.15, 220.0, 1.0, 120.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.85, 150.0, 1.0, 100.0)
+	cfg.Level = 1.322 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -683,6 +717,7 @@ func LadderLeadPreset() Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 10.0, 0.4, 350.0, 1.0, 250.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 8.0, 0.85, 200.0, 1.0, 250.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 5.5, Delay: 300.0, KeySync: true, Pitch: 0.2}
+	cfg.Level = 0.9988 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -702,6 +737,7 @@ func TalkingSynthPreset() Config {
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 5.0, 0.0, 400.0, 1.0, 200.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 10.0, 0.9, 200.0, 1.0, 200.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 0.7, Cutoff: 2.0} // sweeps through the vowels
+	cfg.Level = 1.933                                                   // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -722,6 +758,7 @@ func ChoirPadPreset() Config {
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 900.0, 0.9, 1000.0, 1.0, 1800.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 0.15, Cutoff: 1.0}              // drifts between "e" and "u"
 	cfg.LFO2 = LFOConfig{Waveform: LFOSine, Rate: 4.8, Delay: 500.0, Pitch: 0.08} // gentle vibrato
+	cfg.Level = 3.222                                                             // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -740,5 +777,6 @@ func NotchPadPreset() Config {
 	cfg.KeyTrack = 0.0
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 500.0, 0.9, 800.0, 1.0, 1500.0)
 	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 0.25, Cutoff: 2.0}
+	cfg.Level = 0.6165 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }

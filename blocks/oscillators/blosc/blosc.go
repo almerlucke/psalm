@@ -1,6 +1,7 @@
 package blosc
 
 import (
+	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 )
 
@@ -134,11 +135,11 @@ func (b *Blosc) get() float64 {
 }
 
 func (b *Blosc) sin() float64 {
-	return b.amp * math.Sin(twoPi*b.t)
+	return b.amp * sine.Cycle(b.t)
 }
 
 func (b *Blosc) cos() float64 {
-	return b.amp * math.Cos(twoPi*b.t)
+	return b.amp * sine.CosCycle(b.t)
 }
 
 func (b *Blosc) half() float64 {
@@ -148,7 +149,7 @@ func (b *Blosc) half() float64 {
 	y := -2.0 / math.Pi
 
 	if b.t < 0.5 {
-		y = 2.0*math.Sin(twoPi*b.t) - 2.0/math.Pi
+		y = 2.0*sine.Cycle(b.t) - 2.0/math.Pi
 	}
 
 	y += twoPi * b.dt * (blamp(b.t, b.dt) + blamp(t2, b.dt))
@@ -160,7 +161,7 @@ func (b *Blosc) full() float64 {
 	t1 := b.t + 0.25
 	t1 -= integerPart(t1)
 
-	y := 2.0*math.Sin(math.Pi*t1) - 4.0/math.Pi
+	y := 2.0*sine.Cycle(0.5*t1) - 4.0/math.Pi
 	y += twoPi * b.dt * blamp(t1, b.dt)
 
 	return b.amp * y

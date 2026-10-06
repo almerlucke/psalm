@@ -2,6 +2,7 @@ package fm
 
 import (
 	"fmt"
+	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
@@ -85,7 +86,7 @@ const middleC = 261.6255653005986
 
 func New(cfg Config) *Voice {
 	if cfg.NumChannels == 0 {
-		cfg.NumChannels = psalm.Mono
+		cfg.NumChannels = psalm.Stereo
 	}
 
 	v := &Voice{
@@ -251,7 +252,6 @@ func (v *Voice) Synthesize() {
 		outs     = outSocket.Channels
 		bufSize  = v.Config().BufferSize
 		alg      = Algorithms[cfg.Algorithm]
-		twoPi    = 2.0 * math.Pi
 		modDepth = cfg.ModDepth
 		level    = cfg.Level
 		levels   [NumOperators]float64
@@ -310,7 +310,7 @@ func (v *Voice) Synthesize() {
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
 		freq := v.glideFreq
 		if cfg.VibratoDepth != 0.0 && cfg.VibratoRate > 0.0 {
-			freq *= math.Pow(2.0, cfg.VibratoDepth*v.vibFade*math.Sin(twoPi*v.vibPhase)/12.0)
+			freq *= math.Pow(2.0, cfg.VibratoDepth*v.vibFade*sine.Cycle(v.vibPhase)/12.0)
 			v.vibPhase += cfg.VibratoRate / sr
 			v.vibPhase -= math.Floor(v.vibPhase)
 			v.vibFade = math.Min(1.0, v.vibFade+v.vibFadeInc)
@@ -333,7 +333,7 @@ func (v *Voice) Synthesize() {
 				pm += (v.fb[0] + v.fb[1]) * 0.5 * v.curFeedback
 			}
 
-			s := math.Sin(twoPi * (v.phase[op] + pm))
+			s := sine.Cycle(v.phase[op] + pm)
 			env := v.envs[op].Generate()
 
 			if op == NumOperators-1 {
@@ -369,7 +369,7 @@ func (v *Voice) Synthesize() {
 // NewPoly creates a polyphonic FM synth
 func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 	if cfg.NumChannels == 0 {
-		cfg.NumChannels = psalm.Mono
+		cfg.NumChannels = psalm.Stereo
 	}
 
 	voices := make([]*Voice, numVoices)

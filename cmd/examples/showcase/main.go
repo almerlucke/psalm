@@ -13,7 +13,7 @@ package main
 //	soprano     pulsar vowel lead, the theme in the climax
 //	choir       grains choir pad on a choir recording and a pulsar choir, in a convolved church
 //	celesta     FM celesta through a pingpong delay into a shimmer reverb
-//	bell pad    DX bell pad through a flanger, lined up with the vocoder by latency
+//	bell pad    DX bell pad through a flanger (the mixer lines everything up with the vocoder)
 //	voices      speech vocoding a wavetable pad
 //	droplets    pulsar raindrops
 //	aurora      wavetable drone on a generated random spectra table
@@ -50,7 +50,6 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/flanger"
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/granulator"
-	"github.com/almerlucke/psalm/modules/effects/latency"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/effects/pitchshift"
 	"github.com/almerlucke/psalm/modules/effects/shimmer"
@@ -216,7 +215,7 @@ func main() {
 	choirClean.AddTo(p)
 	church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
 	mix.Group("choir", mixer.StripConfig{}, choirClean,
-		convolver.New(church, convolver.Config{PartitionSize: 4096, Mix: 0.4, Gain: 0.15}).AddTo(p))
+		convolver.New(church, convolver.Config{PartitionSize: 4096, Mix: 0.4, Gain: 2.27}).AddTo(p))
 
 	// --- strings ---
 
@@ -298,9 +297,8 @@ func main() {
 
 	bellPad := dx.NewPoly(dx.BellPad(), 12, psalm.Stereo).AddTo(p)
 	bellFlange := flanger.New(0.08, 0.5, 0.4, 0.4, nil).AddTo(p).In(bellPad)
-	// the vocoder sounds an FFT frame late, the bell pad waits for it
-	bellAligned := latency.New(psalm.Stereo, voc.Latency()).AddTo(p).In(bellFlange)
-	mix.Channel("bell pad", bellAligned, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
+	// the vocoder sounds an FFT frame late: the mixer delays the other strips to line them up
+	mix.Channel("bell pad", bellFlange, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
 
 	droplets := pulsar.NewPoly(pulsar.RaindropsPreset(), 2).AddTo(p)
 	mix.Channel("droplets", droplets, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4, "sky": 0.2}})
@@ -346,7 +344,7 @@ func main() {
 		fmt.Print(harmony.Report(name, issues))
 	}
 
-	part(violins, "violins", 0.12, 1.0, func(s S) []N {
+	part(violins, "violins", 0.126, 1.0, func(s S) []N {
 		if !arrange.In(s, "Prelude", "Theme", "Climax", "Coda") {
 			return nil
 		}
@@ -359,7 +357,7 @@ func main() {
 		})
 	})
 
-	part(celli, "celli", 0.08, 1.0, func(s S) []N {
+	part(celli, "celli", 0.145, 1.0, func(s S) []N {
 		if s.Name == "Interlude" {
 			return arrange.PerBar(s, func(bar int) []N {
 				return []N{{Pitches: chordAt(s, bar).celli[:1], Beats: 4, Velocity: 0.5}}
@@ -368,7 +366,7 @@ func main() {
 		return arrange.PerBar(s, func(bar int) []N { return []N{score.Chord(chordAt(s, bar).celli, 4)} })
 	})
 
-	part(pizz, "pizzicato", 0.19, 0.5, func(s S) []N {
+	part(pizz, "pizzicato", 0.355, 0.5, func(s S) []N {
 		if !arrange.In(s, "Theme", "Climax") {
 			return nil
 		}
@@ -378,7 +376,7 @@ func main() {
 		})
 	})
 
-	part(harp, "harp", 0.12, 1.6, func(s S) []N {
+	part(harp, "harp", 0.13, 1.6, func(s S) []N {
 		if !arrange.In(s, "Prelude", "Theme", "Interlude", "Climax", "Coda") {
 			return nil
 		}
@@ -390,14 +388,14 @@ func main() {
 		})
 	})
 
-	part(flute, "flute", 0.35, 0.95, func(s S) []N {
+	part(flute, "flute", 0.525, 0.95, func(s S) []N {
 		if s.Name != "Theme" {
 			return nil
 		}
 		return theme()
 	})
 
-	part(horns, "horns", 0.075, 0.95, func(s S) []N {
+	part(horns, "horns", 0.0788, 0.95, func(s S) []N {
 		if !arrange.In(s, "Chorale", "Climax") {
 			return nil
 		}
@@ -410,21 +408,21 @@ func main() {
 		})
 	})
 
-	part(hornSolo, "horn solo", 0.14, 0.95, func(s S) []N {
+	part(hornSolo, "horn solo", 0.33, 0.95, func(s S) []N {
 		if s.Name != "Climax" {
 			return nil
 		}
 		return score.Repeat(counter, 2)
 	})
 
-	part(soprano, "soprano", 0.15, 0.95, func(s S) []N {
+	part(soprano, "soprano", 0.34, 0.95, func(s S) []N {
 		if s.Name != "Climax" {
 			return nil
 		}
 		return theme()
 	})
 
-	part(choir, "choir", 0.25, 1.0, func(s S) []N {
+	part(choir, "choir", 0.0793, 1.0, func(s S) []N {
 		if !arrange.In(s, "Prelude", "Chorale", "Climax", "Coda") {
 			return nil
 		}
@@ -440,14 +438,14 @@ func main() {
 		})
 	})
 
-	part(ooh, "ooh", 0.045, 1.0, func(s S) []N {
+	part(ooh, "ooh", 0.061, 1.0, func(s S) []N {
 		if !arrange.In(s, "Chorale", "Climax") {
 			return nil
 		}
 		return arrange.PerBar(s, func(bar int) []N { return []N{score.Chord(score.Pitches(chordAt(s, bar).choir, 12), 4)} })
 	})
 
-	part(celesta, "celesta", 0.22, 0.9, func(s S) []N {
+	part(celesta, "celesta", 0.217, 0.9, func(s S) []N {
 		switch s.Name {
 		case "Interlude":
 			return arrange.PerBar(s, func(bar int) []N {
@@ -466,14 +464,14 @@ func main() {
 		return nil
 	})
 
-	part(bellPad, "bell pad", 0.05, 1.0, func(s S) []N {
+	part(bellPad, "bell pad", 0.0471, 1.0, func(s S) []N {
 		if s.Name != "Interlude" {
 			return nil
 		}
 		return arrange.PerBar(s, func(bar int) []N { return []N{score.Chord(chordAt(s, bar).choir, 4)} })
 	})
 
-	part(carrier, "voices", 0.1, 1.0, func(s S) []N {
+	part(carrier, "voices", 0.0976, 1.0, func(s S) []N {
 		if s.Name != "Interlude" {
 			return nil
 		}
@@ -483,14 +481,14 @@ func main() {
 		})
 	})
 
-	form.Part(p, droplets, "droplets", score.Config{Amp: 0.1, Legato: 1, Key: "frequency"}, func(s S) []N {
+	form.Part(p, droplets, "droplets", score.Config{Amp: 0.133, Legato: 1, Key: "frequency"}, func(s S) []N {
 		if s.Name != "Interlude" {
 			return nil
 		}
 		return score.Notes(16, 7, 9) // drops per second
 	})
 
-	part(aurora, "aurora", 0.17, 1.0, func(s S) []N {
+	part(aurora, "aurora", 0.111, 1.0, func(s S) []N {
 		if !arrange.In(s, "Prelude", "Coda") {
 			return nil
 		}

@@ -97,6 +97,7 @@ func GrandPianoPreset() Config {
 	cfg.Ops[2] = op(2, 0.3, 0.3, decay(1800, 400))
 	cfg.Ops[3] = op(7, 0.15, 0.9, decay(40, 30))
 	cfg.Ops[2].Detune = 2.0
+	cfg.Level = 0.9264 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -106,6 +107,7 @@ func HonkyTonkPreset() Config {
 	cfg.Ops[2].Ratio = 1
 	cfg.Ops[2].Level = 0.8
 	cfg.Ops[2].Detune = 14.0
+	cfg.Level = 0.8153 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -118,6 +120,7 @@ func HarpsichordPreset() Config {
 	cfg.Ops[2] = op(1, 0.3, 0.2, decay(600, 100))
 	cfg.Ops[3] = op(5, 0.25, 0.3, decay(300, 80))
 	cfg.Feedback = 0.2
+	cfg.Level = 0.4732 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -130,6 +133,7 @@ func ClavinetPreset() Config {
 	cfg.Ops[2] = op(3, 0.3, 0.4, decay(200, 40))
 	cfg.Ops[3] = op(1, 0.2, 0.3, decay(150, 40))
 	cfg.Feedback = 0.4
+	cfg.Level = 0.6446 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -143,6 +147,7 @@ func CelestaPreset() Config {
 	cfg.Ops[1] = op(4, 0.3, 0.6, decay(300, 200))
 	cfg.Ops[2] = op(4, 0.25, 0.2, decay(900, 300))
 	cfg.Ops[3] = op(9.5, 0.15, 0.5, decay(150, 100))
+	cfg.Level = 1.013 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -154,6 +159,7 @@ func GlockenspielPreset() Config {
 	cfg.Ops[1] = op(3.5, 0.4, 0.5, decay(800, 300))
 	cfg.Ops[2] = op(2.76, 0.3, 0.2, decay(1500, 500))
 	cfg.Ops[3] = op(5.4, 0.25, 0.5, decay(400, 200))
+	cfg.Level = 0.9275 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -165,6 +171,7 @@ func MusicBoxPreset() Config {
 	cfg.Ops[1] = op(2, 0.4, 0.2, decay(900, 300))
 	cfg.Ops[2] = op(4, 0.2, 0.2, decay(500, 200))
 	cfg.Ops[3] = op(7, 0.2, 0.6, decay(120, 80))
+	cfg.Level = 1.448 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -176,6 +183,7 @@ func XylophonePreset() Config {
 	cfg.Ops[1] = op(3, 0.35, 0.7, decay(40, 30))
 	cfg.Ops[2] = op(3.93, 0.25, 0.2, decay(150, 60))
 	cfg.Ops[3] = op(10, 0.2, 0.6, decay(20, 20))
+	cfg.Level = 1.512 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -187,6 +195,7 @@ func TubularBellsPreset() Config {
 	cfg.Ops[1] = op(3.5, 0.7, 0.5, decay(3000, 1500))
 	cfg.Ops[2] = op(5.6, 0.3, 0.3, decay(1500, 800))
 	cfg.Ops[3] = op(2.4, 0.3, 0.3, decay(2000, 1000))
+	cfg.Level = 0.3108 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -200,7 +209,7 @@ func PercussiveOrganPreset() Config {
 	cfg.Ops[1] = op(0.5, 0.6, 0, sustain(3, 1.0, 10, 60))
 	cfg.Ops[2] = op(2, 0.5, 0, sustain(3, 1.0, 10, 60))
 	cfg.Ops[3] = op(3, 0.7, 0, decay(250, 60))
-	cfg.Level = 1.5
+	cfg.Level = 0.9195 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -213,7 +222,7 @@ func ChurchOrganPreset() Config {
 	cfg.Ops[2] = op(4, 0.5, 0, sustain(80, 1.0, 10, 400))
 	cfg.Ops[3] = op(0.5, 0.8, 0, sustain(60, 1.0, 10, 400))
 	cfg.Feedback = 0.05
-	cfg.Level = 1.4
+	cfg.Level = 0.709 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -226,6 +235,7 @@ func AccordionPreset() Config {
 	cfg.Ops[2] = op(1, 0.8, 0, sustain(30, 0.9, 100, 120))
 	cfg.Ops[3] = op(1, 0.4, 0.3, sustain(30, 0.9, 100, 120))
 	cfg.Ops[2].Detune = 8.0
+	cfg.Level = 0.5599 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -239,6 +249,7 @@ func NylonGuitarPreset() Config {
 	cfg.Ops[1] = op(1, 0.3, 0.6, decay(300, 150))
 	cfg.Ops[2] = op(3, 0.2, 0.3, decay(200, 100))
 	cfg.Ops[3] = op(2, 0.15, 0.4, decay(250, 100))
+	cfg.Level = 0.5016 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -251,6 +262,7 @@ func SteelGuitarPreset() Config {
 	cfg.Ops[2] = op(4, 0.25, 0.3, decay(250, 100))
 	cfg.Ops[3] = op(1, 0.3, 0.4, decay(300, 100))
 	cfg.Feedback = 0.25
+	cfg.Level = 0.5209 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -266,6 +278,7 @@ func OverdriveGuitarPreset() Config {
 	cfg.VibratoRate = 5.5
 	cfg.VibratoDepth = 0.15
 	cfg.VibratoDelay = 500.0
+	cfg.Level = 0.3051 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -279,6 +292,7 @@ func UprightBassPreset() Config {
 	cfg.Ops[1] = op(1, 0.3, 0.5, adsr.NewSetting(1.0, 5.0, 0.0, 250.0, 1.0, 100.0))
 	cfg.Ops[2] = op(2, 0.15, 0.3, decay(150, 80))
 	cfg.Ops[3] = op(1, 0.1, 0.3, decay(60, 40))
+	cfg.Level = 0.5352 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -291,6 +305,7 @@ func SlapBassPreset() Config {
 	cfg.Ops[2] = op(3, 0.4, 0.5, decay(40, 30))
 	cfg.Ops[3] = op(1, 0.3, 0.4, decay(30, 30))
 	cfg.Feedback = 0.5
+	cfg.Level = 0.6177 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -303,6 +318,7 @@ func FretlessBassPreset() Config {
 	cfg.Ops[2] = op(1, 0.0, 0, sustain(10, 1.0, 10, 100))
 	cfg.Ops[3] = op(1, 0.0, 0, sustain(10, 1.0, 10, 100))
 	cfg.Glide = 60.0
+	cfg.Level = 0.4053 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -321,6 +337,7 @@ func StringsPreset() Config {
 	cfg.VibratoRate = 5.2
 	cfg.VibratoDepth = 0.08
 	cfg.VibratoDelay = 400.0
+	cfg.Level = 0.8892 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -332,6 +349,7 @@ func PizzicatoPreset() Config {
 	cfg.Ops[1] = op(1, 0.3, 0.7, decay(80, 50))
 	cfg.Ops[2] = op(2, 0.4, 0.2, decay(250, 80))
 	cfg.Ops[3] = op(1, 0.2, 0.5, decay(60, 40))
+	cfg.Level = 1.35 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -343,6 +361,7 @@ func HarpPreset() Config {
 	cfg.Ops[1] = op(2, 0.2, 0.6, decay(200, 150))
 	cfg.Ops[2] = op(2, 0.3, 0.2, decay(1200, 400))
 	cfg.Ops[3] = op(3, 0.15, 0.5, decay(150, 100))
+	cfg.Level = 0.9237 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -360,6 +379,7 @@ func TrumpetPreset() Config {
 	cfg.VibratoRate = 5.5
 	cfg.VibratoDepth = 0.12
 	cfg.VibratoDelay = 350.0
+	cfg.Level = 0.3844 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -375,6 +395,7 @@ func FrenchHornPreset() Config {
 	cfg.VibratoRate = 4.8
 	cfg.VibratoDepth = 0.06
 	cfg.VibratoDelay = 500.0
+	cfg.Level = 0.4236 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -392,6 +413,7 @@ func SaxophonePreset() Config {
 	cfg.VibratoRate = 5.0
 	cfg.VibratoDepth = 0.15
 	cfg.VibratoDelay = 300.0
+	cfg.Level = 0.4544 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -406,6 +428,7 @@ func ClarinetPreset() Config {
 	cfg.VibratoRate = 4.8
 	cfg.VibratoDepth = 0.05
 	cfg.VibratoDelay = 500.0
+	cfg.Level = 0.2897 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -420,6 +443,7 @@ func OboePreset() Config {
 	cfg.VibratoRate = 5.0
 	cfg.VibratoDepth = 0.1
 	cfg.VibratoDelay = 300.0
+	cfg.Level = 0.5914 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -436,6 +460,7 @@ func FlutePreset() Config {
 	cfg.VibratoRate = 5.0
 	cfg.VibratoDepth = 0.1
 	cfg.VibratoDelay = 400.0
+	cfg.Level = 0.6663 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -445,6 +470,7 @@ func PanFlutePreset() Config {
 	cfg.Ops[3] = op(1, 0.7, 0.4, sustain(5, 0.1, 120, 150))
 	cfg.Ops[1].Level = 0.04
 	cfg.VibratoDepth = 0.06
+	cfg.Level = 0.6692 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -462,6 +488,7 @@ func SquareLeadPreset() Config {
 	cfg.VibratoRate = 5.5
 	cfg.VibratoDepth = 0.15
 	cfg.VibratoDelay = 300.0
+	cfg.Level = 0.3571 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -478,7 +505,7 @@ func SawLeadPreset() Config {
 	cfg.VibratoRate = 5.5
 	cfg.VibratoDepth = 0.15
 	cfg.VibratoDelay = 300.0
-	cfg.Level = 2.0
+	cfg.Level = 0.8143 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -490,6 +517,7 @@ func WarmPadPreset() Config {
 	}
 	cfg.Ops[3] = op(2, 0.15, 0, sustain(2000, 0.7, 1500, 2000))
 	cfg.VibratoDepth = 0.05
+	cfg.Level = 0.4761 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -502,6 +530,7 @@ func SweepPadPreset() Config {
 	cfg.Ops[2] = op(2, 0.15, 0, sustain(3000, 1.0, 100, 2500))
 	cfg.Ops[3] = op(1, 0.0, 0, sustain(10, 1.0, 10, 100))
 	cfg.Ops[1].Detune = 4.0
+	cfg.Level = 0.3823 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -516,6 +545,7 @@ func SitarPreset() Config {
 	cfg.Ops[2] = op(9.97, 0.2, 0.3, decay(800, 300))
 	cfg.Ops[3] = op(1, 0.3, 0.3, decay(1200, 400))
 	cfg.Feedback = 0.6
+	cfg.Level = 0.4232 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -527,6 +557,7 @@ func KalimbaPreset() Config {
 	cfg.Ops[1] = op(6, 0.15, 0.6, decay(60, 40))
 	cfg.Ops[2] = op(3, 0.2, 0.2, decay(300, 100))
 	cfg.Ops[3] = op(1, 0.1, 0.3, decay(100, 60))
+	cfg.Level = 1.144 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -538,6 +569,7 @@ func SteelDrumPreset() Config {
 	cfg.Ops[1] = op(2, 0.35, 0.6, decay(250, 150))
 	cfg.Ops[2] = op(3, 0.3, 0.2, decay(600, 200))
 	cfg.Ops[3] = op(1, 0.2, 0.5, decay(150, 100))
+	cfg.Level = 0.997 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -550,6 +582,7 @@ func KotoPreset() Config {
 	cfg.Ops[2] = op(1, 0.25, 0.4, decay(150, 80))
 	cfg.Ops[3] = op(1, 0.25, 0.4, decay(100, 60))
 	cfg.Feedback = 0.3
+	cfg.Level = 0.5225 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -563,6 +596,7 @@ func TimpaniPreset() Config {
 	cfg.Ops[1] = op(1.5, 0.4, 0.6, adsr.NewSetting(1.0, 2.0, 0.0, 200.0, 1.0, 100.0))
 	cfg.Ops[2] = op(1.68, 0.4, 0.3, adsr.NewSetting(1.0, 2.0, 0.0, 800.0, 1.0, 300.0))
 	cfg.Ops[3] = op(2.3, 0.3, 0.5, decay(100, 80))
+	cfg.Level = 0.9861 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -574,6 +608,7 @@ func WoodblockPreset() Config {
 	cfg.Ops[1] = op(2.53, 0.4, 0.5, decay(30, 20))
 	cfg.Ops[2] = op(3.7, 0.4, 0.2, decay(60, 40))
 	cfg.Ops[3] = op(1, 0.2, 0.5, decay(20, 20))
+	cfg.Level = 1.347 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -586,5 +621,6 @@ func TaikoPreset() Config {
 	cfg.Ops[2] = op(2.1, 0.2, 0.3, adsr.NewSetting(1.0, 2.0, 0.0, 400.0, 1.0, 150.0))
 	cfg.Ops[3] = op(1, 0.3, 0.5, decay(50, 30))
 	cfg.Feedback = 0.95
+	cfg.Level = 1.145 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }

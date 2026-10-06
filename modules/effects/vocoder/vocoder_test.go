@@ -114,3 +114,17 @@ func TestModulatorShapesCarrierSpectrum(t *testing.T) {
 		t.Fatalf("expected energy concentrated around 1 kHz, near %v far %v", near, far)
 	}
 }
+
+// Without a carrier the vocoder is silent, the consonants of the voice included
+func TestSilentCarrierGivesSilence(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Sibilance = 1
+	v := New(cfg)
+	noise := func(i int) float64 { return math.Sin(float64(i)*1.7) * math.Sin(float64(i)*0.013) } // bright, voice like
+	out := run(v, 40, noise, func(int) float64 { return 0 })
+	for i, x := range out {
+		if math.Abs(x) > 1e-9 {
+			t.Fatalf("expected silence without a carrier, got %v at %d", x, i)
+		}
+	}
+}

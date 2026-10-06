@@ -53,7 +53,11 @@ type Strip struct {
 	cfg    StripConfig
 	sends  []string // bus names in output order
 	safe   bool     // groups and returns ignore solo
-	volDB  float64  // current volume, ramps towards cfg.Volume
+	kind   kind
+	delay  int          // samples the input is delayed, to line up with later strips
+	dl     [2][]float32 // the delay lines
+	dpos   int
+	volDB  float64 // current volume, ramps towards cfg.Volume
 	volLin float64
 	ramp   float64 // dB per sample of the current fade, 0 is the short smoothing
 	pan    float64
@@ -171,7 +175,57 @@ func (s *Strip) silenced() bool {
 	return !s.safe && !s.cfg.Solo && s.mixer.anySolo()
 }
 
+// kind is what a strip is
+type kind int
+
+const (
+	channelStrip kind = iota
+	groupStrip
+	busStrip
+)
+
+// setDelay delays the input of the strip by samples
+func (s *Strip) setDelay(samples int) {
+	s.delay = samples
+	s.dpos = 0
+	for c := range s.dl {
+		s.dl[c] = make([]float32, samples)
+	}
+}
+
+// Delay returns the samples the strip delays its input to line up with later strips (see
+// Mixer.Align)
+func (s *Strip) Delay() int {
+	return s.delay
+}
+
+// SignalLatency: a delayed strip is late by its delay (for the strips after it)
+func (s *Strip) SignalLatency() int {
+	return s.delay
+}
+
 func (s *Strip) Synthesize() {
+	if !s.mixer.aligned {
+		s.mixer.Align()
+	}
+	if s.delay > 0 {
+		in := s.Input(0).Channels
+		for c := range in {
+			pos := s.dpos
+			for i, x := range in[c] {
+				in[c][i] = s.dl[c%2][pos]
+				s.dl[c%2][pos] = x
+				pos++
+				if pos == s.delay {
+					pos = 0
+				}
+			}
+			if c == len(in)-1 {
+				s.dpos = pos
+			}
+		}
+	}
+
 	var (
 		sr       = s.Config().SampleRate
 		in       = s.Input(0).Channels
@@ -272,4 +326,9 @@ func (m *levelMeter) levels() (float64, float64) {
 
 func (m *levelMeter) reset() {
 	*m = levelMeter{}
+}
+
+// Tail lets the strip rest while silent: its smoothing and delay
+func (s *Strip) Tail() float64 {
+	return 0.05 + float64(s.delay)/s.Config().SampleRate
 }

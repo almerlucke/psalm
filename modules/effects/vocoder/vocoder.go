@@ -17,7 +17,7 @@ type Config struct {
 	Attack        float64 // band envelope attack in milliseconds
 	Release       float64 // band envelope release in milliseconds
 	Flatten       float64 // 0-1, how much the carrier's own spectral shape is removed before imprinting
-	Sibilance     float64 // amount of the modulator passed straight through above SibilanceFreq
+	Sibilance     float64 // amount of the modulator passed straight through above SibilanceFreq (while a carrier plays)
 	SibilanceFreq float64 // Hz
 	FormantShift  float64 // scales the modulator envelope in frequency, > 1 shifts formants up
 	Gain          float64
@@ -314,6 +314,14 @@ func (v *Vocoder) processFrame() {
 	binHz := v.sampleRate() / float64(n)
 	sibBin := int(math.Ceil(cfg.SibilanceFreq / binHz))
 
+	// the consonants pass only while there is a carrier to vocode: fully above -60 dB, fading
+	// out below it, so a vocoder without a carrier is silent
+	carPeak := 0.0
+	for _, x := range v.carIn {
+		carPeak = math.Max(carPeak, math.Abs(x))
+	}
+	sibilance := cfg.Sibilance * math.Min(1, carPeak/0.001)
+
 	// Imprint: flatten the carrier by its own envelope and apply the modulator envelope, the result
 	// goes into the carrier buffers
 	for k := 0; k <= half; k++ {
@@ -325,9 +333,9 @@ func (v *Vocoder) processFrame() {
 		re := v.carRe[k] * g
 		im := v.carIm[k] * g
 
-		if cfg.Sibilance > 0.0 && k >= sibBin {
-			re += v.modRe[k] * cfg.Sibilance * cfg.Gain
-			im += v.modIm[k] * cfg.Sibilance * cfg.Gain
+		if sibilance > 0.0 && k >= sibBin {
+			re += v.modRe[k] * sibilance * cfg.Gain
+			im += v.modIm[k] * sibilance * cfg.Gain
 		}
 
 		v.carRe[k] = re
@@ -379,4 +387,19 @@ func (v *Vocoder) Synthesize() {
 			v.processFrame()
 		}
 	}
+}
+
+// Tail lets the vocoder rest while both its inputs are silent: its frame and release
+func (v *Vocoder) Tail() float64 {
+	return float64(2*v.cfg.FFTSize)/v.sampleRate() + v.cfg.Release/1000
+}
+
+// TailInputs: the vocoder is silent when its carrier (input 1) is, whatever the voice does
+func (v *Vocoder) TailInputs() []int {
+	return []int{1}
+}
+
+// SignalLatency: the vocoder sounds a frame late, the mixer lines the other strips up with it
+func (v *Vocoder) SignalLatency() int {
+	return v.cfg.FFTSize
 }

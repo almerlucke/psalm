@@ -43,3 +43,8 @@ func (l *Latency) Synthesize() {
 		l.pos = (l.pos + 1) % n
 	}
 }
+
+// Tail lets the latency rest while silent: its delay
+func (l *Latency) Tail() float64 {
+	return float64(len(l.buffers[0]))/l.Config().SampleRate + 0.01
+}

@@ -30,6 +30,7 @@ func EPianoPreset() Config {
 	cfg.Ops[2] = op(1, 0.25, 0.3, adsr.NewSetting(1.0, 1.0, 0.0, 600.0, 1.0, 200.0))
 	cfg.Ops[3] = op(14, 0.12, 0.9, adsr.NewSetting(1.0, 1.0, 0.0, 80.0, 1.0, 50.0))
 	cfg.Ops[2].Detune = 3.0
+	cfg.Level = 1.133 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -41,6 +42,7 @@ func BellPreset() Config {
 	cfg.Ops[1] = op(3.5, 0.6, 0.6, adsr.NewSetting(1.0, 1.0, 0.0, 2500.0, 1.0, 1000.0))
 	cfg.Ops[2] = op(2, 0.5, 0.2, adsr.NewSetting(1.0, 1.0, 0.0, 3000.0, 1.0, 1200.0))
 	cfg.Ops[3] = op(5.19, 0.3, 0.5, adsr.NewSetting(1.0, 1.0, 0.0, 1500.0, 1.0, 800.0))
+	cfg.Level = 0.6964 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -53,6 +55,7 @@ func BassPreset() Config {
 	cfg.Ops[2] = op(2, 0.25, 0.5, adsr.NewSetting(1.0, 1.0, 0.0, 90.0, 1.0, 50.0))
 	cfg.Ops[3] = op(1, 0.15, 0.3, adsr.NewSetting(1.0, 1.0, 0.0, 60.0, 1.0, 40.0))
 	cfg.Feedback = 0.3
+	cfg.Level = 0.4003 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -69,6 +72,7 @@ func BrassPreset() Config {
 	cfg.VibratoRate = 5.0
 	cfg.VibratoDepth = 0.1
 	cfg.VibratoDelay = 400.0
+	cfg.Level = 0.4089 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -82,7 +86,7 @@ func OrganPreset() Config {
 	cfg.Ops[2] = op(2, 0.6, 0, sustain)
 	cfg.Ops[3] = op(3, 0.4, 0, sustain)
 	cfg.Feedback = 0.1
-	cfg.Level = 1.5
+	cfg.Level = 0.8223 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -94,6 +98,7 @@ func MalletPreset() Config {
 	cfg.Ops[1] = op(4, 0.4, 0.7, adsr.NewSetting(1.0, 1.0, 0.0, 60.0, 1.0, 40.0))
 	cfg.Ops[2] = op(4, 0.25, 0.2, adsr.NewSetting(1.0, 1.0, 0.0, 300.0, 1.0, 100.0))
 	cfg.Ops[3] = op(10, 0.2, 0.6, adsr.NewSetting(1.0, 1.0, 0.0, 30.0, 1.0, 20.0))
+	cfg.Level = 1.266 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -110,6 +115,7 @@ func PadPreset() Config {
 	cfg.VibratoRate = 4.5
 	cfg.VibratoDepth = 0.06
 	cfg.VibratoDelay = 600.0
+	cfg.Level = 0.8441 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -122,6 +128,7 @@ func PluckPreset() Config {
 	cfg.Ops[2] = op(1, 0.2, 0.5, adsr.NewSetting(1.0, 1.0, 0.0, 200.0, 1.0, 100.0))
 	cfg.Ops[3] = op(1, 0.3, 0.6, adsr.NewSetting(1.0, 1.0, 0.0, 120.0, 1.0, 80.0))
 	cfg.Feedback = 0.2
+	cfg.Level = 0.5593 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -134,6 +141,7 @@ func MetallicPreset() Config {
 	cfg.Ops[2] = op(2.77, 0.6, 0.5, adsr.NewSetting(1.0, 2.0, 0.0, 2500.0, 1.0, 1200.0))
 	cfg.Ops[3] = op(3.93, 0.5, 0.5, adsr.NewSetting(1.0, 2.0, 0.0, 2000.0, 1.0, 1000.0))
 	cfg.Feedback = 0.15
+	cfg.Level = 0.3087 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -150,5 +158,6 @@ func LeadPreset() Config {
 	cfg.VibratoRate = 5.5
 	cfg.VibratoDepth = 0.2
 	cfg.VibratoDelay = 300.0
+	cfg.Level = 0.3409 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }

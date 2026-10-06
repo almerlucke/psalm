@@ -1,6 +1,7 @@
 package pulsar
 
 import (
+	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
@@ -228,14 +229,14 @@ func window(w Window, t float64) float64 {
 		return 1
 	case Tapered:
 		if t < tukeyTaper {
-			return 0.5 - 0.5*math.Cos(math.Pi*t/tukeyTaper)
+			return 0.5 - 0.5*sine.Cos(math.Pi*t/tukeyTaper)
 		}
 		if t > 1.0-tukeyTaper {
-			return 0.5 - 0.5*math.Cos(math.Pi*(1.0-t)/tukeyTaper)
+			return 0.5 - 0.5*sine.Cos(math.Pi*(1.0-t)/tukeyTaper)
 		}
 		return 1
 	default:
-		s := math.Sin(math.Pi * t)
+		s := sine.Cycle(0.5 * t)
 		return s * s
 	}
 }
@@ -254,9 +255,9 @@ func (v *Voice) pulse(t float64, seconds float64) float64 {
 	if cfg.Window == Percussive {
 		phase = 0.5 * math.Pi
 	}
-	x := math.Sin(2.0*math.Pi*v.formant1*seconds + phase)
+	x := sine.Sin(2.0*math.Pi*v.formant1*seconds + phase)
 	if v.formant2 > 0 {
-		x += cfg.Formant2Level * math.Sin(2.0*math.Pi*v.formant2*seconds+phase)
+		x += cfg.Formant2Level * sine.Sin(2.0*math.Pi*v.formant2*seconds+phase)
 		x /= math.Sqrt(1.0 + cfg.Formant2Level*cfg.Formant2Level)
 	}
 	return x * window(cfg.Window, t)
@@ -315,7 +316,6 @@ func (v *Voice) Synthesize() {
 		sr      = v.Config().SampleRate
 		outs    = outSocket.Channels
 		bufSize = v.Config().BufferSize
-		twoPi   = 2.0 * math.Pi
 		level   = cfg.Level
 	)
 	if level <= 0 {
@@ -335,14 +335,14 @@ func (v *Voice) Synthesize() {
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
 		freq := v.glideFreq
 		if cfg.VibratoDepth != 0 && cfg.VibratoRate > 0 {
-			freq *= math.Exp2(cfg.VibratoDepth * math.Sin(twoPi*v.vibPhase) / 12.0)
+			freq *= math.Exp2(cfg.VibratoDepth * sine.Cycle(v.vibPhase) / 12.0)
 			v.vibPhase += cfg.VibratoRate / sr
 			v.vibPhase -= math.Floor(v.vibPhase)
 		}
 
 		formantLFO := 0.0
 		if cfg.FormantLFODepth != 0 && cfg.FormantLFORate > 0 {
-			formantLFO = cfg.FormantLFODepth * math.Sin(twoPi*v.lfoPhase)
+			formantLFO = cfg.FormantLFODepth * sine.Cycle(v.lfoPhase)
 			v.lfoPhase += cfg.FormantLFORate / sr
 			v.lfoPhase -= math.Floor(v.lfoPhase)
 		}

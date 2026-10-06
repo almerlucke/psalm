@@ -128,3 +128,23 @@ func TestSyntheticReverbIRHasUnitEnergy(t *testing.T) {
 		t.Fatal("expected different noise per channel")
 	}
 }
+
+// A normalized impulse response keeps about the loudness of the input, whatever its own level
+func TestNormalizeIR(t *testing.T) {
+	quiet := SyntheticReverbIR(1, 0.5, 44100, 3)
+	for _, ch := range quiet {
+		for i := range ch {
+			ch[i] *= 0.01 // a recording 40 dB down
+		}
+	}
+	norm := NormalizeIR(quiet)
+	energy := 0.0
+	for _, ch := range norm {
+		for _, x := range ch {
+			energy += x * x
+		}
+	}
+	if math.Abs(energy/float64(len(norm))-1) > 1e-9 {
+		t.Fatalf("expected unit energy per channel, got %v", energy/float64(len(norm)))
+	}
+}

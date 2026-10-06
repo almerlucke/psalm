@@ -328,3 +328,8 @@ func (fv *FreeVerb) Synthesize() {
 		outChans[1][i] = float32(outR*fv.wet1 + outL*fv.wet2 + inputR*fv.dry)
 	}
 }
+
+// Tail lets the reverb rest while silent: its combs are shorter than this
+func (r *FreeVerb) Tail() float64 {
+	return 0.1
+}

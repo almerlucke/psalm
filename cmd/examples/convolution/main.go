@@ -31,7 +31,7 @@ func main() {
 	plucks := subtractive.NewPoly(subtractive.PluckPreset(), 8).AddTo(p)
 
 	ppq := float64(psalm.PPQ())
-	plucks.ValueIn(templ.NewDurationTrigger(0.2, random(0.2, 0.3, 0.4), template.Template{
+	plucks.ValueIn(templ.NewDurationTrigger(0.2, random(0.23, 0.344, 0.459), template.Template{
 		"pitch": random(62.0, 65.0, 67.0, 69.0, 72.0, 74.0, 77.0),
 	}).ValueIn(timer.New(random(0.5*ppq, ppq, 1.5*ppq, -ppq, -2*ppq)).AddTo(p)))
 

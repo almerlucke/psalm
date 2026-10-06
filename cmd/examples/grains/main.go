@@ -160,7 +160,7 @@ func main() {
 		{
 			name:   "Choir pad on a choir recording: Am F C G",
 			cfg:    grains.ChoirPad(choir, 60),
-			voices: 12, amp: 0.75, legato: 1.0,
+			voices: 12, amp: 0.238, legato: 1.0,
 			notes: chordNotes(4,
 				[]float64{A3, C4, E4}, []float64{F4 - 12, A3, C4}, []float64{C4, E4, G4}, []float64{G3, 59, D4},
 			),
@@ -168,7 +168,7 @@ func main() {
 		{
 			name:   "Frozen drone on a chant: an LFO on value input 1 slowly moves the frozen position",
 			cfg:    grains.FrozenDrone(chant, 60),
-			voices: 4, amp: 1, legato: 1.0,
+			voices: 4, amp: 0.315, legato: 1.0,
 			notes: chordNotes(8, []float64{A2, E3}, []float64{C3, G3}),
 			patch: func(p *psalm.Psalm, synth psalm.Modular) {
 				synth.ValueIn(lfo.New(true, 0.08, 0.2, 0.8, lfo.Sine).AddTo(p), 0, 1)
@@ -177,7 +177,7 @@ func main() {
 		{
 			name:   "Glass keys on a keys sample: velocity rising, so the grains get denser",
 			cfg:    at(grains.GlassKeys(keys, 60), 0.03), // the swirl sounds in its first part
-			voices: 8, amp: 0.88, legato: 0.8,
+			voices: 8, amp: 0.167, legato: 0.8,
 			notes: notes(1, A3, C4, E4, A4, G4, E4, C4, E4, F4, A4, C5, A4, G4, E4, D4, E4),
 			params: map[string][]float64{"velocity": {
 				0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.5, 0.55, 0.6, 0.7, 0.75, 0.8, 0.9, 0.95, 1.0,
@@ -186,21 +186,21 @@ func main() {
 		{
 			name:   "Texture on sea waves: density stepping up from sparse droplets to a dense cloud",
 			cfg:    at(grains.Texture(sea, 60), 0.4),
-			voices: 4, amp: 1, legato: 0.95,
+			voices: 4, amp: 0.436, legato: 0.95,
 			notes:  notes(4, C4, C4, C4, C4),
 			params: map[string][]float64{"density": {4, 12, 30, 80}},
 		},
 		{
 			name:   "Stutter on a vocal: the grain size changes per note",
 			cfg:    grains.Stutter(vocal, 65),
-			voices: 4, amp: 1, legato: 0.9,
+			voices: 4, amp: 0.857, legato: 0.9,
 			notes:  notes(2, F4, F4, 63, 63, 60, 60, F4, F4),
 			params: map[string][]float64{"grainSize": {30, 60, 100, 160, 60, 30, 100, 200}},
 		},
 		{
 			name:   "Shimmer on the choir: the octave chance rises chord by chord",
 			cfg:    grains.Shimmer(choir, 60),
-			voices: 12, amp: 0.62, legato: 1.0,
+			voices: 12, amp: 0.215, legato: 1.0,
 			notes: chordNotes(4,
 				[]float64{A3, C4, E4}, []float64{F4 - 12, A3, C4}, []float64{C4, E4, G4}, []float64{A3, C4, E4},
 			),
@@ -213,14 +213,14 @@ func main() {
 				cfg.AmpEnv.AttackDuration = 200
 				return cfg
 			}(),
-			voices: 4, amp: 1, legato: 1.0,
+			voices: 4, amp: 0.317, legato: 1.0,
 			notes:  notes(4, A3, A3, A3, A3),
 			params: map[string][]float64{"scan": {0, 1, 2, -1}},
 		},
 		{
 			name:   "Pluck on the keys sample: an arpeggio",
 			cfg:    at(grains.Pluck(keys, 60), 0.02),
-			voices: 8, amp: 1, legato: 0.6,
+			voices: 8, amp: 0.0802, legato: 0.6,
 			notes: notes(0.5,
 				A3, C4, E4, A4, C5, A4, E4, C4, F4-12, A3, C4, F4, A4, F4, C4, A3,
 				C4, E4, G4, C5, E5, C5, G4, E4, G3, 59, D4, G4, 71, G4, D4, 59),

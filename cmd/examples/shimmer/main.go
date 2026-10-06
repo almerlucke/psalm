@@ -36,7 +36,7 @@ func main() {
 	voice := subtractive.NewPoly(voiceCfg, 8).AddTo(p)
 
 	ppq := float64(psalm.PPQ())
-	voice.ValueIn(templ.NewDurationTrigger(random(1.5, 2.5, 3.5), random(0.15, 0.2, 0.25), template.Template{
+	voice.ValueIn(templ.NewDurationTrigger(random(1.5, 2.5, 3.5), random(0.232, 0.31, 0.387), template.Template{
 		"pitch": random(57.0, 59.0, 61.0, 64.0, 66.0, 69.0, 71.0, 73.0),
 	}).ValueIn(timer.New(random(2*ppq, 3*ppq, 4*ppq, -2*ppq, -4*ppq)).AddTo(p)))
 
