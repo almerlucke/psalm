@@ -295,8 +295,26 @@ func main() {
 	// passing notes, and notes held into a chord they clash with, are reported at the start
 	timeline := songChords()
 	clashes := 0
+	// how the orchestra plays: ensembles never start a chord exactly together, soloists breathe,
+	// nothing sits exactly on the grid. The feel is drawn again on every loop
+	feels := map[string]score.Feel{
+		"violins":   {Timing: 8, Spread: 12, Velocity: 0.06},
+		"celli":     {Timing: 8, Spread: 10, Velocity: 0.06},
+		"pizzicato": {Timing: 6, Velocity: 0.1, Accents: []float64{1, 0.8, 0.9, 0.8}},
+		"harp":      {Timing: 5, Velocity: 0.1},
+		"flute":     {Timing: 10, Push: 6, Velocity: 0.08}, // a little behind the beat
+		"horns":     {Timing: 10, Spread: 15, Velocity: 0.06},
+		"horn solo": {Timing: 12, Push: 4, Velocity: 0.08},
+		"soprano":   {Timing: 10, Push: 6, Velocity: 0.08},
+		"choir":     {Timing: 10, Spread: 20},
+		"ooh":       {Timing: 10, Spread: 20},
+		"celesta":   {Timing: 6, Velocity: 0.12},
+		"bell pad":  {Strum: 25, Velocity: 0.05}, // rolled chords
+		"voices":    {Spread: 10},
+	}
+
 	part := func(synth psalm.Modular, name string, amp float64, legato float64, sc arrange.Score) {
-		form.Part(p, synth, name, score.Config{Amp: amp, Legato: legato, Velocity: 0.8}, sc)
+		form.Part(p, synth, name, score.Config{Amp: amp, Legato: legato, Velocity: 0.8, Feel: feels[name]}, sc)
 		if name == "aurora" {
 			return // a pedal: it holds through the chords on purpose
 		}

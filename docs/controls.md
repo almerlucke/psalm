@@ -189,6 +189,33 @@ note), `Beats` (total length), `Pitches` (move a chord) and `Pitch("F#3")`.
 A chord is sent as one trigger per pitch. `SetGain(g)` scales the notes that follow, `SetNotes`
 replaces them while playing.
 
+### Feel
+
+`Config.Feel` takes the notes off the grid, like players:
+
+```go
+feel := score.Feel{Swing: 0.64, Timing: 8, Velocity: 0.15, Accents: []float64{1, 0.6, 0.8, 0.6}}
+seq := score.NewSequencer(notes, score.Config{Amp: 0.3, Loop: true, Feel: feel})
+```
+
+| Setting | Meaning |
+|---|---|
+| `Swing` | Where the second note of a swung pair lands: 0 (or 0.5) is straight, 0.58 light, 0.66 a triplet feel, 0.75 hard |
+| `SwingUnit` | Beats per swung note: 0.5 swings 8ths (the default), 0.25 16ths (a shuffle) |
+| `Timing` | ± milliseconds of random timing per note, the notes of a chord move together |
+| `Spread` | ± milliseconds of random timing per note within a chord (an ensemble never starts exactly together) |
+| `Strum` | Milliseconds between the notes of a chord, low to high (negative is high to low) |
+| `Push` | Milliseconds every note moves: negative plays ahead of the beat, positive lays back |
+| `Velocity` | ± random variation of velocity and amplitude (0.1 is ±10%) |
+| `Accents`, `AccentUnit`, `BeatsPerBar` | An amplitude per unit (1 beat by default) through the bar, for strong and weak beats |
+| `Seed` | The same seed gives the same feel, 0 is a new feel every run |
+
+Swing warps time within every pair of swing units, so notes that aren't on the grid and the
+lengths of notes stretch along (a swung first 8th sounds longer). The random parts are drawn
+again every time the loop starts, so repeats are never exactly the same. A note on the very first
+beat of a sequence can't play early. `SetFeel(feel)` changes the feel while playing, for example
+per section from an `arrange` event.
+
 ## arrange
 
 `modules/controls/arrange`
