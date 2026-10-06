@@ -291,6 +291,84 @@ follows the tempo too. Modules given a time in milliseconds computed from the te
 `timing.BPMToMilli`) don't.
 `arrangement.Schedule()` returns the start time of every section following the tempo lane.
 
+**Streams**: a part can also be played by generators instead of written notes. A `Stream` has a
+`Rhythm` generator (the length of every step in beats, a negative step is a rest) and a `Message`
+template (a genny `template.Template`): generators in it give every note new values and a slice
+splits a note into a chord, like `templ`. `Amp` and `Legato` are a number or a generator.
+
+```go
+glass := &arrange.Stream{
+	Rhythm: bucket.NewLoop(0.5, 0.5, 0.25, 0.25, -0.5, 1.0),
+	Message: template.Template{
+		"pitch":   wanderingPitch,                              // a genny.Generator[float64]
+		"formant": template.NewParameter("formant", 2400.0),   // from the section
+	},
+	Amp: 0.25,
+}
+form.Stream(p, synth, "glass", func(s arrange.Section) *arrange.Stream {
+	if s.Name == "Intro" {
+		return nil // silent
+	}
+	return glass
+})
+```
+
+The function is asked again at the start of every section (also when the song loops): return
+`nil` for silence, the same stream as the section before to go on without a break, or another
+stream to start it at the start of the section. Generators keep their own position (reset them to
+start over). Streams play live, so a looping song is never played the same way twice, while
+`psalm.Seed` still makes it repeat when the random choices come from psalm (`psalm.Rand()`, for
+example in a `function.New` generator). The section dynamics scale the notes of streams too.
+
+A stream drives any module, not only poly synths, with its `Output`:
+
+| Output | Sends every step | For |
+|---|---|---|
+| `arrange.Notes` (default) | A trigger per note, with its amplitude and length | Poly synths |
+| `arrange.Messages` | The messages of the template as they are (a slice splits them) | Any module taking messages: effects, filters, mixer strips, templ, players (add `"bang": true` for modules that play on a bang) |
+| `arrange.Values` | The `"value"` of the template as a plain number | A value input: a filter cutoff, a mixer strip volume or pan |
+
+`form.Stream` connects the streamer to value input 0 of a module; `form.NewStream(p, name, score)`
+returns one that isn't connected, to connect to another input or to several modules:
+
+```go
+grains := &arrange.Stream{Output: arrange.Messages, Rhythm: sequence.NewLoop(4.0),
+	Message: template.Template{"grainSize": bucket.NewLoop(60.0, 200.0, 350.0)}}
+form.Stream(p, granulator, "grains", func(s arrange.Section) *arrange.Stream { return grains })
+
+pan := form.NewStream(p, "pan", func(s arrange.Section) *arrange.Stream {
+	return &arrange.Stream{Output: arrange.Values, Rhythm: sequence.NewLoop(1.0),
+		Message: template.Template{"value": wanderingPan}}
+})
+mix.Strip("glass").ValueIn(pan, 0, 2) // the pan input of the strip
+```
+
+**Section parameters**: `Section.Params` are the parameters of a section, which makes sections
+scenes. Streams put them in their templates: a `template.NewParameter("formant", 2400.0)` entry
+takes the section's `"formant"` (and keeps its value until a section sets it again).
+`arrangement.SendParams(modules...)` sends them as a message to modules at the start of every
+section: `templ` modules take them as template parameters, synths and effects as settings (a
+granulator takes `mix`, `freeze`, `octave`, ...).
+
+```go
+arrange.Section{Name: "Freeze", Bars: 8, Params: map[string]any{"formant": 2000.0, "mix": 0.7, "freeze": 1.0}}
+arrangement.SendParams(gran)
+```
+
+**Playing in sections**: `Play(module, sections...)` makes a module sound only in those sections:
+it is unmuted at their start and muted at the start of the others.
+
+```go
+arrangement.Play(mix.Strip("choir"), "Chorus", "Outro") // a mixer strip mutes with its 10 ms fade
+arrangement.Play(drumKit, "Verse", "Chorus")            // other modules with SetMuted
+```
+
+Mixer strips (anything with `SetMute`) mute with their short fade, other modules with
+`SetMuted`: a hard cut, while the module keeps running so its generators go on. A section name the
+form doesn't have panics, so a typo shows when the song is built. A part that should not play at
+all in a section is better written as a rest (a nil score or stream): it costs nothing and a
+ringing sound finishes naturally.
+
 **Events**: `OnSection(f)` at the start of every section, `OnBar(f)` at every bar, with a
 `Position` (song beat and bar, the section, `SectionBar()`, `Progress` through the section and the
 `Loop` count). `PrintSections(true)` prints sections as they start, `PositionAt(tick)` returns the

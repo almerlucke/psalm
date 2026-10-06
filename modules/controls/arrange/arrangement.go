@@ -15,6 +15,7 @@ type Position struct {
 	Section  Section
 	Progress float64 // 0-1 through the section
 	Loop     int     // how many times the song looped
+	Ended    bool    // the song doesn't loop and is over
 }
 
 // SectionBar returns the bar in the current section, from 0
@@ -219,6 +220,26 @@ func (a *Arrangement) OnSection(f func(pos Position)) *Arrangement {
 	return a
 }
 
+// Play makes a module sound only in some sections: it is unmuted at the start of those sections
+// and muted at the start of the others. Modules that mute with a fade (mixer strips, anything with
+// SetMute) use it; other modules are muted with SetMuted, a hard cut while the module keeps
+// running (its generators go on). It panics on a section name the form doesn't have
+func (a *Arrangement) Play(m psalm.Modular, sections ...string) *Arrangement {
+	for _, name := range sections {
+		if _, ok := a.form.Section(name); !ok {
+			panic(fmt.Sprintf("arrange: Play %s in section %q, which the form doesn't have", m.ID(), name))
+		}
+	}
+	return a.OnSection(func(pos Position) {
+		mute := !In(pos.Section, sections...)
+		if f, ok := m.(interface{ SetMute(bool) }); ok {
+			f.SetMute(mute)
+		} else {
+			m.SetMuted(mute)
+		}
+	})
+}
+
 // OnBar calls f at the start of every bar
 func (a *Arrangement) OnBar(f func(pos Position)) *Arrangement {
 	a.onBar = append(a.onBar, f)
@@ -227,31 +248,7 @@ func (a *Arrangement) OnBar(f func(pos Position)) *Arrangement {
 
 // PositionAt returns the position at a tick (counted from the start of the patch)
 func (a *Arrangement) PositionAt(t int64) Position {
-	f := a.form
-	ppq := int64(a.Config().PPQ)
-	songTicks := int64(f.Beats() * float64(ppq))
-	var pos Position
-	if songTicks <= 0 {
-		return pos
-	}
-	pos.Loop = int(t / songTicks)
-	if !f.Loop && pos.Loop > 0 {
-		t = songTicks - 1 // stays at the end
-		pos.Loop = 0
-	}
-	t %= songTicks
-	pos.Beat = float64(t) / float64(ppq)
-	barBeats := f.BeatsPerBar
-	pos.Bar = int(pos.Beat / barBeats)
-	for _, s := range f.Sections {
-		if pos.Bar < s.StartBar+s.Bars {
-			pos.Section = s
-			break
-		}
-	}
-	start := float64(pos.Section.StartBar) * barBeats
-	pos.Progress = (pos.Beat - start) / (float64(pos.Section.Bars) * barBeats)
-	return pos
+	return a.form.PositionAt(t, a.Config().PPQ)
 }
 
 func (a *Arrangement) CtrlTick(tick psalm.CtrlTick) {

@@ -17,9 +17,10 @@ import (
 type Section struct {
 	Name     string
 	Bars     int
-	Dynamics float64 // scales the amplitude of every part in the section, 0 is 1
-	Index    int     // position in the form, set by NewForm
-	StartBar int     // first bar in the song, set by NewForm
+	Dynamics float64        // scales the amplitude of every part in the section, 0 is 1
+	Params   map[string]any // parameters of the section: streams take them in their templates (template.NewParameter), SendParams sends them to modules
+	Index    int            // position in the form, set by NewForm
+	StartBar int            // first bar in the song, set by NewForm
 }
 
 // Form is the song form: its sections in order and the beats per bar
@@ -67,6 +68,34 @@ func (f *Form) Section(name string) (Section, bool) {
 		}
 	}
 	return Section{}, false
+}
+
+// PositionAt returns the position at a tick (counted from the start of the patch) for a PPQ
+func (f *Form) PositionAt(t int64, ppq int) Position {
+	songTicks := int64(f.Beats() * float64(ppq))
+	var pos Position
+	if songTicks <= 0 {
+		return pos
+	}
+	pos.Loop = int(t / songTicks)
+	if !f.Loop && pos.Loop > 0 {
+		t = songTicks - 1 // stays at the end
+		pos.Loop = 0
+		pos.Ended = true
+	}
+	t %= songTicks
+	pos.Beat = float64(t) / float64(ppq)
+	barBeats := f.BeatsPerBar
+	pos.Bar = int(pos.Beat / barBeats)
+	for _, s := range f.Sections {
+		if pos.Bar < s.StartBar+s.Bars {
+			pos.Section = s
+			break
+		}
+	}
+	start := float64(pos.Section.StartBar) * barBeats
+	pos.Progress = (pos.Beat - start) / (float64(pos.Section.Bars) * barBeats)
+	return pos
 }
 
 // Schedule returns the start time of every section, at the current tempo
