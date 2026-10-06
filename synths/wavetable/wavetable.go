@@ -2,7 +2,6 @@ package wavetable
 
 import (
 	"math"
-	"math/rand/v2"
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
@@ -212,7 +211,7 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 		for u := range v.phases {
 			v.phases[u] = 0
 			if u > 0 {
-				v.phases[u] = rand.Float64()
+				v.phases[u] = v.Rand().Float64()
 			}
 		}
 		v.subPhase = 0

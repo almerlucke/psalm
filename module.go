@@ -1,5 +1,10 @@
 package psalm
 
+import (
+	"math/rand/v2"
+	"time"
+)
+
 type CtrlTick struct {
 	SampleTimestamp int64
 	TickTimestamp   int64
@@ -52,12 +57,36 @@ type Module struct {
 	outputs      []*Socket
 	valueOutputs map[int][]*Connection
 	config       Config
+	env          *Env          // the environment of the patch the module belongs to
+	rng          *rand.Rand    // the module's own random stream, taken on first use
+	cpu          time.Duration // time spent in Synthesize while profiling
+}
+
+// profiling makes every module measure the time it spends synthesizing
+var profiling bool
+
+// SetProfiling turns the measuring of the time every module spends synthesizing on or off (off
+// by default, it costs a little time itself). Read it with CPUTime
+func SetProfiling(on bool) {
+	profiling = on
+}
+
+// CPUTime returns the time the module spent synthesizing while profiling was on
+func (m *Module) CPUTime() time.Duration {
+	return m.cpu
+}
+
+// ResetCPUTime sets the measured time back to 0
+func (m *Module) ResetCPUTime() {
+	m.cpu = 0
 }
 
 func NewModule(ins []int, outs []int) *Module {
-	config := CurrentConfig()
+	env := CurrentEnv()
+	config := env.Config()
 
 	m := &Module{
+		env:          env,
 		inputs:       make([]*Socket, len(ins)),
 		outputs:      make([]*Socket, len(outs)),
 		valueOutputs: make(map[int][]*Connection),
@@ -133,7 +162,13 @@ func (m *Module) Run() {
 		input.ProcessIncoming()
 	}
 
-	m.self.Synthesize()
+	if profiling {
+		start := time.Now()
+		m.self.Synthesize()
+		m.cpu += time.Since(start)
+	} else {
+		m.self.Synthesize()
+	}
 
 	if m.muted {
 		for _, out := range m.outputs {
@@ -212,6 +247,27 @@ func (m *Module) ValueIn(args ...any) Modular {
 	return m.self
 }
 
+// Env returns the environment of the patch the module belongs to (the current one when it was
+// created)
+func (m *Module) Env() *Env {
+	return m.env
+}
+
+// BPM returns the current tempo of the module's patch
+func (m *Module) BPM() float64 {
+	return m.env.BPM()
+}
+
+// Rand returns the module's own random stream, from its environment's seed
+func (m *Module) Rand() *rand.Rand {
+	if m.rng == nil {
+		m.rng = m.env.NewRand()
+	}
+	return m.rng
+}
+
+// Config returns the config of the module when it was created (sample rate, buffer size, PPQ;
+// read the live tempo with BPM)
 func (m *Module) Config() Config {
 	return m.config
 }

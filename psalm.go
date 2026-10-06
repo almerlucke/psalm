@@ -25,43 +25,47 @@ type Psalm struct {
 	engine audio.Engine
 }
 
+// New creates a patch to play through an audio engine (nil renders offline). It creates the
+// environment of the patch (its config, tempo and random streams) and makes it current: create
+// the modules of the patch after it
 func New(engine audio.Engine) *Psalm {
 	p := &Psalm{
 		engine: engine,
 	}
 
+	// the configured settings (PushConfig), not the live state of the patch built before
+	cfg := CurrentStackConfig()
 	if engine != nil {
 		engine.SetCallback(p.audioCallback)
 		err := engine.Init()
 		if err != nil {
 			panic(err)
 		}
-		PushConfig(Config{
-			SampleRate: engine.GetSampleRate(),
-			BufferSize: engine.GetBufferSize(),
-			BPM:        BPM(),
-			PPQ:        PPQ(),
-		})
+		cfg.SampleRate = engine.GetSampleRate()
+		cfg.BufferSize = engine.GetBufferSize()
 	}
+	env := NewEnv(cfg)
+	SetCurrentEnv(env)
 
 	p.Patch = NewPatch([]int{2}, []int{2})
 	p.SetSelf(p)
 	p.SetID("psalm")
 	p.SetSkipInputs(true)
 
-	AddConfigListener(p)
+	env.OnTempo(p.updateCtrlTick)
 
 	p.updateCtrlTick()
 
 	return p
 }
 
+// OnConfigChanged follows a config change
 func (p *Psalm) OnConfigChanged() {
 	p.updateCtrlTick()
 }
 
 func (p *Psalm) updateCtrlTick() {
-	p.samplesPerTick = TickDuration() * p.config.SampleRate
+	p.samplesPerTick = p.Env().TickDuration() * p.config.SampleRate
 }
 
 func (p *Psalm) ToSoundFile(filePath string, fileFormat writer.FileFormat, numSeconds float64, sampleRate float64, normalize bool) error {

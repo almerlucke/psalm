@@ -2,7 +2,6 @@ package pulsar
 
 import (
 	"math"
-	"math/rand/v2"
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
@@ -192,7 +191,7 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 	}
 
 	// a new pan for every note, picked up by the next pulse
-	v.notePan = 0.5 + v.cfg.NoteSpread*(rand.Float64()-0.5)
+	v.notePan = 0.5 + v.cfg.NoteSpread*(v.Rand().Float64()-0.5)
 
 	v.ampEnv.TriggerFull(duration*1000.0, amplitude, &v.cfg.AmpEnv, mode)
 	v.formantEnv.TriggerFull(duration*1000.0, 1.0, &v.cfg.FormantEnv, mode)
@@ -286,7 +285,7 @@ func (v *Voice) compensation(freq float64) float64 {
 func (v *Voice) startPulse(formantMod float64, freq float64) {
 	cfg := &v.cfg
 
-	v.masked = cfg.Masking > 0 && rand.Float64() < cfg.Masking
+	v.masked = cfg.Masking > 0 && v.Rand().Float64() < cfg.Masking
 	v.duty = math.Max(0.01, math.Min(cfg.Duty, 1.0))
 
 	tracking := math.Pow(v.glideFreq/middleC, cfg.FormantTracking)
@@ -294,13 +293,13 @@ func (v *Voice) startPulse(formantMod float64, freq float64) {
 	v.formant1 = cfg.Formant * tracking * octaves
 	v.formant2 = cfg.Formant2 * tracking * octaves
 
-	pan := math.Max(0, math.Min(v.notePan+cfg.StereoSpread*(rand.Float64()-0.5), 1))
+	pan := math.Max(0, math.Min(v.notePan+cfg.StereoSpread*(v.Rand().Float64()-0.5), 1))
 	v.gainL = math.Cos(pan * math.Pi / 2)
 	v.gainR = math.Sin(pan * math.Pi / 2)
 
 	v.compGain = v.compensation(freq)
 
-	v.period = 1.0 + cfg.Jitter*(rand.Float64()*2.0-1.0)*0.5
+	v.period = 1.0 + cfg.Jitter*(v.Rand().Float64()*2.0-1.0)*0.5
 }
 
 func (v *Voice) Synthesize() {

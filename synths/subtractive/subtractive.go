@@ -153,6 +153,10 @@ func New(cfg Config) *Voice {
 	v.filterEnv = adsr.New(&v.cfg.FilterEnv, adsr.NoteOff, sr)
 	v.ampEnv = adsr.New(&v.cfg.AmpEnv, adsr.NoteOff, sr)
 
+	v.lfo1.rng = v.Rand()
+	v.lfo2.rng = v.Rand()
+	v.noise.rng = v.Rand()
+
 	v.SetSelf(v)
 
 	return v

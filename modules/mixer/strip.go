@@ -61,7 +61,7 @@ type Strip struct {
 	panR   float64
 	open   float64 // mute gain, 0-1
 	sendG  []float64
-	meter  meter
+	meter  levelMeter
 }
 
 func newStrip(m *Mixer, name string, cfg StripConfig, safe bool) *Strip {
@@ -250,26 +250,26 @@ func (s *Strip) panGains() {
 	s.panR = math.Sin(theta) * math.Sqrt2
 }
 
-// meter keeps the peak and the energy of a signal
-type meter struct {
+// levelMeter keeps the peak and the energy of a signal
+type levelMeter struct {
 	peak  float64
 	sum   float64
 	count int
 }
 
-func (m *meter) add(l, r float64) {
+func (m *levelMeter) add(l, r float64) {
 	m.peak = math.Max(m.peak, math.Max(math.Abs(l), math.Abs(r)))
 	m.sum += (l*l + r*r) / 2
 	m.count++
 }
 
-func (m *meter) levels() (float64, float64) {
+func (m *levelMeter) levels() (float64, float64) {
 	if m.count == 0 {
 		return MinDB, MinDB
 	}
 	return ToDB(m.peak), ToDB(math.Sqrt(m.sum / float64(m.count)))
 }
 
-func (m *meter) reset() {
-	*m = meter{}
+func (m *levelMeter) reset() {
+	*m = levelMeter{}
 }

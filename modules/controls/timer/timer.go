@@ -43,7 +43,7 @@ func (t *Timer) setNextDuration() {
 
 func (t *Timer) CtrlTick(tick psalm.CtrlTick) {
 	if t.bang {
-		dur := t.ticks * psalm.TickDuration()
+		dur := t.ticks * t.Env().TickDuration()
 		t.bang = false
 		t.Send(dur, 1)
 		t.Send(psalm.Message{

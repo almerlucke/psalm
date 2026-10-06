@@ -2,7 +2,6 @@ package dx
 
 import (
 	"math"
-	"math/rand/v2"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/poly"
@@ -181,7 +180,7 @@ func (v *Voice) start(duration float64, amplitude float64, message psalm.Message
 	if p.LFOKeySync || !wasActive {
 		v.lfoPhase = 0.0
 		v.lfoTime = 0.0
-		v.lfoSH = rand.Float64()*2.0 - 1.0
+		v.lfoSH = v.Rand().Float64()*2.0 - 1.0
 	}
 	if !wasActive {
 		v.curModScale = v.modScale
@@ -286,7 +285,7 @@ func (v *Voice) Synthesize() {
 		v.lfoPhase += lfoInc
 		if v.lfoPhase >= 1.0 {
 			v.lfoPhase -= 1.0
-			v.lfoSH = rand.Float64()*2.0 - 1.0
+			v.lfoSH = v.Rand().Float64()*2.0 - 1.0
 		}
 
 		// pitch from the pitch envelope and LFO pitch modulation

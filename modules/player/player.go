@@ -93,7 +93,7 @@ func (p *Player) recalculate() {
 }
 
 func (p *Player) snapToZeroCrossings() {
-	if p.useZeroCrossings {
+	if p.useZeroCrossings && p.sf != nil { // a player of a sound bank has no sound until one is chosen
 		zc := p.sf.ZeroCrossings(0)
 		if zc != nil {
 			if cr, ok := p.sf.ZeroCrossings(0).NearestPos(p.startOffset, sndfile.DirectionAny); ok {

@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/modules/meter"
 )
 
 // Mixer holds the strips and the master
@@ -49,6 +50,11 @@ func (m *Mixer) Strip(name string) *Strip {
 		}
 	}
 	return nil
+}
+
+// Strips returns the strips (channels, groups and bus returns) in the order they were created
+func (m *Mixer) Strips() []*Strip {
+	return m.strips
 }
 
 // Channel adds a strip for a source (any module with an audio output 0)
@@ -99,6 +105,7 @@ func (m *Mixer) add(name string, cfg StripConfig, safe bool) *Strip {
 		}
 	}
 	s := newStrip(m, name, cfg, safe)
+	s.SetID(name) // for profiles
 	s.AddTo(m.p)
 	m.strips = append(m.strips, s)
 
@@ -141,6 +148,7 @@ func (m *Mixer) ResetMeters() {
 		s.meter.reset()
 	}
 	m.master.meter.reset()
+	m.master.loud.Reset()
 	m.master.reduction = 0
 }
 
@@ -157,6 +165,7 @@ func (m *Mixer) Meters() string {
 	}
 	peak, rms := m.master.Levels()
 	line("master", peak, rms)
+	fmt.Fprintf(&b, "%-14s %.1f LUFS integrated, %.1f LUFS short-term\n", "loudness", m.master.loud.Integrated(), m.master.loud.ShortTerm())
 	fmt.Fprintf(&b, "%-14s %.1f dB\n", "limiter", -m.master.Reduction())
 	return b.String()
 }
@@ -204,7 +213,8 @@ type Master struct {
 	queue     []need // sliding minimum of the needed gains over the lookahead
 	head      int    // first entry of the queue
 	gain      float64
-	meter     meter
+	meter     levelMeter
+	loud      *meter.Loudness
 	reduction float64 // most gain reduction (linear) since the meters were reset
 }
 
@@ -214,6 +224,8 @@ func newMaster(m *Mixer) *Master {
 		mixer:  m,
 		gain:   1,
 	}
+	ms.loud = meter.NewLoudness(ms.Config().SampleRate)
+	ms.SetID("master")
 	ms.SetSelf(ms)
 	ms.SetConfig(DefaultMasterConfig())
 	return ms
@@ -271,6 +283,9 @@ func (ms *Master) Latency() int { return len(ms.delayL) }
 // Levels returns the peak and RMS level of the master output in dB since the meters were reset
 func (ms *Master) Levels() (float64, float64) { return ms.meter.levels() }
 
+// Loudness returns the loudness meter of the master output (EBU R128, LUFS)
+func (ms *Master) Loudness() *meter.Loudness { return ms.loud }
+
 // Reduction returns the most gain reduction of the limiter in dB since the meters were reset
 func (ms *Master) Reduction() float64 {
 	if ms.reduction <= 0 {
@@ -317,6 +332,7 @@ func (ms *Master) Synthesize() {
 			out[0][i] = float32(l)
 			out[1][i] = float32(r)
 			ms.meter.add(l, r)
+			ms.loud.Add(l, r)
 			continue
 		}
 
@@ -349,6 +365,7 @@ func (ms *Master) Synthesize() {
 		out[0][i] = float32(ol)
 		out[1][i] = float32(or)
 		ms.meter.add(ol, or)
+		ms.loud.Add(ol, or)
 		ms.reduction = math.Max(ms.reduction, 1-ms.gain)
 	}
 }

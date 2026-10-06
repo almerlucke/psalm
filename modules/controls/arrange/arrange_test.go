@@ -277,3 +277,18 @@ func TestTempoInPatch(t *testing.T) {
 		t.Fatalf("expected about 8 beats in 4 seconds at 120 BPM and 4 at 60, got %d and %d", fast, slow)
 	}
 }
+
+func TestDuration(t *testing.T) {
+	base := psalm.CurrentConfig()
+	base.BPM = 120
+	psalm.PushConfig(base)
+	defer psalm.PopConfig()
+	a := NewArrangement(testForm()) // 8 bars of 4 beats
+	if d := a.Duration(); math.Abs(d-16) > 0.01 {
+		t.Fatalf("8 bars at 120 BPM last 16 s, got %v", d)
+	}
+	a.Tempo(Lane{Sections: map[string]Curve{"Outro": Const(60)}}) // the last 2 bars at half speed
+	if d := a.Duration(); math.Abs(d-20) > 0.01 {
+		t.Fatalf("with a slow outro 20 s, got %v", d)
+	}
+}

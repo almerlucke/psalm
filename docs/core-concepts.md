@@ -28,11 +28,10 @@ rendering.
 | `p.ToSoundFile(path, format, seconds, sampleRate, normalize)` | Renders the patch offline to a file (`writer.WAV` etc. from `github.com/almerlucke/sndfile/writer`), resampling when `sampleRate` differs from the patch, optionally normalizing |
 | `p.Close()` | Closes the audio engine |
 
-## Config
+## Config and environment
 
-The current configuration is a stack: `psalm.PushConfig` makes a new config current,
-`psalm.PopConfig` restores the previous one. Modules read the config that is current when they
-are created, so push it before building the patch.
+`psalm.PushConfig` sets the configuration for the patches you create next (a stack:
+`psalm.PopConfig` restores the previous one), so push it before `psalm.New`.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -41,8 +40,29 @@ are created, so push it before building the patch.
 | `BPM` | 120 | Tempo in beats per minute (a `float64`, fractions like 87.5 are fine) |
 | `PPQ` | 240 | Control ticks per quarter note (the resolution of sequencing) |
 
-Helpers: `psalm.SampleRate()`, `psalm.BufferSize()`, `psalm.BPM()`, `psalm.PPQ()`,
-`psalm.TickDuration()` (seconds per tick) and `psalm.ControlRate()` (ticks per second).
+Every `psalm.New` creates an **environment** (`psalm.Env`) for its patch: a copy of the config,
+the **live tempo** and the **random streams** of that patch. It becomes current, and every module
+created after it belongs to it, so create a patch's modules after its `psalm.New`. A module reads
+its environment, not global state, while it plays:
+
+| Module method | |
+|---|---|
+| `m.Config()` | The config when the module was created (sample rate, buffer size, PPQ) |
+| `m.BPM()` | The live tempo of its patch |
+| `m.Env()` | Its environment: `SetBPM(bpm)` changes the tempo of that patch only, `TickDuration()` |
+| `m.Rand()` | Its own random stream, from the patch's seed |
+
+So patches don't share anything while they play: one patch can change its tempo without
+touching another, and several patches can render in parallel (build them one after the other,
+then render each on its own goroutine).
+
+`psalm.Seed(n)` seeds the patches created after it, so a patch built and rendered after the same
+seed sounds the same, sample for sample; seeding the next patch never changes one already built.
+Without a seed every run is different. See [rendering](rendering.md).
+
+The package functions `psalm.SampleRate()`, `psalm.BufferSize()`, `psalm.BPM()`, `psalm.PPQ()`,
+`psalm.TickDuration()` and `psalm.ControlRate()` read the current environment: use them while
+building a patch, and the module methods inside modules.
 
 ## Modules
 

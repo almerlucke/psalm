@@ -1,6 +1,7 @@
 package subtractive
 
 import (
+	"github.com/almerlucke/psalm"
 	"math"
 	"math/rand/v2"
 )
@@ -37,6 +38,7 @@ func (c *LFOConfig) active() bool {
 
 // lfo is a simple bipolar (-1 to 1) low frequency oscillator with delayed fade-in
 type lfo struct {
+	rng     *rand.Rand // the voice's random stream
 	phase   float64
 	sh      float64
 	fade    float64
@@ -46,7 +48,7 @@ type lfo struct {
 func (l *lfo) trigger(cfg *LFOConfig, sr float64) {
 	if cfg.KeySync {
 		l.phase = 0.0
-		l.sh = rand.Float64()*2.0 - 1.0
+		l.sh = l.random().Float64()*2.0 - 1.0
 	}
 
 	if cfg.Delay > 0.0 {
@@ -83,7 +85,7 @@ func (l *lfo) tick(cfg *LFOConfig, sr float64) float64 {
 	l.phase += cfg.Rate / sr
 	if l.phase >= 1.0 {
 		l.phase -= math.Floor(l.phase)
-		l.sh = rand.Float64()*2.0 - 1.0
+		l.sh = l.random().Float64()*2.0 - 1.0
 	}
 
 	if l.fade < 1.0 {
@@ -102,11 +104,12 @@ const (
 
 // noise generates white or pink noise (Paul Kellet's economy pink filter)
 type noise struct {
+	rng        *rand.Rand // the voice's random stream
 	b0, b1, b2 float64
 }
 
 func (n *noise) tick(nt NoiseType) float64 {
-	white := rand.Float64()*2.0 - 1.0
+	white := n.random().Float64()*2.0 - 1.0
 	if nt != PinkNoise {
 		return white
 	}
@@ -116,4 +119,20 @@ func (n *noise) tick(nt NoiseType) float64 {
 	n.b2 = 0.57000*n.b2 + white*1.0526913
 
 	return (n.b0 + n.b1 + n.b2 + white*0.1848) * 0.25
+}
+
+// random returns the random stream of the LFO (the voice's, or one of the current patch)
+func (l *lfo) random() *rand.Rand {
+	if l.rng == nil {
+		l.rng = psalm.CurrentEnv().NewRand()
+	}
+	return l.rng
+}
+
+// random returns the random stream of the noise (the voice's, or one of the current patch)
+func (n *noise) random() *rand.Rand {
+	if n.rng == nil {
+		n.rng = psalm.CurrentEnv().NewRand()
+	}
+	return n.rng
 }

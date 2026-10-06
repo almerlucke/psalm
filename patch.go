@@ -81,6 +81,11 @@ func (p *Patch) Add(m Modular) Patcher {
 	return p
 }
 
+// Modules returns the modules added to the patch
+func (p *Patch) Modules() []Modular {
+	return p.modules
+}
+
 func (p *Patch) ResetRun() {
 	p.hasRun = false
 

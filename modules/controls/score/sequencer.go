@@ -126,9 +126,13 @@ func NewSequencer(notes []Note, cfg Config) *Sequencer {
 	}
 	seed := cfg.Feel.Seed
 	if seed == 0 {
-		seed = rand.Uint64()
+		seed = 0 // set below from the module stream
 	}
-	s := &Sequencer{Module: psalm.NewControl(), cfg: cfg, gain: 1, last: -1, rng: rand.New(rand.NewPCG(seed, 0x853c49e6748fea9b))}
+	s := &Sequencer{Module: psalm.NewControl(), cfg: cfg, gain: 1, last: -1}
+	if seed == 0 {
+		seed = s.Rand().Uint64() // the patch seed makes it repeat
+	}
+	s.rng = rand.New(rand.NewPCG(seed, 0x853c49e6748fea9b))
 	s.SetSelf(s)
 	s.SetNotes(notes)
 	return s
@@ -147,7 +151,7 @@ func (s *Sequencer) SetNotes(notes []Note) {
 	if s.cfg.Length > 0 {
 		beat = s.cfg.Length
 	}
-	s.length = max(1, int64(math.Round(beat*float64(psalm.PPQ()))))
+	s.length = max(1, int64(math.Round(beat*float64(s.Config().PPQ))))
 	s.build()
 	s.resume()
 }
@@ -173,7 +177,7 @@ func (s *Sequencer) SetGain(gain float64) {
 
 // Length returns the length of the sequence in beats
 func (s *Sequencer) Length() float64 {
-	return float64(s.length) / float64(psalm.PPQ())
+	return float64(s.length) / float64(s.Config().PPQ)
 }
 
 // tri returns a random number from -1 to 1, most often near 0
@@ -185,8 +189,8 @@ func (s *Sequencer) tri() float64 {
 func (s *Sequencer) build() {
 	var (
 		f        = s.cfg.Feel
-		ppq      = float64(psalm.PPQ())
-		msToBeat = psalm.BPM() / 60000.0
+		ppq      = float64(s.Config().PPQ)
+		msToBeat = s.BPM() / 60000.0
 	)
 	s.events = s.events[:0]
 	for i := range s.notes {
@@ -278,7 +282,7 @@ func (s *Sequencer) play(e *event, tick psalm.CtrlTick) {
 	}
 	s.Send(psalm.Message{
 		"command":   "trigger",
-		"duration":  e.hold * 60.0 / psalm.BPM(),
+		"duration":  e.hold * 60.0 / s.BPM(),
 		"amplitude": e.amp * s.gain,
 		"tick":      tick,
 		"message":   msg,

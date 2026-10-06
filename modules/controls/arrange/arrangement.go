@@ -78,8 +78,8 @@ type Arrangement struct {
 	onBar       []func(Position)
 	print       bool
 	tempo       *Lane
-	pushed      bool    // a tempo config of the arrangement is on the config stack
-	base        float64 // the tempo below it
+	pushed      bool    // the tempo lane changed the tempo
+	base        float64 // the tempo before it did
 	section     int
 	bar         int
 	every       int64 // ticks between automation updates
@@ -125,8 +125,9 @@ func (a *Arrangement) AutomateFunc(lane Lane, f func(v float64)) *Arrangement {
 	return a
 }
 
-// Tempo automates the tempo in BPM: the arrangement pushes a config with the new tempo, psalm and
-// the sequencers follow it (changes are updated 48 times per beat, so a ritardando is smooth). Where the
+// Tempo automates the tempo in BPM: the arrangement sets the tempo of its patch, the patch and its
+// sequencers follow it (changes are updated 48 times per beat, so a ritardando is smooth). Other
+// patches keep their own tempo. Where the
 // lane is 0 (the default when a section has no curve) the tempo returns to the one the arrangement
 // started with, so a lane only needs curves for the sections that change tempo:
 //
@@ -141,55 +142,66 @@ func (a *Arrangement) Tempo(lane Lane) *Arrangement {
 // tempoResolution is the smallest tempo change (in BPM) the arrangement passes on
 const tempoResolution = 0.01
 
-// setTempo replaces the tempo config of the arrangement, 0 removes it. The arrangement pops its own
-// config before pushing a new one, so the config stack doesn't grow
+// setTempo sets the tempo of the patch, 0 returns it to the tempo before the lane changed it
 func (a *Arrangement) setTempo(bpm float64) {
-	if a.pushed && math.Abs(bpm-psalm.BPM()) < tempoResolution {
+	env := a.Env()
+	if bpm <= 0 {
+		if a.pushed {
+			env.SetBPM(a.base)
+			a.pushed = false
+		}
 		return
 	}
-	if a.pushed {
-		psalm.PopConfig()
-		a.pushed = false
+	if !a.pushed {
+		if math.Abs(bpm-env.BPM()) < tempoResolution {
+			return
+		}
+		a.base = env.BPM()
+		a.pushed = true
 	}
-	if bpm <= 0 || math.Abs(bpm-psalm.BPM()) < tempoResolution {
-		return
+	if math.Abs(bpm-env.BPM()) >= tempoResolution {
+		env.SetBPM(bpm)
 	}
-	cfg := psalm.CurrentConfig()
-	a.base = cfg.BPM
-	cfg.BPM = bpm
-	psalm.PushConfig(cfg)
-	a.pushed = true
 }
 
-// Schedule returns the start time of every section, following the tempo lane
-func (a *Arrangement) Schedule() string {
-	if a.tempo == nil {
-		return a.form.Schedule()
-	}
-	var b strings.Builder
-	base := psalm.BPM() // the tempo of the sections without a curve
+// timing returns the start time of every section and the length of one pass of the song in
+// seconds, following the tempo lane
+func (a *Arrangement) timing() (map[int]float64, float64) {
+	base := a.Env().BPM() // the tempo of the sections without a curve
 	if a.pushed {
 		base = a.base
 	}
-	ppq := int64(psalm.PPQ())
+	ppq := int64(a.Config().PPQ)
 	step := max(1, ppq/48)
 	seconds := 0.0
-	at := func(t int64) float64 {
-		bpm := a.tempo.value(a.PositionAt(t))
-		if bpm <= 0 {
-			bpm = base
-		}
-		return bpm
-	}
-	songTicks := int64(a.form.Beats() * float64(ppq))
 	starts := map[int]float64{}
+	songTicks := int64(a.form.Beats() * float64(ppq))
 	for t := int64(0); t < songTicks; t += step {
 		pos := a.PositionAt(t)
 		if _, ok := starts[pos.Section.Index]; !ok && pos.Bar == pos.Section.StartBar {
 			starts[pos.Section.Index] = seconds
 		}
-		seconds += float64(step) / float64(ppq) * 60 / at(t)
+		bpm := base
+		if a.tempo != nil {
+			if v := a.tempo.value(pos); v > 0 {
+				bpm = v
+			}
+		}
+		seconds += float64(step) / float64(ppq) * 60 / bpm
 	}
+	return starts, seconds
+}
+
+// Duration returns the length of one pass of the song in seconds, following the tempo lane
+func (a *Arrangement) Duration() float64 {
+	_, d := a.timing()
+	return d
+}
+
+// Schedule returns the start time of every section, following the tempo lane
+func (a *Arrangement) Schedule() string {
+	starts, seconds := a.timing()
+	var b strings.Builder
 	for _, s := range a.form.Sections {
 		fmt.Fprintf(&b, "%6.1fs  bar %3d  %-12s %d bars\n", starts[s.Index], s.StartBar+1, s.Name, s.Bars)
 	}
@@ -216,7 +228,7 @@ func (a *Arrangement) OnBar(f func(pos Position)) *Arrangement {
 // PositionAt returns the position at a tick (counted from the start of the patch)
 func (a *Arrangement) PositionAt(t int64) Position {
 	f := a.form
-	ppq := int64(psalm.PPQ())
+	ppq := int64(a.Config().PPQ)
 	songTicks := int64(f.Beats() * float64(ppq))
 	var pos Position
 	if songTicks <= 0 {

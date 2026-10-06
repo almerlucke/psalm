@@ -2,7 +2,7 @@ package steps
 
 import (
 	"math"
-	"math/rand"
+	"math/rand/v2"
 
 	"github.com/almerlucke/genny"
 	"github.com/almerlucke/psalm"
@@ -20,19 +20,19 @@ type Step struct {
 	NumBurst    int     `json:"numBurst"`
 }
 
-func (s *Step) shuffleDelay(ticks float64) float64 {
+func (s *Step) shuffleDelay(ticks float64, rng *rand.Rand) float64 {
 	shuffleRandBandwidth := math.Min(s.Shuffle, 1.0-s.Shuffle)
-	shuffleAmount := s.Shuffle + (rand.Float64()*2.0-1.0)*math.Min(s.ShuffleRand, shuffleRandBandwidth)
+	shuffleAmount := s.Shuffle + (rng.Float64()*2.0-1.0)*math.Min(s.ShuffleRand, shuffleRandBandwidth)
 
 	return _shuffleMultiplier * shuffleAmount * ticks
 }
 
-func (s *Step) Burst() bool {
-	return rand.Float64() < s.BurstChance
+func (s *Step) Burst(rng *rand.Rand) bool {
+	return rng.Float64() < s.BurstChance
 }
 
-func (s *Step) SkipStep() bool {
-	return s.Skip || rand.Float64() < s.SkipChance
+func (s *Step) SkipStep(rng *rand.Rand) bool {
+	return s.Skip || rng.Float64() < s.SkipChance
 }
 
 /*
@@ -108,6 +108,8 @@ func Multiply(s []*Step, multiply float64) []*Step {
 
 type Steps struct {
 	steps             genny.Generator[*Step]
+	rng               *rand.Rand // a stream of the patch being built
+	ppq               int
 	remainingDuration float64
 	delayed           bool
 	burstCount        int
@@ -118,6 +120,8 @@ type Steps struct {
 func New(s genny.Generator[*Step]) *Steps {
 	return &Steps{
 		steps: s,
+		rng:   psalm.CurrentEnv().NewRand(),
+		ppq:   psalm.PPQ(),
 	}
 }
 
@@ -144,20 +148,20 @@ func (s *Steps) Generate() float64 {
 		multiply = step.Multiply
 	}
 
-	ticks := float64(psalm.PPQ()) * multiply
+	ticks := float64(s.ppq) * multiply
 
-	if step.SkipStep() {
+	if step.SkipStep(s.rng) {
 		return -ticks
 	}
 
-	if step.Burst() {
+	if step.Burst(s.rng) {
 		s.burstMode = true
 		s.burstCount = step.NumBurst
 		s.burstDuration = ticks / float64(step.NumBurst)
 		return s.Generate()
 	}
 
-	delay := step.shuffleDelay(ticks)
+	delay := step.shuffleDelay(ticks, s.rng)
 	if delay > 0.0 {
 		s.remainingDuration = ticks - delay
 		s.delayed = true

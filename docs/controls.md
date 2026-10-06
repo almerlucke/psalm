@@ -275,8 +275,8 @@ section) and a `Default` for the other sections. Curves: `Const(v)`, `Linear(a, 
 
 Values are updated 48 times per beat and only sent when they change.
 
-**Tempo**: `Tempo(lane)` automates the tempo in BPM. The arrangement pushes a config with the new
-tempo (`psalm.PushConfig`), psalm and the sequencers follow it. Where the lane is 0 (a section
+**Tempo**: `Tempo(lane)` automates the tempo in BPM. The arrangement sets the tempo of its patch
+(`Env().SetBPM`), the patch and its sequencers follow it; other patches keep their own tempo. Where the lane is 0 (a section
 without a curve, with the default `Default` of 0) the tempo returns to where it started, so a
 ritardando at the end only needs a curve for the last section:
 
@@ -284,8 +284,7 @@ ritardando at the end only needs a curve for the last section:
 arrangement.Tempo(arrange.Lane{Sections: map[string]arrange.Curve{"Outro": arrange.Smooth(120, 90)}})
 ```
 
-The arrangement replaces its own config on every change, so the config stack doesn't grow, and
-removes it when the tempo returns. The tempo is updated 48 times per beat (changes smaller than
+The tempo is updated 48 times per beat (changes smaller than
 0.01 BPM are skipped), so a ritardando is smooth. The song position is counted in ticks, so parts
 stay together; note lengths are converted to seconds when a note starts. The `pingpong` delay
 follows the tempo too. Modules given a time in milliseconds computed from the tempo once (with

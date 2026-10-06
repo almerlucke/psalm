@@ -2,7 +2,6 @@ package granulator
 
 import (
 	"math"
-	"math/rand/v2"
 
 	"github.com/almerlucke/psalm"
 )
@@ -162,13 +161,13 @@ func (g *Granulator) spawn(sr float64) {
 
 	semis := cfg.Pitch
 	if cfg.PitchSpread != 0 {
-		semis += cfg.PitchSpread * (rand.Float64()*2.0 - 1.0)
+		semis += cfg.PitchSpread * (g.Rand().Float64()*2.0 - 1.0)
 	}
-	if cfg.Octave > 0 && rand.Float64() < cfg.Octave {
+	if cfg.Octave > 0 && g.Rand().Float64() < cfg.Octave {
 		semis += 12
 	}
 	inc := math.Exp2(semis / 12.0)
-	if rand.Float64() < cfg.Reverse {
+	if g.Rand().Float64() < cfg.Reverse {
 		inc = -inc
 	}
 
@@ -190,10 +189,10 @@ func (g *Granulator) spawn(sr float64) {
 		return
 	}
 
-	delay := (cfg.Delay + cfg.Spray*(rand.Float64()*2.0-1.0)) * 0.001 * sr
+	delay := (cfg.Delay + cfg.Spray*(g.Rand().Float64()*2.0-1.0)) * 0.001 * sr
 	delay = math.Max(minDelay, math.Min(delay, maxDelay))
 
-	pan := 0.5 + cfg.StereoSpread*(rand.Float64()-0.5)
+	pan := 0.5 + cfg.StereoSpread*(g.Rand().Float64()-0.5)
 
 	g.grains = append(g.grains, grain{
 		pos:    float64(g.written) - delay,
@@ -246,7 +245,7 @@ func (g *Granulator) Synthesize() {
 		g.countdown--
 		if g.countdown <= 0 {
 			g.spawn(sr)
-			g.countdown += interval * (1.0 + cfg.Jitter*(rand.Float64()*2.0-1.0))
+			g.countdown += interval * (1.0 + cfg.Jitter*(g.Rand().Float64()*2.0-1.0))
 			g.countdown = math.Max(1, g.countdown)
 		}
 

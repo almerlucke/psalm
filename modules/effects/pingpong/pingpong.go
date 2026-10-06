@@ -83,7 +83,7 @@ func (pp *PingPong) target() float64 {
 	if pp.cfg.TimeMs > 0 {
 		seconds = pp.cfg.TimeMs * 0.001
 	} else {
-		seconds = pp.cfg.Time * 60.0 / psalm.BPM()
+		seconds = pp.cfg.Time * 60.0 / pp.BPM()
 	}
 	return math.Max(1, math.Min(seconds*sr, float64(pp.left.Length-2)))
 }

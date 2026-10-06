@@ -2,7 +2,6 @@ package grains
 
 import (
 	"math"
-	"math/rand/v2"
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
@@ -312,21 +311,21 @@ func (v *Voice) spawn(sr float64) {
 
 	semis := v.pitch - cfg.RootNote
 	if cfg.PitchSpread != 0 {
-		semis += cfg.PitchSpread * (rand.Float64()*2.0 - 1.0)
+		semis += cfg.PitchSpread * (v.Rand().Float64()*2.0 - 1.0)
 	}
-	if cfg.Octave > 0 && rand.Float64() < cfg.Octave {
+	if cfg.Octave > 0 && v.Rand().Float64() < cfg.Octave {
 		semis += 12
 	}
 	speed := math.Exp2(semis/12.0) * s.SampleRate() / sr
 
-	pos := v.position + cfg.Spray*(rand.Float64()*2.0-1.0)*s.SampleRate()
+	pos := v.position + cfg.Spray*(v.Rand().Float64()*2.0-1.0)*s.SampleRate()
 	pos -= math.Floor(pos/frames) * frames // wrap into the sample
 
-	if rand.Float64() < cfg.Reverse {
+	if v.Rand().Float64() < cfg.Reverse {
 		speed = -speed
 	}
 
-	pan := 0.5 + cfg.StereoSpread*(rand.Float64()-0.5)
+	pan := 0.5 + cfg.StereoSpread*(v.Rand().Float64()-0.5)
 
 	depth := sndfile.SpeedToMipMapDepth(speed)
 	if depth >= s.Depth() {
@@ -391,7 +390,7 @@ func (v *Voice) Synthesize() {
 		v.countdown--
 		if v.countdown <= 0 {
 			v.spawn(sr)
-			v.countdown += interval * (1.0 + cfg.Jitter*(rand.Float64()*2.0-1.0))
+			v.countdown += interval * (1.0 + cfg.Jitter*(v.Rand().Float64()*2.0-1.0))
 			if v.countdown < 1 {
 				v.countdown = 1
 			}

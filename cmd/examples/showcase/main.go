@@ -28,8 +28,13 @@ package main
 // The piece is built with the arrange and score packages: the form lists the sections, every part
 // is written per section in beats (the melodies in score notation) and the arrangement automates
 // the string filter, the granulator and the tempo. The piece loops, the schedule is printed at start
+//
+//	go run ./cmd/examples/showcase                                    play it
+//	go run ./cmd/examples/showcase -render aurora.wav -stems -seed 7  render it, a stem per mixer strip
+//	go run ./cmd/examples/showcase -profile                           the time every module takes
 
 import (
+	"flag"
 	"fmt"
 	"slices"
 
@@ -62,6 +67,7 @@ import (
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
 	"github.com/almerlucke/psalm/tools/harmony"
+	"github.com/almerlucke/psalm/tools/render"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -157,9 +163,26 @@ func harpArp(c chord) []score.Note {
 }
 
 func main() {
+	var (
+		renderTo = flag.String("render", "", "render one pass of the piece to this WAV file instead of playing it")
+		stems    = flag.Bool("stems", false, "with -render, also write every mixer strip to its own file")
+		profile  = flag.Bool("profile", false, "render the piece offline and report the time every module takes")
+		seed     = flag.Uint64("seed", 0, "seed for the random parts (grains, feel, pans): the same seed plays the same, 0 is new every run")
+	)
+	flag.Parse()
+	if *seed != 0 {
+		psalm.Seed(*seed)
+	}
+
 	psalm.PushConfig(psalm.Config{BPM: bpm, PPQ: 240, SampleRate: 44100, BufferSize: 1024})
 
-	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
+	offline := *renderTo != "" || *profile
+	var p *psalm.Psalm
+	if offline {
+		p = psalm.New(nil)
+	} else {
+		p = psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
+	}
 	defer p.Close()
 
 	// --- the mixer: a hall and a shimmering sky as effect buses, the strings and the choir as
@@ -507,5 +530,22 @@ func main() {
 
 	p.Out(mix.Master())
 
-	_ = p.Listen()
+	opts := render.Options{Seconds: arrangement.Duration(), Tail: 10}
+	switch {
+	case *profile:
+		fmt.Print(render.RunProfiled(p, opts))
+	case *renderTo != "":
+		var sources map[string]psalm.Modular
+		if *stems {
+			sources = render.MixerStems(mix)
+		}
+		stats, err := render.Stems(p, *renderTo, opts, sources)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(stats)
+		fmt.Print(mix.Meters())
+	default:
+		_ = p.Listen()
+	}
 }
