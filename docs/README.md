@@ -13,6 +13,7 @@ play it live through an audio engine or render it to a sound file.
 | [Sources](sources.md) | Sound sources: `player`, `blosc` oscillator, `lfo`, `granular` |
 | [Synths](synths.md) | `poly` voice allocation, the `subtractive` synth, the 4 operator `fm` synth, the 6 operator `dx` engine with SysEx loading, the `grains` granular sampler, the `pulsar` synth, the `wavetable` synth, `drums` |
 | [Effects](effects.md) | Reverbs (`freeverb`, `fdnreverb`, `shimmer`, `convolver`), `chorus`, `flanger`, `pingpong`, `vocoder`, `granulator` (with freeze), `pitchshift`, `pan`, `latency` |
+| [Harmony](harmony.md) | `tools/harmony`: chords from symbols, voicings and voice leading, scales and keys with roman numerals, an arpeggiator and a check for clashing notes |
 | [Mixer](mixer.md) | The `mixer`: channel strips (volume, pan, mute, solo, sends, meters), effect buses, groups with inserts and a master with a lookahead limiter |
 | [Filters](filters.md) | The `filters` module: SVF, Moog style ladder, biquad EQ and formant (vowel) filters |
 | [Blocks](blocks.md) | Low level DSP building blocks used by the modules (`fft`, filters, `pitchshift`, `blosc`, `delay`) |

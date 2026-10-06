@@ -31,6 +31,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
@@ -60,6 +61,7 @@ import (
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
+	"github.com/almerlucke/psalm/tools/harmony"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -69,6 +71,7 @@ const bpm = 66
 
 // chord holds the voicings of a chord for the sections of the orchestra
 type chord struct {
+	symbol  harmony.Chord
 	root    float64   // pizzicato bass
 	celli   []float64 // root and fifth
 	choir   []float64 // middle voices, also the horns an octave down
@@ -76,12 +79,12 @@ type chord struct {
 }
 
 var (
-	Dm = chord{38, []float64{50, 57}, []float64{57, 62, 65}, []float64{62, 65, 69, 74}}
-	Bb = chord{34, []float64{46, 53}, []float64{58, 62, 65}, []float64{62, 65, 70, 74}}
-	Gm = chord{31, []float64{43, 50}, []float64{58, 62, 67}, []float64{62, 67, 70, 74}}
-	A  = chord{33, []float64{45, 52}, []float64{57, 61, 64}, []float64{61, 64, 69, 73}}
-	F  = chord{41, []float64{41, 48}, []float64{57, 60, 65}, []float64{60, 65, 69, 72}}
-	C  = chord{36, []float64{48, 55}, []float64{55, 60, 64}, []float64{60, 64, 67, 72}}
+	Dm = chord{harmony.MustChord("Dm"), 38, []float64{50, 57}, []float64{57, 62, 65}, []float64{62, 65, 69, 74}}
+	Bb = chord{harmony.MustChord("Bb"), 34, []float64{46, 53}, []float64{58, 62, 65}, []float64{62, 65, 70, 74}}
+	Gm = chord{harmony.MustChord("Gm"), 31, []float64{43, 50}, []float64{58, 62, 67}, []float64{62, 67, 70, 74}}
+	A  = chord{harmony.MustChord("A"), 33, []float64{45, 52}, []float64{57, 61, 64}, []float64{61, 64, 69, 73}}
+	F  = chord{harmony.MustChord("F"), 41, []float64{41, 48}, []float64{57, 60, 65}, []float64{60, 65, 69, 72}}
+	C  = chord{harmony.MustChord("C"), 36, []float64{48, 55}, []float64{55, 60, 64}, []float64{60, 64, 67, 72}}
 )
 
 var (
@@ -97,6 +100,18 @@ func chordAt(s arrange.Section, bar int) chord {
 		return homecoming[bar%len(homecoming)]
 	}
 	return progression[bar%len(progression)]
+}
+
+// songChords lays out the chord of every bar of the song, for the harmony check
+func songChords() []harmony.TimedChord {
+	var tl []harmony.TimedChord
+	for _, s := range form.Sections {
+		for bar := range s.Bars {
+			start := float64(s.StartBar+bar) * form.BeatsPerBar
+			tl = append(tl, harmony.TimedChord{Beat: start, Beats: form.BeatsPerBar, Chord: chordAt(s, bar).symbol})
+		}
+	}
+	return tl
 }
 
 // --- the form ---
@@ -135,14 +150,10 @@ func theme() []score.Note {
 // the horn counter melody of the climax, two half notes per bar
 var counter = score.MustParse("F3:2 A3 | F3 D3 | D3 G3 | E3 C#3 | C3 F3 | E3 G3 | Bb3 A3 | A3 E3")
 
-// harpArp is an 8th note arpeggio up and down the chord
+// harpArp is an 8th note arpeggio up and down the chord, from the celli up through the choir voices
 func harpArp(c chord) []score.Note {
-	tones := []float64{c.celli[0], c.celli[1], c.choir[0], c.choir[1], c.choir[2], c.choir[1], c.choir[0], c.celli[1]}
-	notes := score.Notes(0.5, tones...)
-	for i, v := range []float64{0.9, 0.6, 0.7, 0.6, 0.8, 0.6, 0.7, 0.5} {
-		notes[i].Velocity = v
-	}
-	return notes
+	arp := harmony.Arp{Pattern: harmony.UpDown, Velocities: []float64{0.9, 0.6, 0.7, 0.6, 0.8, 0.6, 0.7, 0.5}}
+	return arp.Notes(append(slices.Clone(c.celli), c.choir...))
 }
 
 func main() {
@@ -280,8 +291,18 @@ func main() {
 
 	type S = arrange.Section
 	type N = score.Note
+	// every part is checked against the chords: notes a semitone above a chord tone that aren't
+	// passing notes, and notes held into a chord they clash with, are reported at the start
+	timeline := songChords()
+	clashes := 0
 	part := func(synth psalm.Modular, name string, amp float64, legato float64, sc arrange.Score) {
 		form.Part(p, synth, name, score.Config{Amp: amp, Legato: legato, Velocity: 0.8}, sc)
+		if name == "aurora" {
+			return // a pedal: it holds through the chords on purpose
+		}
+		issues := harmony.Check(form.Compile(name, sc), timeline)
+		clashes += len(issues)
+		fmt.Print(harmony.Report(name, issues))
 	}
 
 	part(violins, "violins", 0.12, 1.0, func(s S) []N {
@@ -399,7 +420,7 @@ func main() {
 			// the theme returns as a memory (the bars that fit Dm Bb F C), then the last chord
 			memory := score.Join(themeBar(0), themeBar(1), themeBar(4), themeBar(5))
 			memory = score.With(score.Transpose(memory, 12), func(n *N) { n.Velocity = 0.6 })
-			return score.Join(memory, score.MustParse("r:4 D5:2 A4 F5 D5 r:4"))
+			return score.Join(memory, score.MustParse("r:4 D5:1 C#5 A4:2 F5 D5 r:4")) // D leans on the A chord, resolving to C#
 		}
 		return nil
 	})
@@ -434,6 +455,10 @@ func main() {
 		}
 		return []N{{Pitches: []float64{38, 45}, Beats: 32, Hold: 26}}
 	})
+
+	if clashes == 0 {
+		fmt.Println("harmony check: every part fits its chords")
+	}
 
 	// --- the arrangement: dawn and dusk on the strings, the frozen harp of the interlude and a
 	// ritardando over the last four bars ---
