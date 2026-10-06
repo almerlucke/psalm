@@ -127,9 +127,6 @@ func main() {
 	voc := vocoder.New(vcfg)
 	voc.AddTo(p)
 	voc.In(speech, 0, 0, carrier, 0, 1)
-	mix.Channel("vocoder", voc, mixer.StripConfig{
-		Sends: map[string]float64{"reverb": 0.4},
-	})
 
 	// Flute: a slow, melancholic single note line over the same progression (8 beats per
 	// chord). It opens low, answers an octave up over F, peaks over C and steps back down over G,
@@ -157,12 +154,6 @@ func main() {
 		note{D5, 4}, note{B4, 3}, note{G4, 1}, // G, stepping back down
 	)
 
-	mix.Channel("flute", flute, mixer.StripConfig{
-		Sends:  map[string]float64{"reverb": 0.4},
-		Pan:    -0.2,
-		Volume: 2.0,
-	})
-
 	// Pad: soft
 	padCfg := subtractive.PWMPadPreset()
 	padCfg.Cutoff = 500.0
@@ -175,12 +166,6 @@ func main() {
 		[]float64{60, 67, 76}, // C4 G4 E5
 		[]float64{55, 62, 71}, // G3 D4 B4
 	)
-
-	mix.Channel("pad", pad, mixer.StripConfig{
-		Sends:  map[string]float64{"reverb": 0.4},
-		Pan:    0.25,
-		Volume: 2.0,
-	})
 
 	// Falling stars: delicate, glassy high notes from the A minor pentatonic at random, irregular
 	// times. Each star starts above its note and falls onto it while fading (the filter envelope
@@ -211,6 +196,22 @@ func main() {
 	// a steady saw sweep makes every star streak sideways across the stereo field as it falls
 	starsPanned := pan.New(0.0).AddTo(p).In(stars)
 	starsPanned.ValueIn(lfo.New(true, 0.3, -0.7, 0.7, lfo.Saw).AddTo(p), 0, 0)
+
+	mix.Channel("vocoder", voc, mixer.StripConfig{
+		Sends: map[string]float64{"reverb": 0.4},
+	})
+
+	mix.Channel("flute", flute, mixer.StripConfig{
+		Sends:  map[string]float64{"reverb": 0.4},
+		Pan:    -0.2,
+		Volume: 2.0,
+	})
+
+	mix.Channel("pad", pad, mixer.StripConfig{
+		Sends:  map[string]float64{"reverb": 0.4},
+		Pan:    0.25,
+		Volume: 2.0,
+	})
 
 	mix.Channel("stars", starsPanned, mixer.StripConfig{
 		Sends: map[string]float64{

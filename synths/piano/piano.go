@@ -101,11 +101,18 @@ const (
 	crossCoupling  = 0.001
 )
 
+// a string played hard starts sharp and settles: cents at full velocity, and how fast
+// it settles (seconds to fall to a third), by key
+var (
+	settleCents   = [][2]float64{{21, 6}, {60, 3}, {96, 1}}
+	settleSeconds = [][2]float64{{21, 0.3}, {60, 0.2}, {108, 0.1}}
+)
+
 // the bark: a string stretched by its own motion (the square of it) rings its longitudinal mode,
 // at about longitudinalRatio times the fundamental, with partials at the sums of the partials;
 // strongest in the bass, gone above barkTop
 const (
-	barkGain          = 8.0
+	barkGain          = 20.0
 	longitudinalRatio = 17.0
 	barkTop           = 66.0
 )
@@ -114,7 +121,7 @@ const (
 // the string left out only rings along a little
 const (
 	softHardness = 0.4
-	softLevel    = 1.5
+	softLevel    = 1.15
 	softCoupling = 0.06
 )
 
@@ -126,8 +133,10 @@ type Voice struct {
 	cfg Config
 
 	strings  []*str
-	exc      []float64    // the strike, played into the strings
-	knock    []float64    // the knock of the soundboard, heard directly
+	exc      []float64 // the strike, played into the strings
+	knock    []float64 // the knock of the soundboard, heard directly
+	knockOut []float64 // the knock of this buffer, when an instrument hears it apart
+	scratch  hammerScratch
 	tail     [2][]float64 // what was left of the strike before, when the key is struck again
 	excPos   int          // position in the strike, negative waits for the sample of the strike
 	pitch    float64
@@ -151,6 +160,8 @@ type Voice struct {
 
 	// the bark: a highpass and a resonator on the square of the string motion
 	barkLevel          float64
+	settle             float64 // cents the strings are sharp for now, settling
+	settleDecay        float64
 	barkDC             float64
 	b0, a1, a2         float64
 	bx1, bx2, by1, by2 float64
@@ -273,7 +284,7 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	// every key's hammer is a little different, and every strike: the felt, where it hits, and
 	// the moment it reaches each string
 	v.hardness = cfg.Hardness + vary*(0.06*keyRandom(v.key, 1)+0.03*(2*v.Rand().Float64()-1))
-	v.strikeAt = cfg.StrikePosition + vary*0.008*keyRandom(v.key, 2)
+	v.strikeAt = keyStrikeAt(cfg, v.key)
 	spread := vary * maxStrikeSpread
 	v.releaseIn = releaseIn
 	v.keyDown = true
@@ -313,6 +324,7 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 		if i >= struck {
 			in = softCoupling
 		}
+		d.m, d.eps = irregular(sr/d.f0, d.f0, v.key, i, vary)
 		prompt, after := d, d
 		prompt.t60 *= promptFactor
 		after.t60 *= afterFactor
@@ -354,9 +366,15 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 		v.amp *= v.voicing[v.key]
 	}
 
+	// a string played hard is stretched by its own motion: it starts sharp and settles as the
+	// motion dies down (the more the harder, most in the bass)
+	speed := hammerVelocity(v.velocity) / hammerVelocity(1)
+	v.settle += interpolate(settleCents, v.pitch) * speed * speed
+	v.settleDecay = math.Exp(-1 / (interpolate(settleSeconds, v.pitch) * sr))
+
 	// the bark: the longitudinal resonance, only the bass and tenor
 	w := math.Max(0, math.Min(1, (barkTop-v.pitch)/(barkTop-45)))
-	v.barkLevel = barkGain * math.Max(0, math.Min(cfg.Bark, 1)) * w
+	v.barkLevel = barkGain * math.Max(0, math.Min(cfg.Bark, 1)) * w * speed
 	fl := math.Min(math.Max(longitudinalRatio*f0, 300), 3000)
 	wl := 2 * math.Pi * fl / sr
 	alpha := math.Sin(wl) / (2 * 6) // Q 6
@@ -364,6 +382,7 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	v.a1 = -2 * math.Cos(wl) / (1 + alpha)
 	v.a2 = (1 - alpha) / (1 + alpha)
 	if !restrike {
+		v.settle = interpolate(settleCents, v.pitch) * speed * speed
 		v.barkDC, v.bx1, v.bx2, v.by1, v.by2, v.env = 0, 0, 0, 0, 0, 0
 		v.noise, v.thumpRe, v.thumpIm = 0, 0, 0
 	}
@@ -422,6 +441,7 @@ func (v *Voice) Synthesize() {
 	glide := 1 - math.Exp(-1/(0.01*sr))
 	peak := 0.0
 	coupling := unisonCoupling / float64(len(v.strings)/2)
+	period := sr / (440 * math.Exp2((stretched(v.pitch, &v.cfg)-69)/12))
 	mech := math.Max(0, math.Min(v.cfg.Mechanics, 1))
 	dcCoef := 1 - math.Exp(-2*math.Pi*20/sr)
 	envCoef := 1 - math.Exp(-1/(0.005*sr))
@@ -444,12 +464,26 @@ func (v *Voice) Synthesize() {
 		// the strike: every string gets it a little later or earlier (the hammer doesn't reach
 		// the strings of a key at exactly the same moment)
 		pos := v.excPos
-		y := 0.0
+		kn := 0.0
 		if pos >= 0 && pos < len(v.knock) {
-			y = v.knock[pos]
+			kn = v.knock[pos] * v.amp
 		}
 		if pos < len(v.exc)+maxStrikeSpread {
 			v.excPos++
+		}
+
+		// settling: the loops a little shorter while the strings are still stretched
+		if v.settle > 1e-3 {
+			v.settle *= v.settleDecay
+			shift := period * v.settle * (math.Ln2 / 1200)
+			for _, s := range v.strings {
+				s.shift = shift
+			}
+		} else if v.settle > 0 {
+			v.settle = 0
+			for _, s := range v.strings {
+				s.shift = 0
+			}
 		}
 
 		// the strings: what comes around every loop reaches the bridge
@@ -477,8 +511,11 @@ func (v *Voice) Synthesize() {
 		}
 
 		// the bark: phantom partials from the square of the motion, in the longitudinal mode
-		if v.barkLevel > 0 {
-			sq := t * t
+		if v.barkLevel > 0 && v.force > 0 {
+			// the stretch goes with the square of the motion: relative to the strike (the speed
+			// of the hammer is in barkLevel), so it doesn't depend on the level of the note
+			tn := t / v.force
+			sq := tn * tn * v.force
 			v.barkDC += dcCoef * (sq - v.barkDC)
 			hp := sq - v.barkDC
 			bp := v.b0*(hp-v.bx2) - v.a1*v.by1 - v.a2*v.by2
@@ -510,9 +547,15 @@ func (v *Voice) Synthesize() {
 			t += v.thumpRe
 		}
 
-		y += t
-		y *= v.amp
-		peak = math.Max(peak, math.Abs(y))
+		y := t * v.amp
+		peak = math.Max(peak, math.Max(math.Abs(y), math.Abs(kn)))
+		// the knock is the soundboard already: in an instrument it is heard beside the soundboard,
+		// not through it again
+		if v.knockOut != nil {
+			v.knockOut[i] = kn
+		} else {
+			y += kn
+		}
 
 		if len(outs) == 1 {
 			outs[0][i] = float32(y)
@@ -589,7 +632,7 @@ func keyRandom(key int, salt float64) float64 {
 // keyBalanceTable is the gain of the keys that evens out their loudness (the higher strings keep
 // more of the strike, the ear hears the bass less), the top a little quieter like a real piano
 var keyBalanceTable = func() [][2]float64 {
-	db := [][2]float64{{21, 15}, {33, 10}, {45, 4.5}, {57, 0}, {69, -1}, {81, -2}, {93, -3}, {99, -1.5}, {105, 1.8}, {108, 0}}
+	db := [][2]float64{{21, 15}, {33, 10}, {45, 4.5}, {57, 0}, {63, 0.8}, {69, -1}, {81, -2}, {93, -3}, {99, -3.5}, {105, 1.8}, {108, 0}}
 	for i := range db {
 		db[i][1] = math.Pow(10, db[i][1]/20)
 	}

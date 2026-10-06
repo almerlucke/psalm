@@ -17,11 +17,12 @@ import (
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/score"
-	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
+	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/tools/harmony"
 	"github.com/almerlucke/psalm/tools/render"
+	"github.com/almerlucke/sndfile"
 )
 
 type (
@@ -43,6 +44,18 @@ const (
 	musicBox = "Toy: a music box"
 )
 
+// the parade: the other presets play the same phrase one after the other
+var parade = []struct {
+	name, section string
+	preset        func() piano.Config
+}{
+	{"concert", "Parade: concert, the grand from the audience", piano.ConcertPreset},
+	{"warm", "Parade: warm, a grand in a jazz club", piano.WarmPreset},
+	{"baby", "Parade: baby, a small grand", piano.BabyPreset},
+	{"vintage", "Parade: vintage, an old upright", piano.VintagePreset},
+	{"cinematic", "Parade: cinematic, soft and dark from the hall", piano.CinematicPreset},
+}
+
 func main() {
 	renderTo := flag.String("render", "", "render one pass to this WAV file instead of playing it")
 	seed := flag.Uint64("seed", 0, "seed for the human feel: the same seed plays the same, 0 is new every run")
@@ -61,27 +74,31 @@ func main() {
 	}
 	defer p.Close()
 
-	form := arrange.NewForm(
-		S{Name: nocturne, Bars: 8},
-		S{Name: dynamics, Bars: 4},
-		S{Name: keyboard, Bars: 3},
-		S{Name: pedal, Bars: 4},
-		S{Name: sost, Bars: 4},
-		S{Name: soft, Bars: 4},
-		S{Name: pop, Bars: 4},
-		S{Name: hymn, Bars: 4},
-		S{Name: boogie, Bars: 4},
-		S{Name: ambient, Bars: 4},
-		S{Name: musicBox, Bars: 4},
-	)
+	sections := []S{
+		{Name: nocturne, Bars: 8},
+		{Name: dynamics, Bars: 4},
+		{Name: keyboard, Bars: 3},
+		{Name: pedal, Bars: 4},
+		{Name: sost, Bars: 4},
+		{Name: soft, Bars: 4},
+		{Name: pop, Bars: 4},
+		{Name: hymn, Bars: 4},
+		{Name: boogie, Bars: 4},
+		{Name: ambient, Bars: 4},
+		{Name: musicBox, Bars: 4},
+	}
+	for _, pr := range parade {
+		sections = append(sections, S{Name: pr.section, Bars: 4})
+	}
+	form := arrange.NewForm(sections...)
 
-	// --- the pianos, all on the mixer with a hall ---
+	// --- the pianos, all on the mixer with a hall: the Musikverein in Vienna, a recorded impulse
+	// response through the convolver (large partitions keep it cheap, on a bus their latency is a
+	// pre delay) ---
 
 	mix := mixer.New(p)
-	hall := fdnreverb.DefaultConfig()
-	hall.Decay = 2.4
-	hall.Mix = 1
-	mix.Bus("hall", mixer.StripConfig{}, fdnreverb.New(hall).AddTo(p))
+	vienna := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/Musikvereinsaal.wav"))
+	mix.Bus("hall", mixer.StripConfig{}, convolver.New(vienna, convolver.Config{PartitionSize: 2048, Mix: 1, Gain: 0.7}).AddTo(p))
 
 	type instrument struct {
 		name   string
@@ -97,6 +114,11 @@ func main() {
 		{"honkyTonk", piano.HonkyTonkPreset, 12, 0.12},
 		{"felt", piano.FeltPreset, 16, 0.45},
 		{"toy", piano.ToyPreset, 8, 0.35},
+		{"concert", piano.ConcertPreset, 16, 0.3},
+		{"warm", piano.WarmPreset, 16, 0.25},
+		{"baby", piano.BabyPreset, 16, 0.25},
+		{"vintage", piano.VintagePreset, 16, 0.2},
+		{"cinematic", piano.CinematicPreset, 16, 0.4},
 	} {
 		synth := piano.NewPoly(in.preset(), in.voices).AddTo(p)
 		pianos[in.name] = synth
@@ -334,6 +356,40 @@ func main() {
 		return score.MustParse(`[48 55]:2 [48 55] | [41 53] [43 55] | [43 55] [45 52] | [43 53] [48 55]`)
 	})
 
+	// --- the parade: one phrase in A minor on every other preset ---
+
+	paradeChords := harmony.MustProgression("Am F C G")
+	melody := score.MustParse(`
+		E5:1.5@.65 D5:.5@.55 C5:1@.6 B4:1@.55 | A4:1.5@.6 C5:.5@.55 F5:2@.7 |
+		E5:1@.6 G5:1@.65 C5:2@.6 | B4:1@.55 D5:1@.6 G5:2_3@.65`)
+	for _, pr := range parade {
+		section := pr.section
+		part(pr.name, pr.name+" melody", 0.6, score.Feel{Timing: 12, Velocity: 0.08, Push: 8}, func(s S) []N {
+			if s.Name != section {
+				return nil
+			}
+			return melody
+		})
+		part(pr.name, pr.name+" left hand", 0.45, human, func(s S) []N {
+			if s.Name != section {
+				return nil
+			}
+			return arrange.PerBar(s, func(b int) []N {
+				c := paradeChords[b%4]
+				ps := c.Pitches(c.BassPitch(33))
+				root, third, fifth := ps[0], ps[1], ps[2]
+				var ns []N
+				for i, pitch := range []float64{root, fifth, root + 12, third + 12, fifth + 12, third + 12, root + 12, fifth} {
+					n := score.N(pitch, 0.5)
+					n.Velocity = []float64{0.6, 0.4, 0.45, 0.4, 0.5, 0.4, 0.45, 0.4}[i]
+					n.Hold = 2
+					ns = append(ns, n)
+				}
+				return ns
+			})
+		})
+	}
+
 	// --- the arrangement: tempo per section and the sustain pedals ---
 
 	// the pedal goes up at every bar line, just long enough to clear the old chord, and down again
@@ -389,6 +445,9 @@ func main() {
 		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{hymn: changed(4)}}, pianos["upright"], "sustain").
 		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{ambient: arrange.Const(1)}}, pianos["felt"], "sustain").
 		PrintSections(true)
+	for _, pr := range parade {
+		arrangement.AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{pr.section: changed(4)}}, pianos[pr.name], "sustain")
+	}
 	arrangement.AddTo(p)
 
 	fmt.Println("The piano")

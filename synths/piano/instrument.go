@@ -36,8 +36,9 @@ type Piano struct {
 	hz        float64
 	dry       [2][]float64 // the strings, delayed as long as the soundboard takes
 	dryPos    int
-	sustain   float64   // the sustain pedal, 0 up to 1 down
-	caught    [128]bool // the keys the sostenuto pedal holds undamped
+	knock     [2][]float64 // the knocks of the voices, heard beside the soundboard
+	sustain   float64      // the sustain pedal, 0 up to 1 down
+	caught    [128]bool    // the keys the sostenuto pedal holds undamped
 	sostenuto bool
 	pedal     struct { // the noise of the sustain pedal: the dampers lifting and landing
 		noise, lp, hp float64
@@ -86,7 +87,11 @@ func NewPoly(cfg Config, numVoices int) *Piano {
 	}
 	for _, v := range voices {
 		v.sostenuto = &p.caught
+		v.knockOut = make([]float64, p.Config().BufferSize)
 	}
+	p.knock = [2][]float64{make([]float64, p.Config().BufferSize), make([]float64, p.Config().BufferSize)}
+	voices[0].prepareHammers() // the felts are shared by the voices of the same settings
+	p.idle = idleSamples + 1   // silent until the first note
 	p.mixed = psalm.NewChannels(cfg.NumChannels, p.Config().BufferSize)
 	p.fadeOut = psalm.NewChannels(cfg.NumChannels, p.Config().BufferSize)
 	ir := cfg.SoundboardIR
@@ -109,15 +114,14 @@ func NewPoly(cfg Config, numVoices int) *Piano {
 func (p *Piano) buildBank() {
 	cfg := &p.cfg
 	sr := p.Config().SampleRate
-	disp := dispersion(sr, math.Max(0, cfg.Stiffness))
 	p.bank = p.bank[:0]
 	for key := 21; key <= 108; key++ {
 		pitch := float64(key)
 		d := stringDesign{
 			sr:         sr,
 			f0:         440 * math.Exp2((stretched(pitch, cfg)-69)/12),
-			stages:     disp[key].stages,
-			ad:         disp[key].ad,
+			// no stiffness: the strings ringing along are quiet, their partials stretched or not
+			// can't be heard, and without the allpasses all 88 cost much less
 			t60:        ringTime(pitch) * math.Max(0.05, cfg.Decay) * afterFactor,
 			damping:    highDamping * math.Max(0, cfg.Damping),
 			damperTime: math.Max(0.02, cfg.DamperTime) * (1 + math.Max(0, (48-pitch)/24)),
@@ -127,6 +131,7 @@ func (p *Piano) buildBank() {
 		pan := keyPan(pitch, cfg)
 		s.gainL, s.gainR = math.Cos(pan*math.Pi/2), math.Sin(pan*math.Pi/2)
 		s.damper = s.damped
+		s.quiet = 4097 // silent until something reaches it
 		p.bank = append(p.bank, s)
 	}
 }
@@ -226,6 +231,12 @@ func (p *Piano) ReceiveMessage(msg psalm.Message) {
 			break
 		}
 	}
+	for _, k := range []string{"hardness", "strikePosition", "variation", "stretch", "stiffness"} {
+		if _, ok := msg[k]; ok {
+			p.voices[0].prepareHammers()
+			break
+		}
+	}
 	if _, ok := msg["position"]; ok {
 		p.listener = newListener(p.cfg.Position, p.Config().SampleRate)
 	}
@@ -306,10 +317,17 @@ func (p *Piano) Synthesize() {
 	} else {
 		p.mixed.Clear()
 	}
+	clear(p.knock[0])
+	clear(p.knock[1])
 	for _, v := range p.voices {
 		if v.IsActive() {
+			clear(v.knockOut)
 			v.Synthesize()
 			p.mixed.Accum(v.Output(0).Channels)
+			for i, k := range v.knockOut {
+				p.knock[0][i] += k * v.gainL
+				p.knock[1][i] += k * v.gainR
+			}
 		}
 	}
 
@@ -410,7 +428,8 @@ func (p *Piano) Synthesize() {
 		m := float32((l + r) * 0.5)
 		boardIn[0][i], boardIn[1][i] = m, m
 		dl, dr := p.dry[0][p.dryPos], p.dry[1][p.dryPos]
-		p.dry[0][p.dryPos], p.dry[1][p.dryPos] = l, r
+		// the knock joins the direct sound (which is scaled by direct later)
+		p.dry[0][p.dryPos], p.dry[1][p.dryPos] = l+p.knock[0][i]/direct, r+p.knock[1][i]/direct
 		p.dryPos = (p.dryPos + 1) % len(p.dry[0])
 		out[0][i] = float32(dl)
 		if len(out) > 1 {

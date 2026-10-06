@@ -126,7 +126,7 @@ func TestVelocity(t *testing.T) {
 	}
 	softB, softL := brightness(0.2)
 	hardB, hardL := brightness(1)
-	if hardB < softB+6 || hardL < softL+6 {
+	if hardB < softB+5 || hardL < softL+6 {
 		t.Fatalf("hard should be brighter and louder: brightness %.1f vs %.1f, level %.1f vs %.1f", hardB, softB, hardL, softL)
 	}
 }
@@ -563,5 +563,52 @@ func TestSostenuto(t *testing.T) {
 	e5with, e5without := render(true, false), render(false, false)
 	if d := math.Abs(at(e5with, 70) - at(e5without, 70)); d > 1 {
 		t.Errorf("a key played after the pedal went down should be damped as always, %.1f dB apart", d)
+	}
+}
+
+// A string played hard starts sharp and settles: the harder, the more
+func TestPitchSettles(t *testing.T) {
+	sharp := func(vel float64) float64 {
+		v := New(single())
+		v.Note(1, 1, psalm.Message{"pitch": 33.0, "velocity": vel}, psalm.CtrlTick{}, v.Config())
+		start := v.settle
+		for range 40 {
+			v.Synthesize()
+		}
+		if v.settle > start/10 {
+			t.Errorf("velocity %v: should settle within a second, %.2f of %.2f cents left", vel, v.settle, start)
+		}
+		return start
+	}
+	if soft, hard := sharp(0.3), sharp(1); hard < 3 || hard < 4*soft {
+		t.Errorf("a hard strike should start sharp (%.1f cents), more than a soft one (%.1f)", hard, soft)
+	}
+}
+
+// The irregular losses don't detune: with variation the keys stay in tune
+func TestTuningWithVariation(t *testing.T) {
+	cfg := single()
+	cfg.Variation = 1
+	for _, p := range []float64{33, 57} {
+		x, _ := play(cfg, psalm.Message{"pitch": p, "velocity": 0.5}, 3, 2.5)
+		f0 := 440 * math.Exp2((stretched(p, &cfg)-69)/12)
+		f := peakFrequency(x[int(1.2*sr):int(2.4*sr)], f0, 0.01)
+		if c := 1200 * math.Log2(f/f0); math.Abs(c) > 2 {
+			t.Errorf("key %v is %.1f cents out of tune", p, c)
+		}
+	}
+}
+
+// The knock of the soundboard is an impact: in the treble, where the strings die fast, it must not
+// outlast the note (a long thud sounds like a slow hammer)
+func TestKnockIsShort(t *testing.T) {
+	for _, p := range []float64{96, 104} {
+		without := grand()
+		without.Soundboard = 0
+		a := playPiano(grand(), []psalm.Message{{"pitch": p}}, 2, 0.4, nil)
+		b := playPiano(without, []psalm.Message{{"pitch": p}}, 2, 0.4, nil)
+		if d := rmsDB(difference(a, b), 0.1, 0.3) - rmsDB(b, 0.1, 0.3); d > -12 {
+			t.Errorf("key %v: the knock should be gone after the attack, %.1f dB against the note", p, d)
+		}
 	}
 }

@@ -695,10 +695,22 @@ What makes it a piano:
   the bridge: what they do together drains into the soundboard, what they do against each other
   lasts, and the bridge passes energy between them and to the other polarization (Weinreich's
   coupled strings). So a note falls fast, then lingers and breathes as the strings trade energy.
-- **A felt hammer.** The hammer pushes the string for a few milliseconds, longer in the bass; the
-  felt stiffens as it is compressed, so the harder the key is played, the shorter and peakier the
-  push and the brighter the tone. The strike position leaves out the harmonics with a node where
-  the hammer hits, and the soundboard knock is heard with it.
+- **A felt hammer that meets the string.** Every strike is simulated: the hammer (its mass, heavier
+  in the bass) flies at the string, its felt stiffens steeply as it is compressed and pushes harder
+  going in than coming out (hysteresis), the string gives way under it and the waves leaving the
+  strike point come back from both ends. The force that results is the strike: a few milliseconds
+  in the bass, a fraction in the treble, shorter and sharper the harder the key is played (a soft
+  note is round, a loud one bright), and on some keys the hammer bounces and hits twice. The felt
+  of every key is fitted once (when the piano is made) so velocity 0.8 sounds as voiced. The strike
+  position leaves out the harmonics with a node where the hammer hits, and the soundboard knock is
+  heard with it: a short impact, shorter in the treble (from about 80 ms in the bass to about 12 ms
+  at the top), so it never outlasts the short high notes.
+- **A string played hard settles.** Its own motion stretches it, so it starts a little sharp (up to
+  about 5 cents in the bass at full velocity, a cent at the top) and settles within a few hundred
+  milliseconds.
+- **Irregular partials.** The partials of a real string don't die away evenly: the bridge takes
+  more at some frequencies than at others. Every string has a slightly different pattern of
+  partials that decay faster (up to 3 dB per second, with `Variation`).
 - **A soundboard** every string sounds through: a board of spruce made of its modes (a few hundred:
   sparse in the bass, one every 20-odd Hz higher up, with the low Q of wood, radiating the bass
   weakly and rolling off the highs), heard from a different place on every side of the stereo image.
@@ -754,8 +766,9 @@ voice sounds until its strings have died away, the dampers stopped them, or as l
 held; with the pedal down that can take many seconds. The voices are handed out like piano keys: a
 key that still sounds is struck again on its own strings (adding to their vibration, no new voice,
 nothing cut off); a new key takes a free voice or, when all sound, the quietest one (released keys
-before held ones). The stiffness of the strings is fitted
-when the voices are created (a few tens of milliseconds per stiffness). Sixteen sounding voices with
+before held ones). The strings and the hammers of all keys are fitted
+when the piano is created (some tens of milliseconds), so playing it does no fitting: a silent piano
+rests from the start, a note costs a fraction of a millisecond. Sixteen sounding voices with
 the pedal down take about 10% of a core; a piano that is silent rests. The instrument sounds 128
 samples (3 ms) late, the time the soundboard convolution takes; it reports that latency, so a
 mixer lines the other strips up with it.
@@ -775,7 +788,7 @@ and `soft` (above 0.5 is down).
 | `Bark` | 0.5 | 0-1, the bark of the bass strings played hard (phantom partials, longitudinal mode) |
 | `Mechanics` | 0.5 | 0-1, the noise of the action: dampers, keys, the sustain pedal |
 | `Stretch` | 1 | How much of a tuner's stretch tuning, 0 is equal temperament |
-| `Variation` | 0.5 | 0-1, how different the keys and every strike are |
+| `Variation` | 0.5 | 0-1, how different the keys and every strike are, and how irregularly the partials decay |
 | `Position` | `Player` | `Player`, `Studio` or `Hall`: where the piano is heard from |
 | `Resonance` | 0.5 | 0-1, sympathetic resonance of the strings whose dampers are up |
 | `Stiffness` | 1 | Inharmonicity, 1 is a grand, more an upright (or a toy, a struck rod), 0 perfectly harmonic |
@@ -788,11 +801,23 @@ and `soft` (above 0.5 is down).
 | `VelocitySens` | 0.7 | 0-1, how much the velocity changes the level |
 | `Level` | 1 | Output level |
 
-**Presets** (`piano.Presets` by name): `grand` (concert grand), `bright` (hard hammers for pop and
-rock), `upright` (stiffer, shorter, boxier, a little out of tune), `felt` (a felt piano, soft and
-close, for quiet music and ambient), `honkyTonk` (strings far out of tune with each other), `toy`
-(one very stiff, short string per key, not stretched). `felt` is heard from `Studio`, the others
-from `Player`. A struck string peaks high above its loudness, so the
+**Presets** (`piano.Presets` by name):
+
+| Preset | Character |
+|---|---|
+| `grand` | A concert grand as it is usually recorded, from close microphones: warm hammers, a lot of soundboard and wood, strings that beat a little |
+| `concert` | The grand from the audience: the lid throwing the sound into the hall, brighter hammers to carry |
+| `warm` | A grand in a jazz club: close, round hammers, a rich body, the strings ringing along freely |
+| `baby` | A small grand: shorter, stiffer strings, less sustain, a boxier soundboard |
+| `bright` | Hard hammers for pop and rock, clean and present |
+| `upright` | Stiffer, shorter, boxier, a little out of tune |
+| `vintage` | An old upright: worn hammers gone hard, strings drifting apart, a noisy action |
+| `felt` | A felt piano, soft and close, for quiet music and ambient |
+| `cinematic` | Soft, dark hammers from the hall, a lot of sympathetic resonance: the slow film-score piano |
+| `honkyTonk` | Strings far out of tune with each other |
+| `toy` | One very stiff, short string per key, not stretched |
+
+A struck string peaks high above its loudness, so the
 presets are calibrated to a -1 dB peak at velocity 0.8 (about -14 LUFS); played harder they go
 over, leave headroom or use the mixer's limiter.
 

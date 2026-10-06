@@ -24,8 +24,11 @@ type str struct {
 	in     float64                   // how much of the strike reaches this string
 	y      float64                   // the last sample around the loop
 	delay  int                       // samples the strike reaches this string late
-	damper float64                   // gain per loop the damper takes away, 1 is lifted
-	damped float64                   // that gain with the damper down
+	shift  float64                   // samples the loop is shorter for now (a string played hard settles)
+	hist   []float64                 // the loop signal, for the irregular losses
+	hpos   int
+	damper float64 // gain per loop the damper takes away, 1 is lifted
+	damped float64 // that gain with the damper down
 }
 
 // stringParams are the filters of a string at its pitch
@@ -36,6 +39,8 @@ type stringParams struct {
 	ad     float64 // their coefficient
 	at     float64 // tuning allpass coefficient
 	damped float64 // loop gain the damper adds when down
+	m      int     // the irregular losses: a comb of m samples
+	eps    float64 // and its depth
 }
 
 func newString(p stringParams) *str {
@@ -58,6 +63,15 @@ func (s *str) reset(p stringParams) {
 	s.dx, s.dy = [dispersionStages]float64{}, [dispersionStages]float64{}
 	s.tx, s.ty = 0, 0
 	s.in = 1
+	s.shift = 0
+	if p.eps > 0 {
+		if cap(s.hist) < p.m+1 {
+			s.hist = make([]float64, p.m+1)
+		}
+		s.hist = s.hist[:p.m+1]
+		clear(s.hist)
+		s.hpos = 0
+	}
 	s.damper = 1
 	s.damped = p.damped
 }
@@ -73,6 +87,25 @@ func (s *str) tick(x float64) float64 {
 func (s *str) next() float64 {
 	p := &s.params
 	u := s.buf[s.pos]
+	if s.shift > 1e-4 {
+		// shorter for now: read the loop a fraction of a sample later (linear, which never adds
+		// gain, so the loop stays stable)
+		n := p.n
+		at := float64(s.pos) + math.Min(s.shift, float64(n-2))
+		i := int(at)
+		f := at - float64(i)
+		u = s.buf[i%n] + (s.buf[(i+1)%n]-s.buf[i%n])*f
+	}
+
+	// the irregular losses: some partials lose more than others (the bridge takes more at some
+	// frequencies), a shallow comb
+	if p.eps > 0 {
+		m := len(s.hist)
+		old := s.hist[(s.hpos+1)%m] // params.m samples ago
+		s.hist[s.hpos] = u
+		s.hpos = (s.hpos + 1) % m
+		u = (1-p.eps)*u + p.eps*old
+	}
 
 	// losses: a one pole lowpass, the highs lose more every loop
 	s.loss = p.g*(1+p.a)*u - p.a*s.loss
@@ -108,6 +141,8 @@ type stringDesign struct {
 	damping    float64 // highDamping times the setting
 	damperTime float64 // seconds to fall 60 dB with the damper down
 	stages     int     // dispersion allpasses (see dispersion)
+	m          int     // the irregular losses (see irregular)
+	eps        float64
 	ad         float64 // and their coefficient
 }
 
@@ -136,6 +171,7 @@ func designString(d stringDesign) stringParams {
 	}
 
 	p.stages, p.ad = d.stages, d.ad
+	p.m, p.eps = d.m, d.eps
 	if float64(p.stages)*allpassDelay(p.ad, w0) > 0.5*period { // a stage count from another key
 		p.stages, p.ad = 0, 0
 	}
@@ -257,6 +293,10 @@ func allpassDelay(a, w float64) float64 { return phaseDelay(a, 1, a, w) }
 // filterDelay returns the phase delay at w of the loss filter and the dispersion allpasses
 func filterDelay(p stringParams, ad, w float64) float64 {
 	d := phaseDelay(p.g*(1+p.a), 0, p.a, w)
+	if p.eps > 0 {
+		h := complex(1-p.eps, 0) + complex(p.eps, 0)*cmplx.Exp(complex(0, -w*float64(p.m)))
+		d += -cmplx.Phase(h) / w
+	}
 	if p.stages > 0 {
 		d += float64(p.stages) * allpassDelay(ad, w)
 	}
@@ -352,3 +392,19 @@ func inharmonicity(pitch float64) float64 { return interpolate(inharmonicityTabl
 // ringTime is how long the fundamental of a key takes to fall 60 dB, from about 20 seconds in the
 // low bass to under 2 at the top
 func ringTime(pitch float64) float64 { return 20 * math.Exp2(-(pitch-21)/24) }
+
+// irregular returns the comb of the irregular losses of a string: a length that is a part of the
+// loop (another for every key and string, so the pattern over the partials differs), deep enough
+// that the partials it takes most from lose up to irregularDB dB per second more, times amount
+func irregular(period, f0 float64, key, string int, amount float64) (int, float64) {
+	if amount <= 0 {
+		return 0, 0
+	}
+	r := 0.31 + 0.19*(keyRandom(key, 7+float64(string))+1)
+	m := max(2, int(math.Round(period*r)))
+	// a loss of 2 eps per loop at most, f0 loops a second
+	return m, amount * irregularDB / (2 * 8.686 * f0)
+}
+
+// irregularDB is how much faster (dB per second) the partials decay that lose most
+const irregularDB = 3.0
