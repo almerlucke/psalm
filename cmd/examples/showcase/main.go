@@ -19,8 +19,11 @@ package main
 //	aurora      wavetable drone on a generated random spectra table
 //
 // The strings run through a ladder lowpass that opens at dawn (the prelude) and closes at dusk
-// (the coda), which slows down in its last four bars. The whole orchestra sits in an FDN hall and
-// a soft clipper guards the master.
+// (the coda), which slows down in its last four bars.
+//
+// Everything plays through a mixer: the strings and the choir are groups with their own inserts
+// (the dawn filter, the church), the hall reverb and the shimmering sky are effect buses every
+// instrument sends to in its own amount, and a lookahead limiter guards the master.
 //
 // The piece is built with the arrange and score packages: the form lists the sections, every part
 // is written per section in beats (the melodies in score notation) and the arrangement automates
@@ -28,7 +31,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
@@ -43,12 +45,12 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/granulator"
 	"github.com/almerlucke/psalm/modules/effects/latency"
-	"github.com/almerlucke/psalm/modules/effects/pan"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/effects/pitchshift"
 	"github.com/almerlucke/psalm/modules/effects/shimmer"
 	"github.com/almerlucke/psalm/modules/effects/vocoder"
 	"github.com/almerlucke/psalm/modules/filters"
+	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/modules/player"
 	"github.com/almerlucke/psalm/synths/dx"
@@ -143,41 +145,44 @@ func harpArp(c chord) []score.Note {
 	return notes
 }
 
-// softClip keeps the master below full scale: transparent below 0.7, smoothly rounding above
-type softClip struct {
-	*psalm.Module
-}
-
-func newSoftClip() *softClip {
-	c := &softClip{Module: psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo})}
-	c.SetSelf(c)
-	return c
-}
-
-func (c *softClip) Synthesize() {
-	const knee = 0.7
-	ins := c.Input(0).Channels
-	outs := c.Output(0).Channels
-	for ch := range outs {
-		for i, x := range ins[ch] {
-			v := float64(x)
-			if a := math.Abs(v); a > knee {
-				v = math.Copysign(knee+(1-knee)*math.Tanh((a-knee)/(1-knee)), v)
-			}
-			outs[ch][i] = float32(v)
-		}
-	}
-}
-
 func main() {
 	psalm.PushConfig(psalm.Config{BPM: bpm, PPQ: 240, SampleRate: 44100, BufferSize: 1024})
 
 	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
 	defer p.Close()
 
-	// the buses
-	var hall, stringBus, choirBus []any
-	route := func(bus *[]any, m psalm.Modular) { *bus = append(*bus, m, 0, 0) }
+	// --- the mixer: a hall and a shimmering sky as effect buses, the strings and the choir as
+	// groups with their own inserts ---
+
+	mix := mixer.New(p)
+	type sends = map[string]float64
+
+	hcfg := fdnreverb.DefaultConfig()
+	hcfg.Decay = 3.8
+	hcfg.Size = 0.8
+	hcfg.Damping = 0.55
+	hcfg.PreDelay = 30
+	hcfg.Mix = 1
+	mix.Bus("hall", mixer.StripConfig{}, fdnreverb.New(hcfg).AddTo(p))
+
+	scfg := shimmer.DefaultConfig()
+	scfg.Reverb.Decay = 7
+	scfg.Shimmer = 0.45
+	scfg.Mix = 1
+	mix.Bus("sky", mixer.StripConfig{}, shimmer.New(scfg).AddTo(p))
+
+	// the strings play through the dawn and dusk filter
+	stringFilter := filters.NewLadder(ladder.LowPass12, 250, 0.1, 1.0)
+	stringFilter.AddTo(p)
+	mix.Group("strings", mixer.StripConfig{Sends: sends{"hall": 0.4}}, stringFilter)
+
+	// the choir sings in a church: a highpass cleans the lows, a recorded church response (large
+	// partitions keep it cheap, their latency is a natural pre delay)
+	choirClean := filters.NewSVF(svf.HighPass, 120, 0.1)
+	choirClean.AddTo(p)
+	church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
+	mix.Group("choir", mixer.StripConfig{}, choirClean,
+		convolver.New(church, convolver.Config{PartitionSize: 4096, Mix: 0.4, Gain: 0.15}).AddTo(p))
 
 	// --- strings ---
 
@@ -187,23 +192,18 @@ func main() {
 	violins := wavetable.NewPoly(violinsCfg, 16).AddTo(p)
 	violins.ValueIn(lfo.New(true, 0.05, 0.7, 0.9, lfo.Sine).AddTo(p), 0, 1) // the bowing breathes
 	violinsChorus := chorus.New(0.3, 0.3, 0.4, 0.1, 1.0, 0.35, nil).AddTo(p).In(violins)
-	route(&stringBus, pan.New(-0.35).AddTo(p).In(violinsChorus))
+	mix.Channel("violins", violinsChorus, mixer.StripConfig{Pan: -0.35, Group: "strings"})
 
 	celli := subtractive.NewPoly(subtractive.StringsPreset(), 8).AddTo(p)
-	route(&stringBus, pan.New(0.35).AddTo(p).In(celli))
-
-	stringFilter := filters.NewLadder(ladder.LowPass12, 250, 0.1, 1.0)
-	stringFilter.AddTo(p)
-	stringFilter.In(stringBus...)
-	route(&hall, stringFilter)
+	mix.Channel("celli", celli, mixer.StripConfig{Pan: 0.35, Group: "strings"})
 
 	pizz := fm.NewPoly(fm.UprightBassPreset(), 2).AddTo(p)
-	route(&hall, pan.New(0.45).AddTo(p).In(pizz))
+	mix.Channel("pizzicato", pizz, mixer.StripConfig{Volume: -3, Pan: 0.45, Sends: sends{"hall": 0.25}})
 
 	// --- harp: freeverb, then the granulator ---
 
 	harp := fm.NewPoly(fm.HarpPreset(), 12).AddTo(p)
-	harpRoom := freeverb.New(0.5, 0.4, 1.0, 0.25, 0.9).AddTo(p).In(pan.New(0.55).AddTo(p).In(harp))
+	harpRoom := freeverb.New(0.5, 0.4, 1.0, 0.25, 0.9).AddTo(p).In(harp)
 	gcfg := granulator.DefaultConfig()
 	gcfg.Mix = 0
 	gcfg.Delay = 300
@@ -214,46 +214,35 @@ func main() {
 	gran := granulator.New(gcfg)
 	gran.AddTo(p)
 	gran.In(harpRoom)
-	route(&hall, gran)
+	mix.Channel("harp", gran, mixer.StripConfig{Volume: -3, Pan: 0.55, Sends: sends{"hall": 0.5}})
 
 	// --- winds and brass ---
 
 	flute := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
 	piccolo := pitchshift.New(12, 60, 0.15).AddTo(p).In(flute) // an octave shadow above
-	route(&hall, pan.New(-0.1).AddTo(p).In(piccolo))
+	mix.Channel("flute", piccolo, mixer.StripConfig{Volume: -3, Pan: -0.1, Sends: sends{"hall": 0.4, "sky": 0.1}})
 
 	horns := dx.NewPoly(dx.SoftBrass(), 12, psalm.Stereo).AddTo(p)
-	route(&hall, pan.New(-0.2).AddTo(p).In(horns))
+	mix.Channel("horns", horns, mixer.StripConfig{Volume: -3, Pan: -0.2, Sends: sends{"hall": 0.45}})
 
 	hornSolo := fm.NewPoly(fm.FrenchHornPreset(), 2).AddTo(p)
-	route(&hall, pan.New(0.25).AddTo(p).In(hornSolo))
+	mix.Channel("horn solo", hornSolo, mixer.StripConfig{Volume: -3, Pan: 0.25, Sends: sends{"hall": 0.4}})
 
-	// --- choir: grains on a choir recording, a pulsar choir and the soprano, in a church ---
+	// --- choir: grains on a choir recording, a pulsar choir and the soprano ---
 
 	choirRec := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-angelical-choir-654.wav", 4)
 	choir := grains.NewPoly(grains.ChoirPad(choirRec, 60), 12).AddTo(p)
-	route(&choirBus, choir)
+	mix.Channel("grains choir", choir, mixer.StripConfig{Group: "choir"})
 	ooh := pulsar.NewPoly(pulsar.ChoirPreset(), 12).AddTo(p)
-	route(&choirBus, ooh)
+	mix.Channel("ooh", ooh, mixer.StripConfig{Group: "choir"})
 	soprano := pulsar.NewPoly(pulsar.VowelLeadPreset(), 2).AddTo(p)
-	route(&choirBus, soprano)
-
-	choirClean := filters.NewSVF(svf.HighPass, 120, 0.1)
-	choirClean.AddTo(p)
-	choirClean.In(choirBus...)
-	church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
-	// large partitions keep the long church response cheap, their latency is a natural pre delay
-	choirChurch := convolver.New(church, convolver.Config{PartitionSize: 4096, Mix: 0.4, Gain: 0.15}).AddTo(p).In(choirClean)
+	mix.Channel("soprano", soprano, mixer.StripConfig{Group: "choir", Sends: sends{"sky": 0.15}})
 
 	// --- interlude colours: celesta, bell pad, vocoder, droplets ---
 
 	celesta := fm.NewPoly(fm.CelestaPreset(), 8).AddTo(p)
-	celestaEcho := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.3, HighCut: 5000, LowCut: 200}).AddTo(p).In(pan.New(0.3).AddTo(p).In(celesta))
-	scfg := shimmer.DefaultConfig()
-	scfg.Reverb.Decay = 7
-	scfg.Shimmer = 0.45
-	scfg.Mix = 0.45
-	celestaSky := shimmer.New(scfg).AddTo(p).In(celestaEcho)
+	celestaEcho := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.3, HighCut: 5000, LowCut: 200}).AddTo(p).In(celesta)
+	mix.Channel("celesta", celestaEcho, mixer.StripConfig{Volume: -5, Pan: 0.3, Sends: sends{"sky": 0.8}})
 
 	speech := player.New(player.Config{
 		SndFile: sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4),
@@ -271,20 +260,21 @@ func main() {
 	voc := vocoder.New(vocoder.DefaultConfig())
 	voc.AddTo(p)
 	voc.In(speech, 0, 0, carrier, 0, 1)
-	route(&hall, voc)
+	mix.Channel("voices", voc, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
 
 	bellPad := dx.NewPoly(dx.BellPad(), 12, psalm.Stereo).AddTo(p)
 	bellFlange := flanger.New(0.08, 0.5, 0.4, 0.4, nil).AddTo(p).In(bellPad)
 	// the vocoder sounds an FFT frame late, the bell pad waits for it
-	route(&hall, latency.New(psalm.Stereo, voc.Latency()).AddTo(p).In(bellFlange))
+	bellAligned := latency.New(psalm.Stereo, voc.Latency()).AddTo(p).In(bellFlange)
+	mix.Channel("bell pad", bellAligned, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
 
 	droplets := pulsar.NewPoly(pulsar.RaindropsPreset(), 2).AddTo(p)
-	route(&hall, droplets)
+	mix.Channel("droplets", droplets, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4, "sky": 0.2}})
 
 	// --- aurora: a drone on a table of random spectra, at dawn and dusk ---
 
 	aurora := wavetable.NewPoly(wavetable.DronePreset(gen.Random(64, 6, 32, 11)), 4).AddTo(p)
-	route(&hall, aurora)
+	mix.Channel("aurora", aurora, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
 
 	// --- the scores ---
 
@@ -469,24 +459,10 @@ func main() {
 		PrintSections(true)
 	arrangement.AddTo(p)
 
-	// --- the hall and the master ---
-
-	hcfg := fdnreverb.DefaultConfig()
-	hcfg.Decay = 3.8
-	hcfg.Size = 0.8
-	hcfg.Damping = 0.55
-	hcfg.PreDelay = 30
-	hcfg.Mix = 0.28
-	orchestra := fdnreverb.New(hcfg).AddTo(p).In(hall...)
-
-	master := newSoftClip()
-	master.AddTo(p)
-	master.In(orchestra, 0, 0, choirChurch, 0, 0, celestaSky, 0, 0)
-
 	fmt.Println("Aurora")
 	fmt.Print(arrangement.Schedule())
 
-	p.Out(master)
+	p.Out(mix.Master())
 
 	_ = p.Listen()
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/almerlucke/psalm/modules/player"
 	"github.com/almerlucke/psalm/synths/drums"
 	"github.com/almerlucke/sndfile"
-	"github.com/almerlucke/sndfile/writer"
 )
 
 func newTimer(mult float64, s ...any) *timer.Timer {
@@ -176,10 +175,10 @@ func main() {
 		)),
 	)
 
-	err := p.ToSoundFile("crux_fidelis.wav", writer.WAV, float64(bar)*18.3*psalm.TickDuration(), 44100.0, true)
-	if err != nil {
-		panic(err)
-	}
+	//err := p.ToSoundFile("crux_fidelis.wav", writer.WAV, float64(bar)*18.3*psalm.TickDuration(), 44100.0, true)
+	//if err != nil {
+	//	panic(err)
+	//}
 
-	//_ = p.Listen()
+	_ = p.Listen()
 }

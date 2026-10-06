@@ -1,0 +1,253 @@
+package mixer
+
+import (
+	"math"
+	"strings"
+	"testing"
+
+	"github.com/almerlucke/psalm"
+)
+
+// source plays a function of the sample index on its (mono or stereo) output
+type source struct {
+	*psalm.Module
+	n int
+	f func(n int, ch int) float64
+}
+
+func newSource(channels int, f func(n int, ch int) float64) *source {
+	s := &source{Module: psalm.NewModule(nil, []int{channels}), f: f}
+	s.SetSelf(s)
+	return s
+}
+
+func (s *source) Synthesize() {
+	out := s.Output(0).Channels
+	for i := range out[0] {
+		for ch := range out {
+			out[ch][i] = float32(s.f(s.n, ch))
+		}
+		s.n++
+	}
+}
+
+func constant(v float64) func(int, int) float64 { return func(int, int) float64 { return v } }
+
+// gainer scales its input, an insert effect for tests
+type gainer struct {
+	*psalm.Module
+	g float32
+}
+
+func newGainer(g float32) *gainer {
+	m := &gainer{Module: psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo}), g: g}
+	m.SetSelf(m)
+	return m
+}
+
+func (m *gainer) Synthesize() {
+	for ch, out := range m.Output(0).Channels {
+		for i, x := range m.Input(0).Channels[ch] {
+			out[i] = x * m.g
+		}
+	}
+}
+
+// render runs the patch and returns the master output, without the limiter latency
+func render(p *psalm.Psalm, mix *Mixer, buffers int) ([]float64, []float64) {
+	var l, r []float64
+	for range buffers {
+		p.ResetRun()
+		p.Run()
+		for i := range mix.Master().Output(0).Channels[0] {
+			l = append(l, float64(mix.Master().Output(0).Channels[0][i]))
+			r = append(r, float64(mix.Master().Output(0).Channels[1][i]))
+		}
+	}
+	lat := mix.Master().Latency()
+	return l[lat:], r[lat:]
+}
+
+func setup() (*psalm.Psalm, *Mixer) {
+	p := psalm.New(nil)
+	mix := New(p)
+	p.Out(mix.Master())
+	return p, mix
+}
+
+func last(x []float64) float64 { return x[len(x)-1] }
+
+func TestUnity(t *testing.T) {
+	p, mix := setup()
+	mix.Channel("a", newSource(psalm.Mono, constant(0.25)).AddTo(p), StripConfig{})
+	l, r := render(p, mix, 4)
+	for i := range l {
+		if math.Abs(l[i]-0.25) > 1e-6 || math.Abs(r[i]-0.25) > 1e-6 {
+			t.Fatalf("a strip at 0 dB in the centre should pass a mono source on both sides, got %v %v at %d", l[i], r[i], i)
+		}
+	}
+}
+
+func TestVolumeAndPan(t *testing.T) {
+	p, mix := setup()
+	mix.Channel("a", newSource(psalm.Mono, constant(0.25)).AddTo(p), StripConfig{Volume: -6, Pan: -1})
+	l, r := render(p, mix, 4)
+	want := 0.25 * DB(-6) * math.Sqrt2 // equal power: hard left gets the power of both sides
+	if math.Abs(last(l)-want) > 1e-6 || math.Abs(last(r)) > 1e-6 {
+		t.Fatalf("expected %v on the left only, got %v %v", want, last(l), last(r))
+	}
+}
+
+func TestSendsAndBuses(t *testing.T) {
+	p, mix := setup()
+	mix.Bus("fx", StripConfig{Volume: -6}, newGainer(1).AddTo(p))
+	mix.Channel("a", newSource(psalm.Mono, constant(0.2)).AddTo(p), StripConfig{Volume: -120, Sends: map[string]float64{"fx": 0.5}})
+	mix.Channel("b", newSource(psalm.Mono, constant(0.2)).AddTo(p), StripConfig{Volume: -120, PreFader: true, Sends: map[string]float64{"fx": 0.5}})
+	l, _ := render(p, mix, 4)
+	// a sends after its (silent) fader: nothing; b before it: 0.1, returned at -6 dB
+	if want := 0.1 * DB(-6); math.Abs(last(l)-want) > 1e-6 {
+		t.Fatalf("expected only the pre fader send to return, %v, got %v", want, last(l))
+	}
+}
+
+func TestGroupWithInsert(t *testing.T) {
+	p, mix := setup()
+	mix.Group("g", StripConfig{}, newGainer(0.5).AddTo(p))
+	mix.Channel("a", newSource(psalm.Mono, constant(0.1)).AddTo(p), StripConfig{Group: "g"})
+	mix.Channel("b", newSource(psalm.Stereo, constant(0.3)).AddTo(p), StripConfig{Group: "g"})
+	mix.Channel("c", newSource(psalm.Mono, constant(0.05)).AddTo(p), StripConfig{})
+	l, _ := render(p, mix, 4)
+	if want := (0.1+0.3)*0.5 + 0.05; math.Abs(last(l)-want) > 1e-6 {
+		t.Fatalf("expected the group through its insert plus the direct channel, %v, got %v", want, last(l))
+	}
+}
+
+func TestMuteAndSoloDontClick(t *testing.T) {
+	p, mix := setup()
+	mix.Bus("fx", StripConfig{}, newGainer(1).AddTo(p))
+	a := mix.Channel("a", newSource(psalm.Mono, constant(0.2)).AddTo(p), StripConfig{Sends: map[string]float64{"fx": 0.5}})
+	b := mix.Channel("b", newSource(psalm.Mono, constant(0.3)).AddTo(p), StripConfig{})
+	render(p, mix, 2)
+
+	b.SetSolo(true) // a falls silent, the fx return is solo safe but a no longer sends
+	l, _ := render(p, mix, 4)
+	if math.Abs(last(l)-0.3) > 1e-4 {
+		t.Fatalf("expected only the soloed channel, got %v", last(l))
+	}
+	maxStep := 0.0
+	for i := 1; i < len(l); i++ {
+		maxStep = math.Max(maxStep, math.Abs(l[i]-l[i-1]))
+	}
+	if maxStep > 0.01 {
+		t.Fatalf("solo should fade, not step: %v", maxStep)
+	}
+
+	b.SetSolo(false)
+	a.SetMute(true)
+	l, _ = render(p, mix, 4)
+	if math.Abs(last(l)-0.3) > 1e-4 {
+		t.Fatalf("expected the muted channel gone, got %v", last(l))
+	}
+}
+
+func TestFade(t *testing.T) {
+	p, mix := setup()
+	a := mix.Channel("a", newSource(psalm.Mono, constant(0.5)).AddTo(p), StripConfig{})
+	render(p, mix, 1)
+	a.FadeTo(-20, 1)
+	l, _ := render(p, mix, int(1.2*psalm.SampleRate()/float64(psalm.BufferSize())))
+	half := int(0.5 * psalm.SampleRate())
+	if db := ToDB(l[half] / 0.5); math.Abs(db+10) > 0.5 { // even dB steps: halfway is -10 dB
+		t.Fatalf("expected -10 dB halfway the fade, got %.1f", db)
+	}
+	if db := ToDB(last(l) / 0.5); math.Abs(db+20) > 0.01 {
+		t.Fatalf("expected -20 dB after the fade, got %.2f", db)
+	}
+}
+
+func TestLimiter(t *testing.T) {
+	p, mix := setup()
+	cfg := DefaultMasterConfig()
+	cfg.Release = 50
+	mix.Master().SetConfig(cfg)
+	sr := psalm.SampleRate()
+	// a quiet tone with loud bursts
+	mix.Channel("a", newSource(psalm.Stereo, func(n, _ int) float64 {
+		amp := 0.3
+		if (n/4410)%4 == 1 {
+			amp = 2.0
+		}
+		return amp * math.Sin(2*math.Pi*220*float64(n)/sr)
+	}).AddTo(p), StripConfig{})
+	l, _ := render(p, mix, 40)
+	ceiling := DB(-1)
+	for i, x := range l {
+		if math.Abs(x) > ceiling+1e-6 {
+			t.Fatalf("sample %d over the ceiling: %v", i, x)
+		}
+	}
+	// the quiet part after a burst is untouched once the limiter let go
+	quiet := l[int(0.39*sr):int(0.4*sr)]
+	peak := 0.0
+	for _, x := range quiet {
+		peak = math.Max(peak, math.Abs(x))
+	}
+	if math.Abs(peak-0.3) > 0.01 {
+		t.Fatalf("the limiter should let go of quiet parts, peak %v", peak)
+	}
+	// inside a burst the tone is turned down, not clipped: clipping would add odd harmonics
+	burst := l[int(0.13*sr):int(0.18*sr)]
+	level := func(freq float64) float64 {
+		re, im := 0.0, 0.0
+		for i, x := range burst {
+			re += x * math.Cos(2*math.Pi*freq*float64(i)/sr)
+			im += x * math.Sin(2*math.Pi*freq*float64(i)/sr)
+		}
+		return math.Hypot(re, im)
+	}
+	if third := ToDB(level(660) / level(220)); third > -50 {
+		t.Fatalf("the limited burst has a third harmonic at %.1f dB, it was clipped", third)
+	}
+	// the bursts (2.0) are turned down to the ceiling (0.89): about 7 dB
+	if red := mix.Master().Reduction(); red < 5 || red > 8 {
+		t.Fatalf("expected about 7 dB of gain reduction, got %.1f", red)
+	}
+}
+
+func TestMetersAndMessages(t *testing.T) {
+	p, mix := setup()
+	a := mix.Channel("a", newSource(psalm.Mono, constant(0.5)).AddTo(p), StripConfig{Sends: map[string]float64{}})
+	render(p, mix, 4)
+	peak, rms := a.Levels()
+	if math.Abs(peak-ToDB(0.5)) > 0.01 || math.Abs(rms-ToDB(0.5)) > 0.01 {
+		t.Fatalf("meters %v %v", peak, rms)
+	}
+	report := mix.Meters()
+	if !strings.Contains(report, "master") || !strings.Contains(report, "limiter") {
+		t.Fatalf("unexpected report:\n%s", report)
+	}
+
+	a.ReceiveMessage(psalm.Message{"volume": -12.0, "pan": 0.5})
+	a.Receive(1.0, 3) // mute
+	if s := a.Settings(); s.Volume != -12 || s.Pan != 0.5 || !s.Mute {
+		t.Fatalf("unexpected settings %+v", s)
+	}
+	mix.ResetMeters()
+	if peak, _ := a.Levels(); peak != MinDB {
+		t.Fatal("reset meters should read silence")
+	}
+}
+
+func TestRoutingMistakesPanic(t *testing.T) {
+	_, mix := setup()
+	for _, cfg := range []StripConfig{{Group: "nope"}, {Sends: map[string]float64{"nope": 1}}} {
+		func() {
+			defer func() {
+				if r := recover(); r == nil || !strings.Contains(r.(string), "nope") {
+					t.Fatalf("expected a panic naming the missing group or bus, got %v", r)
+				}
+			}()
+			mix.Channel("x", newSource(psalm.Mono, constant(0)), cfg)
+		}()
+	}
+}
