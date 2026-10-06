@@ -10,12 +10,11 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/controls/timer/steps"
-	"github.com/almerlucke/psalm/modules/effects/freeverb"
-	"github.com/almerlucke/psalm/modules/effects/gain"
-	"github.com/almerlucke/psalm/modules/effects/latency"
+	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/effects/pan"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/effects/vocoder"
+	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/modules/player"
 	"github.com/almerlucke/psalm/synths/subtractive"
@@ -83,6 +82,19 @@ func main() {
 	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
 	defer p.Close()
 
+	ir := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/Conic Long Echo Hall.wav"))
+	rev := convolver.New(ir, convolver.Config{
+		PartitionSize: 512,
+		Mix:           0.7,
+		Gain:          1.0,
+	}).AddTo(p)
+
+	pp := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.5, Mix: 0.6}).AddTo(p)
+
+	mix := mixer.New(p)
+	mix.Bus("reverb", mixer.StripConfig{}, rev)
+	mix.Bus("pingpong", mixer.StripConfig{}, pp)
+
 	// Modulator: looping speech
 	speech := player.New(player.Config{
 		SndFile: sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4),
@@ -115,6 +127,9 @@ func main() {
 	voc := vocoder.New(vcfg)
 	voc.AddTo(p)
 	voc.In(speech, 0, 0, carrier, 0, 1)
+	mix.Channel("vocoder", voc, mixer.StripConfig{
+		Sends: map[string]float64{"reverb": 0.4},
+	})
 
 	// Flute: a slow, melancholic single note line over the same progression (8 beats per
 	// chord). It opens low, answers an octave up over F, peaks over C and steps back down over G,
@@ -142,6 +157,12 @@ func main() {
 		note{D5, 4}, note{B4, 3}, note{G4, 1}, // G, stepping back down
 	)
 
+	mix.Channel("flute", flute, mixer.StripConfig{
+		Sends:  map[string]float64{"reverb": 0.4},
+		Pan:    -0.2,
+		Volume: 2.0,
+	})
+
 	// Pad: soft
 	padCfg := subtractive.PWMPadPreset()
 	padCfg.Cutoff = 500.0
@@ -154,6 +175,12 @@ func main() {
 		[]float64{60, 67, 76}, // C4 G4 E5
 		[]float64{55, 62, 71}, // G3 D4 B4
 	)
+
+	mix.Channel("pad", pad, mixer.StripConfig{
+		Sends:  map[string]float64{"reverb": 0.4},
+		Pan:    0.25,
+		Volume: 2.0,
+	})
 
 	// Falling stars: delicate, glassy high notes from the A minor pentatonic at random, irregular
 	// times. Each star starts above its note and falls onto it while fading (the filter envelope
@@ -185,17 +212,15 @@ func main() {
 	starsPanned := pan.New(0.0).AddTo(p).In(stars)
 	starsPanned.ValueIn(lfo.New(true, 0.3, -0.7, 0.7, lfo.Saw).AddTo(p), 0, 0)
 
-	starRipples := gain.New(-3).AddTo(p).In(pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.5, Mix: 0.5}).AddTo(p).In(starsPanned))
+	mix.Channel("stars", starsPanned, mixer.StripConfig{
+		Sends: map[string]float64{
+			"reverb":   0.8,
+			"pingpong": 0.8,
+		},
+		Volume: -3.0,
+	})
 
-	// Delay the piano and pad by the vocoder latency so everything lines up
-	// Panning: the voice stays in the center, the piano sits to the left and the pad to the right
-	voicePanned := pan.New(0.0).AddTo(p).In(voc)
-	flutePanned := pan.New(-0.5).AddTo(p).In(flute)
-	padPanned := pan.New(0.45).AddTo(p).In(pad)
-
-	accompaniment := latency.New(psalm.Stereo, voc.Latency()).AddTo(p).In(flutePanned, 0, 0, padPanned, 0, 0)
-
-	p.Out(freeverb.New(0.9, 0.5, 0.9, 0.3, 0.6).AddTo(p).In(voicePanned, 0, 0, accompaniment, 0, 0, starRipples, 0, 0))
+	p.Out(mix.Master())
 
 	//err := p.ToSoundFile("vocoder.wav", writer.WAV, 180, 44100.0, true)
 	//if err != nil {

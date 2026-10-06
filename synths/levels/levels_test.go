@@ -9,6 +9,7 @@ import (
 	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
+	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
@@ -112,5 +113,12 @@ func TestDX(t *testing.T) {
 	for n, f := range dx.Presets {
 		fresh()
 		check(t, n, dx.New(f(), 2), note)
+	}
+}
+
+func TestPiano(t *testing.T) {
+	for n, f := range piano.Presets {
+		fresh()
+		check(t, n, piano.NewPoly(f(), 4), note) // the whole instrument: voices, resonance, soundboard
 	}
 }

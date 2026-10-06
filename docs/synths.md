@@ -1,6 +1,6 @@
 # Synths
 
-Synths: [poly](#poly) (voice allocation), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [drums](#drums).
+Synths: [poly](#poly) (voice allocation), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums).
 
 Presets of all synths are calibrated to the same loudness: a note at amplitude 1 plays at -12 LUFS
 (or peaks at -1 dBFS for percussive sounds), see [conventions](conventions.md#levels).
@@ -33,7 +33,7 @@ type Voice interface {
 | `{"command": "trigger", "tick", "amplitude", "message", "duration"}` | Plays a note of `duration` seconds on a free voice, the voice receives `message` (pitch, settings, ...) |
 | `{"command": "trigger", "tick", "amplitude", "message", "noteOn": id}` | Starts a held note, remembered under `id` |
 | `{"command": "trigger", "tick", "noteOff": id}` | Releases the held note `id` |
-| `{"command": "voice", ...}` | Passes the whole message to all voices (change settings of every voice) |
+| `{"command": "voice", ...}`, or a message without a command | Passes the whole message to all voices (change settings of every voice, `AutomateMessage` of an arrangement works this way) |
 
 **Value inputs**: plain values on inputs above 0 are passed to all voices on the same input, so
 an LFO connected to input 1 of a subtractive poly synth modulates the cutoff of every voice.
@@ -673,6 +673,103 @@ Tables that suit them in `assets/wavetables2048`: dark and harmonic `DN Harm` an
 for pads and leads, `MS 20 Pulse2 PS1` for basses, `OPFoldFMFB`, `MSelfFB02` and `Add Synth3 Icarus`
 from soft to harsh for sweeps and growls, `Add Bell` and `Melda CustumWave3 IcarusBell` for keys,
 `KaossDrum2` (noise like, little below a few kHz) for hits.
+
+## piano
+
+`synths/piano`
+
+A physically modelled piano, no samples. Every key has one to three strings (one in the low bass,
+two up to the tenor, three above), each a digital waveguide: a delay line closed by
+
+- a **loss filter** that sets how long the string rings (about 20 seconds in the low bass, under 2
+  at the top) and makes the highs die faster;
+- a chain of **allpass filters** for the stiffness of the string: they stretch the partials sharp
+  (inharmonicity), fitted per key to the stretch of a real grand (strongest at the top);
+- a **tuning allpass** that puts the fundamental on pitch to a fraction of a cent.
+
+What makes it a piano:
+
+- **Two-stage decay.** Every string vibrates in two polarizations: one passes its energy to the
+  soundboard fast (the loud prompt sound, the first second), the other keeps it (the long, quiet
+  aftersound). The strings of a key are a little out of tune with each other (`Unison`) and share
+  the bridge: what they do together drains into the soundboard, what they do against each other
+  lasts, and the bridge passes energy between them and to the other polarization (Weinreich's
+  coupled strings). So a note falls fast, then lingers and breathes as the strings trade energy.
+- **A felt hammer.** The hammer pushes the string for a few milliseconds, longer in the bass; the
+  felt stiffens as it is compressed, so the harder the key is played, the shorter and peakier the
+  push and the brighter the tone. The strike position leaves out the harmonics with a node where
+  the hammer hits, and the soundboard knock is heard with it.
+- **A soundboard** every string sounds through: a board of spruce made of its modes (a few hundred:
+  sparse in the bass, one every 20-odd Hz higher up, with the low Q of wood, radiating the bass
+  weakly and rolling off the highs), heard from a different place on every side of the stereo image.
+  The strings sound through it by convolution (`Body`), or through a measured soundboard response
+  (`SoundboardIR`). Every key is voiced for the board, like a technician voicing the hammers: the
+  gain that evens out where the key's partials land on the board's modes.
+- **The bark of the bass.** A string played hard stretches as it moves, which rings its longitudinal
+  mode and adds phantom partials at the sums of its partials: the metallic bark of loud bass notes,
+  growing with the velocity (`Bark`).
+- **The action** is heard: the dampers landing on the still vibrating strings, the key coming up,
+  the sustain pedal lifting all dampers (a soft swish) and letting them land (a thud) (`Mechanics`).
+- **Sympathetic resonance.** The strings of all 88 keys ring along with what is played when their
+  dampers are up: all of them with the sustain pedal down, the keys held down (also silently), and
+  the top keys, which have no dampers (`Resonance`). With the pedal down a halo blooms as the notes
+  die away.
+- **Dampers** stop the strings when a key is released (slower in the bass), the **sustain pedal**
+  lifts them, the **soft pedal** (una corda) shifts the hammers so they strike one string less
+  with a softer part of the felt: quieter and veiled.
+- The keys are balanced to sound equally loud.
+
+```go
+grand := piano.NewPoly(piano.GrandPreset(), 24).AddTo(p) // a voice per sounding key
+
+// the pedals: messages without a command reach the whole instrument
+arrangement.AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{"verse": arrange.Const(1)}}, grand, "sustain")
+grand.ReceiveMessage(psalm.Message{"soft": 1.0})
+```
+
+`piano.NewPoly(cfg, n)` creates the instrument (a `*piano.Piano`: `n` voices, the strings that ring
+along and the soundboard), it takes the messages of a poly synth (triggers with a duration, or
+`noteOn` and `noteOff`). `piano.New(cfg)` is a single voice, without soundboard and resonance. A
+voice sounds until its strings have died away, the dampers stopped them, or as long as its key is
+held; with the pedal down that can take many seconds. The voices are handed out like piano keys: a
+key that still sounds is struck again on its own strings (adding to their vibration, no new voice,
+nothing cut off); a new key takes a free voice or, when all sound, the quietest one (released keys
+before held ones). The stiffness of the strings is fitted
+when the voices are created (a few tens of milliseconds per stiffness). Sixteen sounding voices with
+the pedal down take about 10% of a core; a piano that is silent rests. The instrument sounds 128
+samples (3 ms) late, the time the soundboard convolution takes; it reports that latency, so a
+mixer lines the other strips up with it.
+
+**Note messages**: `pitch` (or `frequency`), `velocity` (0-1, default 0.8: the tone always, the
+level by `VelocitySens`), and every setting below. **Instrument messages**: `sustain` and `soft`
+(above 0.5 is down).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `Hardness` | 0.5 | 0-1, hardness of the hammer felt: soft and round to hard and bright |
+| `StrikePosition` | 0.125 | Where the hammer hits, 0.05-0.3 of the string: the harmonics with a node there are weaker (1/8 is classic, nearer the end is brighter, thinner) |
+| `Soundboard` | 0.6 | 0-1, the knock of the soundboard in the strike |
+| `Body` | 0.6 | 0-1, how much of the sound comes through the soundboard (at 1 a little of the direct strings stays, for clarity) |
+| `SoundboardIR` | nil | A measured soundboard response (one slice per side, at the sample rate) instead of the modelled board |
+| `Bark` | 0.5 | 0-1, the bark of the bass strings played hard (phantom partials, longitudinal mode) |
+| `Mechanics` | 0.5 | 0-1, the noise of the action: dampers, keys, the sustain pedal |
+| `Resonance` | 0.5 | 0-1, sympathetic resonance of the strings whose dampers are up |
+| `Stiffness` | 1 | Inharmonicity, 1 is a grand, more an upright (or a toy, a struck rod), 0 perfectly harmonic |
+| `Decay` | 1 | Scales the ring times |
+| `Damping` | 1 | How much faster the highs die |
+| `Unison` | 1 | Cents the strings of a key are apart: around 1 is in tune with a slow beat, 10+ honky tonk |
+| `Strings` | 3 | Strings per key at most (1-3): fewer are thinner and cheaper |
+| `DamperTime` | 0.25 | Seconds a released key rings on (longer in the bass) |
+| `Width` | 0.6 | 0-1, the keys spread from left (low) to right (high), as the player hears it |
+| `VelocitySens` | 0.7 | 0-1, how much the velocity changes the level |
+| `Level` | 1 | Output level |
+
+**Presets** (`piano.Presets` by name): `grand` (concert grand), `bright` (hard hammers for pop and
+rock), `upright` (stiffer, shorter, boxier, a little out of tune), `felt` (a felt piano, soft and
+close, for quiet music and ambient), `honkyTonk` (strings far out of tune with each other), `toy`
+(one very stiff, short string per key). A struck string peaks high above its loudness, so the
+presets are calibrated to a -1 dB peak at velocity 0.8 (about -14 LUFS); played harder they go
+over, leave headroom or use the mixer's limiter.
 
 ## drums
 

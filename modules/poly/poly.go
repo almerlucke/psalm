@@ -109,26 +109,27 @@ func (p *Poly[T]) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, i
 	p.triggerCount++
 }
 
-// ReceiveMessage is used to activate voices
+// ReceiveMessage triggers notes ("command": "trigger"). A message without a command (or with
+// "command": "voice") goes to all voices: a setting for every voice, like the sustain pedal of a
+// piano
 func (p *Poly[T]) ReceiveMessage(msg psalm.Message) {
-	if command, ok := msg.StrVal("command"); ok {
-		if command == "trigger" {
-			// get ctrl tick mainly for sample offset (sample accurate timing)
-			tick := msg.MustTickVal("tick")
-			// trigger note on/off/duration
-			if noteOffIdentifier, ok := msg.StrVal("noteOff"); ok {
-				p.noteOff(noteOffIdentifier)
-			} else if noteOnIdentifier, ok := msg.StrVal("noteOn"); ok {
-				p.handleTriggerMessage(msg, tick, noteOnIdentifier, 0, true)
-			} else {
-				duration := msg.MustFltVal("duration")
-				p.handleTriggerMessage(msg, tick, "", duration, false)
-			}
-		} else if command == "voice" {
-			// Pass message to all voices
-			p.CallVoices(func(v T) {
-				v.ReceiveMessage(msg)
-			})
+	command, ok := msg.StrVal("command")
+	switch {
+	case !ok || command == "voice":
+		p.CallVoices(func(v T) {
+			v.ReceiveMessage(msg)
+		})
+	case command == "trigger":
+		// get ctrl tick mainly for sample offset (sample accurate timing)
+		tick := msg.MustTickVal("tick")
+		// trigger note on/off/duration
+		if noteOffIdentifier, ok := msg.StrVal("noteOff"); ok {
+			p.noteOff(noteOffIdentifier)
+		} else if noteOnIdentifier, ok := msg.StrVal("noteOn"); ok {
+			p.handleTriggerMessage(msg, tick, noteOnIdentifier, 0, true)
+		} else {
+			duration := msg.MustFltVal("duration")
+			p.handleTriggerMessage(msg, tick, "", duration, false)
 		}
 	}
 }
