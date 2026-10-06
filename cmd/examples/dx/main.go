@@ -79,7 +79,7 @@ func main() {
 	defer p.Close()
 
 	voices := loadVoices()
-	beatSec := 60.0 / float64(psalm.BPM())
+	beatSec := 60.0 / psalm.BPM()
 	total := voiceBeats * float64(len(voices))
 
 	// Every voice plays the same phrase in its slot: two chords and a short melody on top

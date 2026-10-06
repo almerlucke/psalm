@@ -10,7 +10,6 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/synths/drums"
-	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -107,10 +106,8 @@ func main() {
 		"sound": "angels",
 	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 30)).AddTo(p)))
 
-	bpmMs := timing.BPMToMilli(psalm.BPM())
-
 	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.05, 0.7).AddTo(p).In(
-		pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.1, 0.125).AddTo(p).In(drms),
+		pingpong.New(pingpong.Config{Time: 1.75, Feedback: 0.1, Mix: 0.125}).AddTo(p).In(drms),
 	))
 
 	//err := p.ToSoundFile("7x7.wav", writer.WAV, 60*6, 44100.0, true)

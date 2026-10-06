@@ -94,7 +94,7 @@ func (s *section) build(p *psalm.Psalm, start float64, tourBeats float64) psalm.
 		pitches [][]float64
 		durs    []float64
 		total   float64
-		beatSec = 60.0 / float64(psalm.BPM())
+		beatSec = 60.0 / psalm.BPM()
 	)
 	if start > 0 {
 		stps = append(stps, -start)
@@ -184,7 +184,7 @@ func main() {
 	cm := []float64{C4, E4, G4}
 	gm := []float64{G3, B3, D4}
 
-	beatSec := 60.0 / float64(psalm.BPM())
+	beatSec := 60.0 / psalm.BPM()
 
 	sections := []*section{
 		{

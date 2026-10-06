@@ -11,7 +11,6 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/freeverb"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/player"
-	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -34,10 +33,8 @@ func main() {
 		"offsetRange": bucket.New(0.05, 0.1, 0.2, 0.3, 0.4).SetMode(bucket.Indexed).Loop(true),
 	}).ValueIn(timer.WithTicks(float64(psalm.PPQ() * 8)).AddTo(p)))
 
-	bpmMs := timing.BPMToMilli(psalm.BPM())
-
 	p.Out(freeverb.New(0.7, 0.8, 0.9, 0.05, 0.8).AddTo(p).In(
-		pingpong.New(bpmMs*4.0, bpmMs*1.75, 0.1, 0.125).AddTo(p).In(
+		pingpong.New(pingpong.Config{Time: 1.75, Feedback: 0.1, Mix: 0.125}).AddTo(p).In(
 			flanger.New(0.05, 0.95, 0.85, 0.9, nil).AddTo(p).In(pl),
 		),
 	))

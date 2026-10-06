@@ -124,17 +124,28 @@ at creation.
 
 ### pingpong
 
-`pingpong.New(delayLengthMs, readLocationMs, feedback, mix)` - a stereo delay bouncing between
-left and right. `delayLengthMs` is the maximum delay (buffer size), the read location the actual
-echo time.
+A stereo delay whose echoes bounce between left and right. The echo time is set in **beats** and
+follows the tempo, also when it changes while playing (the time glides like tape, over about 60 ms).
 
-| Setting | Input | Message | Meaning |
+```go
+echo := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.4, Mix: 0.3}).AddTo(p).In(lead)
+// or start from the defaults: a dotted 8th whose repeats slowly darken
+echo = pingpong.New(pingpong.DefaultConfig()).AddTo(p).In(lead)
+```
+
+| Setting | Default | Input / message | Meaning |
 |---|---|---|---|
-| read location | 0 | `location` | Echo time in ms (at most the delay length) |
-| feedback | 1 | `feedback` | Feedback |
-| mix | 2 | `mix` | 0 dry, 1 wet |
+| `Time` | 0.75 | input 0, `time` | Echo time in beats (0.5 an 8th, 0.75 a dotted 8th, 1 a quarter) |
+| `TimeMs` | 0 | `timeMs` | Echo time in milliseconds instead, used when above 0, doesn't follow the tempo |
+| `Feedback` | 0.35 | input 1, `feedback` | Every echo is this much quieter than the one before (at most 0.98) |
+| `Mix` | 0.25 | input 2, `mix` | 0 dry, 1 wet |
+| `Stereo` | 0 | `stereo` | 0 is a ping pong (everything bounces, starting on the left), 1 a plain stereo delay (each side echoes its own input) |
+| `HighCut` | 6000 | `highCut` | Hz, lowpass on every repeat, so the echoes get darker (0 is off) |
+| `LowCut` | 120 | `lowCut` | Hz, highpass on every repeat, so the echoes get thinner (0 is off) |
+| `MaxSeconds` | 4 | | Longest echo time (the buffer), longer times are clamped |
 
-Use `timing.BPMToMilli(psalm.BPM())` (one beat in ms) to sync echoes to the tempo.
+The defaults are those of `DefaultConfig()`; a `Config` written out leaves out what isn't set (no
+tone filters, a ping pong).
 
 ## vocoder
 

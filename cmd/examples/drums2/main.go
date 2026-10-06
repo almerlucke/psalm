@@ -13,7 +13,6 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/player"
 	"github.com/almerlucke/psalm/synths/drums"
-	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
 	"github.com/almerlucke/sndfile/writer"
 )
@@ -168,10 +167,8 @@ func main() {
 		dispatch.NewEvent(pl2, bar*18, dispatch.Mute),
 	).AddTo(p)
 
-	bpmMs := timing.BPMToMilli(psalm.BPM())
-
 	p.Out(freeverb.New(0.8, 0.7, 0.9, 0.075, 0.8).AddTo(p).In(
-		pingpong.New(bpmMs*4.0, bpmMs*1.25, 0.075, 0.125).AddTo(p).In(
+		pingpong.New(pingpong.Config{Time: 1.25, Feedback: 0.075, Mix: 0.125}).AddTo(p).In(
 			drms,
 			pl1, 0, 0,
 			pl2, 0, 0,

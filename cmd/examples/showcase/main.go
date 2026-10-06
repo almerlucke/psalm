@@ -19,24 +19,23 @@ package main
 //	aurora      wavetable drone on a generated random spectra table
 //
 // The strings run through a ladder lowpass that opens at dawn (the prelude) and closes at dusk
-// (the coda), the whole orchestra sits in an FDN hall and a soft clipper guards the master.
+// (the coda), which slows down in its last four bars. The whole orchestra sits in an FDN hall and
+// a soft clipper guards the master.
 //
-// Every part has a score per section of the piece and only plays in its sections. The piece
-// loops, the schedule is printed at start
+// The piece is built with the arrange and score packages: the form lists the sections, every part
+// is written per section in beats (the melodies in score notation) and the arrangement automates
+// the string filter, the granulator and the tempo. The piece loops, the schedule is printed at start
 
 import (
 	"fmt"
 	"math"
 
-	"github.com/almerlucke/genny/sequence"
-	"github.com/almerlucke/genny/template"
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/blocks/filters/ladder"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
-	"github.com/almerlucke/psalm/modules/controls/templ"
-	"github.com/almerlucke/psalm/modules/controls/timer"
-	"github.com/almerlucke/psalm/modules/controls/timer/steps"
+	"github.com/almerlucke/psalm/modules/controls/arrange"
+	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/effects/chorus"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
@@ -59,16 +58,10 @@ import (
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
-	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
 )
 
 const bpm = 66
-
-// seq plays the values in order and loops
-func seq[T any](values ...T) *sequence.Sequence[T] {
-	return sequence.NewLoop(values...)
-}
 
 // --- harmony ---
 
@@ -89,225 +82,65 @@ var (
 	C  = chord{36, []float64{48, 55}, []float64{55, 60, 64}, []float64{60, 64, 67, 72}}
 )
 
-// the progression, one chord per bar: Dm Bb Gm A F C Gm A
-var progression = []chord{Dm, Bb, Gm, A, F, C, Gm, A}
+var (
+	// the progression, one chord per bar
+	progression = []chord{Dm, Bb, Gm, A, F, C, Gm, A}
+	// the coda comes home
+	homecoming = []chord{Dm, Bb, F, C, Gm, A, Dm, Dm}
+)
 
-// the coda comes home: Dm Bb F C Gm A Dm Dm
-var homecoming = []chord{Dm, Bb, F, C, Gm, A, Dm, Dm}
+// chordAt returns the chord of a bar in a section
+func chordAt(s arrange.Section, bar int) chord {
+	if s.Name == "Coda" {
+		return homecoming[bar%len(homecoming)]
+	}
+	return progression[bar%len(progression)]
+}
 
 // --- the form ---
 
-type section struct {
-	name     string
-	bars     int
-	chords   []chord // one per bar, repeating
-	dynamics float64 // the loudness of the whole orchestra in this section
-}
+var form = arrange.NewForm(
+	arrange.Section{Name: "Prelude", Bars: 8, Dynamics: 0.9},
+	arrange.Section{Name: "Theme", Bars: 16, Dynamics: 0.85},
+	arrange.Section{Name: "Chorale", Bars: 8, Dynamics: 1.6},
+	arrange.Section{Name: "Interlude", Bars: 8, Dynamics: 1.1},
+	arrange.Section{Name: "Climax", Bars: 16, Dynamics: 0.95},
+	arrange.Section{Name: "Coda", Bars: 8},
+)
 
-func (s section) chord(bar int) chord {
-	return s.chords[bar%len(s.chords)]
-}
-
-var piece = []section{
-	{"Prelude", 8, progression, 0.9},
-	{"Theme", 16, progression, 0.85},
-	{"Chorale", 8, progression, 1.6},
-	{"Interlude", 8, progression, 1.1},
-	{"Climax", 16, progression, 0.95},
-	{"Coda", 8, homecoming, 1.0},
-}
-
-func pieceBars() int {
-	n := 0
-	for _, s := range piece {
-		n += s.bars
-	}
-	return n
-}
-
-// --- scores ---
-
-// ev is a note (or a chord, or a rest without pitches) lasting beats, held for hold beats (0 is
-// the whole length times the legato of the part) at a velocity (0 is 0.8)
-type ev struct {
-	pitches  []float64
-	beats    float64
-	hold     float64
-	velocity float64
-}
-
-func rest(beats float64) ev { return ev{beats: beats} }
-
-func n(pitch float64, beats float64) ev { return ev{pitches: []float64{pitch}, beats: beats} }
-
-func ch(pitches []float64, beats float64) ev { return ev{pitches: pitches, beats: beats} }
-
-// transpose returns the pitches moved by semitones
-func transpose(pitches []float64, semitones float64) []float64 {
-	out := make([]float64, len(pitches))
-	for i, p := range pitches {
-		out[i] = p + semitones
-	}
-	return out
-}
-
-// perBar builds a section bar by bar
-func perBar(s section, f func(bar int, c chord) []ev) []ev {
-	var evs []ev
-	for bar := range s.bars {
-		evs = append(evs, f(bar, s.chord(bar))...)
-	}
-	return evs
-}
+// --- melodies ---
 
 // the theme, 16 bars over the progression twice
-var theme = [][]ev{
-	{n(69, 2), n(65, 1), n(64, 1)},
-	{n(62, 3), n(65, 1)},
-	{n(67, 2), n(70, 1), n(69, 1)},
-	{n(64, 2), n(61, 1), n(64, 1)},
-	{n(69, 2), n(72, 1), n(69, 1)},
-	{n(67, 2), n(64, 1), n(67, 1)},
-	{n(70, 1.5), n(69, 0.5), n(67, 1), n(74, 1)},
-	{n(73, 2), n(69, 2)},
-	{n(74, 2), n(72, 1), n(69, 1)},
-	{n(70, 2), n(69, 1), n(65, 1)},
-	{n(67, 1), n(69, 1), n(70, 1), n(74, 1)},
-	{n(73, 3), n(76, 1)},
-	{n(77, 2), n(76, 1), n(72, 1)},
-	{n(76, 2), n(74, 1), n(72, 1)},
-	{n(70, 2), n(69, 1), n(67, 1)},
-	{n(69, 4)},
+var themeBars = []string{
+	"A4:2 F4:1 E4", "D4:3 F4:1", "G4:2 Bb4:1 A4", "E4:2 C#4:1 E4",
+	"A4:2 C5:1 A4", "G4:2 E4:1 G4", "Bb4:1.5 A4:.5 G4:1 D5", "C#5:2 A4",
+	"D5:2 C5:1 A4", "Bb4:2 A4:1 F4", "G4:1 A4 Bb4 D5", "C#5:3 E5:1",
+	"F5:2 E5:1 C5", "E5:2 D5:1 C5", "Bb4:2 A4:1 G4", "A4:4",
+}
+
+func themeBar(i int) []score.Note {
+	return score.MustParse(themeBars[i])
+}
+
+func theme() []score.Note {
+	var notes []score.Note
+	for i := range themeBars {
+		notes = append(notes, themeBar(i)...)
+	}
+	return notes
 }
 
 // the horn counter melody of the climax, two half notes per bar
-var counter = [][]float64{
-	{53, 57}, {53, 50}, {50, 55}, {52, 49}, {48, 53}, {52, 55}, {58, 57}, {57, 52},
-}
+var counter = score.MustParse("F3:2 A3 | F3 D3 | D3 G3 | E3 C#3 | C3 F3 | E3 G3 | Bb3 A3 | A3 E3")
 
 // harpArp is an 8th note arpeggio up and down the chord
-func harpArp(c chord) []ev {
+func harpArp(c chord) []score.Note {
 	tones := []float64{c.celli[0], c.celli[1], c.choir[0], c.choir[1], c.choir[2], c.choir[1], c.choir[0], c.celli[1]}
-	evs := make([]ev, len(tones))
-	for i, t := range tones {
-		evs[i] = ev{pitches: []float64{t}, beats: 0.5, velocity: []float64{0.9, 0.6, 0.7, 0.6, 0.8, 0.6, 0.7, 0.5}[i]}
+	notes := score.Notes(0.5, tones...)
+	for i, v := range []float64{0.9, 0.6, 0.7, 0.6, 0.8, 0.6, 0.7, 0.5} {
+		notes[i].Velocity = v
 	}
-	return evs
-}
-
-// part is an instrument and its score: the events of every section, nil when it doesn't play
-type part struct {
-	name   string
-	synth  psalm.Modular
-	amp    float64
-	legato float64
-	key    string // "pitch" or "frequency"
-	score  func(s section) []ev
-}
-
-// schedule turns the score of a part into a looping trigger for its synth
-func schedule(p *psalm.Psalm, pt part) {
-	var (
-		stps    []any
-		pitches [][]float64
-		durs    []float64
-		vels    []float64
-		amps    []float64
-		beatSec = 60.0 / float64(bpm)
-	)
-	for _, s := range piece {
-		evs := pt.score(s)
-		if evs == nil {
-			stps = append(stps, -float64(s.bars*4))
-			continue
-		}
-		total := 0.0
-		for _, e := range evs {
-			total += e.beats
-			if len(e.pitches) == 0 {
-				stps = append(stps, -e.beats)
-				continue
-			}
-			stps = append(stps, e.beats)
-			pitches = append(pitches, e.pitches)
-			hold := e.hold
-			if hold == 0 {
-				hold = e.beats * pt.legato
-			}
-			durs = append(durs, hold*beatSec)
-			vel := e.velocity
-			if vel == 0 {
-				vel = 0.8
-			}
-			vels = append(vels, vel)
-			amps = append(amps, pt.amp*s.dynamics)
-		}
-		if total != float64(s.bars*4) {
-			panic(fmt.Sprintf("%s in the %s lasts %v beats, expected %v", pt.name, s.name, total, s.bars*4))
-		}
-	}
-	key := pt.key
-	if key == "" {
-		key = "pitch"
-	}
-	pt.synth.ValueIn(templ.NewDurationTrigger(seq(durs...), seq(amps...), template.Template{
-		key:        seq(pitches...),
-		"velocity": seq(vels...),
-	}).ValueIn(timer.WithSteps(steps.QuickSteps(stps...)).AddTo(p)))
-}
-
-// --- arrangement ---
-
-// arrangement follows the bar of the looping piece: it opens the string filter at dawn, closes it
-// at dusk and freezes the harp granulator in the second half of the interlude
-type arrangement struct {
-	*psalm.Module
-	strings     *filters.Filter
-	gran        *granulator.Granulator
-	ticksPerBar int64
-	current     int
-}
-
-func (a *arrangement) CtrlTick(tick psalm.CtrlTick) {
-	t := tick.TickTimestamp - 1
-	pos := float64(t%(a.ticksPerBar*int64(pieceBars()))) / float64(a.ticksPerBar) // in bars
-
-	start := 0.0
-	index := 0
-	for i, s := range piece {
-		if pos < start+float64(s.bars) {
-			index = i
-			break
-		}
-		start += float64(s.bars)
-	}
-	s := piece[index]
-	progress := (pos - start) / float64(s.bars)
-
-	if index != a.current {
-		a.current = index
-		fmt.Printf("bar %3d  %s\n", int(start)+1, s.name)
-	}
-
-	// the strings filter: dawn and dusk, open in between
-	cutoff := 12000.0
-	switch s.name {
-	case "Prelude":
-		cutoff = 250 * math.Pow(12000.0/250, progress)
-	case "Coda":
-		cutoff = 12000 * math.Pow(400.0/12000, progress)
-	}
-	a.strings.SetCutoff(cutoff)
-
-	// the granulator only plays in the interlude, frozen in its second half
-	mix, freeze := 0.0, 0.0
-	if s.name == "Interlude" {
-		mix = 0.6
-		if progress >= 0.5 {
-			freeze = 1
-		}
-	}
-	a.gran.ReceiveMessage(psalm.Message{"mix": mix, "freeze": freeze})
+	return notes
 }
 
 // softClip keeps the master below full scale: transparent below 0.7, smoothly rounding above
@@ -341,8 +174,6 @@ func main() {
 
 	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
 	defer p.Close()
-
-	beatMs := timing.BPMToMilli(bpm)
 
 	// the buses
 	var hall, stringBus, choirBus []any
@@ -417,7 +248,7 @@ func main() {
 	// --- interlude colours: celesta, bell pad, vocoder, droplets ---
 
 	celesta := fm.NewPoly(fm.CelestaPreset(), 8).AddTo(p)
-	celestaEcho := pingpong.New(beatMs*2, beatMs*0.75, 0.35, 0.3).AddTo(p).In(pan.New(0.3).AddTo(p).In(celesta))
+	celestaEcho := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.3, HighCut: 5000, LowCut: 200}).AddTo(p).In(pan.New(0.3).AddTo(p).In(celesta))
 	scfg := shimmer.DefaultConfig()
 	scfg.Reverb.Decay = 7
 	scfg.Shimmer = 0.45
@@ -457,181 +288,188 @@ func main() {
 
 	// --- the scores ---
 
-	only := func(names ...string) func(s section) bool {
-		return func(s section) bool {
-			for _, n := range names {
-				if s.name == n {
-					return true
-				}
-			}
-			return false
+	type S = arrange.Section
+	type N = score.Note
+	part := func(synth psalm.Modular, name string, amp float64, legato float64, sc arrange.Score) {
+		form.Part(p, synth, name, score.Config{Amp: amp, Legato: legato, Velocity: 0.8}, sc)
+	}
+
+	part(violins, "violins", 0.12, 1.0, func(s S) []N {
+		if !arrange.In(s, "Prelude", "Theme", "Climax", "Coda") {
+			return nil
 		}
-	}
+		return arrange.PerBar(s, func(bar int) []N {
+			c := chordAt(s, bar)
+			if s.Name == "Coda" && bar == s.Bars-1 {
+				return []N{{Pitches: c.violins, Beats: 4, Hold: 6}} // the last chord rings
+			}
+			return []N{score.Chord(c.violins, 4)}
+		})
+	})
 
-	parts := []part{
-		{"violins", violins, 0.12, 1.0, "", func(s section) []ev {
-			if !only("Prelude", "Theme", "Climax", "Coda")(s) {
-				return nil
-			}
-			return perBar(s, func(bar int, c chord) []ev {
-				if s.name == "Coda" && bar == s.bars-1 {
-					return []ev{{pitches: c.violins, beats: 4, hold: 6}} // the last chord rings
-				}
-				return []ev{ch(c.violins, 4)}
+	part(celli, "celli", 0.08, 1.0, func(s S) []N {
+		if s.Name == "Interlude" {
+			return arrange.PerBar(s, func(bar int) []N {
+				return []N{{Pitches: chordAt(s, bar).celli[:1], Beats: 4, Velocity: 0.5}}
 			})
-		}},
-		{"celli", celli, 0.08, 1.0, "", func(s section) []ev {
-			if !only("Prelude", "Theme", "Chorale", "Interlude", "Climax", "Coda")(s) {
-				return nil
+		}
+		return arrange.PerBar(s, func(bar int) []N { return []N{score.Chord(chordAt(s, bar).celli, 4)} })
+	})
+
+	part(pizz, "pizzicato", 0.19, 0.5, func(s S) []N {
+		if !arrange.In(s, "Theme", "Climax") {
+			return nil
+		}
+		return arrange.PerBar(s, func(bar int) []N {
+			r := chordAt(s, bar).root
+			return score.Join(score.Notes(2, r), score.Notes(1, r+7, r+12))
+		})
+	})
+
+	part(harp, "harp", 0.12, 1.6, func(s S) []N {
+		if !arrange.In(s, "Prelude", "Theme", "Interlude", "Climax", "Coda") {
+			return nil
+		}
+		return arrange.PerBar(s, func(bar int) []N {
+			if (s.Name == "Prelude" && bar < 4) || (s.Name == "Coda" && bar == s.Bars-1) {
+				return []N{score.Rest(4)} // the harp enters halfway the prelude and rests on the last chord
 			}
-			return perBar(s, func(bar int, c chord) []ev {
-				if s.name == "Interlude" {
-					return []ev{{pitches: c.celli[:1], beats: 4, velocity: 0.5}}
+			return harpArp(chordAt(s, bar))
+		})
+	})
+
+	part(flute, "flute", 0.35, 0.95, func(s S) []N {
+		if s.Name != "Theme" {
+			return nil
+		}
+		return theme()
+	})
+
+	part(horns, "horns", 0.075, 0.95, func(s S) []N {
+		if !arrange.In(s, "Chorale", "Climax") {
+			return nil
+		}
+		return arrange.PerBar(s, func(bar int) []N {
+			low := score.Pitches(chordAt(s, bar).choir, -12)
+			if s.Name == "Chorale" {
+				return score.Chords(2, low, low) // a chorale in half notes
+			}
+			return []N{score.Chord(low, 4)}
+		})
+	})
+
+	part(hornSolo, "horn solo", 0.14, 0.95, func(s S) []N {
+		if s.Name != "Climax" {
+			return nil
+		}
+		return score.Repeat(counter, 2)
+	})
+
+	part(soprano, "soprano", 0.15, 0.95, func(s S) []N {
+		if s.Name != "Climax" {
+			return nil
+		}
+		return theme()
+	})
+
+	part(choir, "choir", 0.25, 1.0, func(s S) []N {
+		if !arrange.In(s, "Prelude", "Chorale", "Climax", "Coda") {
+			return nil
+		}
+		return arrange.PerBar(s, func(bar int) []N {
+			c := chordAt(s, bar)
+			if s.Name == "Prelude" {
+				if bar%2 == 1 {
+					return []N{score.Rest(4)}
 				}
-				return []ev{ch(c.celli, 4)}
-			})
-		}},
-		{"pizzicato", pizz, 0.19, 0.5, "", func(s section) []ev {
-			if !only("Theme", "Climax")(s) {
-				return nil
+				return []N{{Pitches: c.choir, Beats: 4, Hold: 3.8}} // every other chord, within its bar
 			}
-			return perBar(s, func(bar int, c chord) []ev {
-				return []ev{n(c.root, 2), n(c.root+7, 1), n(c.root+12, 1)}
-			})
-		}},
-		{"harp", harp, 0.12, 1.6, "", func(s section) []ev {
-			if !only("Prelude", "Theme", "Interlude", "Climax", "Coda")(s) {
-				return nil
-			}
-			return perBar(s, func(bar int, c chord) []ev {
-				if s.name == "Prelude" && bar < 4 {
-					return []ev{rest(4)}
-				}
-				if s.name == "Coda" && bar >= 6 {
-					if bar == 7 {
-						return []ev{rest(4)}
-					}
-					return harpArp(c) // the final arpeggio
-				}
-				return harpArp(c)
-			})
-		}},
-		{"flute", flute, 0.35, 0.95, "", func(s section) []ev {
-			if s.name != "Theme" {
-				return nil
-			}
-			var evs []ev
-			for _, bar := range theme {
-				evs = append(evs, bar...)
-			}
-			return evs
-		}},
-		{"horns", horns, 0.075, 0.95, "", func(s section) []ev {
-			if !only("Chorale", "Climax")(s) {
-				return nil
-			}
-			return perBar(s, func(bar int, c chord) []ev {
-				low := transpose(c.choir, -12)
-				if s.name == "Chorale" {
-					return []ev{ch(low, 2), ch(low, 2)} // a chorale in half notes
-				}
-				return []ev{ch(low, 4)}
-			})
-		}},
-		{"horn solo", hornSolo, 0.14, 0.95, "", func(s section) []ev {
-			if s.name != "Climax" {
-				return nil
-			}
-			return perBar(s, func(bar int, c chord) []ev {
-				pair := counter[bar%len(counter)]
-				return []ev{n(pair[0], 2), n(pair[1], 2)}
-			})
-		}},
-		{"soprano", soprano, 0.15, 0.95, "", func(s section) []ev {
-			if s.name != "Climax" {
-				return nil
-			}
-			var evs []ev
-			for _, bar := range theme {
-				evs = append(evs, bar...)
-			}
-			return evs
-		}},
-		{"choir", choir, 0.25, 1.0, "", func(s section) []ev {
-			if !only("Prelude", "Chorale", "Climax", "Coda")(s) {
-				return nil
-			}
-			return perBar(s, func(bar int, c chord) []ev {
-				if s.name == "Prelude" && bar%2 == 1 {
-					return []ev{rest(4)}
-				}
-				if s.name == "Prelude" {
-					return []ev{{pitches: c.choir, beats: 4, hold: 3.8}} // every other chord, within its bar
-				}
-				return []ev{ch(c.choir, 4)}
-			})
-		}},
-		{"ooh", ooh, 0.045, 1.0, "", func(s section) []ev {
-			if !only("Chorale", "Climax")(s) {
-				return nil
-			}
-			return perBar(s, func(bar int, c chord) []ev {
-				return []ev{ch(transpose(c.choir, 12), 4)}
-			})
-		}},
-		{"celesta", celesta, 0.22, 0.9, "", func(s section) []ev {
-			if !only("Interlude", "Coda")(s) {
-				return nil
-			}
-			if s.name == "Coda" {
-				// the theme returns as a memory (the bars that fit Dm Bb F C), then the last chord
-				var evs []ev
-				for _, bar := range [][]ev{theme[0], theme[1], theme[4], theme[5]} {
-					for _, e := range bar {
-						evs = append(evs, ev{pitches: transpose(e.pitches, 12), beats: e.beats, velocity: 0.6})
-					}
-				}
-				evs = append(evs, rest(4), n(74, 2), n(69, 2), n(77, 2), n(74, 2), rest(4))
-				return evs
-			}
-			return perBar(s, func(bar int, c chord) []ev {
-				v := transpose(c.violins, 12)
+			return []N{score.Chord(c.choir, 4)}
+		})
+	})
+
+	part(ooh, "ooh", 0.045, 1.0, func(s S) []N {
+		if !arrange.In(s, "Chorale", "Climax") {
+			return nil
+		}
+		return arrange.PerBar(s, func(bar int) []N { return []N{score.Chord(score.Pitches(chordAt(s, bar).choir, 12), 4)} })
+	})
+
+	part(celesta, "celesta", 0.22, 0.9, func(s S) []N {
+		switch s.Name {
+		case "Interlude":
+			return arrange.PerBar(s, func(bar int) []N {
+				v := score.Pitches(chordAt(s, bar).violins, 12)
 				if bar%2 == 0 {
-					return []ev{n(v[3], 1), n(v[2], 0.5), n(v[1], 0.5), n(v[0], 1), rest(1)}
+					return score.Join(score.Notes(1, v[3]), score.Notes(0.5, v[2], v[1]), score.Notes(1, v[0], 0))
 				}
-				return []ev{rest(1), n(v[1], 0.5), n(v[2], 0.5), n(v[3], 2)}
+				return score.Join(score.Notes(1, 0), score.Notes(0.5, v[1], v[2]), score.Notes(2, v[3]))
 			})
-		}},
-		{"bell pad", bellPad, 0.05, 1.0, "", func(s section) []ev {
-			if s.name != "Interlude" {
-				return nil
-			}
-			return perBar(s, func(bar int, c chord) []ev { return []ev{ch(c.choir, 4)} })
-		}},
-		{"voices", carrier, 0.1, 1.0, "", func(s section) []ev {
-			if s.name != "Interlude" {
-				return nil
-			}
-			return perBar(s, func(bar int, c chord) []ev { return []ev{ch(append([]float64{c.celli[0]}, c.choir...), 4)} })
-		}},
-		{"droplets", droplets, 0.1, 1.0, "frequency", func(s section) []ev {
-			if s.name != "Interlude" {
-				return nil
-			}
-			return []ev{n(7, 16), n(9, 16)}
-		}},
-		{"aurora", aurora, 0.17, 1.0, "", func(s section) []ev {
-			if !only("Prelude", "Coda")(s) {
-				return nil
-			}
-			return []ev{{pitches: []float64{38, 45}, beats: 32, hold: 26}}
-		}},
-	}
-	for _, pt := range parts {
-		schedule(p, pt)
-	}
+		case "Coda":
+			// the theme returns as a memory (the bars that fit Dm Bb F C), then the last chord
+			memory := score.Join(themeBar(0), themeBar(1), themeBar(4), themeBar(5))
+			memory = score.With(score.Transpose(memory, 12), func(n *N) { n.Velocity = 0.6 })
+			return score.Join(memory, score.MustParse("r:4 D5:2 A4 F5 D5 r:4"))
+		}
+		return nil
+	})
 
-	// --- the hall, the master and the arrangement ---
+	part(bellPad, "bell pad", 0.05, 1.0, func(s S) []N {
+		if s.Name != "Interlude" {
+			return nil
+		}
+		return arrange.PerBar(s, func(bar int) []N { return []N{score.Chord(chordAt(s, bar).choir, 4)} })
+	})
+
+	part(carrier, "voices", 0.1, 1.0, func(s S) []N {
+		if s.Name != "Interlude" {
+			return nil
+		}
+		return arrange.PerBar(s, func(bar int) []N {
+			c := chordAt(s, bar)
+			return []N{score.Chord(append([]float64{c.celli[0]}, c.choir...), 4)}
+		})
+	})
+
+	form.Part(p, droplets, "droplets", score.Config{Amp: 0.1, Legato: 1, Key: "frequency"}, func(s S) []N {
+		if s.Name != "Interlude" {
+			return nil
+		}
+		return score.Notes(16, 7, 9) // drops per second
+	})
+
+	part(aurora, "aurora", 0.17, 1.0, func(s S) []N {
+		if !arrange.In(s, "Prelude", "Coda") {
+			return nil
+		}
+		return []N{{Pitches: []float64{38, 45}, Beats: 32, Hold: 26}}
+	})
+
+	// --- the arrangement: dawn and dusk on the strings, the frozen harp of the interlude and a
+	// ritardando over the last four bars ---
+
+	arrangement := arrange.NewArrangement(form).
+		Tempo(arrange.Lane{Sections: map[string]arrange.Curve{"Coda": func(progress float64) float64 {
+			if progress < 0.5 {
+				return bpm
+			}
+			return arrange.Smooth(bpm, 52)((progress - 0.5) * 2)
+		}}}).
+		Automate(arrange.Lane{Default: 12000, Sections: map[string]arrange.Curve{
+			"Prelude": arrange.Exp(250, 12000),
+			"Coda":    arrange.Exp(12000, 400),
+		}}, stringFilter, 1).
+		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{"Interlude": arrange.Const(0.6)}}, gran, "mix").
+		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{"Interlude": func(progress float64) float64 {
+			if progress >= 0.5 {
+				return 1
+			}
+			return 0
+		}}}, gran, "freeze").
+		PrintSections(true)
+	arrangement.AddTo(p)
+
+	// --- the hall and the master ---
 
 	hcfg := fdnreverb.DefaultConfig()
 	hcfg.Decay = 3.8
@@ -645,24 +483,8 @@ func main() {
 	master.AddTo(p)
 	master.In(orchestra, 0, 0, choirChurch, 0, 0, celestaSky, 0, 0)
 
-	arr := &arrangement{
-		Module:      psalm.NewControl(),
-		strings:     stringFilter,
-		gran:        gran,
-		ticksPerBar: int64(psalm.PPQ() * 4),
-		current:     -1,
-	}
-	arr.SetSelf(arr)
-	arr.AddTo(p)
-
-	barSec := 4 * 60.0 / float64(bpm)
 	fmt.Println("Aurora")
-	start := 0
-	for _, s := range piece {
-		fmt.Printf("%6.1fs  %-10s %d bars\n", float64(start)*barSec, s.name, s.bars)
-		start += s.bars
-	}
-	fmt.Printf("%6.1fs  (loops)\n", float64(start)*barSec)
+	fmt.Print(arrangement.Schedule())
 
 	p.Out(master)
 

@@ -19,7 +19,7 @@ var _configListeners = make(map[Listener]bool)
 type Config struct {
 	SampleRate float64
 	BufferSize int
-	BPM        int
+	BPM        float64
 	PPQ        int
 }
 
@@ -28,7 +28,7 @@ func (c Config) ControlRate() float64 {
 }
 
 func (c Config) TickDuration() float64 {
-	return 60.0 / (float64(c.BPM) * float64(c.PPQ))
+	return 60.0 / (c.BPM * float64(c.PPQ))
 }
 
 func init() {
@@ -91,7 +91,7 @@ func BufferSize() int {
 	return CurrentConfig().BufferSize
 }
 
-func BPM() int {
+func BPM() float64 {
 	return CurrentConfig().BPM
 }
 

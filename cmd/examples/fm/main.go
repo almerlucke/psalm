@@ -156,7 +156,7 @@ func (s *section) build(p *psalm.Psalm, startBeats float64, totalBeats float64) 
 		pitches [][]float64
 		durs    []float64
 		total   float64
-		beatSec = 60.0 / float64(psalm.BPM())
+		beatSec = 60.0 / psalm.BPM()
 	)
 
 	for _, n := range s.notes {
@@ -307,7 +307,7 @@ func main() {
 	defer p.Close()
 
 	ppq := float64(psalm.PPQ())
-	beatSec := 60.0 / float64(psalm.BPM())
+	beatSec := 60.0 / psalm.BPM()
 
 	sections := []*section{
 		{

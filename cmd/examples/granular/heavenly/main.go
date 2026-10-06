@@ -154,7 +154,7 @@ func main() {
 	).AddTo(p)
 
 	p.Out(freeverb.New(0.9, 0.5, 0.95, 0.3, 0.6).AddTo(p).In(
-		pingpong.New(4000.0, 2000.0, 0.1, 0.175).AddTo(p).In(gl),
+		pingpong.New(pingpong.Config{TimeMs: 2000.0, Feedback: 0.1, Mix: 0.175, MaxSeconds: 4.0}).AddTo(p).In(gl),
 	))
 
 	_ = p.Listen()

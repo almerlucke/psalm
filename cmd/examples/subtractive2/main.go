@@ -17,7 +17,6 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/synths/subtractive"
-	"github.com/almerlucke/psalm/tools/timing"
 )
 
 // A guided tour through all features of the subtractive voice: every section plays for sectionBeats,
@@ -130,7 +129,7 @@ func play(legato float64, ns []note) (*timer.Timer, *sequence.Sequence[[]float64
 		stps    []any
 		pitches [][]float64
 		durs    []float64
-		beatSec = 60.0 / float64(psalm.BPM())
+		beatSec = 60.0 / psalm.BPM()
 	)
 
 	for _, n := range ns {
@@ -548,7 +547,7 @@ func main() {
 	}
 
 	// Build the synths and print the schedule
-	sectionSec := sectionBeats * 60.0 / float64(psalm.BPM())
+	sectionSec := sectionBeats * 60.0 / psalm.BPM()
 	var mix []any
 
 	for i, s := range sections {
@@ -560,10 +559,8 @@ func main() {
 
 	fmt.Printf("%6.1fs  (tour loops)\n", float64(len(sections))*sectionSec)
 
-	bpmMs := timing.BPMToMilli(psalm.BPM())
-
 	p.Out(freeverb.New(0.7, 0.6, 0.9, 0.12, 0.8).AddTo(p).In(
-		pingpong.New(bpmMs*4.0, bpmMs*0.75, 0.2, 0.15).AddTo(p).In(mix...),
+		pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.2, Mix: 0.15}).AddTo(p).In(mix...),
 	))
 
 	//err := p.ToSoundFile("subtractive2.wav", writer.WAV, float64(len(sections))*sectionSec, 44100.0, true)

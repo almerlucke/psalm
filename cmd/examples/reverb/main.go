@@ -25,7 +25,7 @@ func random[T any](values ...T) *bucket.Bucket[T] {
 // chords plays a chord progression, every chord lasts the given number of beats. The pitch
 // generator produces a slice per chord, which makes the template send one note message per pitch
 func chords(p *psalm.Psalm, synth psalm.Modular, beats float64, amp float64, progression ...[]float64) {
-	beatSec := 60.0 / float64(psalm.BPM())
+	beatSec := 60.0 / psalm.BPM()
 
 	synth.ValueIn(templ.NewDurationTrigger(beats*beatSec*0.95, amp, template.Template{
 		"pitch": seq(progression...),

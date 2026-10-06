@@ -18,7 +18,6 @@ import (
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/modules/player"
 	"github.com/almerlucke/psalm/synths/subtractive"
-	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -35,7 +34,7 @@ func random[T any](values ...T) *bucket.Bucket[T] {
 // chords plays a chord progression, every chord lasts the given number of beats. The pitch
 // generator produces a slice per chord, which makes the template send one note message per pitch
 func chords(p *psalm.Psalm, synth psalm.Modular, beats float64, amp float64, progression ...[]float64) {
-	beatSec := 60.0 / float64(psalm.BPM())
+	beatSec := 60.0 / psalm.BPM()
 
 	synth.ValueIn(templ.NewDurationTrigger(beats*beatSec*0.98, amp, template.Template{
 		"pitch": seq(progression...),
@@ -54,7 +53,7 @@ func melody(p *psalm.Psalm, synth psalm.Modular, amp float64, legato float64, no
 		stps    []any
 		pitches []float64
 		durs    []float64
-		beatSec = 60.0 / float64(psalm.BPM())
+		beatSec = 60.0 / psalm.BPM()
 	)
 
 	for _, n := range notes {
@@ -185,8 +184,7 @@ func main() {
 	starsPanned := pan.New(0.0).AddTo(p).In(stars)
 	starsPanned.ValueIn(lfo.New(true, 0.3, -0.7, 0.7, lfo.Saw).AddTo(p), 0, 0)
 
-	bpmMs := timing.BPMToMilli(psalm.BPM())
-	starRipples := pingpong.New(bpmMs*4.0, bpmMs*0.75, 0.5, 0.5).AddTo(p).In(starsPanned)
+	starRipples := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.5, Mix: 0.5}).AddTo(p).In(starsPanned)
 
 	// Delay the piano and pad by the vocoder latency so everything lines up
 	// Panning: the voice stays in the center, the piano sits to the left and the pad to the right

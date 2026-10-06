@@ -30,6 +30,6 @@ func SampsToMs(samps int64, sr float64) float64 {
 	return (float64(samps) / sr) * 1000.0
 }
 
-func BPMToMilli(bpm int) float64 {
-	return 60000.0 / float64(bpm)
+func BPMToMilli(bpm float64) float64 {
+	return 60000.0 / bpm
 }

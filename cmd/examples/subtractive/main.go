@@ -18,7 +18,6 @@ import (
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/synths/drums"
 	"github.com/almerlucke/psalm/synths/subtractive"
-	"github.com/almerlucke/psalm/tools/timing"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -42,7 +41,7 @@ func phrase(legato float64, notes ...note) (*timer.Timer, *sequence.Sequence[flo
 		stps    []any
 		pitches []float64
 		durs    []float64
-		beatSec = 60.0 / float64(psalm.BPM())
+		beatSec = 60.0 / psalm.BPM()
 	)
 
 	for _, n := range notes {
@@ -79,7 +78,7 @@ const (
 func newAcidLine(root float64, amp float64, accentAmp float64, stps ...string) *acidLine {
 	var (
 		line     = &acidLine{}
-		stepSec  = 0.25 * 60.0 / float64(psalm.BPM())
+		stepSec  = 0.25 * 60.0 / psalm.BPM()
 		prevNote = -1 // index into durs of the previous sounding note, when it was on the previous step
 	)
 
@@ -208,7 +207,7 @@ func main() {
 		"-", "-", "12!", "15~", "-", "15", "-", "12", "-", "10", "7!~", "-", "-", "-", "3", "-",
 	)
 
-	beatHz := float64(psalm.BPM()) / 60.0
+	beatHz := psalm.BPM() / 60.0
 
 	// Bass: mono 303 so slides glide from the previous note. A slow triangle LFO, locked to 2 bars,
 	// pushes the cutoff up and down on top of the long external sweep
@@ -256,7 +255,7 @@ func main() {
 	drms.ValueIn(drumTemplate(crashAmps, 1.0, "crash").ValueIn(crashTimer.AddTo(p)))
 
 	// The classic acid move: slowly turning the cutoff knob (control rate LFOs on poly input 1)
-	barSec := 4.0 * 60.0 / float64(psalm.BPM())
+	barSec := 4.0 * 60.0 / psalm.BPM()
 
 	// Bass opens up over 16 bars and closes again over the next 16
 	bass.ValueIn(lfo.New(true, 1.0/(32.0*barSec), 150.0, 1200.0, lfo.Triangle).AddTo(p), 0, 1)
@@ -264,14 +263,12 @@ func main() {
 	// Lead sweeps faster, every 8 bars
 	lead.ValueIn(lfo.New(true, 1.0/(8.0*barSec), 300.0, 2500.0, lfo.Sine).AddTo(p), 0, 1)
 
-	bpmMs := timing.BPMToMilli(psalm.BPM())
-
 	ir := convolver.SyntheticReverbIR(3.0, 0.6, psalm.SampleRate(), 1)
 
 	p.Out(convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.45, Gain: 0.3}).AddTo(p).In(
 		bass, 0, 0,
 		drms, 0, 0,
-		pingpong.New(bpmMs*4.0, bpmMs*0.75, 0.35, 0.25).AddTo(p).In(lead), 0, 0,
+		pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.25}).AddTo(p).In(lead), 0, 0,
 	))
 
 	//err := p.ToSoundFile("subtractive.wav", writer.WAV, 60, 44100.0, true)

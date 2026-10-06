@@ -75,7 +75,7 @@ func (s *section) build(p *psalm.Psalm, index int, numSections int) psalm.Modula
 		pitches [][]float64
 		durs    []float64
 		total   float64
-		beatSec = 60.0 / float64(psalm.BPM())
+		beatSec = 60.0 / psalm.BPM()
 	)
 
 	if index > 0 {
@@ -154,7 +154,7 @@ func main() {
 		E5 = 76.0
 	)
 
-	sectionSec := sectionBeats * 60.0 / float64(psalm.BPM())
+	sectionSec := sectionBeats * 60.0 / psalm.BPM()
 
 	sections := []*section{
 		{

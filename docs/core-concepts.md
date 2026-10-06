@@ -38,7 +38,7 @@ are created, so push it before building the patch.
 |---|---|---|
 | `SampleRate` | 44100 | Samples per second |
 | `BufferSize` | 1024 | Samples processed per cycle |
-| `BPM` | 120 | Tempo |
+| `BPM` | 120 | Tempo in beats per minute (a `float64`, fractions like 87.5 are fine) |
 | `PPQ` | 240 | Control ticks per quarter note (the resolution of sequencing) |
 
 Helpers: `psalm.SampleRate()`, `psalm.BufferSize()`, `psalm.BPM()`, `psalm.PPQ()`,

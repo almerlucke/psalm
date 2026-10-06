@@ -7,6 +7,10 @@ time. A typical sequencing chain is:
 timer  --bang + tick-->  templ  --trigger message-->  synth (poly)
 ```
 
+For written music (melodies, chords, parts in a song form) use [score](#score) and
+[arrange](#arrange) instead: notes in beats go straight into a synth, and a song is written section
+by section.
+
 ## timer
 
 `modules/controls/timer`
@@ -130,6 +134,141 @@ The rules:
   nested template splits the whole trigger.
 - Only values from generators (and template parameters) are split. A constant slice written
   directly in the template is passed on as a slice.
+
+## score
+
+`modules/controls/score`
+
+Notes written in beats, played into a poly synth by a `Sequencer` at the exact tick. One module per
+part, instead of a timer, a template and sequences of pitches and durations kept in step by hand.
+
+```go
+melody := score.MustParse("A4:2 F4:1 E4 | D4:3 F4:1 | [D4 F4 A4]:4")
+lead := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
+lead.ValueIn(score.NewSequencer(melody, score.Config{Amp: 0.3, Loop: true}).AddTo(p))
+```
+
+A `score.Note` is a note, a chord (several pitches) or a rest (none):
+
+| Field | Meaning |
+|---|---|
+| `Pitches` | MIDI pitches (or frequencies, with `Config.Key` `"frequency"`) |
+| `Beats` | Time until the next note |
+| `Hold` | Beats the note sounds, 0 is `Beats` times the legato of the part |
+| `Velocity` | Sent as `velocity` when above 0, 0 is the part default |
+| `Amp` | Scales the amplitude of the note, 0 is 1 |
+| `Params` | Extra values for the synth voice, for example `"position"` or `"formant"` |
+
+Helpers: `N(pitch, beats)`, `Chord(pitches, beats)`, `Rest(beats)`, `Notes(beats, pitches...)`
+(0 is a rest), `Chords(beats, chords...)`, `Join`, `Repeat`, `Transpose`, `With` (change every
+note), `Beats` (total length), `Pitches` (move a chord) and `Pitch("F#3")`.
+
+**Notation** (`Parse`, `MustParse`), tokens separated by spaces:
+
+| Token | Meaning |
+|---|---|
+| `A3:1` | A note (name like `C4` = 60, `F#3`, `Bb2`, or a MIDI number) lasting 1 beat |
+| `[D4 F4 A4]:2` | A chord |
+| `r:1`, `-:1` | A rest |
+| `E4:1@.6` | Velocity 0.6 |
+| `C5:1_3` | Lasting 1 beat, sounding for 3 |
+| `G4` | Without a length: as long as the note before (1 beat at the start) |
+| `\|` | A bar line, ignored, for reading |
+
+**Sequencer config** (`score.Config`):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `Amp` | 1 | Amplitude of the notes |
+| `Legato` | 0.9 | Part of its length a note sounds when it has no `Hold` |
+| `Velocity` | 0 | Velocity of notes without one, 0 sends none (the synth default) |
+| `Key` | `"pitch"` | Message key of the pitches, `"frequency"` for Hz |
+| `Loop` | false | Start again after the last note |
+| `Length` | notes | Loop length in beats |
+
+A chord is sent as one trigger per pitch. `SetGain(g)` scales the notes that follow, `SetNotes`
+replaces them while playing.
+
+## arrange
+
+`modules/controls/arrange`
+
+Songs built from sections. A `Form` lists the sections, every part is written per section and
+compiled into a sequencer over the whole song, and the `Arrangement` module follows the song
+position to automate settings and call section and bar events.
+
+```go
+form := arrange.NewForm(
+	arrange.Section{Name: "Intro", Bars: 8, Dynamics: 0.8},
+	arrange.Section{Name: "Verse", Bars: 16},
+	arrange.Section{Name: "Outro", Bars: 8},
+)
+
+// a part: the notes per section, nil where it doesn't play
+form.Part(p, pad, "pad", score.Config{Amp: 0.3}, func(s arrange.Section) []score.Note {
+	if !arrange.In(s, "Verse", "Outro") {
+		return nil
+	}
+	return arrange.PerBar(s, func(bar int) []score.Note {
+		return []score.Note{score.Chord(chords[bar%4], 4)}
+	})
+})
+
+// automation and events
+arrange.NewArrangement(form).
+	Automate(arrange.Lane{Default: 12000, Sections: map[string]arrange.Curve{
+		"Intro": arrange.Exp(250, 12000), // the filter opens over the intro
+	}}, filter, 1).
+	OnSection(func(pos arrange.Position) { fmt.Println(pos.Section.Name) }).
+	AddTo(p)
+
+fmt.Print(form.Schedule())
+```
+
+**Sections** have a `Name`, a number of `Bars` and `Dynamics` (scales the amplitude of every part
+in the section, default 1). `NewForm` sets their `Index` and `StartBar`, 4 beats per bar, looping
+(`form.BeatsPerBar`, `form.Loop`).
+
+**Parts**: `form.Part(p, synth, name, config, score)` compiles the part, creates a sequencer that
+loops with the song, connects it to the synth and adds it to the patch. A section the part doesn't
+play in (nil) is a rest. A section that doesn't last exactly its bars panics with the part and
+section name, so mistakes show when the song is built, not as notes drifting out of time.
+`form.Compile(name, score)` returns the notes without a sequencer. `arrange.PerBar(s, f)` writes a
+section bar by bar, `arrange.In(s, names...)` checks the section.
+
+**Automation**: a `Lane` has a `Curve` per section (a function of the progress 0-1 through the
+section) and a `Default` for the other sections. Curves: `Const(v)`, `Linear(a, b)`, `Exp(a, b)`
+(even steps per octave, for frequencies) and `Smooth(a, b)`, or your own function. Send a lane to:
+
+| Method | Target |
+|---|---|
+| `Automate(lane, module, input)` | A value input (a filter cutoff is input 1) |
+| `AutomateMessage(lane, module, key)` | A message key, for settings without a value input |
+| `AutomateFunc(lane, func(v float64))` | Your own function |
+
+Values are updated 48 times per beat and only sent when they change.
+
+**Tempo**: `Tempo(lane)` automates the tempo in BPM. The arrangement pushes a config with the new
+tempo (`psalm.PushConfig`), psalm and the sequencers follow it. Where the lane is 0 (a section
+without a curve, with the default `Default` of 0) the tempo returns to where it started, so a
+ritardando at the end only needs a curve for the last section:
+
+```go
+arrangement.Tempo(arrange.Lane{Sections: map[string]arrange.Curve{"Outro": arrange.Smooth(120, 90)}})
+```
+
+The arrangement replaces its own config on every change, so the config stack doesn't grow, and
+removes it when the tempo returns. The tempo is updated 48 times per beat (changes smaller than
+0.01 BPM are skipped), so a ritardando is smooth. The song position is counted in ticks, so parts
+stay together; note lengths are converted to seconds when a note starts. The `pingpong` delay
+follows the tempo too. Modules given a time in milliseconds computed from the tempo once (with
+`timing.BPMToMilli`) don't.
+`arrangement.Schedule()` returns the start time of every section following the tempo lane.
+
+**Events**: `OnSection(f)` at the start of every section, `OnBar(f)` at every bar, with a
+`Position` (song beat and bar, the section, `SectionBar()`, `Progress` through the section and the
+`Loop` count). `PrintSections(true)` prints sections as they start, `PositionAt(tick)` returns the
+position at any tick and `form.Schedule()` the start time of every section.
 
 ## gen
 

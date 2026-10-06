@@ -71,7 +71,7 @@ func play(p *psalm.Psalm, synth psalm.Modular, s *section, index int, numSection
 		stps    []any
 		pitches [][]float64
 		durs    []float64
-		beatSec = 60.0 / float64(psalm.BPM())
+		beatSec = 60.0 / psalm.BPM()
 	)
 
 	if index > 0 {
@@ -113,7 +113,7 @@ func main() {
 	p := psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
 	defer p.Close()
 
-	sectionSec := sectionBeats * 60.0 / float64(psalm.BPM())
+	sectionSec := sectionBeats * 60.0 / psalm.BPM()
 
 	sections := []*section{
 		{
