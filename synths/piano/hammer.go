@@ -91,7 +91,7 @@ func (v *Voice) excitation(f0, sr float64) {
 	exc, knock := v.exc[:len(board)], v.knock[:len(board)]
 	v.exc, v.knock = exc, knock
 
-	h := math.Max(0, math.Min(cfg.Hardness, 1))
+	h := math.Max(0, math.Min(v.hardness, 1))
 	if v.soft {
 		h = math.Max(0, h-softHardness)
 	}
@@ -142,7 +142,7 @@ func (v *Voice) excitation(f0, sr float64) {
 
 	// the strike position: the wave reflected from the near end follows the direct one, a comb
 	// with notches at the harmonics that have a node where the hammer hits
-	beta := math.Max(0.02, math.Min(cfg.StrikePosition, 0.5))
+	beta := math.Max(0.02, math.Min(v.strikeAt, 0.5))
 	d := int(math.Round(beta * sr / f0))
 	if d >= 1 {
 		for i := len(exc) - 1; i >= d; i-- {

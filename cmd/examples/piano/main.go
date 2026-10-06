@@ -2,7 +2,7 @@ package main
 
 // A tour of the physically modelled piano. The grand plays a nocturne (with the sustain pedal
 // changed every bar, the strings ringing along), then shows its dynamics, the whole keyboard, the
-// sustain pedal and the soft pedal; after that every other preset plays a short piece that suits
+// sustain pedal (and half pedaling), the sostenuto and the soft pedal; after that every other preset plays a short piece that suits
 // it. All music is original.
 //
 //	go run ./cmd/examples/piano                                  play it
@@ -33,7 +33,8 @@ const (
 	nocturne = "Grand: a nocturne, the pedal changed every bar"
 	dynamics = "Grand: dynamics, one chord from pianissimo to fortissimo"
 	keyboard = "Grand: the whole keyboard, from A0 to the top"
-	pedal    = "Grand: pedal, two bars dry, two bars with the pedal down"
+	pedal    = "Grand: pedal, two bars dry, a bar half pedal, a bar with the pedal down"
+	sost     = "Grand: sostenuto, a low C held under short chords"
 	soft     = "Grand: the soft pedal, a phrase and again with the soft pedal down"
 	pop      = "Bright: pop chords"
 	hymn     = "Upright: a hymn"
@@ -65,6 +66,7 @@ func main() {
 		S{Name: dynamics, Bars: 4},
 		S{Name: keyboard, Bars: 3},
 		S{Name: pedal, Bars: 4},
+		S{Name: sost, Bars: 4},
 		S{Name: soft, Bars: 4},
 		S{Name: pop, Bars: 4},
 		S{Name: hymn, Bars: 4},
@@ -204,6 +206,30 @@ func main() {
 		})
 	})
 
+	// --- sostenuto: a low C caught by the pedal, short chords above it stay dry ---
+
+	part("grand", "sostenuto", 0.5, human, func(s S) []N {
+		if s.Name != sost {
+			return nil
+		}
+		low := score.Chord([]float64{36, 48}, 1)
+		low.Hold = 0.8
+		low.Velocity = 0.75
+		ns := []N{low}
+		for i, c := range harmony.MustProgression("C F G C") {
+			for b := range 4 {
+				if i == 0 && b == 0 {
+					continue // the low C takes the first beat
+				}
+				n := score.Chord(c.Close(60), 1)
+				n.Hold = 0.2
+				n.Velocity = 0.55
+				ns = append(ns, n)
+			}
+		}
+		return ns
+	})
+
 	// --- the soft pedal: a phrase, then again una corda ---
 
 	part("grand", "soft", 0.65, human, func(s S) []N {
@@ -330,6 +356,7 @@ func main() {
 		Tempo(arrange.Lane{Default: 66, Sections: map[string]arrange.Curve{
 			keyboard: arrange.Const(72),
 			pedal:    arrange.Const(80),
+			sost:     arrange.Const(72),
 			soft:     arrange.Const(66),
 			pop:      arrange.Const(100),
 			hymn:     arrange.Const(70),
@@ -340,10 +367,25 @@ func main() {
 		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{
 			nocturne: changed(8),
 			keyboard: arrange.Const(1),
-			pedal:    secondHalf,
-			soft:     changed(2),
+			pedal: func(progress float64) float64 { // dry, half, down
+				switch {
+				case progress < 0.5:
+					return 0
+				case progress < 0.75:
+					return 0.5
+				}
+				return 1
+			},
+			soft: changed(2),
 		}}, pianos["grand"], "sustain").
 		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{soft: secondHalf}}, pianos["grand"], "soft").
+		// the sostenuto goes down while the low C is held (its first beat) and up at the end
+		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{sost: func(progress float64) float64 {
+			if progress > 0.03 && progress < 0.97 {
+				return 1
+			}
+			return 0
+		}}}, pianos["grand"], "sostenuto").
 		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{hymn: changed(4)}}, pianos["upright"], "sustain").
 		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{ambient: arrange.Const(1)}}, pianos["felt"], "sustain").
 		PrintSections(true)

@@ -42,12 +42,13 @@ func UprightPreset() Config {
 	cfg.Damping = 1.6
 	cfg.Unison = 1.8
 	cfg.Width = 0.35
+	cfg.Stretch = 0.7
 	cfg.Level = 18.2635 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
-// FeltPreset is a felt piano: a strip of felt between hammers and strings, soft, warm and close,
-// the sound of quiet piano music and ambient
+// FeltPreset is a felt piano: a strip of felt between hammers and strings, soft, warm and close
+// (heard from close microphones), the sound of quiet piano music and ambient
 func FeltPreset() Config {
 	cfg := DefaultConfig()
 	cfg.Hardness = 0.05
@@ -58,7 +59,8 @@ func FeltPreset() Config {
 	cfg.DamperTime = 0.4
 	cfg.VelocitySens = 0.5
 	cfg.Width = 0.7
-	cfg.Level = 22.5738 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Position = Studio // felt pianos are recorded close
+	cfg.Level = 22.5738   // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -72,6 +74,7 @@ func HonkyTonkPreset() Config {
 	cfg.Damping = 1.3
 	cfg.Unison = 12
 	cfg.Width = 0.3
+	cfg.Stretch = 0.6
 	cfg.Level = 16.7217 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
@@ -89,6 +92,7 @@ func ToyPreset() Config {
 	cfg.Strings = 1
 	cfg.DamperTime = 0.1
 	cfg.Width = 0.2
+	cfg.Stretch = 0
 	cfg.Level = 24.7193 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }

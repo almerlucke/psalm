@@ -37,6 +37,9 @@ type Config struct {
 	Body           float64     // 0-1, how much of the sound comes through the soundboard
 	Bark           float64     // 0-1, the metallic bark of the bass strings played hard (phantom partials)
 	Mechanics      float64     // 0-1, the noise of the action: dampers, keys, the pedal
+	Stretch        float64     // how much of the stretch tuning of a piano, 1 is what a tuner does, 0 is equal temperament
+	Variation      float64     // 0-1, how different the keys are (hammers, levels, ring times) and every strike
+	Position       Position    // where the piano is heard from
 	SoundboardIR   [][]float64 // a measured soundboard response (per side) instead of the modelled one
 	Resonance      float64     // 0-1, sympathetic resonance of the strings whose dampers are up
 	Level          float64     // output level (0 is treated as 1)
@@ -60,10 +63,22 @@ func DefaultConfig() Config {
 		Body:           0.6,
 		Bark:           0.5,
 		Mechanics:      0.5,
+		Stretch:        1,
+		Variation:      0.5,
+		Position:       Player,
 		Resonance:      0.5,
 		Level:          1,
 	}
 }
+
+// Position is where the piano is heard from
+type Position int
+
+const (
+	Player Position = iota // on the bench: wide, the keys from left to right, the lid above
+	Studio                 // close microphones over the open lid: wide, clear and present
+	Hall                   // in the audience: narrower, the lid and the floor reflecting, a little air
+)
 
 // highestDamper is the highest key with a damper, the keys above ring on
 const highestDamper = 88
@@ -104,8 +119,8 @@ const (
 )
 
 // Voice is a piano voice: the strings of one key. Notes take "pitch" (or "frequency") and
-// "velocity" (0-1, default 0.8); "sustain" (above 0.5 is down) is the sustain pedal, "soft" the
-// soft pedal
+// "velocity" (0-1, default 0.8); "sustain" is the sustain pedal (0 up, 1 down, half pedaling in
+// between), "soft" the soft pedal
 type Voice struct {
 	*psalm.Module
 	cfg Config
@@ -119,6 +134,9 @@ type Voice struct {
 	key      int
 	velocity float64
 	amp      float64       // output gain of the key: the level and the keyboard balance
+	hardness float64       // the felt of this key and strike
+	strikeAt float64       // where this hammer hits
+	targets  []float64     // the loop gains the dampers leave the strings
 	voicing  *[128]float64 // the gains of the keys that even out the soundboard of the instrument
 	force    float64       // how hard the hammer strikes
 	peak     float64       // the loudest sample of the last buffer
@@ -126,7 +144,8 @@ type Voice struct {
 	gainR    float64
 
 	keyDown   bool
-	sustain   bool
+	pedal     float64    // the sustain pedal, 0 up to 1 down
+	sostenuto *[128]bool // the keys the sostenuto pedal keeps undamped (of the instrument)
 	soft      bool
 	releaseIn int // samples until a timed note releases, -1 is none
 
@@ -180,8 +199,13 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("frequency", func(f float64) { v.pitch = 69 + 12*math.Log2(f/440) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
 	msg.IfFltVal("body", func(f float64) { cfg.Body = f })
+	msg.IfFltVal("stretch", func(f float64) { cfg.Stretch = f })
+	msg.IfFltVal("variation", func(f float64) { cfg.Variation = f })
+	msg.IfIntVal("position", func(i int) { cfg.Position = Position(i) })
+	msg.IfFltVal("bark", func(f float64) { cfg.Bark = f })
+	msg.IfFltVal("mechanics", func(f float64) { cfg.Mechanics = f })
 	msg.IfFltVal("resonance", func(f float64) { cfg.Resonance = f })
-	msg.IfFltVal("sustain", func(f float64) { v.SetSustain(f > 0.5) })
+	msg.IfFltVal("sustain", v.SetSustain)
 	msg.IfFltVal("soft", func(f float64) { v.soft = f > 0.5 })
 }
 
@@ -191,8 +215,18 @@ func (v *Voice) Receive(value any, index int) {
 	}
 }
 
-// SetSustain puts the sustain pedal down or lifts it
-func (v *Voice) SetSustain(down bool) { v.sustain = down }
+// SetSustain sets the sustain pedal: 0 up, 1 down, in between the dampers only touch the strings
+// (half pedaling)
+func (v *Voice) SetSustain(amount float64) { v.pedal = math.Max(0, math.Min(amount, 1)) }
+
+// contact returns how firmly the dampers of the voice are on its strings, 0 lifted (the key is
+// down, the sostenuto holds it, the keys at the top have none) to 1
+func (v *Voice) contact() float64 {
+	if v.keyDown || v.pitch > highestDamper || (v.sostenuto != nil && v.sostenuto[v.key]) {
+		return 0
+	}
+	return damperContact(v.pedal, v.pitch)
+}
 
 func (v *Voice) NoteOn(amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
 	v.strike(amplitude, message, tick, -1, false)
@@ -234,12 +268,19 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 
 	restrike = restrike && v.active && v.key == keyOf(v.pitch)
 	v.key = keyOf(v.pitch)
+	vary := math.Max(0, math.Min(cfg.Variation, 1))
+
+	// every key's hammer is a little different, and every strike: the felt, where it hits, and
+	// the moment it reaches each string
+	v.hardness = cfg.Hardness + vary*(0.06*keyRandom(v.key, 1)+0.03*(2*v.Rand().Float64()-1))
+	v.strikeAt = cfg.StrikePosition + vary*0.008*keyRandom(v.key, 2)
+	spread := vary * maxStrikeSpread
 	v.releaseIn = releaseIn
 	v.keyDown = true
 	v.quiet = 0
 	v.active = true
 
-	f0 := 440 * math.Exp2((v.pitch-69)/12)
+	f0 := 440 * math.Exp2((stretched(v.pitch, cfg)-69)/12) // tuned like a piano: the octaves stretched
 	n := numStrings(v.pitch, cfg.Strings)
 	disp := dispersion(sr, math.Max(0, cfg.Stiffness))[max(0, min(int(math.Round(v.pitch)), 127))]
 	design := stringDesign{
@@ -266,7 +307,8 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	for i := range n {
 		d := design
 		d.f0 = f0 * math.Exp2(offsets[i]*cfg.Unison/1200)
-		d.t60 *= 1 + 0.08*float64(i) // the strings decay a little differently
+		d.t60 *= 1 + 0.08*float64(i)               // the strings decay a little differently
+		d.t60 *= 1 + 0.08*vary*keyRandom(v.key, 3) // and every key a little differently
 		in := 1.0
 		if i >= struck {
 			in = softCoupling
@@ -291,8 +333,12 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 		}
 	}
 
+	for _, s := range v.strings {
+		s.delay = int(spread * v.Rand().Float64())
+	}
+
 	// key position in the stereo field, low keys on the left
-	pan := 0.5 + 0.5*math.Max(0, math.Min(cfg.Width, 1))*math.Max(-1, math.Min((v.pitch-64)/44, 1))
+	pan := keyPan(v.pitch, cfg)
 	v.gainL = math.Cos(pan * math.Pi / 2)
 	v.gainR = math.Sin(pan * math.Pi / 2)
 
@@ -303,6 +349,7 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 		level = 1
 	}
 	v.amp = level * keyBalance(v.pitch) / math.Sqrt(float64(n))
+	v.amp *= math.Pow(10, vary*keyRandom(v.key, 4)/20) // every key ±1 dB
 	if v.voicing != nil {
 		v.amp *= v.voicing[v.key]
 	}
@@ -326,6 +373,7 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	vel := v.velocity
 	sens := math.Max(0, math.Min(cfg.VelocitySens, 1))
 	v.force = amplitude * (1 - sens + sens*vel*vel/0.64)
+	v.force *= math.Pow(10, vary*0.6*(2*v.Rand().Float64()-1)/20) // no strike is the same
 	if v.soft {
 		v.force *= softLevel
 	}
@@ -366,9 +414,11 @@ func (v *Voice) Synthesize() {
 		bs   = v.Config().BufferSize
 	)
 
-	// the damper: lifted while the key is down or the pedal holds it, otherwise the strings lose
-	// enough per loop to fall 60 dB in DamperTime (the keys at the top have no dampers)
-	damped := !v.keyDown && !v.sustain && v.pitch <= highestDamper
+	// the dampers: lifted while the key is down or a pedal holds them, on the strings they lose
+	// enough per loop to fall 60 dB in DamperTime, touching them lightly (half pedaling) less
+	contact := v.contact()
+	damped := contact > 0.5
+	targets := v.damperTargets(contact)
 	glide := 1 - math.Exp(-1/(0.01*sr))
 	peak := 0.0
 	coupling := unisonCoupling / float64(len(v.strings)/2)
@@ -384,27 +434,28 @@ func (v *Voice) Synthesize() {
 		if v.releaseIn >= 0 {
 			if v.releaseIn == 0 {
 				v.keyDown = false
-				damped = !v.sustain && v.pitch <= highestDamper
+				contact = v.contact()
+				damped = contact > 0.5
+				targets = v.damperTargets(contact)
 			}
 			v.releaseIn--
 		}
 
-		x, y := 0.0, 0.0
-		if v.excPos < 0 {
-			v.excPos++
-		} else if v.excPos < len(v.exc) {
-			x, y = v.exc[v.excPos], v.knock[v.excPos]
+		// the strike: every string gets it a little later or earlier (the hammer doesn't reach
+		// the strings of a key at exactly the same moment)
+		pos := v.excPos
+		y := 0.0
+		if pos >= 0 && pos < len(v.knock) {
+			y = v.knock[pos]
+		}
+		if pos < len(v.exc)+maxStrikeSpread {
 			v.excPos++
 		}
 
 		// the strings: what comes around every loop reaches the bridge
 		t, bridge := 0.0, 0.0
 		for k, s := range v.strings {
-			target := 1.0
-			if damped {
-				target = s.damped
-			}
-			s.damper += (target - s.damper) * glide
+			s.damper += (targets[k] - s.damper) * glide
 			s.y = s.next()
 			t += s.y
 			if k%2 == 0 {
@@ -414,6 +465,10 @@ func (v *Voice) Synthesize() {
 		// the bridge: the vertical polarizations moving together lose to the soundboard, a
 		// little passes to the horizontal ones
 		for k, s := range v.strings {
+			x := 0.0
+			if i := pos - s.delay; i >= 0 && i < len(v.exc) {
+				x = v.exc[i]
+			}
 			if k%2 == 0 {
 				s.push(x*s.in + s.y - coupling*bridge)
 			} else {
@@ -470,7 +525,7 @@ func (v *Voice) Synthesize() {
 
 	// rest when the strings have died away and the key is up (a key held down keeps its dampers
 	// up, its strings can ring along with others)
-	if v.excPos >= len(v.exc) && peak < 3e-5 && !v.keyDown {
+	if v.excPos >= len(v.exc)+maxStrikeSpread && peak < 3e-5 && !v.keyDown {
 		v.quiet++
 		if v.quiet > 2 {
 			v.active = false
@@ -486,6 +541,50 @@ const (
 	keyNoise    = 0.0004
 	damperNoise = 0.05
 )
+
+// damperTargets returns the loop gain the dampers leave every string at a contact
+func (v *Voice) damperTargets(contact float64) []float64 {
+	v.targets = v.targets[:0]
+	for _, s := range v.strings {
+		v.targets = append(v.targets, dampedGain(s.damped, contact))
+	}
+	return v.targets
+}
+
+// the half pedal: between halfPedalLow and halfPedalHigh of the pedal travel the dampers touch the
+// strings more and more lightly
+const (
+	halfPedalLow  = 0.3
+	halfPedalHigh = 0.7
+)
+
+// damperContact returns how firmly a damper is on the string of a key at a sustain pedal position:
+// 1 fully on (the pedal up), 0 lifted. In between the heavy bass strings push the light touch away
+// more easily than the treble, so half pedaling clears the treble and lets the bass ring
+func damperContact(pedal, pitch float64) float64 {
+	c := math.Max(0, math.Min((halfPedalHigh-pedal)/(halfPedalHigh-halfPedalLow), 1))
+	if c == 0 || c == 1 {
+		return c
+	}
+	treble := math.Max(0, math.Min((pitch-36)/48, 1))
+	return math.Pow(c, 1.6-0.8*treble)
+}
+
+// dampedGain returns the loop gain of a string with its damper at a contact, from the gain fully
+// damped
+func dampedGain(damped, contact float64) float64 {
+	return math.Pow(damped, contact*contact)
+}
+
+// maxStrikeSpread is the most samples the hammer reaches one string of a key later than another
+const maxStrikeSpread = 6
+
+// keyRandom returns a number from -1 to 1 for a key, the same every time (a property of the
+// instrument), another for every salt
+func keyRandom(key int, salt float64) float64 {
+	x := math.Sin(float64(key)*12.9898+salt*78.233) * 43758.5453
+	return 2*(x-math.Floor(x)) - 1
+}
 
 // keyBalanceTable is the gain of the keys that evens out their loudness (the higher strings keep
 // more of the strike, the ear hears the bass less), the top a little quieter like a real piano

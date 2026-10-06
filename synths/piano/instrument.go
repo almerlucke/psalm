@@ -11,30 +11,35 @@ import (
 // Piano is the whole instrument: the voices, the strings of all 88 keys ringing along with what is
 // played when their dampers are up (the sustain pedal, a held key, the top keys that have no
 // dampers), and the soundboard every string sounds through. It takes the messages of a poly synth
-// (triggers with a duration or noteOn and noteOff); "sustain" and "soft" (above 0.5 is down) are
-// the pedals, a message without a command reaches every voice.
+// (triggers with a duration or noteOn and noteOff); the pedals are "sustain" (0 up, 1 down, half
+// pedaling in between), "sostenuto" (above 0.5 is down: the keys held when it goes down stay
+// undamped until it comes up) and "soft" (above 0.5 is down). A message without a command reaches
+// every voice.
 //
 // The voices are handed out like the keys of a piano: a key that still sounds is struck again on
 // its own strings (no new voice, nothing cut off); a new key takes a free voice, or, when all sound,
 // the quietest one (released keys first), faded out over a buffer
 type Piano struct {
 	*psalm.Module
-	cfg     Config
-	voices  []*Voice
-	order   []int64 // when each voice was struck
-	strikes int64
-	mixed   psalm.Channels
-	fadeOut psalm.Channels
-	fading  bool
-	bank    []*sympathetic
-	board   *convolver.Convolver // the soundboard
-	ir      [][]float64          // its response
-	power   []float64            // its power response, for the voicing
-	hz      float64
-	dry     [2][]float64 // the strings, delayed as long as the soundboard takes
-	dryPos  int
-	sustain bool
-	pedal   struct { // the noise of the sustain pedal: the dampers lifting and landing
+	cfg       Config
+	voices    []*Voice
+	order     []int64 // when each voice was struck
+	strikes   int64
+	mixed     psalm.Channels
+	fadeOut   psalm.Channels
+	fading    bool
+	bank      []*sympathetic
+	board     *convolver.Convolver // the soundboard
+	ir        [][]float64          // its response
+	listener  *listener            // where the piano is heard from
+	power     []float64            // its power response, for the voicing
+	hz        float64
+	dry       [2][]float64 // the strings, delayed as long as the soundboard takes
+	dryPos    int
+	sustain   float64   // the sustain pedal, 0 up to 1 down
+	caught    [128]bool // the keys the sostenuto pedal holds undamped
+	sostenuto bool
+	pedal     struct { // the noise of the sustain pedal: the dampers lifting and landing
 		noise, lp, hp float64
 		thump         complex128
 	}
@@ -79,6 +84,9 @@ func NewPoly(cfg Config, numVoices int) *Piano {
 		voices: voices,
 		order:  make([]int64, numVoices),
 	}
+	for _, v := range voices {
+		v.sostenuto = &p.caught
+	}
 	p.mixed = psalm.NewChannels(cfg.NumChannels, p.Config().BufferSize)
 	p.fadeOut = psalm.NewChannels(cfg.NumChannels, p.Config().BufferSize)
 	ir := cfg.SoundboardIR
@@ -87,6 +95,7 @@ func NewPoly(cfg Config, numVoices int) *Piano {
 	}
 	p.board = convolver.New(ir, convolver.Config{PartitionSize: boardPartition, Mix: 1, Gain: 1})
 	p.ir = ir
+	p.listener = newListener(cfg.Position, p.Config().SampleRate)
 	p.power, p.hz = boardPower(ir, p.Config().SampleRate)
 	p.voice()
 	p.dry = [2][]float64{make([]float64, boardPartition), make([]float64, boardPartition)}
@@ -106,7 +115,7 @@ func (p *Piano) buildBank() {
 		pitch := float64(key)
 		d := stringDesign{
 			sr:         sr,
-			f0:         440 * math.Exp2((pitch-69)/12),
+			f0:         440 * math.Exp2((stretched(pitch, cfg)-69)/12),
 			stages:     disp[key].stages,
 			ad:         disp[key].ad,
 			t60:        ringTime(pitch) * math.Max(0.05, cfg.Decay) * afterFactor,
@@ -115,7 +124,7 @@ func (p *Piano) buildBank() {
 		}
 		s := &sympathetic{pitch: pitch}
 		s.reset(designString(d))
-		pan := 0.5 + 0.5*math.Max(0, math.Min(cfg.Width, 1))*math.Max(-1, math.Min((pitch-64)/44, 1))
+		pan := keyPan(pitch, cfg)
 		s.gainL, s.gainR = math.Cos(pan*math.Pi/2), math.Sin(pan*math.Pi/2)
 		s.damper = s.damped
 		p.bank = append(p.bank, s)
@@ -181,9 +190,25 @@ func (p *Piano) ReceiveMessage(msg psalm.Message) {
 		v.ReceiveMessage(msg)
 	}
 	p.cfg = p.voices[0].cfg
-	msg.IfFltVal("sustain", func(f float64) {
+	msg.IfFltVal("sostenuto", func(f float64) {
 		down := f > 0.5
-		if down != p.sustain {
+		if down && !p.sostenuto {
+			// it catches the dampers of the keys held now
+			for _, v := range p.voices {
+				if v.Held() {
+					p.caught[v.Key()] = true
+				}
+			}
+		}
+		if !down {
+			clear(p.caught[:])
+		}
+		p.sostenuto = down
+	})
+	msg.IfFltVal("sustain", func(f float64) {
+		f = math.Max(0, math.Min(f, 1))
+		down, was := f > 0.5, p.sustain > 0.5
+		if down != was {
 			// all dampers lift with a soft swish, and land with a thud
 			mech := math.Max(0, math.Min(p.cfg.Mechanics, 1)) * math.Max(p.cfg.Level, 1e-9)
 			if down {
@@ -193,7 +218,7 @@ func (p *Piano) ReceiveMessage(msg psalm.Message) {
 				p.pedal.thump += complex(mech*pedalThump, 0)
 			}
 		}
-		p.sustain = down
+		p.sustain = f
 	})
 	for _, k := range []string{"body", "hardness", "strikePosition", "stiffness", "decay", "damping"} {
 		if _, ok := msg[k]; ok {
@@ -201,7 +226,10 @@ func (p *Piano) ReceiveMessage(msg psalm.Message) {
 			break
 		}
 	}
-	for _, k := range []string{"stiffness", "decay", "damping", "damperTime", "width"} {
+	if _, ok := msg["position"]; ok {
+		p.listener = newListener(p.cfg.Position, p.Config().SampleRate)
+	}
+	for _, k := range []string{"stiffness", "decay", "damping", "damperTime", "width", "stretch", "position"} {
 		if _, ok := msg[k]; ok {
 			p.buildBank()
 			return
@@ -338,17 +366,18 @@ func (p *Piano) Synthesize() {
 		var symL, symR float64
 		if coupling > 0 {
 			for _, s := range p.bank {
-				up := p.sustain || s.pitch > highestDamper || p.held[int(s.pitch)]
-				if s.quiet > 4096 && (!up || bridge == 0) {
+				key := int(s.pitch)
+				contact := 0.0
+				if s.pitch <= highestDamper && !p.held[key] && !p.caught[key] {
+					contact = damperContact(p.sustain, s.pitch)
+				}
+				if s.quiet > 4096 && (contact == 1 || bridge == 0) {
 					continue // silent and nothing reaches it, nothing to do
 				}
-				target := s.damped
+				target := dampedGain(s.damped, contact)
 				x := 0.0
-				if up {
-					target = 1
-					if !p.sounding[int(s.pitch)] {
-						x = bridge
-					}
+				if !p.sounding[key] {
+					x = bridge * (1 - contact)
 				}
 				s.damper += (target - s.damper) * glide
 				y := s.tick(x)
@@ -396,6 +425,7 @@ func (p *Piano) Synthesize() {
 		// for clarity
 		l := direct*float64(out[0][i]) + body*float64(wet[0][i])
 		r := direct*float64(out[len(out)-1][i]) + body*float64(wet[1][i])
+		l, r = p.listener.process(l, r)
 		if math.Abs(l)+math.Abs(r) < 1e-7 {
 			p.idle++
 		} else {

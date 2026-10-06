@@ -23,6 +23,7 @@ type str struct {
 	tx, ty float64                   // tuning allpass state
 	in     float64                   // how much of the strike reaches this string
 	y      float64                   // the last sample around the loop
+	delay  int                       // samples the strike reaches this string late
 	damper float64                   // gain per loop the damper takes away, 1 is lifted
 	damped float64                   // that gain with the damper down
 }

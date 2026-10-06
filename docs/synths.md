@@ -714,9 +714,27 @@ What makes it a piano:
   dampers are up: all of them with the sustain pedal down, the keys held down (also silently), and
   the top keys, which have no dampers (`Resonance`). With the pedal down a halo blooms as the notes
   die away.
-- **Dampers** stop the strings when a key is released (slower in the bass), the **sustain pedal**
-  lifts them, the **soft pedal** (una corda) shifts the hammers so they strike one string less
-  with a softer part of the felt: quieter and veiled.
+- **Dampers** stop the strings when a key is released (slower in the bass). The **sustain pedal**
+  lifts them; between up and down it lifts them partly (**half pedaling**): the dampers touch the
+  strings lightly, a released note rings on shorter, and the heavy bass strings push the light touch
+  away more easily than the treble, so half pedaling clears the treble and lets the bass ring. The
+  **sostenuto pedal** keeps the dampers of the keys held when it goes down up until it comes up:
+  a bass note caught by it rings under chords played dry above it. The **soft pedal** (una corda)
+  shifts the hammers so they strike one string less with a softer part of the felt: quieter and
+  veiled.
+- **Stretch tuning.** The partials of stiff strings are sharp, so the instrument is tuned like a
+  tuner does it: octaves widened until they are clean (the 2nd partial of the lower note on the upper
+  note in the treble, 4:2 and 6:3 lower down), which gives the Railsback curve: the low bass some 15
+  cents flat, the top some 45 cents sharp, derived from the strings' own inharmonicity (`Stretch`).
+- **No two notes alike.** Every key's hammer is a little harder or softer, hits a little elsewhere,
+  every key rings a little longer or shorter and is a little louder or softer, as on any real
+  instrument; every strike varies a little in force and felt, and the hammer reaches the strings of
+  a key a fraction of a millisecond apart (`Variation`). The strikes draw from the random source of
+  the patch, so `psalm.Seed` repeats them.
+- **A listening position**: on the bench (`Player`), close microphones over the open lid
+  (`Studio`), or in the audience (`Hall`): how wide the keys spread, the early reflections of the
+  lid, the floor and the stage, and from the audience a little air (`Position`). A reverb adds the
+  room after that.
 - The keys are balanced to sound equally loud.
 
 ```go
@@ -724,6 +742,8 @@ grand := piano.NewPoly(piano.GrandPreset(), 24).AddTo(p) // a voice per sounding
 
 // the pedals: messages without a command reach the whole instrument
 arrangement.AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{"verse": arrange.Const(1)}}, grand, "sustain")
+grand.ReceiveMessage(psalm.Message{"sustain": 0.5})   // half pedal
+grand.ReceiveMessage(psalm.Message{"sostenuto": 1.0}) // catch the keys held now
 grand.ReceiveMessage(psalm.Message{"soft": 1.0})
 ```
 
@@ -741,8 +761,9 @@ samples (3 ms) late, the time the soundboard convolution takes; it reports that 
 mixer lines the other strips up with it.
 
 **Note messages**: `pitch` (or `frequency`), `velocity` (0-1, default 0.8: the tone always, the
-level by `VelocitySens`), and every setting below. **Instrument messages**: `sustain` and `soft`
-(above 0.5 is down).
+level by `VelocitySens`), and every setting below. **Instrument messages**, the pedals: `sustain`
+(0 up, 1 down, half pedaling in between: from 0.3 to 0.7 of the travel the dampers lift), `sostenuto`
+and `soft` (above 0.5 is down).
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -753,6 +774,9 @@ level by `VelocitySens`), and every setting below. **Instrument messages**: `sus
 | `SoundboardIR` | nil | A measured soundboard response (one slice per side, at the sample rate) instead of the modelled board |
 | `Bark` | 0.5 | 0-1, the bark of the bass strings played hard (phantom partials, longitudinal mode) |
 | `Mechanics` | 0.5 | 0-1, the noise of the action: dampers, keys, the sustain pedal |
+| `Stretch` | 1 | How much of a tuner's stretch tuning, 0 is equal temperament |
+| `Variation` | 0.5 | 0-1, how different the keys and every strike are |
+| `Position` | `Player` | `Player`, `Studio` or `Hall`: where the piano is heard from |
 | `Resonance` | 0.5 | 0-1, sympathetic resonance of the strings whose dampers are up |
 | `Stiffness` | 1 | Inharmonicity, 1 is a grand, more an upright (or a toy, a struck rod), 0 perfectly harmonic |
 | `Decay` | 1 | Scales the ring times |
@@ -767,7 +791,8 @@ level by `VelocitySens`), and every setting below. **Instrument messages**: `sus
 **Presets** (`piano.Presets` by name): `grand` (concert grand), `bright` (hard hammers for pop and
 rock), `upright` (stiffer, shorter, boxier, a little out of tune), `felt` (a felt piano, soft and
 close, for quiet music and ambient), `honkyTonk` (strings far out of tune with each other), `toy`
-(one very stiff, short string per key). A struck string peaks high above its loudness, so the
+(one very stiff, short string per key, not stretched). `felt` is heard from `Studio`, the others
+from `Player`. A struck string peaks high above its loudness, so the
 presets are calibrated to a -1 dB peak at velocity 0.8 (about -14 LUFS); played harder they go
 over, leave headroom or use the mixer's limiter.
 
