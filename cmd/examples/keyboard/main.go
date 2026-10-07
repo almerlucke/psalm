@@ -1,22 +1,35 @@
-// Keyboard: play the piano from a MIDI keyboard, live, in the Musikverein.
+// Keyboard: play the synths from a MIDI keyboard, live, in the Musikverein.
 //
-// The notes play with the velocity curve chosen (-curve), the pedals work as on a piano (sustain
-// with half pedaling, sostenuto, soft) and a program change switches the piano (the presets in
-// alphabetical order). Every MIDI event is printed with -monitor.
+// Every synth that plays notes is there: the piano, subtractive, pulsar, wavetable, fm, dx and
+// grains, each with all its presets. Bank select (controller 0) switches the synth (in the order above) and a
+// program change its preset (in alphabetical order); typed in the terminal, a synth or a preset
+// name (or both: "wavetable glass") switches too, "list" shows them all.
+//
+// The notes play with the velocity curve chosen (-curve). The piano takes the velocity itself and
+// has its pedals (sustain with half pedaling, sostenuto, soft); fm and dx take the velocity too,
+// the other synths play it as the amplitude, and the sustain pedal holds their notes. Every MIDI event is printed with
+// -monitor.
 //
 //	go run ./cmd/examples/keyboard -list                  the MIDI devices
 //	go run ./cmd/examples/keyboard                        the first keyboard, through portaudio
 //	go run ./cmd/examples/keyboard -device /dev/snd/midiC1D0 -preset felt -curve soft
+//	go run ./cmd/examples/keyboard -synth subtractive -preset brass
 //	go run ./cmd/examples/keyboard -jack                  JACK audio and a JACK MIDI port (sample accurate)
 //	go run ./cmd/examples/keyboard -demo                  no keyboard: a phrase played as MIDI
 package main
 
 import (
+	"bufio"
+	"cmp"
 	"flag"
 	"fmt"
 	"log"
+	"maps"
+	"os"
 	"slices"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/almerlucke/psalm"
@@ -26,16 +39,74 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/keyboard"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/mixer"
+	"github.com/almerlucke/psalm/synths/dx"
+	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/piano"
+	"github.com/almerlucke/psalm/synths/pulsar"
+	"github.com/almerlucke/psalm/synths/subtractive"
+	"github.com/almerlucke/psalm/synths/wavetable"
+	"github.com/almerlucke/psalm/synths/wavetable/gen"
 	"github.com/almerlucke/sndfile"
 )
+
+// instrument is a synth with all its presets, ready to play
+type instrument struct {
+	name     string
+	presets  []string // alphabetical
+	synths   map[string]psalm.Modular
+	keys     func(keyboard.Config) keyboard.Config // how the keyboard plays it
+	hall     float64                               // the send to the hall
+	selected atomic.Int64                          // the preset played last (the terminal reads it too)
+}
+
+// build makes an instrument of a synth: every preset by its constructor
+func build(name string, presets []string, newSynth func(preset string) psalm.Modular, keys func(keyboard.Config) keyboard.Config, hall float64) *instrument {
+	slices.Sort(presets)
+	in := &instrument{name: name, presets: presets, synths: map[string]psalm.Modular{}, keys: keys, hall: hall}
+	for _, preset := range presets {
+		in.synths[preset] = newSynth(preset)
+	}
+	return in
+}
+
+// the piano takes the velocity itself (so the amplitude stays 1) and has its pedals
+func pianoKeys(cfg keyboard.Config) keyboard.Config {
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes = 0, nil, false
+	return cfg
+}
+
+// most synths play the velocity as the amplitude, the sustain pedal holds their notes
+func synthKeys(cfg keyboard.Config) keyboard.Config {
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes = 1, map[int]string{}, true
+	return cfg
+}
+
+// fm and dx take the velocity themselves (it brightens them), the sustain pedal holds their notes
+func velocityKeys(cfg keyboard.Config) keyboard.Config {
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes = 0, map[int]string{}, true
+	return cfg
+}
+
+// merged reads several inputs as one, the events in order
+type merged []midi.Input
+
+func (m merged) Read(events []midi.Event, frames int, sampleRate float64) []midi.Event {
+	start := len(events)
+	for _, in := range m {
+		events = in.Read(events, frames, sampleRate)
+	}
+	slices.SortStableFunc(events[start:], func(a, b midi.Event) int { return cmp.Compare(a.Offset, b.Offset) })
+	return events
+}
 
 func main() {
 	list := flag.Bool("list", false, "list the MIDI devices")
 	device := flag.String("device", "", "the raw MIDI device (empty is the first keyboard)")
 	useJack := flag.Bool("jack", false, "play through JACK, with a JACK MIDI input port")
 	demo := flag.Bool("demo", false, "play a phrase as MIDI instead of reading a keyboard")
-	preset := flag.String("preset", "felt", "the piano to start with")
+	synth := flag.String("synth", "piano", "the synth to start with: piano, subtractive, pulsar, wavetable, fm, dx or grains")
+	preset := flag.String("preset", "", "the preset to start with (empty: felt for the piano, else the first)")
 	curve := flag.String("curve", "linear", "the velocity curve: soft, linear, hard or an exponent")
 	channel := flag.Int("channel", 0, "the MIDI channel (1-16), 0 is all")
 	transpose := flag.Int("transpose", 0, "semitones")
@@ -73,8 +144,9 @@ func main() {
 	// the engine and the input
 	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: *buffer})
 	var (
-		p     *psalm.Psalm
-		input midi.Input
+		p        *psalm.Psalm
+		input    midi.Input
+		commands = midi.NewQueue() // what is typed in the terminal, as MIDI
 	)
 	switch {
 	case *useJack:
@@ -103,34 +175,53 @@ func main() {
 	}
 	defer p.Close()
 
-	// the pianos, on the mixer with the hall: idle pianos rest, so all can be there
-	mix := mixer.New(p)
-	vienna := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/Musikvereinsaal.wav"))
-	mix.Bus("hall", mixer.StripConfig{}, convolver.New(vienna, convolver.Config{PartitionSize: 512, Mix: 1, Gain: 0.7}).AddTo(p))
-	var names []string
-	for name := range piano.Presets {
-		names = append(names, name)
-	}
-	slices.Sort(names)
-	if !slices.Contains(names, *preset) {
-		log.Fatalf("preset %q: one of %v", *preset, names)
-	}
-	pianos := map[string]psalm.Modular{}
-	for _, name := range names {
-		synth := piano.NewPoly(piano.Presets[name](), 24).AddTo(p)
-		pianos[name] = synth
-		mix.Channel(name, synth, mixer.StripConfig{Volume: -3.5, Sends: map[string]float64{"hall": 0.45}})
-	}
-	p.Out(mix.Master())
+	instruments := newInstruments(p)
+	p.Out(mixInstruments(p, instruments))
 
-	// the keyboard: the velocity goes to the piano, which has its own response, so the amplitude
-	// stays 1 (Dynamics 0)
-	kb := keyboard.New(input, cfg, pianos[*preset])
+	// the instrument and preset to start with
+	current := slices.IndexFunc(instruments, func(in *instrument) bool { return in.name == *synth })
+	if current < 0 {
+		log.Fatalf("synth %q: one of %v", *synth, names(instruments))
+	}
+	in := instruments[current]
+	if *preset == "" && in.name == "piano" {
+		*preset = "felt"
+	}
+	if *preset != "" {
+		i := slices.Index(in.presets, *preset)
+		if i < 0 {
+			log.Fatalf("%s preset %q: one of %v", in.name, *preset, in.presets)
+		}
+		in.selected.Store(int64(i))
+	}
+	var playing atomic.Int64 // the instrument playing, for the terminal
+	playing.Store(int64(current))
+	synthOf := func(in *instrument) psalm.Modular { return in.synths[in.presets[in.selected.Load()]] }
+
+	// the keyboard plays the selected preset. Bank select chooses the synth the next program
+	// change switches to (as MIDI has it: keyboards send it along with their program changes), the
+	// program change its preset (here, on the audio thread)
+	kb := keyboard.New(merged{input, commands}, in.keys(cfg), synthOf(in))
+	bank := current
+	kb.OnControl(midi.CCBankSelect, func(value float64, _ psalm.CtrlTick) {
+		if b := int(value*127 + 0.5); b < len(instruments) {
+			bank = b
+		}
+	})
 	kb.OnProgram(func(program int, tick psalm.CtrlTick) {
-		name := names[program%len(names)]
+		old := instruments[current]
 		kb.AllNotesOff(tick)
-		kb.SetTargets(pianos[name])
-		log.Printf("program %d: %s", program, name)
+		if old.name == "piano" {
+			// the pedals of the piano left come up, its notes ring out
+			synthOf(old).Receive(psalm.Message{"sustain": 0.0, "sostenuto": 0.0, "soft": 0.0}, 0)
+		}
+		current = bank
+		in := instruments[current]
+		in.selected.Store(int64(program % len(in.presets)))
+		kb.SetConfig(in.keys(cfg))
+		kb.SetTargets(synthOf(in))
+		playing.Store(int64(current))
+		log.Printf("%s: %s", in.name, in.presets[in.selected.Load()])
 	})
 	if *monitor {
 		kb.OnEvent(func(e midi.Event, _ psalm.CtrlTick) {
@@ -141,9 +232,110 @@ func main() {
 	}
 	kb.AddTo(p)
 
-	log.Printf("%s, %s velocity curve; program changes switch between %v", *preset, *curve, names)
+	go readCommands(commands, max(*channel, 1), instruments, &playing)
+
+	log.Printf("%s: %s, %s velocity curve; bank select or a synth name switches between %v, a program change or a preset name the preset (\"list\" shows them)",
+		in.name, in.presets[in.selected.Load()], *curve, names(instruments))
 	if err := p.Listen(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// newInstruments makes every synth that plays notes with all its presets (grains when its
+// recording is there)
+func newInstruments(p *psalm.Psalm) []*instrument {
+	table := gen.Brightness(32)
+	instruments := []*instrument{
+		build("piano", slices.Collect(maps.Keys(piano.Presets)), func(n string) psalm.Modular {
+			return piano.NewPoly(piano.Presets[n](), 24).AddTo(p)
+		}, pianoKeys, 0.45),
+		build("subtractive", slices.Collect(maps.Keys(subtractive.Presets)), func(n string) psalm.Modular {
+			return subtractive.NewPoly(subtractive.Presets[n](), 12).AddTo(p)
+		}, synthKeys, 0.3),
+		build("pulsar", slices.Collect(maps.Keys(pulsar.Presets)), func(n string) psalm.Modular {
+			return pulsar.NewPoly(pulsar.Presets[n](), 12).AddTo(p)
+		}, synthKeys, 0.3),
+		build("wavetable", slices.Collect(maps.Keys(wavetable.Presets)), func(n string) psalm.Modular {
+			return wavetable.NewPoly(wavetable.Presets[n](table), 12).AddTo(p)
+		}, synthKeys, 0.3),
+		build("fm", slices.Collect(maps.Keys(fm.Presets)), func(n string) psalm.Modular {
+			return fm.NewPoly(fm.Presets[n](), 12).AddTo(p)
+		}, velocityKeys, 0.3),
+		build("dx", slices.Collect(maps.Keys(dx.Presets)), func(n string) psalm.Modular {
+			return dx.NewPoly(dx.Presets[n](), 12, 2).AddTo(p)
+		}, velocityKeys, 0.3),
+	}
+	choir, err := sndfile.NewMipMapSoundFile[float32]("assets/sounds/various/mixkit-angelical-choir-654.wav", 4)
+	if err != nil {
+		log.Printf("grains left out: %v", err)
+		return instruments
+	}
+	return append(instruments, build("grains", slices.Collect(maps.Keys(grains.Presets)), func(n string) psalm.Modular {
+		return grains.NewPoly(grains.Presets[n](choir, 57), 8).AddTo(p)
+	}, synthKeys, 0.3))
+}
+
+// mixInstruments puts the synths on a mixer with the hall and returns its output: idle synths
+// rest, so all can be there. The presets are calibrated to the same loudness, every channel gets
+// the same volume
+func mixInstruments(p *psalm.Psalm, instruments []*instrument) psalm.Modular {
+	mix := mixer.New(p)
+	vienna := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/Musikvereinsaal.wav"))
+	mix.Bus("hall", mixer.StripConfig{}, convolver.New(vienna, convolver.Config{PartitionSize: 512, Mix: 1, Gain: 0.7}).AddTo(p))
+	for _, in := range instruments {
+		for _, preset := range in.presets {
+			mix.Channel(in.name+"/"+preset, in.synths[preset], mixer.StripConfig{Volume: -3.5, Sends: map[string]float64{"hall": in.hall}})
+		}
+	}
+	return mix.Master()
+}
+
+func names(instruments []*instrument) []string {
+	var n []string
+	for _, in := range instruments {
+		n = append(n, in.name)
+	}
+	return n
+}
+
+// readCommands turns what is typed in the terminal into MIDI on a channel: a synth name, a preset
+// name or number (of the synth playing, or after a synth name) a bank select and a program change
+func readCommands(q *midi.Queue, channel int, instruments []*instrument, playing *atomic.Int64) {
+	scanner := bufio.NewScanner(os.Stdin)
+	for scanner.Scan() {
+		words := strings.Fields(strings.ToLower(scanner.Text()))
+		if len(words) == 0 {
+			continue
+		}
+		if words[0] == "list" {
+			for i, in := range instruments {
+				fmt.Printf("%d %s: %s\n", i, in.name, strings.Join(in.presets, ", "))
+			}
+			continue
+		}
+		synth := int(playing.Load())
+		if i := slices.IndexFunc(instruments, func(in *instrument) bool { return in.name == words[0] }); i >= 0 {
+			synth = i
+			words = words[1:]
+			if len(words) == 0 {
+				// the synth, at the preset it played last
+				q.Push(midi.ControlChangeMsg(channel, midi.CCBankSelect, synth))
+				q.Push(midi.ProgramChangeMsg(channel, int(instruments[synth].selected.Load())))
+				continue
+			}
+		}
+		presets := instruments[synth].presets
+		program, err := strconv.Atoi(words[0])
+		if err != nil {
+			program = slices.IndexFunc(presets, func(p string) bool { return strings.ToLower(p) == words[0] })
+		}
+		if program < 0 || program >= len(presets) {
+			fmt.Printf("%q: a synth (%s), a preset of %s (%s), a number or \"list\"\n",
+				words[0], strings.Join(names(instruments), ", "), instruments[synth].name, strings.Join(presets, ", "))
+			continue
+		}
+		q.Push(midi.ControlChangeMsg(channel, midi.CCBankSelect, synth))
+		q.Push(midi.ProgramChangeMsg(channel, program))
 	}
 }
 

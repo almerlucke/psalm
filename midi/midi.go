@@ -50,6 +50,7 @@ func (k Kind) String() string {
 
 // Controllers with a common meaning
 const (
+	CCBankSelect   = 0
 	CCModWheel     = 1
 	CCBreath       = 2
 	CCFoot         = 4
