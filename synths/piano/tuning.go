@@ -9,9 +9,9 @@ import (
 // temperament has octaves that beat: the second partial of the lower note is above the upper
 // note. Tuners widen the octaves until they are clean, matching partials of the notes: the 2nd of
 // the lower note with the fundamental of the upper one in the treble, the 4th with the 2nd in the
-// middle, the 6th with the 3rd in the bass (to the ear the higher partials of the bass are the
-// pitch). Starting from A4, that gives the Railsback curve: the bass some 20 cents flat, the top
-// some 30 cents sharp
+// middle, the 6th with the 3rd in the bass and the 8th with the 4th in the lowest octaves (to the
+// ear the higher partials of the bass are the pitch). Starting from A4, that gives the Railsback
+// curve: the low bass some 20 cents flat, the top some 30 cents sharp
 
 var stretchTables sync.Map // stiffness -> *[128]float64
 
@@ -34,8 +34,10 @@ func stretch(stiffness float64) *[128]float64 {
 			return partial(key, 2) // 2:1
 		case key >= 50:
 			return partial(key, 4) - partial(key+12, 2) // 4:2
-		default:
+		case key >= 33:
 			return partial(key, 6) - partial(key+12, 3) // 6:3
+		default:
+			return partial(key, 8) - partial(key+12, 4) // 8:4, the lowest octaves
 		}
 	}
 

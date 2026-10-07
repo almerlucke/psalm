@@ -27,7 +27,7 @@ const (
 	boardResponseSecs = 0.5
 	boardResponseFade = 0.1
 	boardPartition    = 128 // the convolution block: the latency of the instrument in samples
-	boardShared       = 0.5 // how much of every mode both sides hear the same
+	boardShared       = 0.7 // how much of every mode both sides hear the same (mono stays even)
 )
 
 var boardResponses sync.Map // sample rate -> [][]float64

@@ -10,7 +10,7 @@ import (
 const dispersionStages = 4
 
 // highDamping sets how much faster the highs of a string die: 1/T60(f) = 1/T60 + highDamping f²
-const highDamping = 1.2e-7
+const highDamping = 3e-8
 
 // str is a string: a delay line closed by a loss filter, a dispersion allpass chain and a tuning
 // allpass. The strike is played into it, what comes back around the loop goes to the bridge
@@ -157,11 +157,26 @@ func designString(d stringDesign) stringParams {
 
 	// loss filter: the loop gain at the fundamental for the ring time, and a pole that makes a
 	// higher frequency lose as much as the damping asks
-	p.g = math.Pow(10, -3/(d.f0*d.t60))
-	fh := math.Min(6*d.f0, 0.4*d.sr)
+	// the fundamental rings for t60, the partials above it shorter: 1/T60(f) = 1/t60 + damping
+	// (f² - f0²), so in the treble, where the fundamental itself is high, only the partials lose
+	// more
+	g0 := math.Pow(10, -3/(d.f0*d.t60))
+	p.g = g0
+	fh := math.Min(math.Max(6*d.f0, 5000), 0.4*d.sr) // fitted high: a one pole follows f² below it
 	if fh > d.f0*1.5 && d.damping > 0 {
-		gh := math.Pow(10, -3/(d.f0/(1/d.t60+d.damping*fh*fh)))
-		p.a = lossPole(gh/p.g, 2*math.Pi*fh/d.sr)
+		gh := math.Pow(10, -3/(d.f0/(1/d.t60+d.damping*(fh*fh-d.f0*d.f0))))
+		p.a = lossPole(gh/g0, 2*math.Pi*fh/d.sr)
+		// the pole takes a little of the fundamental too: give it back, as long as the loop stays
+		// below unity at dc (otherwise the highs get a little less loss)
+		w0 := 2 * math.Pi * d.f0 / d.sr
+		for range 20 {
+			at := cmplx.Abs(complex(1+p.a, 0) / (1 + complex(p.a, 0)*cmplx.Exp(complex(0, -w0))))
+			if g := g0 / at; g <= 0.99999 {
+				p.g = g
+				break
+			}
+			p.a *= 0.8
+		}
 	}
 
 	// the damper: the extra loss per loop that rings the string out in damperTime
@@ -389,9 +404,13 @@ var inharmonicityTable = [][2]float64{{21, 3e-4}, {33, 1.5e-4}, {45, 1.5e-4}, {5
 
 func inharmonicity(pitch float64) float64 { return interpolate(inharmonicityTable, pitch) }
 
-// ringTime is how long the fundamental of a key takes to fall 60 dB, from about 20 seconds in the
-// low bass to under 2 at the top
-func ringTime(pitch float64) float64 { return 20 * math.Exp2(-(pitch-21)/24) }
+// ringTable is how long the fundamental of a string of a key takes to fall 60 dB (seconds) by its
+// own losses: the long second stage of a note (the first, fast one is the bridge, see
+// couplingTable), fitted to a recorded concert grand
+var ringTable = [][2]float64{{21, 40}, {36, 45}, {48, 40}, {60, 30}, {72, 22}, {84, 8}, {96, 4}, {108, 1.5}}
+
+// ringTime is how long the fundamental of a key takes to fall 60 dB
+func ringTime(pitch float64) float64 { return interpolate(ringTable, pitch) }
 
 // irregular returns the comb of the irregular losses of a string: a length that is a part of the
 // loop (another for every key and string, so the pattern over the partials differs), deep enough

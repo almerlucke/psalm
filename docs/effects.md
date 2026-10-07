@@ -86,9 +86,11 @@ reverb := shimmer.New(cfg).AddTo(p).In(pad)
 ### convolver
 
 Non-uniformly partitioned FFT convolution: the start of the response is convolved in blocks of
-`PartitionSize` (its only latency), the rest in blocks that double up to 8192 samples, so even a
-long response (a reverb of several seconds) at a low latency costs little: a 3 second stereo hall
-takes about 2.5% of a core at a partition of 128 samples. The inaudible end of a response (its
+`PartitionSize` (its only latency), the rest in blocks that grow four times (each size used three
+times) up to 8192 samples, so even a long response (a reverb of several seconds) at a low latency
+costs little: a 3 second stereo hall takes about 2% of a core at a partition of 128 samples. With
+`MonoInput` (both sides get the same input, like a mono send to a stereo response) the input is
+transformed once. The inaudible end of a response (its
 energy 90 dB below the whole) is left out. Larger partitions are a little cheaper still, but do
 more work at once.
 
@@ -103,6 +105,7 @@ reverb := convolver.New(ir, convolver.Config{PartitionSize: 512, Mix: 0.3, Gain:
 | `PartitionSize` | 512 | - | Block size (power of 2), the latency in samples (`Latency()`) |
 | `Mix` | 1 | `mix` | 0 dry, 1 wet |
 | `Gain` | 1 | `gain` | Wet gain |
+| `MonoInput` | false | - | Both sides get the same input: it is transformed once (cheaper) |
 
 A mono impulse response is used for both channels, a stereo one maps left to left and right to
 right. `IRFromSoundFile` doesn't resample, so use a file at the patch sample rate. It normalizes

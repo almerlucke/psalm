@@ -340,7 +340,7 @@ func main() {
 
 	// --- toy: a music box tune ---
 
-	part("toy", "music box", 0.4, score.Feel{Timing: 4, Velocity: 0.05}, func(s S) []N {
+	part("toy", "music box", 0.27, score.Feel{Timing: 4, Velocity: 0.05}, func(s S) []N {
 		if s.Name != musicBox {
 			return nil
 		}
@@ -348,7 +348,7 @@ func main() {
 			E6:.5 G6 C7:1 B6:.5 G6 A6:1 | F6:.5 A6 D7:1 C7:.5 A6 B6:1 |
 			G6:.5 B6 E7:1 D7:.5 B6 C7:.5 A6 | G6:1 E6:1 C6:2`)
 	})
-	part("toy", "music box bass", 0.3, score.Feel{}, func(s S) []N {
+	part("toy", "music box bass", 0.19, score.Feel{}, func(s S) []N {
 		if s.Name != musicBox {
 			return nil
 		}

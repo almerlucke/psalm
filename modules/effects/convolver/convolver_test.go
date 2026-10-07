@@ -185,3 +185,23 @@ func TestTrimsTheSilentEnd(t *testing.T) {
 		t.Fatalf("expected the silent end trimmed, %d of 20000 samples kept", c.irLength)
 	}
 }
+
+// With the same input on both sides the input is transformed once: the same output
+func TestMonoInputSharesTheTransform(t *testing.T) {
+	ir := [][]float64{randomSignal(20000, 5), randomSignal(20000, 6)}
+	for _, ch := range ir {
+		for i := range ch {
+			ch[i] *= 0.01
+		}
+	}
+	x := randomSignal(30*1024, 7)
+	a := New(ir, Config{PartitionSize: 128, Mix: 1, Gain: 1})
+	b := New(ir, Config{PartitionSize: 128, Mix: 1, Gain: 1, MonoInput: true})
+	al, ar := run(a, x, x)
+	bl, br := run(b, x, x)
+	for i := range al {
+		if math.Abs(al[i]-bl[i]) > 1e-6 || math.Abs(ar[i]-br[i]) > 1e-6 {
+			t.Fatalf("sample %d differs: %v %v, %v %v", i, al[i], ar[i], bl[i], br[i])
+		}
+	}
+}

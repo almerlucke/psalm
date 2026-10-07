@@ -15,6 +15,7 @@ type Config struct {
 	PartitionSize int     // block size, power of 2, the latency of the wet signal in samples
 	Mix           float64 // 0 is dry only, 1 is wet only, an equal power crossfade that keeps the loudness
 	Gain          float64 // wet gain
+	MonoInput     bool    // both sides get the same input (a mono send to a stereo response): it is transformed once
 }
 
 func DefaultConfig() Config {
@@ -29,13 +30,18 @@ func DefaultConfig() Config {
 // multiplications, but do more work at once
 const maxBlock = 8192
 
+// segmentGrowth is how much larger every next block size is: each size used a few times (three
+// for 4) costs fewer transforms than doubling (every size costs about the same in transforms per
+// sample, the multiplications are cheap)
+const segmentGrowth = 4
+
 // trimDB is where an impulse response is cut: the energy left after it is this far below all of it
 const trimDB = -90.0
 
 // segment is a part of the impulse response convolved with one block size (uniformly partitioned
-// overlap-save). The first segment has the block size of the convolver, the next ones double it:
-// a segment of block L can start at L - PartitionSize into the response, its output (L late) is
-// then just in time. So the head of the response is convolved in small blocks (low latency) and the
+// overlap-save). The first segment has the block size of the convolver, the next ones grow it (see
+// segmentGrowth): a segment of block L can start at L - PartitionSize into the response, its
+// output (L late) is then just in time. So the head of the response is convolved in small blocks (low latency) and the
 // long tail in large ones (few multiplications)
 type segment struct {
 	block    int // L
@@ -97,12 +103,14 @@ func New(ir [][]float64, cfg Config) *Convolver {
 	}
 	c.irLength = length
 
-	// the segments: each block size covers the response until the next, twice as large, is in time
+	// the segments: each block size covers the response until the next, segmentGrowth times as
+	// large, is in time (a block of L can start at L - PartitionSize)
 	b := c.block
-	for offset, block := 0, b; offset < length; block *= 2 {
+	for offset, block := 0, b; offset < length; block = min(block*segmentGrowth, max(b, maxBlock)) {
 		end := length
 		if block < max(b, maxBlock) {
-			end = min(length, 2*block-b) // where a block twice as large can start
+			next := min(block*segmentGrowth, max(b, maxBlock))
+			end = min(length, next-b) // where the next block size can start
 		}
 		parts := max(1, (end-offset+block-1)/block)
 		c.segments = append(c.segments, newSegment(chans, offset, block, parts))
@@ -193,17 +201,24 @@ func (c *Convolver) ReceiveMessage(msg psalm.Message) {
 
 // process convolves the latest input block of a channel of a segment, the result replaces its
 // output block
-func (s *segment) process(ch *segmentChannel) {
+func (s *segment) process(ch, shared *segmentChannel) {
 	var (
 		b     = s.block
 		bins  = b + 1
 		parts = s.parts
 	)
 
-	// slide the input window and transform it into the delay line
-	copy(ch.window, ch.window[b:])
-	copy(ch.window[b:], ch.inBlock)
-	s.fft.Forward(ch.window, ch.fdlRe[ch.fdlPos], ch.fdlIm[ch.fdlPos])
+	// slide the input window and transform it into the delay line (or take the transform of the
+	// first channel, when every channel has the same input)
+	if shared != nil {
+		at := (shared.fdlPos - 1 + parts) % parts // the first channel has just moved on
+		copy(ch.fdlRe[ch.fdlPos], shared.fdlRe[at])
+		copy(ch.fdlIm[ch.fdlPos], shared.fdlIm[at])
+	} else {
+		copy(ch.window, ch.window[b:])
+		copy(ch.window[b:], ch.inBlock)
+		s.fft.Forward(ch.window, ch.fdlRe[ch.fdlPos], ch.fdlIm[ch.fdlPos])
+	}
 
 	// multiply every delayed input spectrum with its impulse response partition and accumulate
 	accRe, accIm := s.accRe[:bins], s.accIm[:bins]
@@ -248,8 +263,12 @@ func (c *Convolver) Synthesize() {
 			s.pos++
 			if s.pos == s.block {
 				s.pos = 0
-				for _, ch := range s.channels {
-					s.process(ch)
+				for ci, ch := range s.channels {
+					var shared *segmentChannel
+					if c.cfg.MonoInput && ci > 0 {
+						shared = s.channels[0]
+					}
+					s.process(ch, shared)
 				}
 			}
 		}

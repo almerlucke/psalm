@@ -747,7 +747,12 @@ What makes it a piano:
   (`Studio`), or in the audience (`Hall`): how wide the keys spread, the early reflections of the
   lid, the floor and the stage, and from the audience a little air (`Position`). A reverb adds the
   room after that.
-- The keys are balanced to sound equally loud.
+- **Calibrated against a recorded concert grand** (single notes of the University of Iowa Steinway
+  at pianissimo, mezzo forte and fortissimo): the decay of every register (a fast first second,
+  roughly 6 to 18 dB per second, then a slow aftersound), the brightness of the attack at every
+  dynamic (a near pure tone in the treble), the dynamic range (pianissimo to fortissimo some 25 dB
+  in the middle, the level follows the speed of the hammer), the stretch tuning and the level over
+  the keyboard (even up to C5, a few dB softer from C6, the top octave some 13-16 dB softer).
 
 ```go
 grand := piano.NewPoly(piano.GrandPreset(), 24).AddTo(p) // a voice per sounding key
@@ -766,12 +771,12 @@ voice sounds until its strings have died away, the dampers stopped them, or as l
 held; with the pedal down that can take many seconds. The voices are handed out like piano keys: a
 key that still sounds is struck again on its own strings (adding to their vibration, no new voice,
 nothing cut off); a new key takes a free voice or, when all sound, the quietest one (released keys
-before held ones). The strings and the hammers of all keys are fitted
-when the piano is created (some tens of milliseconds), so playing it does no fitting: a silent piano
-rests from the start, a note costs a fraction of a millisecond. Sixteen sounding voices with
-the pedal down take about 10% of a core; a piano that is silent rests. The instrument sounds 128
-samples (3 ms) late, the time the soundboard convolution takes; it reports that latency, so a
-mixer lines the other strips up with it.
+before held ones). The strings and the hammers of all keys are fitted when the piano is created
+(some tens of milliseconds), so playing it does no fitting: a silent piano rests from the start, a
+note costs a fraction of a millisecond. Sixteen sounding voices with the pedal down take under 10%
+of a core (the strings ringing along run at half the sample rate); a piano that is silent rests. The
+instrument sounds 128 samples (3 ms) late, the time the soundboard convolution takes; it reports
+that latency, so a mixer lines the other strips up with it.
 
 **Note messages**: `pitch` (or `frequency`), `velocity` (0-1, default 0.8: the tone always, the
 level by `VelocitySens`), and every setting below. **Instrument messages**, the pedals: `sustain`
@@ -789,6 +794,7 @@ and `soft` (above 0.5 is down).
 | `Mechanics` | 0.5 | 0-1, the noise of the action: dampers, keys, the sustain pedal |
 | `Stretch` | 1 | How much of a tuner's stretch tuning, 0 is equal temperament |
 | `Variation` | 0.5 | 0-1, how different the keys and every strike are, and how irregularly the partials decay |
+| `Treble` | 0 | dB, the top octave louder or softer than voiced |
 | `Position` | `Player` | `Player`, `Studio` or `Hall`: where the piano is heard from |
 | `Resonance` | 0.5 | 0-1, sympathetic resonance of the strings whose dampers are up |
 | `Stiffness` | 1 | Inharmonicity, 1 is a grand, more an upright (or a toy, a struck rod), 0 perfectly harmonic |
@@ -798,7 +804,7 @@ and `soft` (above 0.5 is down).
 | `Strings` | 3 | Strings per key at most (1-3): fewer are thinner and cheaper |
 | `DamperTime` | 0.25 | Seconds a released key rings on (longer in the bass) |
 | `Width` | 0.6 | 0-1, the keys spread from left (low) to right (high), as the player hears it |
-| `VelocitySens` | 0.7 | 0-1, how much the velocity changes the level |
+| `VelocitySens` | 0.7 | 0-1, how much the velocity changes the level (0.7 is a recorded grand: pianissimo to fortissimo some 25 dB) |
 | `Level` | 1 | Output level |
 
 **Presets** (`piano.Presets` by name):
@@ -815,7 +821,7 @@ and `soft` (above 0.5 is down).
 | `felt` | A felt piano, soft and close, for quiet music and ambient |
 | `cinematic` | Soft, dark hammers from the hall, a lot of sympathetic resonance: the slow film-score piano |
 | `honkyTonk` | Strings far out of tune with each other |
-| `toy` | One very stiff, short string per key, not stretched |
+| `toy` | One very stiff, short string per key, struck hard in the middle: a bright, hollow, bell like plink (not stretched) |
 
 A struck string peaks high above its loudness, so the
 presets are calibrated to a -1 dB peak at velocity 0.8 (about -14 LUFS); played harder they go

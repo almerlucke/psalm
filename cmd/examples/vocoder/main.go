@@ -85,7 +85,7 @@ func main() {
 	ir := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/Conic Long Echo Hall.wav"))
 	rev := convolver.New(ir, convolver.Config{
 		PartitionSize: 512,
-		Mix:           0.7,
+		Mix:           1.0,
 		Gain:          1.0,
 	}).AddTo(p)
 

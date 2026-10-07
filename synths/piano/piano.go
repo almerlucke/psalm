@@ -39,6 +39,7 @@ type Config struct {
 	Mechanics      float64     // 0-1, the noise of the action: dampers, keys, the pedal
 	Stretch        float64     // how much of the stretch tuning of a piano, 1 is what a tuner does, 0 is equal temperament
 	Variation      float64     // 0-1, how different the keys are (hammers, levels, ring times) and every strike
+	Treble         float64     // dB, the top octave louder or softer than voiced (0 is as voiced)
 	Position       Position    // where the piano is heard from
 	SoundboardIR   [][]float64 // a measured soundboard response (per side) instead of the modelled one
 	Resonance      float64     // 0-1, sympathetic resonance of the strings whose dampers are up
@@ -83,23 +84,38 @@ const (
 // highestDamper is the highest key with a damper, the keys above ring on
 const highestDamper = 88
 
-// the two polarizations of a string: the prompt sound decays promptFactor times as long as the
-// ring time of the key, the aftersound afterFactor times, starting afterLevel as loud
+// the two polarizations of a string: both ring with the losses of the string (ringTime), the
+// vertical one drains fast through the bridge (see couplingTable), the horizontal one, starting
+// afterLevel as loud and a little apart in pitch, doesn't: the aftersound
 const (
-	promptFactor = 0.6
-	afterFactor  = 2.2
-	afterLevel   = 0.2
-	afterCents   = 0.3 // the aftersound is a little apart in pitch
+	promptFactor = 1.0
+	afterCents   = 0.3
 )
 
+// afterLevel is how loud the horizontal polarization starts, against the vertical one
+const afterLevel = 0.3
+
 // the strings of a key share the bridge: what they do together (the vertical polarizations moving
-// in phase) drains into the soundboard, unisonCoupling of it per loop over the strings, what they
-// do against each other stays (Weinreich); crossCoupling of the bridge motion passes to the
-// horizontal polarizations
+// in phase) drains into the soundboard fast, couplingTable per second (spread over the loops of
+// the string: a treble string goes around thousands of times a second, a bass string a few
+// dozen); what they do against each other only loses what the strings themselves lose, and lasts
+// (Weinreich). That is the two stages of a piano note. crossCoupling per second of the bridge
+// motion passes to the horizontal polarizations
+const crossCoupling = 0.26
+
+// the soundboard drains the bridge motion below drainHz drainLow times, above it drainHigh times
 const (
-	unisonCoupling = 0.003
-	crossCoupling  = 0.001
+	drainHz   = 300.0
+	drainLow  = 1.3
+	drainHigh = 0.5
 )
+
+// couplingTable is how fast (nepers per second) what the strings of a key do together drains into
+// the soundboard, fitted to the first second of the decay of a recorded concert grand
+var couplingTable = [][2]float64{{21, 1.05}, {36, 2.12}, {48, 1.9}, {60, 3.26}, {72, 2.52}, {84, 1.1}, {96, 0.31}, {108, 0.05}}
+
+// bridgeDrain returns the coupling of a key per second
+func bridgeDrain(pitch float64) float64 { return interpolate(couplingTable, pitch) }
 
 // a string played hard starts sharp and settles: cents at full velocity, and how fast
 // it settles (seconds to fall to a third), by key
@@ -117,11 +133,15 @@ const (
 	barkTop           = 66.0
 )
 
+// velocityPower is how the level goes with the speed of the hammer at VelocitySens 1, fitted to
+// the dynamics of a recorded grand (at the default 0.7, about 1.5: pianissimo to fortissimo about 25 dB)
+const velocityPower = 2.1
+
 // the soft pedal (una corda): the hammers strike one string less, with a softer part of the felt;
 // the string left out only rings along a little
 const (
 	softHardness = 0.4
-	softLevel    = 1.15
+	softLevel    = 1.25
 	softCoupling = 0.06
 )
 
@@ -143,12 +163,14 @@ type Voice struct {
 	key      int
 	velocity float64
 	amp      float64       // output gain of the key: the level and the keyboard balance
+	knockAmp float64       // output gain of the knock
 	hardness float64       // the felt of this key and strike
 	strikeAt float64       // where this hammer hits
 	targets  []float64     // the loop gains the dampers leave the strings
 	voicing  *[128]float64 // the gains of the keys that even out the soundboard of the instrument
 	force    float64       // how hard the hammer strikes
 	peak     float64       // the loudest sample of the last buffer
+	loudest  float64       // the loudest buffer since the strike
 	gainL    float64
 	gainR    float64
 
@@ -162,6 +184,7 @@ type Voice struct {
 	barkLevel          float64
 	settle             float64 // cents the strings are sharp for now, settling
 	settleDecay        float64
+	drainLP            float64 // the low part of the bridge motion
 	barkDC             float64
 	b0, a1, a2         float64
 	bx1, bx2, by1, by2 float64
@@ -211,6 +234,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
 	msg.IfFltVal("body", func(f float64) { cfg.Body = f })
 	msg.IfFltVal("stretch", func(f float64) { cfg.Stretch = f })
+	msg.IfFltVal("treble", func(f float64) { cfg.Treble = f })
 	msg.IfFltVal("variation", func(f float64) { cfg.Variation = f })
 	msg.IfIntVal("position", func(i int) { cfg.Position = Position(i) })
 	msg.IfFltVal("bark", func(f float64) { cfg.Bark = f })
@@ -288,6 +312,9 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	spread := vary * maxStrikeSpread
 	v.releaseIn = releaseIn
 	v.keyDown = true
+	if !restrike {
+		v.loudest = 0
+	}
 	v.quiet = 0
 	v.active = true
 
@@ -327,7 +354,6 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 		d.m, d.eps = irregular(sr/d.f0, d.f0, v.key, i, vary)
 		prompt, after := d, d
 		prompt.t60 *= promptFactor
-		after.t60 *= afterFactor
 		after.f0 *= math.Exp2(afterCents / 1200)
 		for k, pd := range []stringDesign{prompt, after} {
 			s := v.strings[2*i+k]
@@ -361,7 +387,10 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 		level = 1
 	}
 	v.amp = level * keyBalance(v.pitch) / math.Sqrt(float64(n))
-	v.amp *= math.Pow(10, vary*keyRandom(v.key, 4)/20) // every key ±1 dB
+	v.amp *= math.Pow(10, vary*keyRandom(v.key, 4)/20)                             // every key ±1 dB
+	v.amp *= math.Pow(10, cfg.Treble*math.Max(0, math.Min((v.pitch-84)/12, 1))/20) // the voicing of the top
+	// the knock is the soundboard, not the strings: the balance of the strings leaves it alone
+	v.knockAmp = v.amp / keyBalance(v.pitch)
 	if v.voicing != nil {
 		v.amp *= v.voicing[v.key]
 	}
@@ -388,10 +417,11 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	}
 	v.wasDown, v.wasDamped = true, false
 
-	// the strike: the velocity (always the tone, VelocitySens of it the level)
-	vel := v.velocity
+	// the strike: the velocity sets the speed of the hammer, the level goes with a power of it (a
+	// recorded grand is some 24 dB louder at fortissimo than at pianissimo), VelocitySens of it;
+	// velocity 0.8 is the level the presets are calibrated at
 	sens := math.Max(0, math.Min(cfg.VelocitySens, 1))
-	v.force = amplitude * (1 - sens + sens*vel*vel/0.64)
+	v.force = amplitude * math.Pow(hammerVelocity(v.velocity)/hammerVelocity(0.8), velocityPower*sens)
 	v.force *= math.Pow(10, vary*0.6*(2*v.Rand().Float64()-1)/20) // no strike is the same
 	if v.soft {
 		v.force *= softLevel
@@ -440,8 +470,10 @@ func (v *Voice) Synthesize() {
 	targets := v.damperTargets(contact)
 	glide := 1 - math.Exp(-1/(0.01*sr))
 	peak := 0.0
-	coupling := unisonCoupling / float64(len(v.strings)/2)
 	period := sr / (440 * math.Exp2((stretched(v.pitch, &v.cfg)-69)/12))
+	coupling := bridgeDrain(v.pitch) * period / sr / float64(len(v.strings)/2) // per loop
+	drainCoef := 1 - math.Exp(-2*math.Pi*drainHz/sr)
+	cross := crossCoupling * period / sr
 	mech := math.Max(0, math.Min(v.cfg.Mechanics, 1))
 	dcCoef := 1 - math.Exp(-2*math.Pi*20/sr)
 	envCoef := 1 - math.Exp(-1/(0.005*sr))
@@ -466,7 +498,7 @@ func (v *Voice) Synthesize() {
 		pos := v.excPos
 		kn := 0.0
 		if pos >= 0 && pos < len(v.knock) {
-			kn = v.knock[pos] * v.amp
+			kn = v.knock[pos] * v.knockAmp
 		}
 		if pos < len(v.exc)+maxStrikeSpread {
 			v.excPos++
@@ -496,6 +528,12 @@ func (v *Voice) Synthesize() {
 				bridge += s.y
 			}
 		}
+		// the soundboard takes the low frequencies of the bridge more than the highs (its low modes
+		// move most), so the fundamental and the low partials fade first and a bass note gets
+		// brighter as it rings
+		v.drainLP += drainCoef * (bridge - v.drainLP)
+		drain := drainLow*v.drainLP + drainHigh*(bridge-v.drainLP)
+
 		// the bridge: the vertical polarizations moving together lose to the soundboard, a
 		// little passes to the horizontal ones
 		for k, s := range v.strings {
@@ -504,9 +542,9 @@ func (v *Voice) Synthesize() {
 				x = v.exc[i]
 			}
 			if k%2 == 0 {
-				s.push(x*s.in + s.y - coupling*bridge)
+				s.push(x*s.in + s.y - coupling*drain)
 			} else {
-				s.push(x*s.in + s.y + crossCoupling*bridge)
+				s.push(x*s.in + s.y + cross*bridge)
 			}
 		}
 
@@ -565,10 +603,12 @@ func (v *Voice) Synthesize() {
 		}
 	}
 	v.peak = peak
+	v.loudest = math.Max(v.loudest, peak)
 
 	// rest when the strings have died away and the key is up (a key held down keeps its dampers
 	// up, its strings can ring along with others)
-	if v.excPos >= len(v.exc)+maxStrikeSpread && peak < 3e-5 && !v.keyDown {
+	// (silent: below -90 dB, or 60 dB below the loudest it was, inaudible beside anything)
+	if v.excPos >= len(v.exc)+maxStrikeSpread && peak < math.Max(3e-5, 1e-3*v.loudest) && !v.keyDown {
 		v.quiet++
 		if v.quiet > 2 {
 			v.active = false
@@ -632,7 +672,7 @@ func keyRandom(key int, salt float64) float64 {
 // keyBalanceTable is the gain of the keys that evens out their loudness (the higher strings keep
 // more of the strike, the ear hears the bass less), the top a little quieter like a real piano
 var keyBalanceTable = func() [][2]float64 {
-	db := [][2]float64{{21, 15}, {33, 10}, {45, 4.5}, {57, 0}, {63, 0.8}, {69, -1}, {81, -2}, {93, -3}, {99, -3.5}, {105, 1.8}, {108, 0}}
+	db := [][2]float64{{21, 15}, {33, 10}, {45, 4.5}, {57, 0}, {63, 0.8}, {69, -1}, {78, 1.5}, {81, 2}, {84, -0.5}, {88, 1.5}, {90, -2.5}, {91, -0.5}, {92, -4.5}, {93, -6}, {96, -13.3}, {99, -19}, {102, -16}, {105, -13.5}, {108, -15.8}}
 	for i := range db {
 		db[i][1] = math.Pow(10, db[i][1]/20)
 	}
