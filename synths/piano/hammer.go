@@ -2,6 +2,7 @@ package piano
 
 import (
 	"math"
+	"math/cmplx"
 	"math/rand/v2"
 	"sync"
 )
@@ -113,34 +114,40 @@ func (v *Voice) excitation(f0, sr float64) {
 	// die fast and a long thud or noise would outlast them, like a slow hammer)
 	knockEnv, knockDecay := 1.0, math.Exp(-1/(interpolate(knockSeconds, v.pitch)*sr))
 	knockKey := interpolate(knockByKey, v.pitch) // the treble ticks softly, its notes are nearly pure
+	// the impact grows faster than the strike: a key played softly hardly knocks
+	knockKey *= math.Pow(hammerVelocity(v.velocity)/hammerVelocity(0.8), knockTouch)
 
-	// the soundboard texture and knock, through a lowpass as bright as the pulse
+	// the soundboard texture and knock, through a lowpass as bright as the pulse; the knock also
+	// through a highpass that rises with the key (a small hammer near the thin edge of the board
+	// ticks, a big one in the middle of it thuds)
 	s := math.Max(0, math.Min(cfg.Soundboard, 1))
 	fc := math.Min(math.Min(0.25*sr, 0.48/width), knockMaxHz) // a soft tick, not a click
 	a := 1 - math.Exp(-2*math.Pi*fc/sr)
-	l1, l2 := 0.0, 0.0
+	ka := 1 - math.Exp(-2*math.Pi*interpolate(knockLowHz, v.pitch)/sr)
+	l1, l2, k1, k2 := 0.0, 0.0, 0.0, 0.0
 	for i, b := range board {
 		l1 += a * (b - l1)
 		l2 += a * (l1 - l2)
 		exc[i] += textureLevel * s * l2 * knockEnv
-		knock[i] = knockLevel * s * l2 * knockEnv * knockKey
+		k1 += ka * (l2 - k1)
+		k2 += ka * (l2 - k1 - k2)
+		knock[i] = knockLevel * s * (l2 - k1 - k2) * knockEnv * knockKey
 		knockEnv *= knockDecay
 	}
 
 	// in the treble the felt touches the string for longer than a period (hammerContact keeps the
 	// push shorter, so it leaves no key out): that smooths away what is above the fundamental, a
-	// steep lowpass just above it
-	if f0*interpolate(contactTable, v.pitch)/1000 > 1.1 {
-		// a hard hammer (a toy piano's, on metal) touches shortly and leaves the overtones
-		smoothing := trebleSmoothing * (1 + 10*math.Max(0, h-0.6))
-		lp := 1 - math.Exp(-2*math.Pi*math.Min(smoothing*f0, 0.45*sr)/sr)
+	// steep lowpass just above it. It comes in gradually over the keys (from where the felt
+	// touches 1.1 periods, fully at smoothingSpan more), and leaves the fundamental as loud
+	if lp, ok := smoothingPole(f0, v.pitch, h, sr); ok {
+		gain := 1 / smoothingGain(lp, f0, sr)
 		var s1, s2, s3, s4 float64
 		for i, x := range exc {
 			s1 += lp * (x - s1)
 			s2 += lp * (s1 - s2)
 			s3 += lp * (s2 - s3)
 			s4 += lp * (s3 - s4)
-			exc[i] = s4
+			exc[i] = s4 * gain
 		}
 	}
 
@@ -155,13 +162,31 @@ func (v *Voice) excitation(f0, sr float64) {
 		exc[i] = h2
 	}
 
+	// a string can't ring below its fundamental: what the push has down there would pass the
+	// strings as an unpitched thump, louder than the note itself in the treble (where the push is
+	// longer than a period). A steep highpass under the fundamental (Butterworth, two biquads)
+	w := 2 * math.Pi * math.Min(fundamentalCut*f0, 0.45*sr) / sr
+	for _, q := range [2]float64{0.5412, 1.3066} {
+		alpha := math.Sin(w) / (2 * q)
+		a0 := 1 + alpha
+		b0 := (1 + math.Cos(w)) / 2 / a0
+		b1 := -2 * b0
+		a1, a2 := -2*math.Cos(w)/a0, (1-alpha)/a0
+		var x1, x2, y1, y2 float64
+		for i, x := range exc {
+			y := b0*x + b1*x1 + b0*x2 - a1*y1 - a2*y2
+			x2, x1 = x1, x
+			y2, y1 = y1, y
+			exc[i] = y
+		}
+	}
+
 	// the strike position: the wave reflected from the near end follows the direct one, a comb
 	// with notches at the harmonics that have a node where the hammer hits
 	beta := math.Max(0.02, math.Min(v.strikeAt, 0.5))
-	d := int(math.Round(beta * sr / f0))
 	// (in the treble the notches are far above hearing, and a comb of a sample or two is only a
 	// crude highpass: left out)
-	if d >= 1 && f0/beta < 0.3*sr {
+	if d, ok := strikeComb(f0, beta, sr); ok {
 		for i := len(exc) - 1; i >= d; i-- {
 			exc[i] -= strikeReflection * exc[i-d]
 		}
@@ -453,24 +478,62 @@ func hammerContact(pitch float64) float64 {
 
 var contactTable = [][2]float64{{21, 2.4}, {36, 1.6}, {48, 1.62}, {60, 1.63}, {72, 1.57}, {84, 1.4}, {96, 1.3}, {108, 0.9}} // ms
 
-// knockByKey is how loud the knock of a key is
-var knockByKey = [][2]float64{{21, 1}, {72, 1}, {84, 0.5}, {96, 0.25}, {108, 0.15}}
+// knockByKey is how loud the knock of a key is: in the bass fitted to stay under the note (from
+// 18 dB under it at key 53 to 24 dB at the bottom, where a low thud stands out most)
+var knockByKey = [][2]float64{{21, 0.43}, {24, 0.42}, {27, 0.41}, {30, 0.45}, {33, 0.53}, {36, 0.5}, {39, 0.45},
+	{42, 0.46}, {45, 0.91}, {48, 0.94}, {51, 0.92}, {54, 0.76}, {57, 1}, {72, 1}, {84, 0.5}, {96, 0.25}, {108, 0.15}}
 
 // trebleSmoothing is where (times the fundamental) the long felt contact of the treble smooths the
 // strike away
 const trebleSmoothing = 1.4
 
+// smoothingSpan is how many periods more of contact the treble smoothing takes to come in fully
+const smoothingSpan = 0.35
+
+// smoothingPole returns the coefficient of the four one pole lowpasses of the treble smoothing of
+// a key with a hardness of its felt, if it has any
+func smoothingPole(f0, pitch, hardness, sr float64) (float64, bool) {
+	periods := f0 * interpolate(contactTable, pitch) / 1000
+	if periods <= 1.1 {
+		return 0, false
+	}
+	// a hard hammer (a toy piano's, on metal) touches shortly and leaves the overtones
+	smoothing := trebleSmoothing * (1 + 10*math.Max(0, hardness-0.6))
+	smoothing /= math.Max(math.Min((periods-1.1)/smoothingSpan, 1), 0.05)
+	return 1 - math.Exp(-2*math.Pi*math.Min(smoothing*f0, 0.45*sr)/sr), true
+}
+
+// smoothingGain returns the gain of the treble smoothing at a frequency
+func smoothingGain(lp, f, sr float64) float64 {
+	at := lp / cmplx.Abs(1-complex(1-lp, 0)*cmplx.Exp(complex(0, -2*math.Pi*f/sr)))
+	return at * at * at * at
+}
+
+// strikeComb returns whether the strike position notches are made for a key (in the treble they
+// are far above hearing) and the delay that makes them
+func strikeComb(f0, beta, sr float64) (int, bool) {
+	d := int(math.Round(beta * sr / f0))
+	return d, d >= 1 && f0/beta < 0.3*sr
+}
+
+// knockLowHz is where the knock of a key is highpassed: a low thud in the bass, a tick at the top
+var knockLowHz = [][2]float64{{21, 30}, {60, 80}, {72, 200}, {84, 450}, {96, 900}, {108, 1500}}
+
+// knockTouch is how much faster than the strike the knock grows with the speed of the hammer
+const knockTouch = 0.5
+
 // knockMaxHz is the brightest the knock gets
 const knockMaxHz = 4000.0
 
 // knockSeconds is how long the knock of a key rings (to a third)
-var knockSeconds = [][2]float64{{21, 0.08}, {60, 0.04}, {84, 0.02}, {108, 0.012}}
+var knockSeconds = [][2]float64{{21, 0.05}, {60, 0.04}, {84, 0.02}, {108, 0.012}}
 
 const (
 	textureLevel     = 0.15 // the soundboard response in the strike, at Soundboard 1
 	knockLevel       = 1.0  // the knock heard directly, at Soundboard 1
 	radiationHz      = 80.0 // the soundboard radiates the fundamentals below this weakly
 	strikeReflection = 0.85 // depth of the strike position notches
+	fundamentalCut   = 0.6  // the strike is highpassed here (times the fundamental), see excitation
 )
 
 // keyStrikeAt returns where the hammer of a key hits: the setting, a little different for every key

@@ -39,7 +39,7 @@ func main() {
 	curve := flag.String("curve", "linear", "the velocity curve: soft, linear, hard or an exponent")
 	channel := flag.Int("channel", 0, "the MIDI channel (1-16), 0 is all")
 	transpose := flag.Int("transpose", 0, "semitones")
-	monitor := flag.Bool("monitor", false, "print every MIDI event")
+	monitor := flag.Bool("monitor", true, "print every MIDI event")
 	buffer := flag.Int("buffer", 256, "the buffer size (the latency) with portaudio")
 	flag.Parse()
 

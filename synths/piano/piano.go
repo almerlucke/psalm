@@ -191,6 +191,7 @@ type Voice struct {
 	env                float64 // level of the strings
 	wasDamped, wasDown bool
 	noise              float64 // level of the action noise, decaying
+	keyNoise           float64 // the noise of the key coming up, in the units of the strings
 	noiseLP, noiseHP   float64
 	thumpRe, thumpIm   float64 // the key landing, a short low thud
 	thumpRot           complex128
@@ -394,6 +395,12 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	if v.voicing != nil {
 		v.amp *= v.voicing[v.key]
 	}
+	// the key coming up is the action, not the strings: the voicing leaves it alone, the treble
+	// (whose short notes are quiet when the key comes up) half follows the balance. It is as gentle
+	// as the key was played (a key played softly is let go softly), but a key struck hard doesn't
+	// come up harder: it falls back by its own weight
+	touch := math.Min(hammerVelocity(v.velocity)/hammerVelocity(0.8), 1)
+	v.keyNoise = keyNoise * amplitude * touch * math.Sqrt(math.Min(keyBalance(v.pitch), 1)) * v.knockAmp / v.amp
 
 	// a string played hard is stretched by its own motion: it starts sharp and settles as the
 	// motion dies down (the more the harder, most in the bass)
@@ -566,8 +573,14 @@ func (v *Voice) Synthesize() {
 		v.env += envCoef * (math.Abs(t) - v.env)
 		if v.keyDown != v.wasDown || damped != v.wasDamped {
 			if !v.keyDown && v.wasDown {
-				v.noise += mech * keyNoise
-				v.thumpRe += mech * keyNoise * 2
+				// as loud as what is left of the note: a key held while the note died away is let go
+				// in a quiet room, and comes up gently
+				left := 1.0
+				if v.loudest > 0 {
+					left = math.Min(v.peak/v.loudest, 1)
+				}
+				v.noise += mech * v.keyNoise * left
+				v.thumpRe += mech * v.keyNoise * left * 2
 			}
 			if damped && !v.wasDamped {
 				v.noise += mech * damperNoise * v.env
@@ -618,10 +631,10 @@ func (v *Voice) Synthesize() {
 	}
 }
 
-// the noise of the action: the key coming up (a constant, small) and the dampers landing on the
-// strings (as loud as the strings still are)
+// the noise of the action: the key coming up (small, at velocity 0.8) and the dampers landing on
+// the strings (as loud as the strings still are)
 const (
-	keyNoise    = 0.0004
+	keyNoise    = 0.00013
 	damperNoise = 0.05
 )
 
@@ -670,9 +683,14 @@ func keyRandom(key int, salt float64) float64 {
 }
 
 // keyBalanceTable is the gain of the keys that evens out their loudness (the higher strings keep
-// more of the strike, the ear hears the bass less), the top a little quieter like a real piano
+// more of the strike, the ear hears the bass less); from key 70 up fitted key by key to the
+// loudness (K-weighted) of middle C, what the voicing leaves of the soundboard included
 var keyBalanceTable = func() [][2]float64 {
-	db := [][2]float64{{21, 15}, {33, 10}, {45, 4.5}, {57, 0}, {63, 0.8}, {69, -1}, {78, 1.5}, {81, 2}, {84, -0.5}, {88, 1.5}, {90, -2.5}, {91, -0.5}, {92, -4.5}, {93, -6}, {96, -13.3}, {99, -19}, {102, -16}, {105, -13.5}, {108, -15.8}}
+	db := [][2]float64{{21, 15}, {33, 10}, {45, 4.5}, {57, 0}, {63, 0.8}, {69, -1},
+		{70, 0.3}, {71, -1.3}, {72, -2.5}, {73, -1}, {74, -1.3}, {75, -1.9}, {76, -1.2}, {77, -1.7}, {78, -0.1}, {79, 0.9},
+		{80, -0.8}, {81, -1.5}, {82, -1.7}, {83, -1.4}, {84, -2}, {85, -4.2}, {86, -5.5}, {87, -3.1}, {88, -2.6}, {89, -5.9},
+		{90, -7.6}, {91, -4.9}, {92, -11.5}, {93, -12.5}, {94, -11.9}, {95, -14.7}, {96, -11.8}, {97, -12.1}, {98, -12.9}, {99, -12.6},
+		{100, -14.4}, {101, -10.3}, {102, -15.8}, {103, -10.8}, {104, -12.7}, {105, -11}, {106, -14}, {107, -13.2}, {108, -13.1}}
 	for i := range db {
 		db[i][1] = math.Pow(10, db[i][1]/20)
 	}

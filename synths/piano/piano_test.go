@@ -144,10 +144,9 @@ func TestKeysEven(t *testing.T) {
 		switch {
 		case p < 78 && math.Abs(d) > 5.5:
 			t.Errorf("key %v is %.1f dB off", p, d)
-		case p >= 78 && p < 94 && (d > 2 || d < -10):
-			t.Errorf("key %v should be a few dB softer, %.1f dB", p, d)
-		case p >= 94 && (d > -8 || d < -19):
-			t.Errorf("key %v should be about 13-16 dB softer, %.1f dB", p, d)
+		case p >= 78 && (d > 3 || d < -10):
+			// as loud when struck, but the top dies away sooner: over a second a few dB less
+			t.Errorf("key %v should be about as loud, %.1f dB", p, d)
 		}
 	}
 }

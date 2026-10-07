@@ -138,7 +138,7 @@ func voicing(power []float64, hz, sr float64, cfg Config) *[128]float64 {
 	var gains [128]float64
 	for key := range gains {
 		pitch := math.Max(21, math.Min(float64(key), 108))
-		f0 := 440 * math.Exp2((pitch-69)/12)
+		f0 := 440 * math.Exp2((stretched(pitch, &cfg)-69)/12) // tuned like the strings
 		b := inharmonicity(pitch) * math.Max(0, cfg.Stiffness)
 		t60 := ringTime(pitch) * math.Max(0.05, cfg.Decay)
 
@@ -150,7 +150,8 @@ func voicing(power []float64, hz, sr float64, cfg Config) *[128]float64 {
 		for i := range pulse {
 			pulse[i] = math.Pow(math.Sin(math.Pi*(float64(i)+0.5)/float64(n)), q)
 		}
-		d := math.Round(beta * sr / f0)
+		d, combed := strikeComb(f0, beta, sr)
+		lp, smoothed := smoothingPole(f0, pitch, h, sr)
 
 		sum, weights := 0.0, 0.0
 		for k := 1.0; k <= 16; k++ {
@@ -164,7 +165,16 @@ func voicing(power []float64, hz, sr float64, cfg Config) *[128]float64 {
 				re += x * math.Cos(w*float64(i))
 				im -= x * math.Sin(w*float64(i))
 			}
-			comb := 1 + strikeReflection*strikeReflection - 2*strikeReflection*math.Cos(w*d)
+			// the strike as the strings get it (see excitation): the notches of the strike
+			// position, the treble smoothing
+			comb := 1.0
+			if combed {
+				comb = 1 + strikeReflection*strikeReflection - 2*strikeReflection*math.Cos(w*float64(d))
+			}
+			if smoothed {
+				g := smoothingGain(lp, f, sr) / smoothingGain(lp, f0, sr)
+				comb *= g * g
+			}
 			decay := math.Min(1/(1/t60+highDamping*math.Max(0, cfg.Damping)*f*f), 3) // seconds, heard for 3
 			kw := 1 + 1.5*f*f/(f*f+1500*1500)                                        // the ear: the highs count more
 			weight := (re*re + im*im) * comb * decay * kw
