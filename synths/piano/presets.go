@@ -28,7 +28,7 @@ func GrandPreset() Config {
 	cfg.Resonance = 0.6
 	cfg.Mechanics = 0.6
 	cfg.Position = Studio
-	cfg.Level = 16.0712 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 16.1271 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -41,7 +41,7 @@ func BrightPreset() Config {
 	cfg.Decay = 0.85
 	cfg.Damping = 0.8
 	cfg.DamperTime = 0.2
-	cfg.Level = 12.3185 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 12.5795 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -58,7 +58,7 @@ func UprightPreset() Config {
 	cfg.Unison = 1.8
 	cfg.Width = 0.35
 	cfg.Stretch = 0.7
-	cfg.Level = 13.8411 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 16.2888 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -75,7 +75,7 @@ func FeltPreset() Config {
 	cfg.VelocitySens = 0.5
 	cfg.Width = 0.7
 	cfg.Position = Studio // felt pianos are recorded close
-	cfg.Level = 20.2098   // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 21.5892   // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -90,7 +90,7 @@ func HonkyTonkPreset() Config {
 	cfg.Unison = 12
 	cfg.Width = 0.3
 	cfg.Stretch = 0.6
-	cfg.Level = 14.3485 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 15.5927 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -109,7 +109,7 @@ func ToyPreset() Config {
 	cfg.Width = 0.2
 	cfg.Stretch = 0
 	cfg.Treble = -10    // its short stiff strings carry at the top
-	cfg.Level = 25.2408 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 24.2368 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -121,7 +121,7 @@ func ConcertPreset() Config {
 	cfg.Damping = 1.1
 	cfg.Mechanics = 0.3
 	cfg.Position = Hall
-	cfg.Level = 15.4024 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 15.9891 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -135,7 +135,7 @@ func WarmPreset() Config {
 	cfg.Damping = 1.8
 	cfg.Resonance = 0.8
 	cfg.Bark = 0.35
-	cfg.Level = 15.6273 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 16.1172 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -151,7 +151,7 @@ func BabyPreset() Config {
 	cfg.Width = 0.45
 	cfg.Stretch = 0.9
 	cfg.Position = Player
-	cfg.Level = 14.5635 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 18.2712 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -167,7 +167,7 @@ func VintagePreset() Config {
 	cfg.Damping = 1.9
 	cfg.Stretch = 0.5
 	cfg.Position = Studio
-	cfg.Level = 14.1292 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 15.2825 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -183,6 +183,6 @@ func CinematicPreset() Config {
 	cfg.VelocitySens = 0.6
 	cfg.Mechanics = 0.4
 	cfg.Position = Hall
-	cfg.Level = 17.7644 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 19.4277 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }

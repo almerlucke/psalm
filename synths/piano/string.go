@@ -398,6 +398,21 @@ func interpolate(table [][2]float64, pitch float64) float64 {
 	return table[len(table)-1][1]
 }
 
+// interpolateLinear looks up a table by key like interpolate, linearly (for values that can be
+// negative)
+func interpolateLinear(table [][2]float64, pitch float64) float64 {
+	if pitch <= table[0][0] {
+		return table[0][1]
+	}
+	for i := 1; i < len(table); i++ {
+		if pitch <= table[i][0] {
+			t := (pitch - table[i-1][0]) / (table[i][0] - table[i-1][0])
+			return table[i-1][1] + t*(table[i][1]-table[i-1][1])
+		}
+	}
+	return table[len(table)-1][1]
+}
+
 // inharmonicity of a grand: wound bass strings are fairly harmonic, the short thick strings at
 // the top very stiff
 var inharmonicityTable = [][2]float64{{21, 3e-4}, {33, 1.5e-4}, {45, 1.5e-4}, {57, 3e-4}, {69, 7e-4}, {81, 2e-3}, {93, 6e-3}, {108, 2e-2}}

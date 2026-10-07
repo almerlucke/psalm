@@ -35,7 +35,7 @@ func main() {
 	device := flag.String("device", "", "the raw MIDI device (empty is the first keyboard)")
 	useJack := flag.Bool("jack", false, "play through JACK, with a JACK MIDI input port")
 	demo := flag.Bool("demo", false, "play a phrase as MIDI instead of reading a keyboard")
-	preset := flag.String("preset", "warm", "the piano to start with")
+	preset := flag.String("preset", "felt", "the piano to start with")
 	curve := flag.String("curve", "linear", "the velocity curve: soft, linear, hard or an exponent")
 	channel := flag.Int("channel", 0, "the MIDI channel (1-16), 0 is all")
 	transpose := flag.Int("transpose", 0, "semitones")

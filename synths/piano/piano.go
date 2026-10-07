@@ -395,6 +395,7 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	if v.voicing != nil {
 		v.amp *= v.voicing[v.key]
 	}
+	v.amp *= math.Pow(10, -interpolateLinear(hardnessBalance, v.pitch)*(cfg.Hardness-balanceHardness)/20)
 	// the key coming up is the action, not the strings: the voicing leaves it alone, the treble
 	// (whose short notes are quiet when the key comes up) half follows the balance. It is as gentle
 	// as the key was played (a key played softly is let go softly), but a key struck hard doesn't
@@ -428,7 +429,7 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	// recorded grand is some 24 dB louder at fortissimo than at pianissimo), VelocitySens of it;
 	// velocity 0.8 is the level the presets are calibrated at
 	sens := math.Max(0, math.Min(cfg.VelocitySens, 1))
-	v.force = amplitude * math.Pow(hammerVelocity(v.velocity)/hammerVelocity(0.8), velocityPower*sens)
+	v.force = amplitude * math.Pow(hammerVelocity(v.velocity)/hammerVelocity(0.8), velocityPower*sens-interpolateLinear(velocityBalance, v.pitch))
 	v.force *= math.Pow(10, vary*0.6*(2*v.Rand().Float64()-1)/20) // no strike is the same
 	if v.soft {
 		v.force *= softLevel
@@ -683,19 +684,39 @@ func keyRandom(key int, salt float64) float64 {
 }
 
 // keyBalanceTable is the gain of the keys that evens out their loudness (the higher strings keep
-// more of the strike, the ear hears the bass less); from key 70 up fitted key by key to the
-// loudness (K-weighted) of middle C, what the voicing leaves of the soundboard included
+// more of the strike, the ear hears the bass less, the soundboard is not even): fitted key by key
+// to the loudness (K-weighted) of the presets at velocity 0.8, at balanceHardness
 var keyBalanceTable = func() [][2]float64 {
-	db := [][2]float64{{21, 15}, {33, 10}, {45, 4.5}, {57, 0}, {63, 0.8}, {69, -1},
-		{70, 0.3}, {71, -1.3}, {72, -2.5}, {73, -1}, {74, -1.3}, {75, -1.9}, {76, -1.2}, {77, -1.7}, {78, -0.1}, {79, 0.9},
-		{80, -0.8}, {81, -1.5}, {82, -1.7}, {83, -1.4}, {84, -2}, {85, -4.2}, {86, -5.5}, {87, -3.1}, {88, -2.6}, {89, -5.9},
-		{90, -7.6}, {91, -4.9}, {92, -11.5}, {93, -12.5}, {94, -11.9}, {95, -14.7}, {96, -11.8}, {97, -12.1}, {98, -12.9}, {99, -12.6},
-		{100, -14.4}, {101, -10.3}, {102, -15.8}, {103, -10.8}, {104, -12.7}, {105, -11}, {106, -14}, {107, -13.2}, {108, -13.1}}
-	for i := range db {
-		db[i][1] = math.Pow(10, db[i][1]/20)
+	db := []float64{ // from key 21
+		13.7, 13.9, 14.2, 13.5, 14.4, 13.6, 13.4, 12.7, 9.4, 10.3, 9.0, 8.9,
+		8.4, 8.7, 7.9, 7.0, 7.3, 5.9, 8.2, 6.0, 4.2, 4.5, 5.4, 5.4,
+		2.7, 2.8, 1.4, 1.7, 1.7, 1.1, 2.5, 1.0, -0.7, 0.0, 2.0, 1.7,
+		0.2, 1.3, 0.5, 0.6, 0.6, -0.5, 0.2, 0.1, -1.6, -1.5, 1.8, 0.5,
+		-1.0, -0.1, -1.5, -2.4, -1.1, -1.2, -0.7, -0.3, -1.2, 0.3, 1.3, -0.6,
+		-1.8, -1.0, -1.7, -1.8, -2.0, -3.7, -3.6, -0.2, -3.4, -5.6, -4.5, -9.3,
+		-8.8, -7.8, -13.1, -9.7, -9.7, -10.8, -9.4, -10.8, -6.9, -12.6, -7.4, -9.2,
+		-8.5, -10.4, -9.2, -8.5,
 	}
-	return db
+	t := make([][2]float64, len(db))
+	for i, x := range db {
+		t[i] = [2]float64{float64(21 + i), math.Pow(10, x/20)}
+	}
+	return t
 }()
+
+// balanceHardness is the hardness keyBalanceTable is fitted at
+const balanceHardness = 0.42
+
+// hardnessBalance is how much louder (dB) a key sounds per unit of hardness above balanceHardness,
+// against the middle of the keyboard: harder felt brightens the middle (louder to the ear), the
+// treble is nearly pure and gains nothing. It is taken away again
+var hardnessBalance = [][2]float64{{21, 1.0}, {27, 0.1}, {33, -2.3}, {39, -1.0}, {45, -1.3}, {51, -1.9}, {57, -1.2}, {63, 0.9}, {69, 1.2}, {75, 2.1}, {81, 1.8}, {87, -0.4}, {93, -2.2}, {99, -4.8}, {105, -6.4}, {108, -5.6}}
+
+// velocityBalance is how much more than middle C (dB per dB of hammer speed) a key grows louder
+// with the velocity: a hard strike brightens the keys above it most where the ear is most
+// sensitive, the bass and the nearly pure treble less. It is taken away again, so every key has
+// the same dynamic range
+var velocityBalance = [][2]float64{{21, -0.06}, {27, -0.10}, {33, -0.17}, {39, -0.21}, {45, -0.19}, {51, -0.12}, {57, -0.07}, {63, 0.01}, {69, 0.04}, {75, 0.13}, {81, 0.08}, {87, -0.07}, {93, -0.21}, {99, -0.32}, {105, -0.38}, {108, -0.39}}
 
 // keyBalance evens out the loudness of the keys
 func keyBalance(pitch float64) float64 { return interpolate(keyBalanceTable, pitch) }
