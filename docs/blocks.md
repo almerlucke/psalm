@@ -12,9 +12,12 @@ process samples. The modules are built from them, and you can use them to build 
 | `fft.New(n)` | In place radix-2 complex FFT of size `n` (power of 2, panics otherwise) |
 | `Forward(re, im)` | Forward transform |
 | `Inverse(re, im)` | Inverse transform, including the 1/n scaling |
+| `fft.NewReal(n)` | FFT of real signals of size `n`: a complex FFT of half the size, untangled, about twice as fast; it returns the bins 0..n/2 (the others mirror them) |
+| `Forward(x, re, im)` | `n` samples into `n/2+1` bins |
+| `Inverse(re, im, x)` | The bins back into `n` samples, scaled so it undoes `Forward` |
 | `fft.HannWindow(n)` | Periodic Hann window, suited for overlap-add |
 
-Used by the vocoder and the convolver.
+Used by the vocoder and the convolver (the real FFT).
 
 ## Filters
 

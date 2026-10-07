@@ -148,3 +148,40 @@ func TestNormalizeIR(t *testing.T) {
 		t.Fatalf("expected unit energy per channel, got %v", energy/float64(len(norm)))
 	}
 }
+
+// A long response is convolved in segments of growing blocks: still exactly a convolution, with the
+// latency of the first block only
+func TestLongResponseMatchesDirectConvolution(t *testing.T) {
+	ir := randomSignal(40000, 3)
+	for i := range ir {
+		ir[i] *= 0.01 * math.Exp(-float64(i)/8000)
+	}
+	c := New([][]float64{ir}, Config{PartitionSize: 64, Mix: 1.0, Gain: 1.0})
+	if len(c.segments) < 5 {
+		t.Fatalf("expected the response in segments of growing blocks, %d", len(c.segments))
+	}
+
+	x := randomSignal(60*c.Config().BufferSize, 4)
+	outL, _ := run(c, x, x)
+	want := directConvolution(x, ir[:c.irLength])
+	lat := c.Latency()
+	maxErr := 0.0
+	for n := lat; n < len(outL); n++ {
+		maxErr = math.Max(maxErr, math.Abs(outL[n]-want[n-lat]))
+	}
+	if maxErr > 1e-4 {
+		t.Fatalf("max error vs direct convolution %v", maxErr)
+	}
+}
+
+// The inaudible end of a response is left out
+func TestTrimsTheSilentEnd(t *testing.T) {
+	ir := make([]float64, 20000)
+	for i := range 5000 {
+		ir[i] = math.Exp(-float64(i) / 500) // gone below -90 dB long before the end
+	}
+	c := New([][]float64{ir}, Config{PartitionSize: 128, Mix: 1.0, Gain: 1.0})
+	if c.irLength >= 12000 || c.irLength < 4000 {
+		t.Fatalf("expected the silent end trimmed, %d of 20000 samples kept", c.irLength)
+	}
+}

@@ -67,3 +67,31 @@ func TestNonPowerOfTwoPanics(t *testing.T) {
 	}()
 	New(100)
 }
+
+func TestRealMatchesComplex(t *testing.T) {
+	for _, n := range []int{4, 16, 1024} {
+		x := make([]float64, n)
+		for i := range x {
+			x[i] = math.Sin(float64(i)*0.37) + 0.3*math.Cos(float64(i)*1.91) + float64(i%7)*0.1
+		}
+		re, im := make([]float64, n), make([]float64, n)
+		copy(re, x)
+		New(n).Forward(re, im)
+
+		r := NewReal(n)
+		rre, rim := make([]float64, n/2+1), make([]float64, n/2+1)
+		r.Forward(x, rre, rim)
+		for k := range rre {
+			if math.Abs(rre[k]-re[k]) > 1e-9 || math.Abs(rim[k]-im[k]) > 1e-9 {
+				t.Fatalf("n %d bin %d: %v %v, want %v %v", n, k, rre[k], rim[k], re[k], im[k])
+			}
+		}
+		back := make([]float64, n)
+		r.Inverse(rre, rim, back)
+		for i := range x {
+			if math.Abs(back[i]-x[i]) > 1e-9 {
+				t.Fatalf("n %d round trip sample %d: %v, want %v", n, i, back[i], x[i])
+			}
+		}
+	}
+}

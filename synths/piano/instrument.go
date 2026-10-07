@@ -62,8 +62,8 @@ const idleSamples = 44100
 
 // the noise of the sustain pedal, at Mechanics 1 and Level 1
 const (
-	pedalSwish = 0.0015
-	pedalThump = 0.0015
+	pedalSwish = 0.0002
+	pedalThump = 0.00004
 )
 
 // the coupling of the bridge to the strings that ring along, at Resonance 1
@@ -352,10 +352,10 @@ func (p *Piano) Synthesize() {
 	coupling := resonanceCoupling * math.Max(0, math.Min(cfg.Resonance, 1)) / level
 	body := math.Max(0, math.Min(cfg.Body, 1))
 	direct := 1 - 0.7*body
-	pedalLP := 1 - math.Exp(-2*math.Pi*1500/sr)
+	pedalLP := 1 - math.Exp(-2*math.Pi*800/sr)
 	pedalHP := 1 - math.Exp(-2*math.Pi*150/sr)
 	pedalDecay := math.Exp(-1 / (0.06 * sr))
-	pedalRot := cmplx.Rect(math.Exp(-1/(0.03*sr)), 2*math.Pi*60/sr)
+	pedalRot := cmplx.Rect(math.Exp(-1/(0.05*sr)), 2*math.Pi*45/sr)
 	boardIn := p.board.Input(0).Channels
 
 	// the keys whose dampers are lifted by the hand, and the keys sounding (their strings ring in

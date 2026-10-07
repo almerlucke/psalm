@@ -93,12 +93,11 @@ func main() {
 	form := arrange.NewForm(sections...)
 
 	// --- the pianos, all on the mixer with a hall: the Musikverein in Vienna, a recorded impulse
-	// response through the convolver (large partitions keep it cheap, on a bus their latency is a
-	// pre delay) ---
+	// response through the convolver ---
 
 	mix := mixer.New(p)
 	vienna := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/Musikvereinsaal.wav"))
-	mix.Bus("hall", mixer.StripConfig{}, convolver.New(vienna, convolver.Config{PartitionSize: 2048, Mix: 1, Gain: 0.7}).AddTo(p))
+	mix.Bus("hall", mixer.StripConfig{}, convolver.New(vienna, convolver.Config{PartitionSize: 512, Mix: 1, Gain: 0.7}).AddTo(p))
 
 	type instrument struct {
 		name   string
@@ -108,17 +107,17 @@ func main() {
 	}
 	pianos := map[string]psalm.Modular{}
 	for _, in := range []instrument{
-		{"grand", piano.GrandPreset, 24, 0.3},
-		{"bright", piano.BrightPreset, 12, 0.2},
-		{"upright", piano.UprightPreset, 12, 0.2},
+		{"grand", piano.GrandPreset, 24, 0.5},
+		{"bright", piano.BrightPreset, 12, 0.4},
+		{"upright", piano.UprightPreset, 12, 0.35},
 		{"honkyTonk", piano.HonkyTonkPreset, 12, 0.12},
 		{"felt", piano.FeltPreset, 16, 0.45},
 		{"toy", piano.ToyPreset, 8, 0.35},
-		{"concert", piano.ConcertPreset, 16, 0.3},
-		{"warm", piano.WarmPreset, 16, 0.25},
+		{"concert", piano.ConcertPreset, 16, 0.5},
+		{"warm", piano.WarmPreset, 16, 0.45},
 		{"baby", piano.BabyPreset, 16, 0.25},
 		{"vintage", piano.VintagePreset, 16, 0.2},
-		{"cinematic", piano.CinematicPreset, 16, 0.4},
+		{"cinematic", piano.CinematicPreset, 16, 0.6},
 	} {
 		synth := piano.NewPoly(in.preset(), in.voices).AddTo(p)
 		pianos[in.name] = synth

@@ -85,8 +85,12 @@ reverb := shimmer.New(cfg).AddTo(p).In(pad)
 
 ### convolver
 
-Uniformly partitioned FFT convolution: long impulse responses (like reverbs of several seconds)
-only add one partition of latency.
+Non-uniformly partitioned FFT convolution: the start of the response is convolved in blocks of
+`PartitionSize` (its only latency), the rest in blocks that double up to 8192 samples, so even a
+long response (a reverb of several seconds) at a low latency costs little: a 3 second stereo hall
+takes about 2.5% of a core at a partition of 128 samples. The inaudible end of a response (its
+energy 90 dB below the whole) is left out. Larger partitions are a little cheaper still, but do
+more work at once.
 
 ```go
 ir := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))

@@ -25,9 +25,33 @@ func DefaultConfig() Config {
 	}
 }
 
-// channel holds the partitioned impulse response spectra and the frequency domain delay line of
-// one channel. Only the bins 0..n/2 are stored, the spectra of real signals are conjugate symmetric
-type channel struct {
+// maxBlock is the largest block of a segment: larger ones convolve a long tail with fewer
+// multiplications, but do more work at once
+const maxBlock = 8192
+
+// trimDB is where an impulse response is cut: the energy left after it is this far below all of it
+const trimDB = -90.0
+
+// segment is a part of the impulse response convolved with one block size (uniformly partitioned
+// overlap-save). The first segment has the block size of the convolver, the next ones double it:
+// a segment of block L can start at L - PartitionSize into the response, its output (L late) is
+// then just in time. So the head of the response is convolved in small blocks (low latency) and the
+// long tail in large ones (few multiplications)
+type segment struct {
+	block    int // L
+	parts    int
+	fft      *fft.Real
+	pos      int
+	channels []*segmentChannel
+	accRe    []float64 // the bins being accumulated
+	accIm    []float64
+	time     []float64 // 2L samples
+}
+
+// segmentChannel holds the partitions of the response and the frequency domain delay line of one
+// channel of a segment. Only the bins 0..L are stored, the spectra of real signals are conjugate
+// symmetric
+type segmentChannel struct {
 	hRe, hIm     [][]float64 // impulse response partitions
 	fdlRe, fdlIm [][]float64 // input spectra of the latest blocks
 	fdlPos       int
@@ -36,19 +60,17 @@ type channel struct {
 	outBlock     []float64
 }
 
-// Convolver convolves its (stereo) input with an impulse response using uniformly partitioned
-// overlap-save FFT convolution, so long impulse responses (like reverbs) only add one partition of
-// latency. A mono impulse response is used for both channels, a stereo one maps left to left and
-// right to right
+// Convolver convolves its (stereo) input with an impulse response using non-uniformly partitioned
+// overlap-save FFT convolution: the start of the response in blocks of PartitionSize (its only
+// latency), the rest in blocks that double up to maxBlock, so even long responses (reverbs) at a
+// low latency cost little. The inaudible end of the response (below trimDB) is left out. A mono
+// impulse response is used for both channels, a stereo one maps left to left and right to right
 type Convolver struct {
 	*psalm.Module
 	cfg      Config
-	fft      *fft.FFT
 	block    int
-	pos      int
-	channels []*channel
-	re, im   []float64
-	irLength int // samples
+	segments []*segment
+	irLength int          // samples, after trimming
 	mix      mix.Smoother // mix and gain glide when they change
 	gain     mix.Smoother
 }
@@ -62,21 +84,29 @@ func New(ir [][]float64, cfg Config) *Convolver {
 		ir = [][]float64{{1.0}}
 	}
 
-	b := cfg.PartitionSize
-	n := 2 * b
-
 	c := &Convolver{
 		Module: psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo}),
 		cfg:    cfg,
-		fft:    fft.New(n),
-		block:  b,
-		re:     make([]float64, n),
-		im:     make([]float64, n),
+		block:  cfg.PartitionSize,
 	}
 
-	for ch := range psalm.Stereo {
-		c.channels = append(c.channels, c.newChannel(ir[ch%len(ir)]))
-		c.irLength = max(c.irLength, len(ir[ch%len(ir)]))
+	length := trimmedLength(ir)
+	chans := make([][]float64, psalm.Stereo)
+	for ch := range chans {
+		chans[ch] = ir[ch%len(ir)][:min(length, len(ir[ch%len(ir)]))]
+	}
+	c.irLength = length
+
+	// the segments: each block size covers the response until the next, twice as large, is in time
+	b := c.block
+	for offset, block := 0, b; offset < length; block *= 2 {
+		end := length
+		if block < max(b, maxBlock) {
+			end = min(length, 2*block-b) // where a block twice as large can start
+		}
+		parts := max(1, (end-offset+block-1)/block)
+		c.segments = append(c.segments, newSegment(chans, offset, block, parts))
+		offset += parts * block
 	}
 
 	sr := c.Config().SampleRate
@@ -87,36 +117,62 @@ func New(ir [][]float64, cfg Config) *Convolver {
 	return c
 }
 
-func (c *Convolver) newChannel(ir []float64) *channel {
-	var (
-		b     = c.block
-		n     = 2 * b
-		bins  = n/2 + 1
-		parts = max(1, (len(ir)+b-1)/b)
-		ch    = &channel{
-			window:   make([]float64, n),
-			inBlock:  make([]float64, b),
-			outBlock: make([]float64, b),
+// trimmedLength returns how much of a response is heard: up to where the energy left is trimDB
+// below all of it (the loudest channel decides)
+func trimmedLength(ir [][]float64) int {
+	length := 1
+	for _, ch := range ir {
+		total := 0.0
+		for _, x := range ch {
+			total += x * x
 		}
-	)
-
-	for p := range parts {
-		// zero padded partition, transformed once up front
-		clear(c.re)
-		clear(c.im)
-		end := min(len(ir), (p+1)*b)
-		if p*b < end {
-			copy(c.re, ir[p*b:end])
+		left, end := 0.0, len(ch)
+		limit := total * math.Pow(10, trimDB/10)
+		for end > 0 && left+ch[end-1]*ch[end-1] <= limit {
+			end--
+			left += ch[end] * ch[end]
 		}
-		c.fft.Forward(c.re, c.im)
-
-		ch.hRe = append(ch.hRe, append([]float64(nil), c.re[:bins]...))
-		ch.hIm = append(ch.hIm, append([]float64(nil), c.im[:bins]...))
-		ch.fdlRe = append(ch.fdlRe, make([]float64, bins))
-		ch.fdlIm = append(ch.fdlIm, make([]float64, bins))
+		length = max(length, end)
 	}
+	return length
+}
 
-	return ch
+// newSegment transforms the partitions of the response from offset, parts blocks of a size
+func newSegment(ir [][]float64, offset, block, parts int) *segment {
+	n := 2 * block
+	bins := block + 1
+	s := &segment{
+		block: block,
+		parts: parts,
+		fft:   fft.NewReal(n),
+		accRe: make([]float64, bins),
+		accIm: make([]float64, bins),
+		time:  make([]float64, n),
+	}
+	padded := make([]float64, n)
+	for _, h := range ir {
+		ch := &segmentChannel{
+			window:   make([]float64, n),
+			inBlock:  make([]float64, block),
+			outBlock: make([]float64, block),
+		}
+		for p := range parts {
+			// zero padded partition, transformed once up front
+			clear(padded)
+			start := offset + p*block
+			if start < len(h) {
+				copy(padded, h[start:min(len(h), start+block)])
+			}
+			re, im := make([]float64, bins), make([]float64, bins)
+			s.fft.Forward(padded, re, im)
+			ch.hRe = append(ch.hRe, re)
+			ch.hIm = append(ch.hIm, im)
+			ch.fdlRe = append(ch.fdlRe, make([]float64, bins))
+			ch.fdlIm = append(ch.fdlIm, make([]float64, bins))
+		}
+		s.channels = append(s.channels, ch)
+	}
+	return s
 }
 
 // Latency returns the delay of the wet signal in samples
@@ -135,48 +191,38 @@ func (c *Convolver) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("gain", func(f float64) { c.cfg.Gain = f })
 }
 
-// process convolves the latest input block of a channel, the result replaces its output block
-func (c *Convolver) process(ch *channel) {
+// process convolves the latest input block of a channel of a segment, the result replaces its
+// output block
+func (s *segment) process(ch *segmentChannel) {
 	var (
-		b     = c.block
-		n     = 2 * b
-		bins  = n/2 + 1
-		parts = len(ch.hRe)
+		b     = s.block
+		bins  = b + 1
+		parts = s.parts
 	)
 
-	// slide the input window and transform it
+	// slide the input window and transform it into the delay line
 	copy(ch.window, ch.window[b:])
 	copy(ch.window[b:], ch.inBlock)
-	copy(c.re, ch.window)
-	clear(c.im)
-	c.fft.Forward(c.re, c.im)
-
-	copy(ch.fdlRe[ch.fdlPos], c.re[:bins])
-	copy(ch.fdlIm[ch.fdlPos], c.im[:bins])
+	s.fft.Forward(ch.window, ch.fdlRe[ch.fdlPos], ch.fdlIm[ch.fdlPos])
 
 	// multiply every delayed input spectrum with its impulse response partition and accumulate
-	clear(c.re)
-	clear(c.im)
+	accRe, accIm := s.accRe[:bins], s.accIm[:bins]
+	clear(accRe)
+	clear(accIm)
 	for p := range parts {
 		idx := (ch.fdlPos - p + parts) % parts
-		xr, xi := ch.fdlRe[idx], ch.fdlIm[idx]
-		hr, hi := ch.hRe[p], ch.hIm[p]
+		xr, xi := ch.fdlRe[idx][:bins], ch.fdlIm[idx][:bins]
+		hr, hi := ch.hRe[p][:bins], ch.hIm[p][:bins]
 		for k := range bins {
-			c.re[k] += xr[k]*hr[k] - xi[k]*hi[k]
-			c.im[k] += xr[k]*hi[k] + xi[k]*hr[k]
+			accRe[k] += xr[k]*hr[k] - xi[k]*hi[k]
+			accIm[k] += xr[k]*hi[k] + xi[k]*hr[k]
 		}
 	}
 	ch.fdlPos = (ch.fdlPos + 1) % parts
 
-	// restore the conjugate symmetric half and go back to the time domain
-	for k := 1; k < n/2; k++ {
-		c.re[n-k] = c.re[k]
-		c.im[n-k] = -c.im[k]
-	}
-	c.fft.Inverse(c.re, c.im)
-
-	// overlap-save: the second half is the valid (non circular) part
-	copy(ch.outBlock, c.re[b:])
+	// overlap-save: back to time, the second half is the valid (non circular) part
+	s.fft.Inverse(accRe, accIm, s.time)
+	copy(ch.outBlock, s.time[b:])
 }
 
 func (c *Convolver) Synthesize() {
@@ -187,17 +233,24 @@ func (c *Convolver) Synthesize() {
 	for i := range c.Config().BufferSize {
 		dry, wet := mix.EqualPower(c.mix.Next(mixTo))
 		wet *= c.gain.Next(c.cfg.Gain)
-		for ci, ch := range c.channels {
+		for ci := range outs {
 			in := float64(ins[ci][i])
-			ch.inBlock[c.pos] = in
-			outs[ci][i] = float32(dry*in + wet*ch.outBlock[c.pos])
+			y := 0.0
+			for _, s := range c.segments {
+				ch := s.channels[ci]
+				ch.inBlock[s.pos] = in
+				y += ch.outBlock[s.pos]
+			}
+			outs[ci][i] = float32(dry*in + wet*y)
 		}
 
-		c.pos++
-		if c.pos == c.block {
-			c.pos = 0
-			for _, ch := range c.channels {
-				c.process(ch)
+		for _, s := range c.segments {
+			s.pos++
+			if s.pos == s.block {
+				s.pos = 0
+				for _, ch := range s.channels {
+					s.process(ch)
+				}
 			}
 		}
 	}
