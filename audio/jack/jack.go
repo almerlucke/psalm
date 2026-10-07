@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/almerlucke/go-jack"
+	"github.com/almerlucke/psalm/midi"
 )
 
 type Engine struct {
@@ -13,6 +14,7 @@ type Engine struct {
 	inBuffers  [][]float32
 	outBuffers [][]float32
 	callback   func(in, out [][]float32)
+	midiIns    []*MidiInput
 }
 
 func New(name string) *Engine {
@@ -52,7 +54,53 @@ func (e *Engine) GetBufferSize() int {
 	return int(e.client.GetBufferSize())
 }
 
+// MidiIn registers a MIDI input port (call it before Start). Its events come with the frame they
+// fall on in the buffer: sample accurate
+func (e *Engine) MidiIn(name string) (*MidiInput, error) {
+	port := e.client.PortRegister(name, jack.DEFAULT_MIDI_TYPE, jack.PortIsInput, 0)
+	if port == nil {
+		return nil, fmt.Errorf("jack: can't register midi port %q", name)
+	}
+	in := &MidiInput{port: port}
+	e.midiIns = append(e.midiIns, in)
+	return in, nil
+}
+
+// MidiInput is a JACK MIDI input port, a midi.Input
+type MidiInput struct {
+	port    *jack.Port
+	pending []midi.Event
+	stale   int // how many of the pending events are from buffers before the last
+}
+
+// capture takes the events of the port for a buffer (in the process callback, before the patch
+// runs). Events not read in an earlier buffer stay, at the start of this one
+func (m *MidiInput) capture(nframes uint32) {
+	m.stale = len(m.pending)
+	for _, ev := range m.port.GetMidiEvents(nframes) {
+		m.pending = append(m.pending, midi.Event{Message: midi.Message(ev.Buffer), Offset: int(ev.Time)})
+	}
+}
+
+// Read implements midi.Input
+func (m *MidiInput) Read(events []midi.Event, frames int, _ float64) []midi.Event {
+	for i, ev := range m.pending {
+		if i < m.stale {
+			ev.Offset = 0
+		}
+		ev.Offset = max(0, min(ev.Offset, frames-1))
+		events = append(events, ev)
+	}
+	clear(m.pending)
+	m.pending = m.pending[:0]
+	m.stale = 0
+	return events
+}
+
 func (e *Engine) process(nframes uint32) int {
+	for _, in := range e.midiIns {
+		in.capture(nframes)
+	}
 	if e.callback != nil {
 		for i, in := range e.portsIn {
 			e.inBuffers[i] = in.GetBuffer(nframes)

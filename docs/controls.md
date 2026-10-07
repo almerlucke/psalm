@@ -11,6 +11,9 @@ For written music (melodies, chords, parts in a song form) use [score](#score) a
 [arrange](#arrange) instead: notes in beats go straight into a synth, and a song is written section
 by section.
 
+To play live from MIDI (a keyboard, a sequencer), see [MIDI](midi.md): the `keyboard` module
+turns MIDI events into these messages.
+
 ## timer
 
 `modules/controls/timer`

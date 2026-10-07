@@ -9,10 +9,11 @@ play it live through an audio engine or render it to a sound file.
 | Page | What's in it |
 |---|---|
 | [Core concepts](core-concepts.md) | Psalm, config, modules, audio and value connections, messages, control ticks, rendering, audio engines |
-| [Controls](controls.md) | Sequencing and control modules: `timer`, `steps`, `templ`, `score` (notes in beats, notation, sequencer), `arrange` (song form, parts, automation, events), `gen`, `dispatch`, `logger` |
+| [Controls](controls.md) | Sequencing and control modules: `timer`, `steps`, `templ`, `score` (notes in beats, notation, sequencer), `arrange` (song form, parts, automation, events), `keyboard` (MIDI, see [MIDI](midi.md)), `gen`, `dispatch`, `logger` |
 | [Sources](sources.md) | Sound sources: `player`, `blosc` oscillator, `lfo`, `granular` |
 | [Synths](synths.md) | `poly` voice allocation, the `subtractive` synth, the 4 operator `fm` synth, the 6 operator `dx` engine with SysEx loading, the `grains` granular sampler, the `pulsar` synth, the `wavetable` synth, the physically modelled `piano`, `drums` |
 | [Effects](effects.md) | Reverbs (`freeverb`, `fdnreverb`, `shimmer`, `convolver`), `chorus`, `flanger`, `pingpong`, `vocoder`, `granulator` (with freeze), `pitchshift`, `pan`, `latency` |
+| [MIDI](midi.md) | Playing live from MIDI: the `midi` messages, parser and inputs (raw devices, JACK MIDI, a queue) and the `keyboard` module (velocity curves, pedals, controllers, pitch bend, clock, handlers for every event) |
 | [Harmony](harmony.md) | `tools/harmony`: chords from symbols, voicings and voice leading, scales and keys with roman numerals, an arpeggiator and a check for clashing notes |
 | [Rendering](rendering.md) | Offline rendering with reverb tails, stems, repeatable renders (`psalm.Seed`), profiling per module and the `meter` module (peak, RMS, LUFS) |
 | [Conventions](conventions.md) | Channels, units, messages, value inputs per module, tempo, randomness, silence and latency |
