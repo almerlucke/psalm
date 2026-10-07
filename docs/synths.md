@@ -821,7 +821,7 @@ and `soft` (above 0.5 is down).
 | `felt` | A felt piano, soft and close, for quiet music and ambient |
 | `cinematic` | Soft, dark hammers from the hall, a lot of sympathetic resonance: the slow film-score piano |
 | `honkyTonk` | Strings far out of tune with each other |
-| `toy` | One very stiff, short string per key, struck hard in the middle: a bright, hollow, bell like plink (not stretched) |
+| `toy` | One short string per key, struck hard in the middle: a bright, hollow, bell like plink |
 
 A struck string peaks high above its loudness, so the
 presets are calibrated to a -1 dB peak at velocity 0.8 (about -14 LUFS); played harder they go

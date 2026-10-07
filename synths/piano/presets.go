@@ -94,14 +94,14 @@ func HonkyTonkPreset() Config {
 	return cfg
 }
 
-// ToyPreset is a toy piano: one very stiff, short string per key (more like a struck rod), hard
-// hammers, a tiny body
+// ToyPreset is a toy piano: one short string per key, struck hard in the middle (no even
+// partials: a bright, hollow, bell like plink), a tiny body
 func ToyPreset() Config {
 	cfg := DefaultConfig()
 	cfg.Hardness = 0.9
 	cfg.StrikePosition = 0.5 // in the middle: no even partials, a hollow, bell like plink
 	cfg.Soundboard = 0.3
-	cfg.Stiffness = 8
+	cfg.Stiffness = 0.3 // nearly harmonic: its overtones are heard, they have to be in tune
 	cfg.Decay = 0.5
 	cfg.Damping = 0.5
 	cfg.Strings = 1
@@ -109,7 +109,7 @@ func ToyPreset() Config {
 	cfg.Width = 0.2
 	cfg.Stretch = 0
 	cfg.Treble = -10    // its short stiff strings carry at the top
-	cfg.Level = 24.2481 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 25.2408 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
