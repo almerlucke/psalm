@@ -300,3 +300,21 @@ func TestTaperedWindowAvoidsAliasing(t *testing.T) {
 		t.Fatalf("tapered %.1f dB, rectangle %.1f dB", tapered, rectangle)
 	}
 }
+
+// Formants stay below half the sample rate: the first one stops there, a second one past it is
+// left out (they would fold back as noise)
+func TestFormantCeiling(t *testing.T) {
+	cfg := GlassPreset()
+	cfg.Formant = 3200
+	cfg.FormantTracking = 1 // the formants follow the pitch all the way up
+	v := New(cfg)
+	v.Note(0.5, 1, psalm.Message{"pitch": 100.0}, psalm.CtrlTick{}, v.Config())
+	v.Synthesize()
+	ceiling := maxFormant * v.Config().SampleRate
+	if v.formant1 > ceiling || v.formant1 <= 0 {
+		t.Fatalf("the first formant should stay at or below %.0f Hz, it is %.0f", ceiling, v.formant1)
+	}
+	if v.formant2 != 0 {
+		t.Fatalf("a second formant above the ceiling should be left out, it is %.0f", v.formant2)
+	}
+}

@@ -59,20 +59,20 @@ func BuzzBassPreset() Config {
 }
 
 // GlassPreset is a bright, glassy key: narrow Gaussian pulses with two high formants that follow
-// the pitch, a struck attack and a long decay
+// the pitch halfway (so the top notes stay audible), a struck attack and a long decay
 func GlassPreset() Config {
 	cfg := DefaultConfig()
 	cfg.Formant = 2400
 	cfg.Formant2 = 3900
 	cfg.Formant2Level = 0.5
-	cfg.FormantTracking = 1
+	cfg.FormantTracking = 0.5 // half: the top notes stay bright without going up where the ear hardly hears
 	cfg.Duty = 0.8
 	cfg.Window = Gaussian
 	cfg.FormantEnvAmount = 0.5
 	cfg.FormantEnv = *adsr.NewSetting(1.0, 1.0, 0.0, 400.0, 1.0, 300.0)
 	cfg.NoteSpread = 0.3
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.0, 1800.0, 1.0, 600.0)
-	cfg.Level = 0.3449 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 0.3656 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 

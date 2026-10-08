@@ -241,6 +241,9 @@ func window(w Window, t float64) float64 {
 	}
 }
 
+// maxFormant is the highest a formant goes, as a part of the sample rate (just below half of it)
+const maxFormant = 0.45
+
 // maxCompensation limits how much short pulses are boosted, very short pulses get quieter
 // instead of turning into huge spikes
 const maxCompensation = 3.0
@@ -291,8 +294,15 @@ func (v *Voice) startPulse(formantMod float64, freq float64) {
 
 	tracking := math.Pow(v.glideFreq/middleC, cfg.FormantTracking)
 	octaves := math.Exp2(formantMod)
-	v.formant1 = cfg.Formant * tracking * octaves
+	// a sine burst above half the sample rate folds back (aliases) into inharmonic noise: the
+	// first formant stays below it, a second formant past it is left out (high notes with full
+	// formant tracking get there)
+	ceiling := maxFormant * v.Config().SampleRate
+	v.formant1 = math.Min(cfg.Formant*tracking*octaves, ceiling)
 	v.formant2 = cfg.Formant2 * tracking * octaves
+	if v.formant2 > ceiling {
+		v.formant2 = 0
+	}
 
 	pan := math.Max(0, math.Min(v.notePan+cfg.StereoSpread*(v.Rand().Float64()-0.5), 1))
 	v.gainL = math.Cos(pan * math.Pi / 2)

@@ -50,14 +50,19 @@ func main() {
 	p := tutorial.New(100)
 
 	form := arrange.NewForm(
-		arrange.Section{Name: "Soft", Bars: 8, Params: map[string]any{"formant": 1200.0}},
-		arrange.Section{Name: "Bright", Bars: 8, Params: map[string]any{"formant": 3200.0}},
+		arrange.Section{Name: "Soft", Bars: 8, Params: map[string]any{"formant": 900.0}},
+		arrange.Section{Name: "Bright", Bars: 8, Params: map[string]any{"formant": 2600.0}},
 	)
 	scale := harmony.MustScale("C", "major pentatonic")
 	chords := harmony.MustKey("C major").MustProgression("I vi IV V")
 	chord := chords[0]
 
-	glass := pulsar.NewPoly(pulsar.GlassPreset(), 8).AddTo(p)
+	// the glass, its formant (the peak in its spectrum, where it sounds "oo" or "ee") fixed in Hz:
+	// the preset moves it along with the pitch, which would take the bright formant of the high
+	// notes up where the ear hardly hears it
+	glassCfg := pulsar.GlassPreset()
+	glassCfg.FormantTracking = 0
+	glass := pulsar.NewPoly(glassCfg, 8).AddTo(p)
 	bass := subtractive.NewPoly(subtractive.BassPreset(), 2).AddTo(p)
 	pad := wavetable.NewPoly(wavetable.PadPreset(gen.Brightness(32)), 8).AddTo(p)
 
@@ -85,7 +90,7 @@ func main() {
 				}
 				return pitch
 			}),
-			"formant": template.NewParameter("formant", 1200.0),
+			"formant": template.NewParameter("formant", 900.0),
 		},
 		Amp:    choose(0.3, 0.4, 0.5),
 		Legato: 0.8,
