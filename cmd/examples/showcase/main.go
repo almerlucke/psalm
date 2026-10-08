@@ -17,6 +17,7 @@ package main
 //	voices      speech vocoding a wavetable pad
 //	droplets    pulsar raindrops
 //	aurora      wavetable drone on a generated random spectra table
+//	piano       the modelled grand: rolled chords at dawn, weight under the chorale, the last cadence
 //
 // The strings run through a ladder lowpass that opens at dawn (the prelude) and closes at dusk
 // (the coda), which slows down in its last four bars.
@@ -36,6 +37,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math"
 	"slices"
 
 	"github.com/almerlucke/psalm"
@@ -61,6 +63,7 @@ import (
 	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
+	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
@@ -159,6 +162,18 @@ var counter = score.MustParse("F3:2 A3 | F3 D3 | D3 G3 | E3 C#3 | C3 F3 | E3 G3 
 func harpArp(c chord) []score.Note {
 	arp := harmony.Arp{Pattern: harmony.UpDown, Velocities: []float64{0.9, 0.6, 0.7, 0.6, 0.8, 0.6, 0.7, 0.5}}
 	return arp.Notes(append(slices.Clone(c.celli), c.choir...))
+}
+
+// pedalChanged is a sustain pedal changed at every bar line of a section of a number of bars: up
+// just long enough to clear the old chord, then down again
+func pedalChanged(bars int) arrange.Curve {
+	return func(progress float64) float64 {
+		at := progress * float64(bars)
+		if at-math.Floor(at) < 0.05 {
+			return 0
+		}
+		return 1
+	}
 }
 
 func main() {
@@ -308,6 +323,11 @@ func main() {
 	aurora := wavetable.NewPoly(wavetable.DronePreset(gen.Random(64, 6, 32, 11)), 4).AddTo(p)
 	mix.Channel("aurora", aurora, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
 
+	// --- piano: the grand, its sustain pedal changed at every bar line ---
+
+	grand := piano.NewPoly(piano.GrandPreset(), 24).AddTo(p)
+	mix.Channel("piano", grand, mixer.StripConfig{Volume: -3, Pan: -0.05, Sends: sends{"hall": 0.35}})
+
 	// --- the scores ---
 
 	type S = arrange.Section
@@ -332,6 +352,7 @@ func main() {
 		"celesta":   {Timing: 6, Velocity: 0.12},
 		"bell pad":  {Strum: 25, Velocity: 0.05}, // rolled chords
 		"voices":    {Spread: 10},
+		"piano":     {Timing: 6, Strum: 18, Velocity: 0.06}, // the hands roll the chords a little
 	}
 
 	part := func(synth psalm.Modular, name string, amp float64, legato float64, sc arrange.Score) {
@@ -495,6 +516,38 @@ func main() {
 		return []N{{Pitches: []float64{38, 45}, Beats: 32, Hold: 26}}
 	})
 
+	// the piano: rolled chords at dawn before the harp enters, weight under the horn chorale, and
+	// the last cadence under the celesta, its final chord ringing. The left hand plays the root in
+	// octaves, the right hand the middle voices
+	part(grand, "piano", 0.245, 1.0, func(s S) []N {
+		voicing := func(c chord) []float64 { return append([]float64{c.root, c.root + 12}, c.choir...) }
+		// the soft chords of the prelude and the coda sound with the quiet orchestra there
+		const prelude, coda = 4.7, 3.5
+		switch s.Name {
+		case "Prelude":
+			return arrange.PerBar(s, func(bar int) []N {
+				if bar >= 4 {
+					return []N{score.Rest(4)}
+				}
+				return []N{{Pitches: voicing(chordAt(s, bar)), Beats: 4, Velocity: 0.4, Amp: prelude}}
+			})
+		case "Chorale":
+			return arrange.PerBar(s, func(bar int) []N {
+				v := voicing(chordAt(s, bar))
+				return []N{{Pitches: v, Beats: 2, Velocity: 0.6}, {Pitches: v, Beats: 2, Velocity: 0.5}}
+			})
+		case "Coda":
+			return arrange.PerBar(s, func(bar int) []N {
+				n := N{Pitches: voicing(chordAt(s, bar)), Beats: 4, Velocity: 0.45, Amp: coda}
+				if bar == s.Bars-1 {
+					n.Hold, n.Velocity = 6, 0.35 // the last chord rings
+				}
+				return []N{n}
+			})
+		}
+		return nil
+	})
+
 	if clashes == 0 {
 		fmt.Println("harmony check: every part fits its chords")
 	}
@@ -522,6 +575,23 @@ func main() {
 			}
 			return 0
 		}}}, gran, "freeze").
+		// the sustain pedal goes up at every bar line where the piano plays, just long enough to
+		// clear the old chord, and stays down on the last chord; up where it is silent
+		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{
+			"Prelude": func(progress float64) float64 {
+				if progress >= 0.5 {
+					return 0
+				}
+				return pedalChanged(8)(progress)
+			},
+			"Chorale": pedalChanged(8),
+			"Coda": func(progress float64) float64 {
+				if progress >= 7.0/8 {
+					return 1
+				}
+				return pedalChanged(8)(progress)
+			},
+		}}, grand, "sustain").
 		PrintSections(true)
 	arrangement.AddTo(p)
 
