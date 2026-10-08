@@ -208,6 +208,15 @@ func (c Chord) Close(lowest float64) []float64 {
 }
 
 // BassPitch returns the bass note of the chord at or above the lowest pitch
+// Triad returns the root, the third and the fifth of the chord (its first three tones, root
+// position), the root the lowest at or above lowest: for figures on the chord tones, like a broken
+// chord in the left hand. A chord of fewer than three tones (a power chord) repeats its last
+func (c Chord) Triad(lowest float64) (root, third, fifth float64) {
+	root = lowest + float64(mod12(c.Root-pitchClass(lowest)))
+	tone := func(i int) float64 { return root + float64(c.Intervals[min(i, len(c.Intervals)-1)]) }
+	return root, tone(1), tone(2)
+}
+
 func (c Chord) BassPitch(lowest float64) float64 {
 	return lowest + float64(mod12(c.Bass-pitchClass(lowest)))
 }

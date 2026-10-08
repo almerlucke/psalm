@@ -50,8 +50,24 @@ func Smooth(from, to float64) Curve {
 // Lane is an automation lane: a curve per section and a value for the sections without one
 type Lane struct {
 	Default  float64
-	Sections map[string]Curve
+	Sections Sections
 }
+
+// Sections is a lane by itself: a curve per section, 0 in the sections without one; Else sets
+// another value for those. Where a lane is taken, both work:
+//
+//	Automate(arrange.Sections{"Coda": arrange.Exp(12000, 400)}.Else(12000), filter, 1)
+//	AutomateMessage(arrange.Sections{"Chorus": arrange.Const(1)}, piano, "sustain")
+type Sections map[string]Curve
+
+// Else returns the lane with a value for the sections without a curve
+func (s Sections) Else(v float64) Lane { return Lane{Default: v, Sections: s} }
+
+// Laner is what the arrangement automates: a Lane, or Sections (0 elsewhere)
+type Laner interface{ lane() Lane }
+
+func (l Lane) lane() Lane     { return l }
+func (s Sections) lane() Lane { return Lane{Sections: s} }
 
 // value returns the value of the lane at a position
 func (l Lane) value(pos Position) float64 {
@@ -107,36 +123,36 @@ func (a *Arrangement) PrintSections(print bool) *Arrangement {
 
 // Automate sends a lane to a value input of a module (many modules take a setting on their value
 // inputs, a filter its cutoff on input 1). Values are only sent when they change
-func (a *Arrangement) Automate(lane Lane, to psalm.Modular, input int) *Arrangement {
-	a.automations = append(a.automations, &automation{lane: lane, send: func(v float64) { to.Receive(v, input) }})
+func (a *Arrangement) Automate(lane Laner, to psalm.Modular, input int) *Arrangement {
+	a.automations = append(a.automations, &automation{lane: lane.lane(), send: func(v float64) { to.Receive(v, input) }})
 	return a
 }
 
-// AutomateMessage sends a lane as a message with a key, for settings without a value input
-func (a *Arrangement) AutomateMessage(lane Lane, to psalm.Modular, key string) *Arrangement {
-	a.automations = append(a.automations, &automation{lane: lane, send: func(v float64) {
+// AutomateMessage sends a lane as a message with a key, for settings without a value input, or
+// to name the setting: "cutoff" of a filter, "volume" of a mixer strip
+func (a *Arrangement) AutomateMessage(lane Laner, to psalm.Modular, key string) *Arrangement {
+	a.automations = append(a.automations, &automation{lane: lane.lane(), send: func(v float64) {
 		to.Receive(psalm.Message{key: v}, 0)
 	}})
 	return a
 }
 
 // AutomateFunc calls a function with the values of a lane
-func (a *Arrangement) AutomateFunc(lane Lane, f func(v float64)) *Arrangement {
-	a.automations = append(a.automations, &automation{lane: lane, send: f})
+func (a *Arrangement) AutomateFunc(lane Laner, f func(v float64)) *Arrangement {
+	a.automations = append(a.automations, &automation{lane: lane.lane(), send: f})
 	return a
 }
 
 // Tempo automates the tempo in BPM: the arrangement sets the tempo of its patch, the patch and its
 // sequencers follow it (changes are updated 48 times per beat, so a ritardando is smooth). Other
-// patches keep their own tempo. Where the
-// lane is 0 (the default when a section has no curve) the tempo returns to the one the arrangement
-// started with, so a lane only needs curves for the sections that change tempo:
+// patches keep their own tempo. Where the lane is 0 (the default when a section has no curve) the
+// tempo returns to the one the arrangement started with, so a lane only needs curves for the
+// sections that change tempo:
 //
-//	Tempo(arrange.Lane{Sections: map[string]arrange.Curve{"Outro": arrange.Linear(120, 90)}})
-//
-// The song position is counted in ticks, so the parts stay in time with each other
-func (a *Arrangement) Tempo(lane Lane) *Arrangement {
-	a.tempo = &lane
+//	Tempo(arrange.Sections{"Outro": arrange.Linear(120, 90)})
+func (a *Arrangement) Tempo(lane Laner) *Arrangement {
+	l := lane.lane()
+	a.tempo = &l
 	return a
 }
 
@@ -244,6 +260,21 @@ func (a *Arrangement) Play(m psalm.Modular, sections ...string) *Arrangement {
 func (a *Arrangement) OnBar(f func(pos Position)) *Arrangement {
 	a.onBar = append(a.onBar, f)
 	return a
+}
+
+// At calls f at the start of a bar of a section (from 0), every time the song gets there: to
+// start a recording, change a sound, anything that happens once at a moment. It panics on a
+// section the form doesn't have or a bar it doesn't reach
+func (a *Arrangement) At(section string, bar int, f func()) *Arrangement {
+	s, ok := a.form.Section(section)
+	if !ok || bar < 0 || bar >= s.Bars {
+		panic(fmt.Sprintf("arrange: At bar %d of section %q, which the form doesn't have", bar, section))
+	}
+	return a.OnBar(func(pos Position) {
+		if pos.Section.Name == section && pos.SectionBar() == bar {
+			f()
+		}
+	})
 }
 
 // PositionAt returns the position at a tick (counted from the start of the patch)

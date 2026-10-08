@@ -21,6 +21,8 @@ type Section struct {
 	Params   map[string]any // parameters of the section: streams take them in their templates (template.NewParameter), SendParams sends them to modules
 	Index    int            // position in the form, set by NewForm
 	StartBar int            // first bar in the song, set by NewForm
+
+	BeatsPerBar float64 // the bar of the form, set when a part is written for the section
 }
 
 // Form is the song form: its sections in order and the beats per bar
@@ -123,6 +125,7 @@ func (f *Form) Compile(name string, sc Score) []score.Note {
 	var notes []score.Note
 	for _, s := range f.Sections {
 		expect := float64(s.Bars) * f.BeatsPerBar
+		s.BeatsPerBar = f.BeatsPerBar
 		ns := sc(s)
 		if ns == nil {
 			notes = append(notes, score.Rest(expect))
@@ -155,13 +158,43 @@ func (f *Form) Part(p psalm.Patcher, synth psalm.Modular, name string, cfg score
 	return seq
 }
 
-// PerBar writes a section bar by bar
+// PerBar writes a section bar by bar. A bar without notes (nil) rests until the end of the bar:
+// a whole bar of rest, nothing when a longer note before it already lasts through the bar
 func PerBar(s Section, f func(bar int) []score.Note) []score.Note {
 	var notes []score.Note
+	beats := 0.0
 	for bar := range s.Bars {
-		notes = append(notes, f(bar)...)
+		ns := f(bar)
+		if ns == nil {
+			if s.BeatsPerBar <= 0 {
+				panic("arrange: PerBar: a bar without notes needs the length of a bar, write the bars in a part of the form")
+			}
+			if rest := float64(bar+1)*s.BeatsPerBar - beats; rest > 1e-9 {
+				ns = []score.Note{score.Rest(rest)}
+			}
+		}
+		notes = append(notes, ns...)
+		beats += score.Beats(ns)
 	}
 	return notes
+}
+
+// Only plays a score in one section only, a rest in the others: for a part written for a section
+func Only(section string, sc Score) Score {
+	return func(s Section) []score.Note {
+		if s.Name != section {
+			return nil
+		}
+		return sc(s)
+	}
+}
+
+// Bars writes a part bar by bar in one section only (Only and PerBar in one): f gets the section
+// and the bar (from 0), a bar without notes (nil) is a rest
+func Bars(section string, f func(s Section, bar int) []score.Note) Score {
+	return Only(section, func(s Section) []score.Note {
+		return PerBar(s, func(bar int) []score.Note { return f(s, bar) })
+	})
 }
 
 // In returns true when the section is one of the names, for parts that play in some sections

@@ -176,3 +176,35 @@ func TestSequencerWithoutLoopStops(t *testing.T) {
 		t.Fatalf("expected one note, got %d", len(rec.got))
 	}
 }
+
+// A tuning sends the pitches as its frequencies
+func TestSequencerTuning(t *testing.T) {
+	seq := NewSequencer(Notes(1, 60, 69), Config{Tuning: func(p float64) float64 { return p * 10 }})
+	rec := newRecorder()
+	rec.ValueIn(seq)
+	run(seq, psalm.PPQ()*3)
+	if len(rec.got) != 2 {
+		t.Fatalf("expected two notes, got %d", len(rec.got))
+	}
+	msg := rec.got[1]["message"].(psalm.Message)
+	if msg["frequency"] != 690.0 {
+		t.Fatalf("expected the tuned frequency, got %v", msg)
+	}
+	if _, ok := msg["pitch"]; ok {
+		t.Fatal("a tuned note should not send its pitch")
+	}
+}
+
+// Shape gives a figure its accents and lengths, the velocities in turn
+func TestShape(t *testing.T) {
+	notes := Notes(0.5, 48, 55, 60)
+	shaped := Shape(notes, Velocities(0.6, 0.4), Hold(3))
+	for i, want := range []float64{0.6, 0.4, 0.6} {
+		if shaped[i].Velocity != want || shaped[i].Hold != 3 {
+			t.Fatalf("note %d: velocity %v hold %v", i, shaped[i].Velocity, shaped[i].Hold)
+		}
+	}
+	if notes[0].Velocity != 0 || notes[0].Hold != 0 {
+		t.Fatal("shape should leave the notes it is given alone")
+	}
+}

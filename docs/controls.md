@@ -166,6 +166,16 @@ Helpers: `N(pitch, beats)`, `Chord(pitches, beats)`, `Rest(beats)`, `Notes(beats
 (0 is a rest), `Chords(beats, chords...)`, `Join`, `Repeat`, `Transpose`, `With` (change every
 note), `Beats` (total length), `Pitches` (move a chord) and `Pitch("F#3")`.
 
+`Shape(notes, shapers...)` gives a figure its accents and lengths: `Velocities(v...)` gives the
+notes their velocities in turn (starting again at the first when there are more notes, an accent
+pattern), `Hold(beats)` sets how long every note sounds:
+
+```go
+// a broken chord in the left hand, accented on the beat, held under the pedal
+score.Shape(score.Notes(0.5, 39, 46, 51, 55, 58, 55, 51, 46),
+	score.Velocities(0.6, 0.4, 0.45, 0.4), score.Hold(3))
+```
+
 **Notation** (`Parse`, `MustParse`), tokens separated by spaces:
 
 | Token | Meaning |
@@ -186,6 +196,7 @@ note), `Beats` (total length), `Pitches` (move a chord) and `Pitch("F#3")`.
 | `Legato` | 0.9 | Part of its length a note sounds when it has no `Hold` |
 | `Velocity` | 0 | Velocity of notes without one, 0 sends none (the synth default) |
 | `Key` | `"pitch"` | Message key of the pitches, `"frequency"` for Hz |
+| `Tuning` | none | Plays the pitches (MIDI) in a tuning, sent as `"frequency"`: `harmony.EqualTemperament(440)`, or just intonation in a key, `harmony.MustKey("Eb major").Just(440)` (see [Harmony](harmony.md#tuning)) |
 | `Loop` | false | Start again after the last note |
 | `Length` | notes | Loop length in beats |
 
@@ -234,21 +245,24 @@ form := arrange.NewForm(
 	arrange.Section{Name: "Outro", Bars: 8},
 )
 
-// a part: the notes per section, nil where it doesn't play
+// a part: the notes per section, nil where it doesn't play (and a bar without notes is a rest)
 form.Part(p, pad, "pad", score.Config{Amp: 0.3}, func(s arrange.Section) []score.Note {
 	if !arrange.In(s, "Verse", "Outro") {
 		return nil
 	}
 	return arrange.PerBar(s, func(bar int) []score.Note {
+		if bar == 0 {
+			return nil // the pad enters in the second bar
+		}
 		return []score.Note{score.Chord(chords[bar%4], 4)}
 	})
 })
 
 // automation and events
 arrange.NewArrangement(form).
-	Automate(arrange.Lane{Default: 12000, Sections: map[string]arrange.Curve{
-		"Intro": arrange.Exp(250, 12000), // the filter opens over the intro
-	}}, filter, 1).
+	AutomateMessage(arrange.Sections{"Intro": arrange.Exp(250, 12000)}.Else(12000), filter, "cutoff"). // the filter opens over the intro
+	AutomateMessage(arrange.Sections{"Outro": form.Span("Outro").Fade(-6, 2, 8)}.Else(arrange.Silent), rain, "volume").
+	At("Verse", 0, player.Bang).
 	OnSection(func(pos arrange.Position) { fmt.Println(pos.Section.Name) }).
 	AddTo(p)
 
@@ -264,19 +278,58 @@ loops with the song, connects it to the synth and adds it to the patch. A sectio
 play in (nil) is a rest. A section that doesn't last exactly its bars panics with the part and
 section name, so mistakes show when the song is built, not as notes drifting out of time.
 `form.Compile(name, score)` returns the notes without a sequencer. `arrange.PerBar(s, f)` writes a
-section bar by bar, `arrange.In(s, names...)` checks the section.
+section bar by bar (a bar returning nil rests until the end of the bar: a bar of rest, or
+nothing when a longer note before it lasts through it), `arrange.In(s, names...)` checks the
+section and `arrange.Only(section, score)` plays a score written for one section only.
+`arrange.Bars(section, func(s, bar) []score.Note)` is both in one, the common case: a part written
+bar by bar for one section.
 
-**Automation**: a `Lane` has a `Curve` per section (a function of the progress 0-1 through the
-section) and a `Default` for the other sections. Curves: `Const(v)`, `Linear(a, b)`, `Exp(a, b)`
-(even steps per octave, for frequencies) and `Smooth(a, b)`, or your own function. Send a lane to:
+```go
+form.Part(p, piano, "left hand", score.Config{Amp: 0.5}, arrange.Bars("Verse", func(s arrange.Section, bar int) []score.Note {
+	if bar == 0 {
+		return nil // enters in the second bar
+	}
+	return []score.Note{score.Chord(chords[bar%4].Close(48), 4)}
+}))
+```
+
+**Automation**: a lane has a `Curve` per section (a function of the progress 0-1 through the
+section) and a value for the other sections. `arrange.Sections{"Intro": curve}` is a lane by
+itself, 0 in the other sections; `.Else(v)` gives them another value (the same as
+`arrange.Lane{Default: v, Sections: ...}`). Curves: `Const(v)`, `Linear(a, b)`, `Exp(a, b)` (even
+steps per octave, for frequencies) and `Smooth(a, b)`, or your own function. Send a lane to:
 
 | Method | Target |
 |---|---|
-| `Automate(lane, module, input)` | A value input (a filter cutoff is input 1) |
-| `AutomateMessage(lane, module, key)` | A message key, for settings without a value input |
+| `AutomateMessage(lane, module, key)` | A setting by name: `"cutoff"` of a filter, `"volume"` of a mixer strip, any message key |
+| `Automate(lane, module, input)` | A value input by number (a filter cutoff and a strip volume are input 1) |
 | `AutomateFunc(lane, func(v float64))` | Your own function |
 
 Values are updated 48 times per beat and only sent when they change.
+
+**Bars**: curves run over the whole section; a `Span` places them at bars instead (counted from
+0, fractions allowed). `form.Span(name)` is the span of a section, `arrange.Span(12)` any number
+of bars:
+
+| Curve | |
+|---|---|
+| `span.Between(from, to, curve)` | The curve from one bar to another, its first value before and its last after |
+| `span.From(bar, curve)`, `span.Last(bars, curve)` | The curve from a bar to the end, or over the last bars |
+| `span.Fade(dB, from, to)` | A level from one bar to another, faded in and out (over a bar, even in amplitude), `arrange.Silent` outside: a sound that comes in for part of a section. A bar beyond the section (`-1`, or its bars + 1) leaves out the fade at that edge, for a sound that carries on into the next section |
+| `span.Steps(v0, v1, ...)` | A value for every bar, the last one holding on: `Steps(0, 0, 0.5, 1)` |
+| `span.On(from, to)` | 1 from one bar to another, 0 outside: a switch for part of a section |
+| `span.Pedal(from, to)` | A sustain pedal changed at every bar line: up for a moment to clear the chord, down for the bar, up outside the bars |
+
+```go
+day := form.Span("Day 1")
+arrangement.
+	AutomateMessage(arrange.Sections{"Day 1": day.Between(6, 7, arrange.Exp(300, 18000))}.Else(18000), filter, "cutoff").
+	AutomateMessage(arrange.Sections{"Day 6": form.Span("Day 6").Pedal(6, 12)}, piano, "sustain")
+```
+
+**Events**: `OnSection(f)` and `OnBar(f)` call a function at the start of every section and bar
+with the position; `At(section, bar, f)` calls a function at the start of one bar (from 0), every
+time the song gets there: to start a recording (`player.Bang`) or change a sound at a moment.
 
 **Tempo**: `Tempo(lane)` automates the tempo in BPM. The arrangement sets the tempo of its patch
 (`Env().SetBPM`), the patch and its sequencers follow it; other patches keep their own tempo. Where the lane is 0 (a section
@@ -284,7 +337,8 @@ without a curve, with the default `Default` of 0) the tempo returns to where it 
 ritardando at the end only needs a curve for the last section:
 
 ```go
-arrangement.Tempo(arrange.Lane{Sections: map[string]arrange.Curve{"Outro": arrange.Smooth(120, 90)}})
+arrangement.Tempo(arrange.Sections{"Outro": arrange.Smooth(120, 90)})
+arrangement.Tempo(arrange.Sections{"Outro": form.Span("Outro").Last(4, arrange.Smooth(120, 90))}) // the last 4 bars
 ```
 
 The tempo is updated 48 times per beat (changes smaller than

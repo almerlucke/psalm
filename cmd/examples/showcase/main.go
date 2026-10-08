@@ -33,148 +33,19 @@ package main
 //	go run ./cmd/examples/showcase                                    play it
 //	go run ./cmd/examples/showcase -render aurora.wav -stems -seed 7  render it, a stem per mixer strip
 //	go run ./cmd/examples/showcase -profile                           the time every module takes
+//
+// The files: music.go (the chords, the form and the melodies), orchestra.go (the instruments on
+// the mixer), parts.go (what every instrument plays, section by section) and arrangement.go (the
+// automation and the tempo).
 
 import (
 	"flag"
 	"fmt"
-	"math"
-	"slices"
 
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
-	"github.com/almerlucke/psalm/blocks/filters/ladder"
-	"github.com/almerlucke/psalm/blocks/filters/svf"
-	"github.com/almerlucke/psalm/modules/controls/arrange"
-	"github.com/almerlucke/psalm/modules/controls/score"
-	"github.com/almerlucke/psalm/modules/effects/chorus"
-	"github.com/almerlucke/psalm/modules/effects/convolver"
-	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
-	"github.com/almerlucke/psalm/modules/effects/flanger"
-	"github.com/almerlucke/psalm/modules/effects/freeverb"
-	"github.com/almerlucke/psalm/modules/effects/granulator"
-	"github.com/almerlucke/psalm/modules/effects/pingpong"
-	"github.com/almerlucke/psalm/modules/effects/pitchshift"
-	"github.com/almerlucke/psalm/modules/effects/shimmer"
-	"github.com/almerlucke/psalm/modules/effects/vocoder"
-	"github.com/almerlucke/psalm/modules/filters"
-	"github.com/almerlucke/psalm/modules/mixer"
-	"github.com/almerlucke/psalm/modules/oscillators/lfo"
-	"github.com/almerlucke/psalm/modules/player"
-	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
-	"github.com/almerlucke/psalm/synths/grains"
-	"github.com/almerlucke/psalm/synths/piano"
-	"github.com/almerlucke/psalm/synths/pulsar"
-	"github.com/almerlucke/psalm/synths/subtractive"
-	"github.com/almerlucke/psalm/synths/wavetable"
-	"github.com/almerlucke/psalm/synths/wavetable/gen"
-	"github.com/almerlucke/psalm/tools/harmony"
 	"github.com/almerlucke/psalm/tools/render"
-	"github.com/almerlucke/sndfile"
 )
-
-const bpm = 66
-
-// --- harmony ---
-
-// chord holds the voicings of a chord for the sections of the orchestra
-type chord struct {
-	symbol  harmony.Chord
-	root    float64   // pizzicato bass
-	celli   []float64 // root and fifth
-	choir   []float64 // middle voices, also the horns an octave down
-	violins []float64 // upper voices
-}
-
-var (
-	Dm = chord{harmony.MustChord("Dm"), 38, []float64{50, 57}, []float64{57, 62, 65}, []float64{62, 65, 69, 74}}
-	Bb = chord{harmony.MustChord("Bb"), 34, []float64{46, 53}, []float64{58, 62, 65}, []float64{62, 65, 70, 74}}
-	Gm = chord{harmony.MustChord("Gm"), 31, []float64{43, 50}, []float64{58, 62, 67}, []float64{62, 67, 70, 74}}
-	A  = chord{harmony.MustChord("A"), 33, []float64{45, 52}, []float64{57, 61, 64}, []float64{61, 64, 69, 73}}
-	F  = chord{harmony.MustChord("F"), 41, []float64{41, 48}, []float64{57, 60, 65}, []float64{60, 65, 69, 72}}
-	C  = chord{harmony.MustChord("C"), 36, []float64{48, 55}, []float64{55, 60, 64}, []float64{60, 64, 67, 72}}
-)
-
-var (
-	// the progression, one chord per bar
-	progression = []chord{Dm, Bb, Gm, A, F, C, Gm, A}
-	// the coda comes home
-	homecoming = []chord{Dm, Bb, F, C, Gm, A, Dm, Dm}
-)
-
-// chordAt returns the chord of a bar in a section
-func chordAt(s arrange.Section, bar int) chord {
-	if s.Name == "Coda" {
-		return homecoming[bar%len(homecoming)]
-	}
-	return progression[bar%len(progression)]
-}
-
-// songChords lays out the chord of every bar of the song, for the harmony check
-func songChords() []harmony.TimedChord {
-	var tl []harmony.TimedChord
-	for _, s := range form.Sections {
-		for bar := range s.Bars {
-			start := float64(s.StartBar+bar) * form.BeatsPerBar
-			tl = append(tl, harmony.TimedChord{Beat: start, Beats: form.BeatsPerBar, Chord: chordAt(s, bar).symbol})
-		}
-	}
-	return tl
-}
-
-// --- the form ---
-
-var form = arrange.NewForm(
-	arrange.Section{Name: "Prelude", Bars: 8, Dynamics: 0.9},
-	arrange.Section{Name: "Theme", Bars: 16, Dynamics: 0.85},
-	arrange.Section{Name: "Chorale", Bars: 8, Dynamics: 1.6},
-	arrange.Section{Name: "Interlude", Bars: 8, Dynamics: 1.1},
-	arrange.Section{Name: "Climax", Bars: 16, Dynamics: 0.95},
-	arrange.Section{Name: "Coda", Bars: 8},
-)
-
-// --- melodies ---
-
-// the theme, 16 bars over the progression twice
-var themeBars = []string{
-	"A4:2 F4:1 E4", "D4:3 F4:1", "G4:2 Bb4:1 A4", "E4:2 C#4:1 E4",
-	"A4:2 C5:1 A4", "G4:2 E4:1 G4", "Bb4:1.5 A4:.5 G4:1 D5", "C#5:2 A4",
-	"D5:2 C5:1 A4", "Bb4:2 A4:1 F4", "G4:1 A4 Bb4 D5", "C#5:3 E5:1",
-	"F5:2 E5:1 C5", "E5:2 D5:1 C5", "Bb4:2 A4:1 G4", "A4:4",
-}
-
-func themeBar(i int) []score.Note {
-	return score.MustParse(themeBars[i])
-}
-
-func theme() []score.Note {
-	var notes []score.Note
-	for i := range themeBars {
-		notes = append(notes, themeBar(i)...)
-	}
-	return notes
-}
-
-// the horn counter melody of the climax, two half notes per bar
-var counter = score.MustParse("F3:2 A3 | F3 D3 | D3 G3 | E3 C#3 | C3 F3 | E3 G3 | Bb3 A3 | A3 E3")
-
-// harpArp is an 8th note arpeggio up and down the chord, from the celli up through the choir voices
-func harpArp(c chord) []score.Note {
-	arp := harmony.Arp{Pattern: harmony.UpDown, Velocities: []float64{0.9, 0.6, 0.7, 0.6, 0.8, 0.6, 0.7, 0.5}}
-	return arp.Notes(append(slices.Clone(c.celli), c.choir...))
-}
-
-// pedalChanged is a sustain pedal changed at every bar line of a section of a number of bars: up
-// just long enough to clear the old chord, then down again
-func pedalChanged(bars int) arrange.Curve {
-	return func(progress float64) float64 {
-		at := progress * float64(bars)
-		if at-math.Floor(at) < 0.05 {
-			return 0
-		}
-		return 1
-	}
-}
 
 func main() {
 	var (
@@ -189,416 +60,25 @@ func main() {
 	}
 
 	psalm.PushConfig(psalm.Config{BPM: bpm, PPQ: 240, SampleRate: 44100, BufferSize: 1024})
-
-	offline := *renderTo != "" || *profile
 	var p *psalm.Psalm
-	if offline {
+	if *renderTo != "" || *profile {
 		p = psalm.New(nil)
 	} else {
 		p = psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
 	}
 	defer p.Close()
 
-	// --- the mixer: a hall and a shimmering sky as effect buses, the strings and the choir as
-	// groups with their own inserts ---
-
-	mix := mixer.New(p)
-	type sends = map[string]float64
-
-	hcfg := fdnreverb.DefaultConfig()
-	hcfg.Decay = 3.8
-	hcfg.Size = 0.8
-	hcfg.Damping = 0.55
-	hcfg.PreDelay = 30
-	hcfg.Mix = 1
-	mix.Bus("hall", mixer.StripConfig{}, fdnreverb.New(hcfg).AddTo(p))
-
-	scfg := shimmer.DefaultConfig()
-	scfg.Reverb.Decay = 7
-	scfg.Shimmer = 0.45
-	scfg.Mix = 1
-	mix.Bus("sky", mixer.StripConfig{}, shimmer.New(scfg).AddTo(p))
-
-	// the strings play through the dawn and dusk filter
-	stringFilter := filters.NewLadder(ladder.LowPass12, 250, 0.1, 1.0)
-	stringFilter.AddTo(p)
-	mix.Group("strings", mixer.StripConfig{Sends: sends{"hall": 0.4}}, stringFilter)
-
-	// the choir sings in a church: a highpass cleans the lows, a recorded church response (large
-	// partitions keep it cheap, their latency is a natural pre delay)
-	choirClean := filters.NewSVF(svf.HighPass, 120, 0.1)
-	choirClean.AddTo(p)
-	church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
-	mix.Group("choir", mixer.StripConfig{Volume: -2.8}, choirClean,
-		convolver.New(church, convolver.Config{PartitionSize: 4096, Mix: 0.37, Gain: 2.27}).AddTo(p))
-
-	// --- strings ---
-
-	violinsCfg := wavetable.StringsPreset(gen.Brightness(64))
-	violinsCfg.Position = 0.8
-	violinsCfg.Unison = 3 // the chorus widens the section
-	violins := wavetable.NewPoly(violinsCfg, 16).AddTo(p)
-	violins.ValueIn(lfo.New(true, 0.05, 0.7, 0.9, lfo.Sine).AddTo(p), 0, 1) // the bowing breathes
-	violinsChorus := chorus.New(chorus.Config{Rate: 0.3, Depth: 6, Delay: 23, Voices: 3, Spread: 1, Feedback: 0.1, Tone: 9000, Mix: 0.35}).AddTo(p).In(violins)
-	mix.Channel("violins", violinsChorus, mixer.StripConfig{Volume: -0.4, Pan: -0.35, Group: "strings"})
-
-	celli := subtractive.NewPoly(subtractive.StringsPreset(), 8).AddTo(p)
-	mix.Channel("celli", celli, mixer.StripConfig{Pan: 0.35, Group: "strings"})
-
-	pizz := fm.NewPoly(fm.UprightBassPreset(), 2).AddTo(p)
-	mix.Channel("pizzicato", pizz, mixer.StripConfig{Volume: -3, Pan: 0.45, Sends: sends{"hall": 0.25}})
-
-	// --- harp: freeverb, then the granulator ---
-
-	harp := fm.NewPoly(fm.HarpPreset(), 12).AddTo(p)
-	harpRoom := freeverb.New(0.5, 0.4, 1.0, 0.25, 0.9).AddTo(p).In(harp)
-	gcfg := granulator.DefaultConfig()
-	gcfg.Mix = 0
-	gcfg.Delay = 300
-	gcfg.Spray = 250
-	gcfg.GrainSize = 220
-	gcfg.Density = 30
-	gcfg.Octave = 0.25
-	gran := granulator.New(gcfg)
-	gran.AddTo(p)
-	gran.In(harpRoom)
-	harpStrip := mix.Channel("harp", gran, mixer.StripConfig{Volume: -3, Pan: 0.55, Sends: sends{"hall": 0.5}})
-
-	// --- winds and brass ---
-
-	flute := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
-	piccolo := pitchshift.New(12, 60, 0.11).AddTo(p).In(flute) // an octave shadow above
-	mix.Channel("flute", piccolo, mixer.StripConfig{Volume: -4.3, Pan: -0.1, Sends: sends{"hall": 0.4, "sky": 0.1}})
-
-	horns := dx.NewPoly(dx.SoftBrass(), 12, psalm.Stereo).AddTo(p)
-	mix.Channel("horns", horns, mixer.StripConfig{Volume: -3, Pan: -0.2, Sends: sends{"hall": 0.45}})
-
-	hornSolo := fm.NewPoly(fm.FrenchHornPreset(), 2).AddTo(p)
-	mix.Channel("horn solo", hornSolo, mixer.StripConfig{Volume: -3, Pan: 0.25, Sends: sends{"hall": 0.4}})
-
-	// --- choir: grains on a choir recording, a pulsar choir and the soprano ---
-
-	choirRec := sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-angelical-choir-654.wav", 4)
-	choir := grains.NewPoly(grains.ChoirPad(choirRec, 60), 12).AddTo(p)
-	mix.Channel("grains choir", choir, mixer.StripConfig{Group: "choir"})
-	ooh := pulsar.NewPoly(pulsar.ChoirPreset(), 12).AddTo(p)
-	mix.Channel("ooh", ooh, mixer.StripConfig{Group: "choir"})
-	soprano := pulsar.NewPoly(pulsar.VowelLeadPreset(), 2).AddTo(p)
-	mix.Channel("soprano", soprano, mixer.StripConfig{Group: "choir", Sends: sends{"sky": 0.15}})
-
-	// --- interlude colours: celesta, bell pad, vocoder, droplets ---
-
-	celesta := fm.NewPoly(fm.CelestaPreset(), 8).AddTo(p)
-	celestaEcho := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.26, HighCut: 5000, LowCut: 200}).AddTo(p).In(celesta)
-	mix.Channel("celesta", celestaEcho, mixer.StripConfig{Volume: -7.4, Pan: 0.3, Sends: sends{"sky": 0.8}})
-
-	speech := player.New(player.Config{
-		SndFile: sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/John_1-1.wav", 4),
-		Loop:    true,
-		Speed:   1.0,
-		Amp:     0.8,
-	}).AddTo(p)
-	carrierCfg := wavetable.PadPreset(gen.Brightness(16))
-	carrierCfg.Position = 1
-	carrierCfg.PositionLFODepth = 0
-	carrierCfg.Filter = wavetable.FilterOff
-	carrierCfg.Unison = 3
-	carrierCfg.AmpEnv.AttackDuration = 200
-	carrier := wavetable.NewPoly(carrierCfg, 12).AddTo(p)
-	voc := vocoder.New(vocoder.DefaultConfig())
-	voc.AddTo(p)
-	voc.In(speech, 0, 0, carrier, 0, 1)
-	mix.Channel("voices", voc, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
-
-	bellPad := dx.NewPoly(dx.BellPad(), 12, psalm.Stereo).AddTo(p)
-	bellFlange := flanger.New(flanger.Config{Rate: 0.08, Manual: 1, Depth: 9.5, Feedback: 0.4, Stereo: 0.5, Shape: flanger.Triangle, Mix: 0.4}).AddTo(p).In(bellPad)
-	// the vocoder sounds an FFT frame late: the mixer delays the other strips to line them up
-	mix.Channel("bell pad", bellFlange, mixer.StripConfig{Volume: 0.3, Sends: sends{"hall": 0.4}})
-
-	droplets := pulsar.NewPoly(pulsar.RaindropsPreset(), 2).AddTo(p)
-	mix.Channel("droplets", droplets, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4, "sky": 0.2}})
-
-	// --- aurora: a drone on a table of random spectra, at dawn and dusk ---
-
-	aurora := wavetable.NewPoly(wavetable.DronePreset(gen.Random(64, 6, 32, 11)), 4).AddTo(p)
-	mix.Channel("aurora", aurora, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
-
-	// --- piano: the grand, its sustain pedal changed at every bar line ---
-
-	grand := piano.NewPoly(piano.GrandPreset(), 24).AddTo(p)
-	mix.Channel("piano", grand, mixer.StripConfig{Volume: -3, Pan: -0.05, Sends: sends{"hall": 0.35}})
-
-	// --- the scores ---
-
-	type S = arrange.Section
-	type N = score.Note
-	// every part is checked against the chords: notes a semitone above a chord tone that aren't
-	// passing notes, and notes held into a chord they clash with, are reported at the start
-	timeline := songChords()
-	clashes := 0
-	// how the orchestra plays: ensembles never start a chord exactly together, soloists breathe,
-	// nothing sits exactly on the grid. The feel is drawn again on every loop
-	feels := map[string]score.Feel{
-		"violins":   {Timing: 8, Spread: 12, Velocity: 0.06},
-		"celli":     {Timing: 8, Spread: 10, Velocity: 0.06},
-		"pizzicato": {Timing: 6, Velocity: 0.1, Accents: []float64{1, 0.8, 0.9, 0.8}},
-		"harp":      {Timing: 5, Velocity: 0.1},
-		"flute":     {Timing: 10, Push: 6, Velocity: 0.08}, // a little behind the beat
-		"horns":     {Timing: 10, Spread: 15, Velocity: 0.06},
-		"horn solo": {Timing: 12, Push: 4, Velocity: 0.08},
-		"soprano":   {Timing: 10, Push: 6, Velocity: 0.08},
-		"choir":     {Timing: 10, Spread: 20},
-		"ooh":       {Timing: 10, Spread: 20},
-		"celesta":   {Timing: 6, Velocity: 0.12},
-		"bell pad":  {Strum: 25, Velocity: 0.05}, // rolled chords
-		"voices":    {Spread: 10},
-		"piano":     {Timing: 6, Strum: 18, Velocity: 0.06}, // the hands roll the chords a little
-	}
-
-	part := func(synth psalm.Modular, name string, amp float64, legato float64, sc arrange.Score) {
-		form.Part(p, synth, name, score.Config{Amp: amp, Legato: legato, Velocity: 0.8, Feel: feels[name]}, sc)
-		if name == "aurora" {
-			return // a pedal: it holds through the chords on purpose
-		}
-		issues := harmony.Check(form.Compile(name, sc), timeline)
-		clashes += len(issues)
-		fmt.Print(harmony.Report(name, issues))
-	}
-
-	part(violins, "violins", 0.126, 1.0, func(s S) []N {
-		if !arrange.In(s, "Prelude", "Theme", "Climax", "Coda") {
-			return nil
-		}
-		return arrange.PerBar(s, func(bar int) []N {
-			c := chordAt(s, bar)
-			if s.Name == "Coda" && bar == s.Bars-1 {
-				return []N{{Pitches: c.violins, Beats: 4, Hold: 6}} // the last chord rings
-			}
-			return []N{score.Chord(c.violins, 4)}
-		})
-	})
-
-	part(celli, "celli", 0.145, 1.0, func(s S) []N {
-		if s.Name == "Interlude" {
-			return arrange.PerBar(s, func(bar int) []N {
-				return []N{{Pitches: chordAt(s, bar).celli[:1], Beats: 4, Velocity: 0.5}}
-			})
-		}
-		return arrange.PerBar(s, func(bar int) []N { return []N{score.Chord(chordAt(s, bar).celli, 4)} })
-	})
-
-	part(pizz, "pizzicato", 0.355, 0.5, func(s S) []N {
-		if !arrange.In(s, "Theme", "Climax") {
-			return nil
-		}
-		return arrange.PerBar(s, func(bar int) []N {
-			r := chordAt(s, bar).root
-			return score.Join(score.Notes(2, r), score.Notes(1, r+7, r+12))
-		})
-	})
-
-	part(harp, "harp", 0.13, 1.6, func(s S) []N {
-		if !arrange.In(s, "Prelude", "Theme", "Interlude", "Climax", "Coda") {
-			return nil
-		}
-		return arrange.PerBar(s, func(bar int) []N {
-			if (s.Name == "Prelude" && bar < 4) || (s.Name == "Coda" && bar == s.Bars-1) {
-				return []N{score.Rest(4)} // the harp enters halfway the prelude and rests on the last chord
-			}
-			return harpArp(chordAt(s, bar))
-		})
-	})
-
-	part(flute, "flute", 0.525, 0.95, func(s S) []N {
-		if s.Name != "Theme" {
-			return nil
-		}
-		return theme()
-	})
-
-	part(horns, "horns", 0.0788, 0.95, func(s S) []N {
-		if !arrange.In(s, "Chorale", "Climax") {
-			return nil
-		}
-		return arrange.PerBar(s, func(bar int) []N {
-			low := score.Pitches(chordAt(s, bar).choir, -12)
-			if s.Name == "Chorale" {
-				return score.Chords(2, low, low) // a chorale in half notes
-			}
-			return []N{score.Chord(low, 4)}
-		})
-	})
-
-	part(hornSolo, "horn solo", 0.33, 0.95, func(s S) []N {
-		if s.Name != "Climax" {
-			return nil
-		}
-		return score.Repeat(counter, 2)
-	})
-
-	part(soprano, "soprano", 0.34, 0.95, func(s S) []N {
-		if s.Name != "Climax" {
-			return nil
-		}
-		return theme()
-	})
-
-	part(choir, "choir", 0.0793, 1.0, func(s S) []N {
-		if !arrange.In(s, "Prelude", "Chorale", "Climax", "Coda") {
-			return nil
-		}
-		return arrange.PerBar(s, func(bar int) []N {
-			c := chordAt(s, bar)
-			if s.Name == "Prelude" {
-				if bar%2 == 1 {
-					return []N{score.Rest(4)}
-				}
-				return []N{{Pitches: c.choir, Beats: 4, Hold: 3.8}} // every other chord, within its bar
-			}
-			return []N{score.Chord(c.choir, 4)}
-		})
-	})
-
-	part(ooh, "ooh", 0.061, 1.0, func(s S) []N {
-		if !arrange.In(s, "Chorale", "Climax") {
-			return nil
-		}
-		return arrange.PerBar(s, func(bar int) []N { return []N{score.Chord(score.Pitches(chordAt(s, bar).choir, 12), 4)} })
-	})
-
-	part(celesta, "celesta", 0.217, 0.9, func(s S) []N {
-		switch s.Name {
-		case "Interlude":
-			return arrange.PerBar(s, func(bar int) []N {
-				v := score.Pitches(chordAt(s, bar).violins, 12)
-				if bar%2 == 0 {
-					return score.Join(score.Notes(1, v[3]), score.Notes(0.5, v[2], v[1]), score.Notes(1, v[0], 0))
-				}
-				return score.Join(score.Notes(1, 0), score.Notes(0.5, v[1], v[2]), score.Notes(2, v[3]))
-			})
-		case "Coda":
-			// the theme returns as a memory (the bars that fit Dm Bb F C), then the last chord
-			memory := score.Join(themeBar(0), themeBar(1), themeBar(4), themeBar(5))
-			memory = score.With(score.Transpose(memory, 12), func(n *N) { n.Velocity = 0.6 })
-			return score.Join(memory, score.MustParse("r:4 D5:1 C#5 A4:2 F5 D5 r:4")) // D leans on the A chord, resolving to C#
-		}
-		return nil
-	})
-
-	part(bellPad, "bell pad", 0.0471, 1.0, func(s S) []N {
-		if s.Name != "Interlude" {
-			return nil
-		}
-		return arrange.PerBar(s, func(bar int) []N { return []N{score.Chord(chordAt(s, bar).choir, 4)} })
-	})
-
-	part(carrier, "voices", 0.0976, 1.0, func(s S) []N {
-		if s.Name != "Interlude" {
-			return nil
-		}
-		return arrange.PerBar(s, func(bar int) []N {
-			c := chordAt(s, bar)
-			return []N{score.Chord(append([]float64{c.celli[0]}, c.choir...), 4)}
-		})
-	})
-
-	form.Part(p, droplets, "droplets", score.Config{Amp: 0.133, Legato: 1, Key: "frequency"}, func(s S) []N {
-		if s.Name != "Interlude" {
-			return nil
-		}
-		return score.Notes(16, 7, 9) // drops per second
-	})
-
-	part(aurora, "aurora", 0.111, 1.0, func(s S) []N {
-		if !arrange.In(s, "Prelude", "Coda") {
-			return nil
-		}
-		return []N{{Pitches: []float64{38, 45}, Beats: 32, Hold: 26}}
-	})
-
-	// the piano: rolled chords at dawn before the harp enters, weight under the horn chorale, and
-	// the last cadence under the celesta, its final chord ringing. The left hand plays the root in
-	// octaves, the right hand the middle voices
-	part(grand, "piano", 0.245, 1.0, func(s S) []N {
-		voicing := func(c chord) []float64 { return append([]float64{c.root, c.root + 12}, c.choir...) }
-		// the soft chords of the prelude and the coda sound with the quiet orchestra there
-		const prelude, coda = 4.7, 3.5
-		switch s.Name {
-		case "Prelude":
-			return arrange.PerBar(s, func(bar int) []N {
-				if bar >= 4 {
-					return []N{score.Rest(4)}
-				}
-				return []N{{Pitches: voicing(chordAt(s, bar)), Beats: 4, Velocity: 0.4, Amp: prelude}}
-			})
-		case "Chorale":
-			return arrange.PerBar(s, func(bar int) []N {
-				v := voicing(chordAt(s, bar))
-				return []N{{Pitches: v, Beats: 2, Velocity: 0.6}, {Pitches: v, Beats: 2, Velocity: 0.5}}
-			})
-		case "Coda":
-			return arrange.PerBar(s, func(bar int) []N {
-				n := N{Pitches: voicing(chordAt(s, bar)), Beats: 4, Velocity: 0.45, Amp: coda}
-				if bar == s.Bars-1 {
-					n.Hold, n.Velocity = 6, 0.35 // the last chord rings
-				}
-				return []N{n}
-			})
-		}
-		return nil
-	})
-
-	if clashes == 0 {
+	o := newOrchestra(p)
+	if writeParts(p, o) == 0 {
 		fmt.Println("harmony check: every part fits its chords")
 	}
-
-	// --- the arrangement: dawn and dusk on the strings, the frozen harp of the interlude and a
-	// ritardando over the last four bars ---
-
-	arrangement := arrange.NewArrangement(form).
-		Tempo(arrange.Lane{Sections: map[string]arrange.Curve{"Coda": func(progress float64) float64 {
-			if progress < 0.5 {
-				return bpm
-			}
-			return arrange.Smooth(bpm, 52)((progress - 0.5) * 2)
-		}}}).
-		Automate(arrange.Lane{Default: 12000, Sections: map[string]arrange.Curve{
-			"Prelude": arrange.Exp(250, 12000),
-			"Coda":    arrange.Exp(12000, 400),
-		}}, stringFilter, 1).
-		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{"Interlude": arrange.Const(0.63)}}, gran, "mix").
-		// the granulator mixes in at equal power, the harp strip takes back the level it adds
-		Automate(arrange.Lane{Default: -3, Sections: map[string]arrange.Curve{"Interlude": arrange.Const(-5.8)}}, harpStrip, 1).
-		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{"Interlude": func(progress float64) float64 {
-			if progress >= 0.5 {
-				return 1
-			}
-			return 0
-		}}}, gran, "freeze").
-		// the sustain pedal goes up at every bar line where the piano plays, just long enough to
-		// clear the old chord, and stays down on the last chord; up where it is silent
-		AutomateMessage(arrange.Lane{Sections: map[string]arrange.Curve{
-			"Prelude": func(progress float64) float64 {
-				if progress >= 0.5 {
-					return 0
-				}
-				return pedalChanged(8)(progress)
-			},
-			"Chorale": pedalChanged(8),
-			"Coda": func(progress float64) float64 {
-				if progress >= 7.0/8 {
-					return 1
-				}
-				return pedalChanged(8)(progress)
-			},
-		}}, grand, "sustain").
-		PrintSections(true)
+	arrangement := o.arrangement()
 	arrangement.AddTo(p)
 
 	fmt.Println("Aurora")
 	fmt.Print(arrangement.Schedule())
 
-	p.Out(mix.Master())
+	p.Out(o.mix.Master())
 
 	opts := render.Options{Seconds: arrangement.Duration(), Tail: 10}
 	switch {
@@ -607,14 +87,14 @@ func main() {
 	case *renderTo != "":
 		var sources map[string]psalm.Modular
 		if *stems {
-			sources = render.MixerStems(mix)
+			sources = render.MixerStems(o.mix)
 		}
 		stats, err := render.Stems(p, *renderTo, opts, sources)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Println(stats)
-		fmt.Print(mix.Meters())
+		fmt.Print(o.mix.Meters())
 	default:
 		_ = p.Listen()
 	}

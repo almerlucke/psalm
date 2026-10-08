@@ -112,6 +112,38 @@ func With(notes []Note, f func(n *Note)) []Note {
 	return out
 }
 
+// Shaper changes a note of a figure by its place in it (from 0), see Shape
+type Shaper func(i int, n *Note)
+
+// Shape returns the notes changed by shapers, for giving a figure its accents and lengths:
+//
+//	score.Shape(score.Notes(0.5, 48, 55, 60, 64), score.Velocities(0.6, 0.4), score.Hold(3))
+func Shape(notes []Note, shapers ...Shaper) []Note {
+	out := make([]Note, len(notes))
+	for i, n := range notes {
+		out[i] = n
+		for _, sh := range shapers {
+			sh(i, &out[i])
+		}
+	}
+	return out
+}
+
+// Velocities gives the notes their velocities in turn, starting again at the first when there are
+// more notes than velocities (an accent pattern); rests take their turn too
+func Velocities(velocities ...float64) Shaper {
+	return func(i int, n *Note) {
+		if len(velocities) > 0 {
+			n.Velocity = velocities[i%len(velocities)]
+		}
+	}
+}
+
+// Hold sets how many beats every note sounds (a broken chord held under the pedal, short stabs)
+func Hold(beats float64) Shaper {
+	return func(_ int, n *Note) { n.Hold = beats }
+}
+
 // Pitches returns the pitches moved by semitones, for building chords
 func Pitches(pitches []float64, semitones float64) []float64 {
 	out := make([]float64, len(pitches))

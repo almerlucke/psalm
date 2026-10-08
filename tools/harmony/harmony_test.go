@@ -1,6 +1,7 @@
 package harmony
 
 import (
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -220,5 +221,51 @@ func TestCheck(t *testing.T) {
 	// an avoid note held for a whole bar: Eb (a semitone above D) over Dm
 	if issues := Check(score.MustParse("Eb5:4 r:28"), progression); len(issues) != 1 {
 		t.Fatalf("expected Eb over Dm to clash, got:\n%s", Report("avoid", issues))
+	}
+}
+
+func TestTunings(t *testing.T) {
+	equal := EqualTemperament(440)
+	if equal(69) != 440 || math.Abs(equal(60)-261.6256) > 1e-3 {
+		t.Fatalf("equal temperament: A4 %v, C4 %v", equal(69), equal(60))
+	}
+	just := MustKey("C major").Just(440)
+	c := equal(60)
+	for _, tc := range []struct {
+		pitch, ratio float64
+	}{{60, 1}, {64, 5.0 / 4}, {67, 3.0 / 2}, {69, 5.0 / 3}, {72, 2}, {55, 3.0 / 4}, {48, 0.5}, {76, 5.0 / 2}} {
+		if got := just(tc.pitch); math.Abs(got-c*tc.ratio) > 1e-9 {
+			t.Fatalf("just C major: pitch %v is %v Hz, expected %v", tc.pitch, got, c*tc.ratio)
+		}
+	}
+	// the triads on I, IV, V, vi and iii are pure: a 3/2 fifth over every root
+	for _, root := range []float64{60, 65, 67, 69, 64} {
+		if r := just(root+7) / just(root); math.Abs(r-1.5) > 1e-9 {
+			t.Fatalf("the fifth on %v should be pure, %v", root, r)
+		}
+	}
+	if math.Abs(just(60.25)/just(60)-math.Exp2(0.25/12)) > 1e-12 {
+		t.Fatal("a fraction should stay a fraction above the note")
+	}
+	if eb := MustKey("Eb major").Just(440); math.Abs(eb(63)-equal(63)) > 1e-9 || math.Abs(eb(67)/eb(63)-1.25) > 1e-12 {
+		t.Fatal("the tonic should sit where equal temperament has it, the third a pure 5/4 above")
+	}
+}
+
+func TestTriad(t *testing.T) {
+	for _, tc := range []struct {
+		symbol             string
+		lowest             float64
+		root, third, fifth float64
+	}{
+		{"Ebmaj7", 34, 39, 43, 46}, // the root at or above the lowest
+		{"Am", 33, 33, 36, 40},
+		{"C/E", 36, 36, 40, 43}, // root position, not the bass
+		{"G5", 40, 43, 50, 50},  // a power chord repeats its fifth
+	} {
+		r, th, f := MustChord(tc.symbol).Triad(tc.lowest)
+		if r != tc.root || th != tc.third || f != tc.fifth {
+			t.Fatalf("%s from %v: %v %v %v", tc.symbol, tc.lowest, r, th, f)
+		}
 	}
 }

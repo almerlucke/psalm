@@ -292,3 +292,186 @@ func TestDuration(t *testing.T) {
 		t.Fatalf("with a slow outro 20 s, got %v", d)
 	}
 }
+
+// Sections are a lane by themselves (0 elsewhere), Else gives the other sections a value
+func TestSections(t *testing.T) {
+	plain := Sections{"Verse": Const(2)}.lane()
+	other := Sections{"Verse": Const(2)}.Else(5)
+	verse, _ := testForm().Section("Verse")
+	outro, _ := testForm().Section("Outro")
+	if plain.value(Position{Section: verse}) != 2 || plain.value(Position{Section: outro}) != 0 {
+		t.Fatal("sections should play their curves and 0 elsewhere")
+	}
+	if other.value(Position{Section: outro}) != 5 {
+		t.Fatal("else should set the other sections")
+	}
+
+	// the arrangement takes both
+	a := NewArrangement(testForm())
+	var got []float64
+	a.AutomateFunc(Sections{"Verse": Const(1)}, func(v float64) { got = append(got, v) })
+	ppq := int64(psalm.PPQ())
+	for tick := int64(0); tick < 32*ppq; tick++ {
+		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tick + 1})
+	}
+	if fmt.Sprint(got) != "[0 1 0]" {
+		t.Fatalf("expected 0 1 0 through the song, got %v", got)
+	}
+}
+
+// A span places curves at bars
+func TestSpan(t *testing.T) {
+	f := testForm()
+	verse := f.Span("Verse") // 4 bars
+	at := func(c Curve, bar float64) float64 { return c(bar / float64(verse)) }
+
+	open := verse.Between(1, 2, Linear(0, 10))
+	if at(open, 0.5) != 0 || at(open, 1.5) != 5 || at(open, 3) != 10 {
+		t.Fatalf("between: %v %v %v", at(open, 0.5), at(open, 1.5), at(open, 3))
+	}
+	if at(verse.From(2, Linear(0, 10)), 3) != 5 {
+		t.Fatal("from should run to the end of the section")
+	}
+	if at(verse.Last(1, Linear(0, 10)), 3.5) != 5 {
+		t.Fatal("last should run over the last bars")
+	}
+
+	fade := verse.Fade(-6, 1, 3) // half a bar of fade at each edge
+	if at(fade, 0.5) != Silent || at(fade, 2) != -6 || at(fade, 3.5) != Silent {
+		t.Fatalf("fade: silent outside, the level inside: %v %v %v", at(fade, 0.5), at(fade, 2), at(fade, 3.5))
+	}
+	if v := at(fade, 1.25); math.Abs(v-(-6-6.02)) > 0.01 { // halfway the fade in: half the amplitude
+		t.Fatalf("fade in should be even in amplitude, %v dB", v)
+	}
+
+	carry := verse.Fade(-6, -1, 5) // carried on from the section before and into the one after
+	if at(carry, 0) != -6 || at(carry, 4) != -6 {
+		t.Fatalf("a fade beyond the section should not fade at its edges: %v %v", at(carry, 0), at(carry, 4))
+	}
+
+	steps := verse.Steps(0, 0.5, 1)
+	if at(steps, 0.5) != 0 || at(steps, 1.5) != 0.5 || at(steps, 3.5) != 1 {
+		t.Fatal("steps should give every bar its value, the last one holding on")
+	}
+	on := verse.On(1, 2.5)
+	if at(on, 0.9) != 0 || at(on, 1) != 1 || at(on, 2.4) != 1 || at(on, 2.5) != 0 {
+		t.Fatal("on should be 1 from bar to bar only")
+	}
+
+	pedal := verse.Pedal(1, 3)
+	for _, c := range []struct {
+		bar  float64
+		down float64
+	}{{0.5, 0}, {1.01, 0}, {1.5, 1}, {2.02, 0}, {2.9, 1}, {3.5, 0}} {
+		if at(pedal, c.bar) != c.down {
+			t.Fatalf("pedal at bar %v: %v", c.bar, at(pedal, c.bar))
+		}
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("a span of a section the form doesn't have should panic")
+		}
+	}()
+	f.Span("Bridge")
+}
+
+// At happens at the start of its bar, every time the song gets there
+func TestAt(t *testing.T) {
+	a := NewArrangement(testForm())
+	ppq := int64(psalm.PPQ())
+	var ticks []int64
+	var tick int64
+	a.At("Verse", 2, func() { ticks = append(ticks, tick) })
+	for tick = 0; tick < 2*32*ppq; tick++ {
+		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tick + 1})
+	}
+	verseBar2 := (2 + 2) * 4 * ppq // the intro is 2 bars
+	if len(ticks) != 2 || ticks[0] != verseBar2 || ticks[1] != 32*ppq+verseBar2 {
+		t.Fatalf("expected the third bar of the verse in both loops, got %v", ticks)
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("a bar the section doesn't reach should panic")
+		}
+	}()
+	a.At("Verse", 4, func() {})
+}
+
+// A bar without notes is a rest of a bar
+func TestPerBarRests(t *testing.T) {
+	f := testForm()
+	f.BeatsPerBar = 3
+	notes := f.Compile("lead", func(s Section) []score.Note {
+		return PerBar(s, func(bar int) []score.Note {
+			if bar%2 == 1 {
+				return nil
+			}
+			return score.Notes(3, 60)
+		})
+	})
+	if score.Beats(notes) != f.Beats() {
+		t.Fatalf("the part should last the song, %v of %v beats", score.Beats(notes), f.Beats())
+	}
+	if !notes[1].IsRest() || notes[1].Beats != 3 {
+		t.Fatalf("the second bar should be a rest of a bar, got %+v", notes[1])
+	}
+
+	// a note lasting several bars: the bars it covers add nothing
+	held := f.Compile("pad", func(s Section) []score.Note {
+		return PerBar(s, func(bar int) []score.Note {
+			if bar == 0 {
+				return score.Notes(6, 60) // two bars
+			}
+			if bar == 1 {
+				return nil
+			}
+			return score.Notes(3, 62)
+		})
+	})
+	if score.Beats(held) != f.Beats() {
+		t.Fatalf("a bar a longer note covers should add nothing, the part lasts %v beats", score.Beats(held))
+	}
+	for _, n := range held {
+		if n.IsRest() {
+			t.Fatalf("no bar should rest, got %+v", n)
+		}
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("a rest without a bar length should panic")
+		}
+	}()
+	PerBar(Section{Bars: 1}, func(int) []score.Note { return nil })
+}
+
+// Only plays a score in its section
+func TestOnly(t *testing.T) {
+	f := testForm()
+	notes := f.Compile("lead", Only("Verse", func(s Section) []score.Note { return score.Notes(16, 60) }))
+	if len(notes) != 3 || !notes[0].IsRest() || notes[1].Pitches[0] != 60 || !notes[2].IsRest() {
+		t.Fatalf("only the verse should play, got %+v", notes)
+	}
+}
+
+// Bars writes one section bar by bar
+func TestBars(t *testing.T) {
+	f := testForm()
+	notes := f.Compile("lead", Bars("Verse", func(s Section, bar int) []score.Note {
+		if s.Name != "Verse" {
+			t.Fatalf("bars of the %s", s.Name)
+		}
+		if bar == 1 {
+			return nil
+		}
+		return score.Notes(4, 60+float64(bar))
+	}))
+	if score.Beats(notes) != f.Beats() {
+		t.Fatalf("the part should last the song, %v beats", score.Beats(notes))
+	}
+	if !notes[0].IsRest() || notes[1].Pitches[0] != 60 || !notes[2].IsRest() || notes[3].Pitches[0] != 62 {
+		t.Fatalf("the intro rests, the verse plays its bars with a rest in the second: %+v", notes[:4])
+	}
+}

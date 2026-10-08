@@ -25,6 +25,7 @@ A symbol is a root (`D`, `Bb`, `F#`), a type and an optional bass (`G/B`, `Am/G`
 | `c.Pitches(root)` | Root position from a MIDI root, a slash chord with its bass below |
 | `c.Close(lowest)` | Root position with the root at or above a pitch |
 | `c.BassPitch(lowest)` | The bass note at or above a pitch |
+| `c.Triad(lowest)` | The root, third and fifth (root position, the root at or above a pitch), for figures on the chord tones: `root, third, fifth := c.Triad(36)` |
 | `Inversion(pitches, n)` | Move the lowest note up an octave n times (negative: the highest down) |
 | `Drop2(pitches)` | An open voicing: the second highest note down an octave |
 | `VoiceLead(prev, chord)` | The chord for the same voices with the least movement, using every chord tone when there are enough voices |
@@ -55,6 +56,28 @@ Modes: `major` (`ionian`), `minor` (`aeolian`), `harmonic minor`, `melodic minor
 major, lower case minor, `°` (`o`, `dim`) diminished, `ø` half diminished, `+` augmented, with an
 optional type after it (`V7`, `IVmaj7`, `ii7`, `Vsus4`, `vii°7`). An accidental in front moves the
 degree: `#vii°` is C#dim in D minor, `bII` is Eb.
+
+## Tuning
+
+A `score.Tuning` turns a MIDI pitch into a frequency. Give a sequencer one (`score.Config{Tuning:
+...}`, or the config of `form.Part`) and it sends its notes as frequencies in that tuning: the
+notes stay written in MIDI pitches, the tuning decides how they sound.
+
+| Tuning | |
+|---|---|
+| `harmony.EqualTemperament(a4)` | Twelve even semitones, A4 at `a4` Hz (440 is the standard) |
+| `key.Just(a4)` | Just intonation in a key: every note a pure ratio of the tonic (`harmony.JustRatios`: 1, 16/15, 9/8, 6/5, 5/4, 4/3, 45/32, 3/2, 8/5, 5/3, 9/5, 15/8), the tonic where equal temperament has it |
+
+```go
+key := harmony.MustKey("Eb major")
+form.Part(p, choir, "choir", score.Config{Amp: 0.1, Tuning: key.Just(440)}, choirScore)
+```
+
+In just intonation the chords on the tonic, the fourth and the fifth are pure triads (a 5/4 third
+and a 3/2 fifth), in a major key also those on the sixth and the third: they sound still, without
+the slow beating of equal temperament. The chord on the second is not (its fifth is a comma
+narrow), and the further a piece modulates from its key, the less pure it gets. The `creation`
+example plays in it (`-tuning equal` to hear the difference).
 
 ## Arpeggiator
 

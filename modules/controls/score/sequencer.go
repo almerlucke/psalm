@@ -14,6 +14,7 @@ type Config struct {
 	Legato   float64 // part of its length a note sounds when it has no hold (0 is 0.9)
 	Velocity float64 // velocity of notes without one, 0 sends none (the synth default)
 	Key      string  // message key of the pitches: "pitch" (the default) or "frequency"
+	Tuning   Tuning  // plays the pitches (MIDI) in a tuning: sent as "frequency" (Key is not used)
 	Loop     bool    // start again after the last note
 	Length   float64 // loop length in beats, 0 is the length of the notes
 	Feel     Feel    // swing, humanized timing and dynamics, accents
@@ -274,6 +275,9 @@ func (s *Sequencer) CtrlTick(tick psalm.CtrlTick) {
 
 func (s *Sequencer) play(e *event, tick psalm.CtrlTick) {
 	msg := psalm.Message{s.cfg.Key: e.pitch}
+	if s.cfg.Tuning != nil {
+		msg = psalm.Message{"frequency": s.cfg.Tuning(e.pitch)}
+	}
 	if e.vel > 0 {
 		msg["velocity"] = e.vel
 	}
