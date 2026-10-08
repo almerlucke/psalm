@@ -10,6 +10,11 @@ go run ./cmd/examples/<name>
 Most have a commented out `p.ToSoundFile(...)` call: uncomment it (and comment out
 `p.Listen()`) to render to a file instead.
 
+**New to arranging in psalm?** Start with the tutorial in
+[`cmd/examples/tutorial`](../cmd/examples/tutorial/README.md): thirteen short programs, one idea
+each, from a single note to a whole song (notes, the form, bars and chords, feel, the harmony
+check, automation, curves at bars, tempo, events, the mixer, streams, tuning), every step playable.
+
 | Example | What it shows |
 |---|---|
 | `showcase` | "Aurora", the showcase: a slow orchestral piece in D minor (about 4 minutes) using every synth and effect, no drums. Wavetable violins with chorus and an LFO on the position, subtractive celli, FM pizzicato bass, harp (into freeverb and a granulator that freezes in the interlude), flute with a pitch shifted piccolo shadow, horn solo, celesta (pingpong delay into shimmer), DX horns and a flangered bell pad, speech vocoding a wavetable pad (the mixer lines everything up with the vocoder), a grains choir and pulsar choir and soprano in a convolved church, pulsar raindrops, a wavetable drone on a generated table, and the modelled grand piano (rolled chords at dawn, weight under the chorale, the last cadence, its sustain pedal automated at every bar line). Everything plays through the `mixer`: the strings (with the dawn and dusk ladder filter) and the choir (in the convolved church) are groups, the FDN hall and the shimmer sky are effect buses every instrument sends to in its own amount, and a lookahead limiter guards the master. Prelude, theme, chorale, interlude, climax and coda, written with the `arrange`, `score` and `harmony` packages and played with a human feel (looser ensembles, breathing soloists, rolled bell pad chords) (every part is checked against the chords at the start, the harp arpeggios come from the arpeggiator) (the melodies in score notation, the filter and granulator automated per section), the schedule is printed while it plays. `-render aurora.wav -stems -seed 7` renders it offline with a stem per mixer strip, `-profile` reports the time every module takes |
