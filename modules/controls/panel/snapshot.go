@@ -5,7 +5,8 @@ import (
 	"os"
 )
 
-// Snapshot returns the value of every fader, knob, toggle and select by name: the state of the
+// Snapshot returns the value of every fader, knob, toggle and select by name, and the cells of the
+// grids (as "grid/pattern/row/step/field", the cells at their defaults left out): the state of the
 // panel, to keep and restore (a preset of the patch)
 func (pn *Panel) Snapshot() map[string]float64 {
 	values := map[string]float64{}
@@ -13,6 +14,9 @@ func (pn *Panel) Snapshot() map[string]float64 {
 		if par.Kind != ButtonKind && par.Kind != MeterKind {
 			values[par.Name] = par.Value()
 		}
+	}
+	for _, g := range pn.Grids() {
+		g.snapshot(values)
 	}
 	return values
 }
@@ -23,6 +27,9 @@ func (pn *Panel) Restore(values map[string]float64) {
 		if par := pn.Param(name); par != nil {
 			par.Set(v)
 		}
+	}
+	for _, g := range pn.Grids() {
+		g.restore(values)
 	}
 }
 

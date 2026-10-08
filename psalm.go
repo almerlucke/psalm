@@ -139,9 +139,9 @@ func (p *Psalm) Listen() error {
 
 	log.Printf("playing audio until terminated...")
 
-	signal.WaitForSignal(syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	why := signal.WaitForStop(syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
-	log.Printf("stopping audio")
+	log.Printf("stopping audio (%s)", why)
 
 	return p.AudioStop()
 }

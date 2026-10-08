@@ -467,6 +467,19 @@ _ = p.Listen()
 | `Meter(name, module)` | The peak and RMS level of the output of a module: a synth, a mixer strip, the master |
 | `Section(name)` | Starts a group: the controls after it are shown together |
 
+**Grids**: `ctl.Grid(name, rows, steps, patterns, fields...)` adds a grid: rows of steps in
+patterns, every cell holding the values of the fields (`panel.Field{Name, Min, Max, Default, Step,
+Unit, Options}`; the first field is the level, 0 is off). The page draws it as a step grid: tap a
+cell to switch it, drag to paint, right click (long press, shift click) to edit all its fields,
+tap a row name for its tools (clear, shift, Euclid, random, copy or clear the pattern), pattern
+tabs on top. `grid.Value`, `grid.Set`, `grid.Clear`, `grid.SetPattern` work from any goroutine;
+whatever plays the grid tells the page `SetPlaying`, `SetPlayhead` and `SetLength` (per row). Grids
+are in snapshots (as `name/pattern/row/step/field`, the cells away from their defaults). The step
+sequencer below plays one.
+
+**Labels**: `panel.Label("M")` shows a short text on the page instead of the name (names have to
+be unique, labels can repeat).
+
 **Targets**: `panel.Message(module, key)` sends the value as a message (`"cutoff"`, `"volume"`,
 `"send.hall"`, `"sustain"`, any setting a module takes by name), `panel.Input(module, index)` to a
 value input, `panel.Func(f)` calls a function, `panel.Targets(...)` sends to several.
@@ -511,9 +524,64 @@ focused fader, double click to return to the default. Every open page shows the 
 | `GET /api/snapshot`, `POST /api/snapshot` | All values, and restoring them |
 | `POST /api/learn` | `{"name": "Cutoff"}` arms a control for MIDI learn, `{"name": ""}` stops |
 | `POST /api/unbind` | `{"name": "Cutoff"}` takes its controller from a control |
+| `POST /api/grid` | `{"name": "Beat", "pattern": 1, "set": [[pattern, row, step, field, value], ...]}` sets cells of a grid and/or asks for a pattern |
 
 The server is plain `net/http`: there is no login, so serve it on `localhost` unless you trust the
-network it is on.
+network it is on. `ctl.Close()` stops it (the pages lose their connection, the address is free
+again): `defer ctl.Close()` after starting `Serve`. When the address is taken, `Serve` says so,
+most likely an earlier run that is still going.
+
+`p.Listen()` plays until Ctrl-C (or a SIGTERM), and also stops when the program was started by
+`go run` and `go run` goes away (stopped from an editor, or killed): otherwise the program it
+started would play on, holding the sound card and the panel's port.
+
+## stepseq
+
+`modules/controls/stepseq`
+
+A step sequencer playing a grid of a panel: rows of steps (a row per sound), every step with its
+own velocity, chance, roll, nudge, pitch and condition, in patterns, edited on the panel's page
+while it plays.
+
+```go
+ctl := panel.New(p, "Drums")
+grid := stepseq.NewGrid(ctl, "Beat", []string{"kick", "snare", "hat", "open"}, 16, 4)
+seq := stepseq.New(p, grid, stepseq.Config{StepsPerBeat: 4, Swing: 0.56, Humanize: 4}).
+	Row("kick", stepseq.Sound(kit, "kick")).
+	Row("snare", stepseq.Sound(kit, "snare")).
+	Row("hat", stepseq.Sound(kit, "hat"), stepseq.Choke(1)).
+	Row("open", stepseq.Sound(kit, "open"), stepseq.Choke(1))
+seq.Controls(ctl) // swing, humanize, fill; level, length, mute and solo per row
+go ctl.Serve("localhost:8080")
+```
+
+**A step** (the fields of the grid, `stepseq.Velocity` ... `stepseq.Condition` in code):
+
+| Field | |
+|---|---|
+| velocity | 0 is off |
+| chance | The chance it plays, 0-1: random skips |
+| roll | Hits the step is split into, 1-8 (a ratchet) |
+| roll chance | The chance the roll happens, else a single hit |
+| roll ramp | The velocities of the roll: 1 rises from nothing, -1 falls away, 0 keeps them |
+| nudge | Early (-0.5 step) or late (0.5 step) |
+| pitch | Semitones: the speed of a sample, the pitch of a note |
+| condition | When it plays: `always`; `A:B`, the Ath of every B times the row comes round (`1:2`, `2:4` ...); `fill` and `not fill` (the fill switch); `first` and `not first` (the first time since the pattern started) |
+
+**A row** plays `stepseq.Sound(drums, "kick")` (a sound of a drum synth, `drums.NewDrums`) or
+`stepseq.Note(synth, pitch, beats)` (a note of any synth). Options: `stepseq.Choke(group)` (a hit
+stops the last hit of the other rows of the group: an open hihat cut by the closed one) and
+`stepseq.Length(steps)` (rows of other lengths loop apart: polymeter).
+
+**The sequencer** counts steps from the patch's clock (`StepsPerBeat` 4 is 16ths, 3 triplets),
+so it follows the tempo and stays with the parts and the arrangement. It works a step ahead (a
+step nudged early is there in time) and plays every hit at its sample. Swing (0.5 straight to
+0.75) moves every second step, humanizing moves hits by ± milliseconds and their velocity by ± a
+part. A new pattern starts when the pattern playing comes round; the rows and the conditions start
+counting again. Settings, safe from any goroutine: `SetSwing`, `SetHumanize`, `SetFill`, and per
+row `SetLevel` (dB), `SetMute`, `SetSolo`, `SetLength`; mute, solo and the fill count right away
+(a hit checks them when it plays). `seq.Controls(ctl)` adds them all to the panel: a card for the
+feel and a card per row.
 
 ## gen
 

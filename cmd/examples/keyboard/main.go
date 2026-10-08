@@ -321,6 +321,7 @@ func main() {
 				log.Fatal(err)
 			}
 		}()
+		defer ctl.Close()
 		log.Printf("the control panel: http://%s", *addr)
 	}
 

@@ -32,6 +32,7 @@ Use mipmapped sound files (`sndfile.MustMipMapSoundFile`) so playing at high spe
 | `Loop` | Loop the region (playing starts right away) |
 | `LoopOnNoteOn` | Loop while a note is held when used as a voice |
 | `UseZeroCrossings` | Snap the region to zero crossings to avoid clicks |
+| `FadeOnNoteOff` | Seconds a note off takes to fade the sound out and stop it (a choke, like an open hihat cut by the closed one); 0 lets a one shot play to its end |
 
 **Value inputs**
 

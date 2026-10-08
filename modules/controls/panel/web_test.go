@@ -3,6 +3,7 @@ package panel
 import (
 	"bufio"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -141,5 +142,86 @@ func TestEvents(t *testing.T) {
 	pn.Param("Cutoff").Set(3000)
 	if u := next(); u.Values["Cutoff"] != 3000 || len(u.Values) != 1 {
 		t.Fatalf("then only what changed, got %+v", u)
+	}
+}
+
+// freeAddr returns an address with a port nothing listens on
+func freeAddr(t *testing.T) string {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+	return addr
+}
+
+// Close ends the event streams and frees the address
+func TestClose(t *testing.T) {
+	pn, _ := newPanel()
+	pn.Toggle("X", nil)
+	addr := freeAddr(t)
+	served := make(chan error, 1)
+	go func() { served <- pn.Serve(addr) }()
+	var events *http.Response
+	for range 100 {
+		var err error
+		if events, err = http.Get("http://" + addr + "/api/events"); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if events == nil {
+		t.Fatal("the panel didn't serve")
+	}
+	defer events.Body.Close()
+
+	start := time.Now()
+	if err := pn.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("close should end the event streams at once, it took %v", took)
+	}
+	select {
+	case err := <-served:
+		if err != nil {
+			t.Fatalf("serve should end without an error after close, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serve didn't return after close")
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatalf("the address should be free after close: %v", err)
+	}
+	ln.Close()
+}
+
+func TestServeAddressInUse(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	pn, _ := newPanel()
+	err = pn.Serve(ln.Addr().String())
+	if err == nil || !strings.Contains(err.Error(), "still running") {
+		t.Fatalf("a port in use should say what is likely going on, got %v", err)
+	}
+}
+
+func TestCloseBeforeServe(t *testing.T) {
+	pn, _ := newPanel()
+	pn.Close()
+	done := make(chan error, 1)
+	go func() { done <- pn.Serve(freeAddr(t)) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("serving a closed panel should return at once")
 	}
 }

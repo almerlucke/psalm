@@ -11,10 +11,10 @@ Most have a commented out `p.ToSoundFile(...)` call: uncomment it (and comment o
 `p.Listen()`) to render to a file instead.
 
 **New to arranging in psalm?** Start with the tutorial in
-[`cmd/examples/tutorial`](../cmd/examples/tutorial/README.md): fourteen short programs, one idea
+[`cmd/examples/tutorial`](../cmd/examples/tutorial/README.md): fifteen short programs, one idea
 each, from a single note to a whole song (notes, the form, bars and chords, feel, the harmony
-check, automation, curves at bars, tempo, events, the mixer, streams, tuning) and a control panel
-to play it live, every step playable.
+check, automation, curves at bars, tempo, events, the mixer, streams, tuning), a control panel to
+play it live and a drum machine, every step playable.
 
 | Example | What it shows |
 |---|---|
@@ -23,6 +23,7 @@ to play it live, every step playable.
 | `subtractive` | Acid house jam: two 303 style lines with accents and slides (`!` and `~` step notation), internal and external LFOs on the cutoff, four on the floor drums |
 | `subtractive2` | Guided tour of every feature of the subtractive synth and its presets, section by section (the schedule is printed at start) |
 | `fm` | FM synth: a jam (electric piano chords with random velocities, FM bass, sparse bells) followed by a tour of all FM presets, each showing settings that change note by note (velocity, operator ratios and levels, mod depth, feedback, all 8 algorithms, an LFO on the mod depth), then a parade of the General MIDI inspired presets, two bars each with a phrase that suits the instrument. The schedule is printed at start |
+| `drummachine` | A drum machine on a web page: a kit of samples (kick, snare, clap, closed and open hihat, percussion, an 808 bass) played by the `stepseq` step sequencer from a grid of 7 rows, 16 steps and 4 patterns. Tap steps to switch them, drag to paint, open a step to set its velocity, chance, roll (with a velocity ramp), nudge, pitch and condition (A:B, fill, first); row tools for clear, shift, Euclid and random; patterns that switch when they come round; swing, humanizing and a fill switch; level, length (polymeter), mute and solo per row; the open hihat choked by the closed one. The starting patterns show the features. `-addr :8080` for a phone or tablet, `-midi` for a controller, `-render beat.wav` renders 8 bars |
 | `dx` | Plays every voice of a DX7 style SysEx bank, two bars each: `go run ./cmd/examples/dx path/to/bank.syx` (without a file it plays the built in patches) |
 | `granulator` | Electric piano, mallets and drums through the granulator, changing scene every 4 bars: a cloud, an octave shimmer, a freeze, a reverse smear, a stutter and a feedback cascade |
 | `grains` | Tour of the granular sampler on recordings from assets: choir pad, frozen drone with an LFO on the position, glass keys with rising velocity, sea texture with rising density, vocal stutter, shimmer, scan speeds and a plucked arpeggio |

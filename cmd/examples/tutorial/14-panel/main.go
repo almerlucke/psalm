@@ -179,6 +179,7 @@ func main() {
 				log.Fatal(err)
 			}
 		}()
+		defer ctl.Close() // when the program stops: the pages' connections end, the address is free
 		fmt.Printf("the panel: http://%s\n", *addr)
 	}
 

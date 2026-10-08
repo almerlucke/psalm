@@ -1,10 +1,14 @@
 package panel
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"syscall"
 	"time"
 )
 
@@ -14,15 +18,66 @@ var page []byte
 // updateInterval is how often the page gets the values and meters
 const updateInterval = 50 * time.Millisecond
 
-// Serve serves the panel as a web page on an address and blocks; run it on its own goroutine
-// before playing the patch:
+// Serve serves the panel as a web page on an address and blocks until Close; run it on its own
+// goroutine before playing the patch, and Close the panel when the program stops:
 //
 //	go ctl.Serve("localhost:8080") // this computer only
 //	go ctl.Serve(":8080")          // also from a phone or tablet on the same network
+//	defer ctl.Close()
 //
 // Every page open on the panel shows the same values: a fader moved on one moves on the others
 func (pn *Panel) Serve(addr string) error {
-	return http.ListenAndServe(addr, pn.Handler())
+	ctx, cancel := context.WithCancel(context.Background())
+	srv := &http.Server{Addr: addr, Handler: pn.Handler(), BaseContext: func(net.Listener) context.Context { return ctx }}
+	pn.srvMu.Lock()
+	if pn.closed {
+		pn.srvMu.Unlock()
+		cancel()
+		return nil
+	}
+	pn.servers = append(pn.servers, server{srv, cancel})
+	pn.srvMu.Unlock()
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		if errors.Is(err, syscall.EADDRINUSE) {
+			return fmt.Errorf("panel: %s is in use: is an earlier run of this program (or another one) still running? %w", addr, err)
+		}
+		return err
+	}
+	if err := srv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// Close stops serving: the pages lose their connection, the address is free again
+func (pn *Panel) Close() error {
+	pn.srvMu.Lock()
+	pn.closed = true
+	servers := pn.servers
+	pn.servers = nil
+	pn.srvMu.Unlock()
+
+	var first error
+	for _, s := range servers {
+		s.cancel() // ends the event streams, which would keep Shutdown waiting
+		ctx, done := context.WithTimeout(context.Background(), closeTimeout)
+		if err := s.Shutdown(ctx); err != nil && first == nil {
+			first = err
+		}
+		done()
+	}
+	return first
+}
+
+// closeTimeout is how long Close waits for requests to finish
+const closeTimeout = 2 * time.Second
+
+// server is a server of the panel, and what ends its event streams
+type server struct {
+	*http.Server
+	cancel context.CancelFunc
 }
 
 // Handler returns the web page and its API as an http.Handler, to serve it yourself:
@@ -35,6 +90,8 @@ func (pn *Panel) Serve(addr string) error {
 //	GET  /api/snapshot  the values of all controls (JSON); POST one back to restore it
 //	POST /api/learn     {"name": "Cutoff"} arms a control for MIDI learn, {"name": ""} stops
 //	POST /api/unbind    {"name": "Cutoff"} takes its controller from a control
+//	POST /api/grid      {"name": "Drums", "pattern": 1, "set": [[pattern, row, step, field, value], ...]}
+//	                    sets cells of a grid and/or asks for a pattern
 func (pn *Panel) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -105,6 +162,29 @@ func (pn *Panel) Handler() http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 		}
 	})
+	mux.HandleFunc("POST /api/grid", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name    string       `json:"name"`
+			Pattern *int         `json:"pattern"`
+			Set     [][5]float64 `json:"set"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		g := pn.GridByName(req.Name)
+		if g == nil {
+			http.Error(w, fmt.Sprintf("no grid named %q", req.Name), http.StatusNotFound)
+			return
+		}
+		for _, c := range req.Set {
+			g.Set(int(c[0]), int(c[1]), int(c[2]), int(c[3]), c[4])
+		}
+		if req.Pattern != nil {
+			g.SetPattern(*req.Pattern)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /api/events", pn.events)
 	return mux
 }
@@ -139,17 +219,31 @@ type section struct {
 }
 
 type control struct {
-	Kind    Kind     `json:"kind"`
-	Name    string   `json:"name"`
-	Min     float64  `json:"min"`
-	Max     float64  `json:"max"`
-	Curve   Curve    `json:"curve"`
-	Step    float64  `json:"step"`
-	Unit    string   `json:"unit,omitempty"`
-	Default float64  `json:"default"`
-	Options []string `json:"options,omitempty"`
-	Value   float64  `json:"value"`
-	CC      *Binding `json:"cc,omitempty"`
+	Kind    Kind      `json:"kind"`
+	Name    string    `json:"name"`
+	Min     float64   `json:"min"`
+	Max     float64   `json:"max"`
+	Curve   Curve     `json:"curve"`
+	Step    float64   `json:"step"`
+	Unit    string    `json:"unit,omitempty"`
+	Label   string    `json:"label,omitempty"`
+	Default float64   `json:"default"`
+	Options []string  `json:"options,omitempty"`
+	Value   float64   `json:"value"`
+	CC      *Binding  `json:"cc,omitempty"`
+	Grid    *gridDesc `json:"grid,omitempty"`
+}
+
+// gridDesc is a grid as the page sees it: the cells in the order pattern, row, step, field
+type gridDesc struct {
+	Rows     []string  `json:"rows"`
+	Steps    int       `json:"steps"`
+	Patterns int       `json:"patterns"`
+	Fields   []Field   `json:"fields"`
+	Cells    []float64 `json:"cells"`
+	Pattern  int       `json:"pattern"`
+	Playing  int       `json:"playing"`
+	Lengths  []int     `json:"lengths"`
 }
 
 func (pn *Panel) describe() description {
@@ -162,11 +256,20 @@ func (pn *Panel) describe() description {
 		index[name] = len(d.Sections)
 		d.Sections = append(d.Sections, section{Name: name})
 	}
-	for _, par := range pn.Params() {
+	for _, it := range pn.items() {
+		if g := it.grid; g != nil {
+			i := index[g.Section]
+			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: GridKind, Name: g.Name, Grid: &gridDesc{
+				Rows: g.Rows, Steps: g.Steps, Patterns: g.Patterns, Fields: g.Fields,
+				Cells: g.values(), Pattern: g.Pattern(), Playing: g.Playing(), Lengths: g.Lengths(),
+			}})
+			continue
+		}
+		par := it.param
 		i := index[par.Section]
 		c := control{
 			Kind: par.Kind, Name: par.Name, Min: par.Min, Max: par.Max, Curve: par.Curve, Step: par.Step,
-			Unit: par.Unit, Default: par.Default, Options: par.Options, Value: par.Value(),
+			Unit: par.Unit, Label: par.Label, Default: par.Default, Options: par.Options, Value: par.Value(),
 		}
 		if ch, ctl, ok := par.CC(); ok {
 			c.CC = &Binding{ch, ctl}
@@ -178,9 +281,27 @@ func (pn *Panel) describe() description {
 
 // update is what the page gets every interval: the values that changed and the meters
 type update struct {
-	Values map[string]float64    `json:"values,omitempty"`
-	Meters map[string][2]float64 `json:"meters,omitempty"`
-	MIDI   *midiUpdate           `json:"midi,omitempty"` // when the bindings or learning changed
+	Values map[string]float64     `json:"values,omitempty"`
+	Meters map[string][2]float64  `json:"meters,omitempty"`
+	MIDI   *midiUpdate            `json:"midi,omitempty"` // when the bindings or learning changed
+	Grids  map[string]*gridUpdate `json:"grids,omitempty"`
+}
+
+// gridUpdate is what changed of a grid: its cells (all of them, when any changed), the patterns,
+// the playheads
+type gridUpdate struct {
+	Cells     []float64 `json:"cells,omitempty"`
+	Pattern   int       `json:"pattern"`
+	Playing   int       `json:"playing"`
+	Playheads []int     `json:"playheads"`
+	Lengths   []int     `json:"lengths"`
+}
+
+// gridSent is what a page was sent of a grid last
+type gridSent struct {
+	version          int64
+	pattern, playing int
+	playheads        string
 }
 
 type midiUpdate struct {
@@ -201,6 +322,7 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 
 	sent := map[string]float64{}
 	midiSent := int64(-1)
+	gridsSent := map[string]*gridSent{}
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
 	for {
@@ -218,6 +340,30 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		for _, g := range pn.Grids() {
+			sent := gridsSent[g.Name]
+			if sent == nil {
+				sent = &gridSent{version: -1}
+				gridsSent[g.Name] = sent
+			}
+			gu := &gridUpdate{Pattern: g.Pattern(), Playing: g.Playing(), Playheads: g.Playheads(), Lengths: g.Lengths()}
+			changed := false
+			if v := g.version.Load(); v != sent.version {
+				sent.version = v
+				gu.Cells = g.values()
+				changed = true
+			}
+			if heads := fmt.Sprint(gu.Playheads, gu.Lengths); heads != sent.playheads || gu.Pattern != sent.pattern || gu.Playing != sent.playing {
+				sent.playheads, sent.pattern, sent.playing = heads, gu.Pattern, gu.Playing
+				changed = true
+			}
+			if changed {
+				if u.Grids == nil {
+					u.Grids = map[string]*gridUpdate{}
+				}
+				u.Grids[g.Name] = gu
+			}
+		}
 		if n := pn.bindings.Load(); n != midiSent {
 			midiSent = n
 			u.MIDI = &midiUpdate{Bindings: pn.Bindings()}
@@ -225,7 +371,7 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 				u.MIDI.Learning = l.Name
 			}
 		}
-		if len(u.Values) > 0 || len(u.Meters) > 0 || u.MIDI != nil {
+		if len(u.Values) > 0 || len(u.Meters) > 0 || u.MIDI != nil || len(u.Grids) > 0 {
 			data, _ := json.Marshal(u)
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 				return

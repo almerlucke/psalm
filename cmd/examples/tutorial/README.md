@@ -1,6 +1,6 @@
 # Arranging in psalm: a tutorial
 
-Fourteen short programs, one idea each, from a single note to a whole song, and then playing it live from a control panel. Every step plays: you
+Fifteen short programs, one idea each, from a single note to a whole song, and then playing it live from a control panel and a drum machine. Every step plays: you
 hear what the code does while you read it. Read them in order, each builds on the one before.
 
 Run a step from the root of the repository (the steps load sounds from `assets`):
@@ -34,6 +34,7 @@ steps leave that to the small [`tutorial`](tutorial/tutorial.go) package (`tutor
 | [12-tuning](12-tuning/main.go) | Tuning a part (`score.Config.Tuning`): equal temperament and just intonation | The same organ chords in both: listen for the beating that disappears |
 | [13-song](13-song/main.go) | Everything together | A short song: intro, verse, chorus and outro |
 | [14-panel](14-panel/main.go) | A control panel on a web page (`panel`): faders, knobs, toggles, buttons, selects and meters bound to the patch, curves and smoothing, the threads, presets, MIDI learn | The loop of the earlier steps, changed live from a browser or a phone: the filter, the levels, the tempo, the arpeggio |
+| [15-drum-machine](15-drum-machine/main.go) | The step sequencer (`stepseq`): a grid of steps on the panel, every step with velocity, chance, roll, nudge, pitch and condition; rows of their own length, choke groups, swing; patterns switched by the arrangement | A beat with ghost notes, rolls and random skips, a fill on the switch, pattern B for the chorus, along with a written bass |
 
 ## The concepts at a glance
 
@@ -60,6 +61,9 @@ call functions at a moment (`At`, `OnSection`, `OnBar`) or turn modules on per s
 **The panel** (`modules/controls/panel`): controls declared next to the patch and bound to its
 settings (`panel.Message`, `panel.Input`, `panel.Func`), served as a web page (`Serve`), movable
 from a MIDI controller (MIDI learn), with presets (`Save`, `Load`).
+
+**The step sequencer** (`modules/controls/stepseq`): a grid of steps on the panel (`ctl.Grid`),
+played on the patch's clock; every step has a velocity, chance, roll, nudge, pitch and condition.
 
 ## Further
 

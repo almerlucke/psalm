@@ -1,6 +1,8 @@
 package player
 
 import (
+	"math"
+
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/tools/float"
 	"github.com/almerlucke/sndfile"
@@ -19,6 +21,9 @@ type Config struct {
 	Loop             bool
 	LoopOnNoteOn     bool
 	UseZeroCrossings bool
+	// FadeOnNoteOff is how many seconds a note off takes to fade the sound out and stop it (a
+	// choke: an open hihat cut by the closed one); 0 lets a one shot play to its end
+	FadeOnNoteOff float64
 }
 
 type Player struct {
@@ -39,6 +44,9 @@ type Player struct {
 	done             bool
 	waitSamps        int
 	noteOffSamps     int
+	fadeOnNoteOff    float64 // seconds
+	fadeGain         float64 // 1, falling to 0 while a note off fades the sound out
+	fadeStep         float64 // per sample, 0 when not fading
 }
 
 func New(cfg Config) *Player {
@@ -73,6 +81,8 @@ func New(cfg Config) *Player {
 		startOffset:      cfg.StartOffset,
 		endOffset:        cfg.EndOffset,
 		useZeroCrossings: cfg.UseZeroCrossings,
+		fadeOnNoteOff:    cfg.FadeOnNoteOff,
+		fadeGain:         1,
 	}
 
 	p.SetSelf(p)
@@ -311,6 +321,9 @@ func (p *Player) Note(duration float64, amplitude float64, message psalm.Message
 
 func (p *Player) NoteOff() {
 	p.loop = false
+	if p.fadeOnNoteOff > 0 && !p.done {
+		p.fadeStep = 1 / math.Max(1, p.fadeOnNoteOff*p.Config().SampleRate)
+	}
 }
 
 func (p *Player) Clear() {
@@ -333,6 +346,7 @@ func (p *Player) note(duration float64, amplitude float64, message psalm.Message
 
 	p.amp = amplitude
 	p.done = false
+	p.fadeGain, p.fadeStep = 1, 0
 
 	if duration > 0.0 {
 		p.noteOffSamps = int(duration * p.Config().SampleRate)
@@ -375,6 +389,21 @@ func (p *Player) Synthesize() {
 		} else {
 			for chanIndex, channel := range outChannels {
 				channel[i] = frame[chanIndex] * amp
+			}
+		}
+
+		if p.fadeStep > 0 {
+			// a note off fading the sound out: scale what was just written, stop at silence
+			for _, channel := range outChannels {
+				channel[i] *= float32(p.fadeGain)
+			}
+			p.fadeGain -= p.fadeStep
+			if p.fadeGain <= 0 {
+				p.done = true
+				for _, channel := range outChannels {
+					clear(channel[i+1:])
+				}
+				break
 			}
 		}
 

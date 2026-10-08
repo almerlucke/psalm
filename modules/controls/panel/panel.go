@@ -56,6 +56,37 @@ type Panel struct {
 	section  string
 	buffer   int64 // the buffer the last tick was in, for the meters
 	midiState
+
+	srvMu   sync.Mutex // guards the servers
+	servers []server
+	closed  bool
+
+	grids map[string]*Grid
+	order []item // the controls and grids in the order they were declared, for the page
+}
+
+// item is a control or a grid, in the order of the panel
+type item struct {
+	param *Param
+	grid  *Grid
+}
+
+// items returns the controls and grids in order
+func (pn *Panel) items() []item {
+	pn.mu.Lock()
+	defer pn.mu.Unlock()
+	return append([]item(nil), pn.order...)
+}
+
+// Grids returns the grids in the order they were declared
+func (pn *Panel) Grids() []*Grid {
+	var gs []*Grid
+	for _, it := range pn.items() {
+		if it.grid != nil {
+			gs = append(gs, it.grid)
+		}
+	}
+	return gs
 }
 
 // New creates a panel with a title and adds it to the patch
@@ -93,7 +124,7 @@ func (pn *Panel) Params() []*Param {
 func (pn *Panel) add(par *Param) *Param {
 	pn.mu.Lock()
 	defer pn.mu.Unlock()
-	if _, ok := pn.byName[par.Name]; ok {
+	if _, ok := pn.byName[par.Name]; ok || pn.grids[par.Name] != nil {
 		panic(fmt.Sprintf("panel: a control named %q twice", par.Name))
 	}
 	if pn.section == "" {
@@ -103,6 +134,7 @@ func (pn *Panel) add(par *Param) *Param {
 	par.Section = pn.section
 	par.panel = pn
 	pn.params = append(pn.params, par)
+	pn.order = append(pn.order, item{param: par})
 	pn.byName[par.Name] = par
 	return par
 }
@@ -177,6 +209,10 @@ type Option func(par *Param)
 // control starts at its minimum. The panel sends it to the target when the patch starts
 func Default(v float64) Option { return func(par *Param) { par.Default = v } }
 
+// Label is shown on the page instead of the name: names have to be unique ("kick mute"), a label
+// can be short and repeat ("M")
+func Label(text string) Option { return func(par *Param) { par.Label = text } }
+
 // Unit is shown after the value: "Hz", "dB", "ms"
 func Unit(unit string) Option { return func(par *Param) { par.Unit = unit } }
 
@@ -198,6 +234,7 @@ type Param struct {
 	Curve    Curve
 	Step     float64
 	Unit     string
+	Label    string // shown on the page instead of the name (names are unique, labels can repeat)
 	Default  float64
 	Smooth   float64  // seconds
 	Options  []string // of a select

@@ -62,6 +62,31 @@ body.learn .cc .unbind:hover { background: var(--track); color: var(--ink); }
 body.learn .control.bindable { outline: 1px dashed var(--line); outline-offset: 4px; border-radius: 6px; cursor: pointer; }
 body.learn .control.armed { outline: 2px solid var(--accent); animation: armed 1s ease-in-out infinite; }
 @keyframes armed { 50% { outline-color: transparent; } }
+
+/* grids */
+.gridbox { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
+.gridbox.control { align-items: stretch; }
+.gridhead { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.gridhead .name { max-width: none; margin-right: 6px; }
+.gridhead button { min-width: 38px; min-height: 32px; padding: 4px 10px; }
+.gridhead button.playing { box-shadow: inset 0 -3px 0 var(--meter-low); }
+.gridscroll { overflow-x: auto; max-width: calc(100vw - 64px); }
+.steps { display: grid; gap: 3px; align-items: center; }
+.rowname { font-size: 12px; color: var(--muted); padding-right: 8px; cursor: pointer; white-space: nowrap; }
+.rowname:hover, .rowname.selected { color: var(--ink); }
+.cell { position: relative; height: 34px; min-width: 20px; border-radius: 4px; background: var(--track); touch-action: none; cursor: pointer; }
+.cell.beat { box-shadow: inset 2px 0 0 var(--line); }
+.cell .fill { position: absolute; inset: 0; border-radius: 4px; background: var(--accent); opacity: 0; }
+.cell .mark { position: absolute; top: 3px; right: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--ink); display: none; }
+.cell.marked .mark { display: block; }
+.cell.head { outline: 2px solid var(--ink); outline-offset: -2px; }
+.cell.out { opacity: .3; }
+.cell.selected { box-shadow: 0 0 0 2px var(--meter-mid); }
+.inspector { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; border-top: 1px solid var(--line); padding-top: 10px; min-height: 24px; font-size: 12px; color: var(--muted); }
+.inspector label { display: flex; flex-direction: column; gap: 4px; }
+.inspector input[type=range] { width: 130px; accent-color: var(--accent); }
+.inspector .title { color: var(--ink); font-weight: 600; align-self: center; }
+.inspector button, .inspector select { min-height: 32px; padding: 4px 10px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -143,7 +168,7 @@ function labelled(p, inner, valueEl) {
 	const box = document.createElement("div");
 	box.className = "control";
 	const name = document.createElement("div");
-	name.className = "name"; name.textContent = p.name; name.title = p.name;
+	name.className = "name"; name.textContent = p.label || p.name; name.title = p.name;
 	box.append(name, inner);
 	if (valueEl) box.append(valueEl);
 	return box;
@@ -195,7 +220,7 @@ function knob(p) {
 
 function toggle(p) {
 	const b = document.createElement("button");
-	b.textContent = p.name;
+	b.textContent = p.label || p.name; b.title = p.name;
 	let on = false;
 	const show = v => { on = v >= 0.5; b.classList.toggle("on", on); };
 	b.addEventListener("click", () => { show(on ? 0 : 1); send(p.name, on ? 1 : 0); });
@@ -205,7 +230,7 @@ function toggle(p) {
 
 function button(p) {
 	const b = document.createElement("button");
-	b.textContent = p.name;
+	b.textContent = p.label || p.name; b.title = p.name;
 	b.addEventListener("pointerdown", () => { b.classList.add("down"); post("/api/press", {name: p.name}); });
 	const up = () => b.classList.remove("down");
 	b.addEventListener("pointerup", up); b.addEventListener("pointerleave", up);
@@ -239,7 +264,236 @@ function meter(p) {
 	};
 }
 
-const builders = {fader, knob, toggle, button, select: choice, meter};
+
+// a grid: patterns, rows of steps (the first field is the level: 0 is off), an inspector for the
+// fields of a cell and tools for a row
+function grid(p) {
+	const d = p.grid, F = d.fields.length, R = d.rows.length, S = d.steps;
+	let cells = d.cells.slice(), pattern = d.pattern, playing = d.playing;
+	let heads = d.rows.map(() => -1), lengths = d.lengths || d.rows.map(() => S);
+	let selected = null, selectedRow = null;
+	const idx = (pt, r, s, f) => ((pt * R + r) * S + s) * F + f;
+	const level = d.fields[0];
+	const onValue = level.min + (level.max - level.min) * 0.8;
+	const isOn = (r, s) => cells[idx(pattern, r, s, 0)] > level.default;
+	const div = cls => { const e = document.createElement("div"); e.className = cls; return e; };
+
+	const el = div("gridbox control");
+	const head = div("gridhead");
+	const title = div("name"); title.textContent = p.name;
+	head.append(title);
+	const patButtons = [];
+	for (let i = 0; i < d.patterns && d.patterns > 1; i++) {
+		const b = document.createElement("button");
+		b.textContent = i < 26 ? String.fromCharCode(65 + i) : String(i + 1);
+		b.title = "pattern " + b.textContent;
+		b.addEventListener("click", () => { pattern = i; render(); post("/api/grid", {name: p.name, pattern: i}); });
+		head.append(b); patButtons.push(b);
+	}
+	const scroll = div("gridscroll"), table = div("steps");
+	table.style.gridTemplateColumns = `auto repeat(${S}, minmax(20px, 1fr))`;
+	const cellEls = [], rowEls = [];
+	d.rows.forEach((name, r) => {
+		const rn = div("rowname"); rn.textContent = name; rn.title = "tools for " + name;
+		rn.addEventListener("click", () => { selected = null; selectedRow = r; render(); inspect(); });
+		table.append(rn); rowEls.push(rn);
+		cellEls[r] = [];
+		for (let s = 0; s < S; s++) {
+			const c = div("cell" + (s % 4 === 0 ? " beat" : ""));
+			c.innerHTML = '<div class="fill"></div><div class="mark"></div>';
+			c.dataset.r = r; c.dataset.s = s;
+			table.append(c); cellEls[r][s] = c;
+		}
+	});
+	scroll.append(table);
+	const insp = div("inspector");
+	el.append(head, scroll, insp);
+
+	// sending: change cells here at once, then tell the panel
+	function setCells(list) {
+		if (!list.length) return;
+		for (const [pt, r, s, f, v] of list) cells[idx(pt, r, s, f)] = v;
+		render(); inspect(true);
+		post("/api/grid", {name: p.name, set: list});
+	}
+	const cellSet = (r, s, f, v) => [pattern, r, s, f, v];
+
+	// tap toggles, a drag paints, a long press, right click or shift click opens the cell
+	let paint = null, start = null, timer = null, dragged = false;
+	const cellAt = e => { const u = document.elementFromPoint(e.clientX, e.clientY); return u && u.closest(".cell"); };
+	const open = (r, s) => { selected = {r, s}; selectedRow = null; render(); inspect(); };
+	table.addEventListener("contextmenu", e => { const c = e.target.closest(".cell"); if (c) { e.preventDefault(); open(+c.dataset.r, +c.dataset.s); } });
+	table.addEventListener("pointerdown", e => {
+		const c = e.target.closest(".cell");
+		if (!c || e.button === 2) return;
+		e.preventDefault();
+		const r = +c.dataset.r, s = +c.dataset.s;
+		if (e.shiftKey) { open(r, s); return; }
+		table.setPointerCapture(e.pointerId);
+		start = {r, s}; dragged = false;
+		paint = isOn(r, s) ? level.default : onValue;
+		timer = setTimeout(() => { timer = null; paint = null; open(r, s); }, 450);
+	});
+	table.addEventListener("pointermove", e => {
+		if (paint === null || !table.hasPointerCapture(e.pointerId)) return;
+		const c = cellAt(e);
+		if (!c) return;
+		const r = +c.dataset.r, s = +c.dataset.s;
+		if (!dragged && r === start.r && s === start.s) return;
+		if (timer) { clearTimeout(timer); timer = null; }
+		const list = [];
+		if (!dragged && cells[idx(pattern, start.r, start.s, 0)] !== paint) list.push(cellSet(start.r, start.s, 0, paint));
+		dragged = true;
+		if (cells[idx(pattern, r, s, 0)] !== paint) list.push(cellSet(r, s, 0, paint));
+		setCells(list);
+	});
+	const up = e => {
+		if (!table.hasPointerCapture(e.pointerId)) return;
+		table.releasePointerCapture(e.pointerId);
+		if (timer) { clearTimeout(timer); timer = null; if (!dragged && paint !== null) setCells([cellSet(start.r, start.s, 0, paint)]); }
+		paint = null;
+	};
+	table.addEventListener("pointerup", up);
+	table.addEventListener("pointercancel", e => { if (timer) clearTimeout(timer); timer = null; paint = null; up(e); });
+
+	// the inspector: the fields of the open cell, or the tools of a row
+	const option = (f, v) => { const o = f.options[Math.round(v - f.min)]; return o === undefined ? String(v) : o; };
+	const fmt = (f, v) => f.options && f.options.length ? option(f, v) :
+		(f.step >= 1 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2)) + (f.unit ? " " + f.unit : "");
+	function inspect(refresh) {
+		if (refresh) { // keep what is being moved, update the rest
+			insp.querySelectorAll("[data-f]").forEach(input => {
+				if (input === document.activeElement || !selected) return;
+				const f = +input.dataset.f, v = cells[idx(pattern, selected.r, selected.s, f)];
+				input.value = v;
+				const out = input.parentElement.querySelector("output");
+				if (out) out.textContent = fmt(d.fields[f], v);
+			});
+			return;
+		}
+		insp.innerHTML = "";
+		if (selected) {
+			const {r, s} = selected;
+			const t = div("title"); t.textContent = `${d.rows[r]} · step ${s + 1}`; insp.append(t);
+			d.fields.forEach((f, i) => {
+				const label = document.createElement("label");
+				const v = cells[idx(pattern, r, s, i)];
+				if (f.options && f.options.length) {
+					label.textContent = f.name;
+					const sel = document.createElement("select"); sel.dataset.f = i;
+					f.options.forEach((o, k) => { const opt = document.createElement("option"); opt.value = f.min + k; opt.textContent = o; sel.append(opt); });
+					sel.value = v;
+					sel.addEventListener("change", () => setCells([cellSet(r, s, i, Number(sel.value))]));
+					label.append(sel);
+				} else {
+					const out = document.createElement("output"); out.textContent = fmt(f, v);
+					const name = document.createElement("span"); name.textContent = f.name + " ";
+					name.append(out);
+					const range = document.createElement("input");
+					range.type = "range"; range.min = f.min; range.max = f.max; range.step = f.step || (f.max - f.min) / 100; range.value = v; range.dataset.f = i;
+					range.addEventListener("input", () => { out.textContent = fmt(f, Number(range.value)); setCells([cellSet(r, s, i, Number(range.value))]); });
+					label.append(name, range);
+				}
+				insp.append(label);
+			});
+			const reset = document.createElement("button"); reset.textContent = "Reset step";
+			reset.addEventListener("click", () => { setCells(d.fields.map((f, i) => cellSet(r, s, i, f.default))); inspect(); });
+			insp.append(reset);
+		} else if (selectedRow !== null) {
+			const r = selectedRow, len = lengths[r];
+			const t = div("title"); t.textContent = d.rows[r]; insp.append(t);
+			const button = (text, f) => { const b = document.createElement("button"); b.textContent = text; b.addEventListener("click", f); insp.append(b); return b; };
+			const slider = (name, min, max, value) => {
+				const label = document.createElement("label"), out = document.createElement("output");
+				const range = document.createElement("input"); range.type = "range"; range.min = min; range.max = max; range.step = 1; range.value = value;
+				out.textContent = value; range.addEventListener("input", () => out.textContent = range.value);
+				const span = document.createElement("span"); span.textContent = name + " "; span.append(out);
+				label.append(span, range); insp.append(label); return range;
+			};
+			const rowCells = () => { const list = []; for (let s = 0; s < S; s++) for (let f = 0; f < F; f++) list.push(cells[idx(pattern, r, s, f)]); return list; };
+			button("Clear", () => { const list = []; for (let s = 0; s < S; s++) d.fields.forEach((f, i) => list.push(cellSet(r, s, i, f.default))); setCells(list); });
+			const shift = by => {
+				const old = rowCells(), list = [];
+				for (let s = 0; s < len; s++) for (let f = 0; f < F; f++) list.push(cellSet(r, (s + by + len) % len, f, old[s * F + f]));
+				setCells(list);
+			};
+			button("←", () => shift(-1)).title = "shift left";
+			button("→", () => shift(1)).title = "shift right";
+			const hits = slider("hits", 0, len, Math.min(4, len)), rot = slider("rotate", 0, Math.max(0, len - 1), 0);
+			button("Euclid", () => {
+				const k = Number(hits.value), o = Number(rot.value), list = [];
+				for (let s = 0; s < len; s++) {
+					const i = (s - o + len) % len;
+					const on = k > 0 && Math.floor(i * k / len) !== Math.floor((i - 1) * k / len) || (k > 0 && i === 0);
+					const was = cells[idx(pattern, r, s, 0)];
+					list.push(cellSet(r, s, 0, on ? (was > level.default ? was : onValue) : level.default));
+				}
+				setCells(list);
+			}).title = "spread the hits as evenly as possible";
+			const density = slider("density %", 0, 100, 30);
+			button("Random", () => {
+				const list = [];
+				for (let s = 0; s < len; s++) list.push(cellSet(r, s, 0, Math.random() * 100 < Number(density.value) ? onValue : level.default));
+				setCells(list);
+			});
+			if (d.patterns > 1) {
+				const to = document.createElement("select");
+				for (let i = 0; i < d.patterns; i++) if (i !== pattern) { const o = document.createElement("option"); o.value = i; o.textContent = "to " + String.fromCharCode(65 + i); to.append(o); }
+				const label = document.createElement("label"); label.textContent = "pattern"; label.append(to); insp.append(label);
+				button("Copy pattern", () => {
+					const dst = Number(to.value), list = [];
+					for (let rr = 0; rr < R; rr++) for (let s = 0; s < S; s++) for (let f = 0; f < F; f++) list.push([dst, rr, s, f, cells[idx(pattern, rr, s, f)]]);
+					setCells(list);
+				});
+			}
+			button("Clear pattern", () => {
+				const list = [];
+				for (let rr = 0; rr < R; rr++) for (let s = 0; s < S; s++) d.fields.forEach((f, i) => list.push([pattern, rr, s, i, f.default]));
+				setCells(list);
+			});
+		} else {
+			insp.textContent = "tap a step to switch it, drag to paint; right click, long press or shift click a step to edit it; tap a row name for its tools";
+		}
+	}
+
+	function render() {
+		patButtons.forEach((b, i) => { b.classList.toggle("on", i === pattern); b.classList.toggle("playing", i === playing); });
+		for (let r = 0; r < R; r++) {
+			rowEls[r].classList.toggle("selected", selectedRow === r);
+			for (let s = 0; s < S; s++) {
+				const c = cellEls[r][s], v = cells[idx(pattern, r, s, 0)];
+				const norm = (v - level.min) / ((level.max - level.min) || 1);
+				c.querySelector(".fill").style.opacity = v > level.default ? 0.35 + 0.65 * norm : 0;
+				let marked = false;
+				const tip = [];
+				for (let f = 1; f < F; f++) {
+					const fv = cells[idx(pattern, r, s, f)];
+					if (fv !== d.fields[f].default) { marked = true; tip.push(`${d.fields[f].name} ${fmt(d.fields[f], fv)}`); }
+				}
+				c.classList.toggle("marked", marked && v > level.default);
+				c.title = v > level.default ? [`${level.name} ${fmt(level, v)}`, ...tip].join(", ") : "";
+				c.classList.toggle("head", heads[r] === s && playing === pattern);
+				c.classList.toggle("out", s >= lengths[r]);
+				c.classList.toggle("selected", !!selected && selected.r === r && selected.s === s);
+			}
+		}
+	}
+
+	render(); inspect();
+	return {
+		el, show: () => {},
+		update: u => {
+			if (u.cells) cells = u.cells;
+			pattern = u.pattern; playing = u.playing;
+			if (u.playheads) heads = u.playheads;
+			if (u.lengths) { const changed = String(u.lengths) !== String(lengths); lengths = u.lengths; if (changed && selectedRow !== null) inspect(); }
+			render();
+			if (u.cells) inspect(true);
+		},
+	};
+}
+
+const builders = {fader, knob, toggle, button, select: choice, meter, grid};
 
 // MIDI learn: in learn mode a tap on a control arms it (its value stays), the next control change
 // from the controller binds to it; the × next to a binding takes it away
@@ -299,7 +553,7 @@ async function build() {
 			w.param = p;
 			widgets[p.name] = w;
 			w.show(p.value);
-			if (p.kind !== "meter") bindable(w, p);
+			if (p.kind !== "meter" && p.kind !== "grid") bindable(w, p);
 			row.append(w.el);
 		}
 		main.append(sec);
@@ -322,6 +576,9 @@ function listen() {
 			if (widgets[name] && widgets[name].levels) widgets[name].levels(lv);
 		}
 		if (u.midi) showMIDI(u.midi);
+		for (const [name, gu] of Object.entries(u.grids || {})) {
+			if (widgets[name] && widgets[name].update) widgets[name].update(gu);
+		}
 	};
 }
 

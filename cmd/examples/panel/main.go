@@ -129,9 +129,10 @@ func main() {
 
 	go func() {
 		if err := ctl.Serve(*addr); err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	}()
+	defer ctl.Close() // the page's connections end and the address is free again
 	fmt.Printf("open http://%s (Ctrl-C to stop)\n", *addr)
 	_ = p.Listen()
 }
