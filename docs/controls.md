@@ -471,8 +471,9 @@ _ = p.Listen()
 patterns, every cell holding the values of the fields (`panel.Field{Name, Min, Max, Default, Step,
 Unit, Options}`; the first field is the level, 0 is off). The page draws it as a step grid: tap a
 cell to switch it, drag to paint, right click (long press, shift click) to edit all its fields,
-tap a row name for its tools (clear, shift, Euclid, random, copy or clear the pattern), pattern
-tabs on top. `grid.Value`, `grid.Set`, `grid.Clear`, `grid.SetPattern` work from any goroutine;
+tap a row name for its tools (clear, shift, Euclid, random), pattern tabs on top with Copy (the
+pattern on view to another) and Clear. `grid.Value`, `grid.Set`, `grid.Clear`, `grid.Copy(from,
+to)`, `grid.SetPattern` work from any goroutine;
 whatever plays the grid tells the page `SetPlaying`, `SetPlayhead` and `SetLength` (per row). Grids
 are in snapshots (as `name/pattern/row/step/field`, the cells away from their defaults). The step
 sequencer below plays one.
@@ -509,6 +510,13 @@ MIDI source.
 **Snapshots**: `ctl.Snapshot()` returns every value by name, `Restore(values)` sets them,
 `Save(path)` and `Load(path)` keep them in a JSON file: presets of the patch.
 
+**Presets**: `ctl.Presets("presets")` gives the panel a folder for setups (made when it isn't
+there), a JSON file each. The page then has a presets bar: type a name and Save, pick one and Load
+or Delete. From code: `SavePreset(name)`, `LoadPreset(name)`, `DeletePreset(name)`,
+`PresetNames()`. A name is letters, digits, spaces, `-`, `_` and `.` (up to 64), so it stays in
+the folder. Download and Upload on the page keep a setup in a file of your own, with or without
+the folder.
+
 **The page** follows the system's light or dark mode and works with touch (several faders at once
 on a tablet). Drag a fader or knob (Shift for fine steps on a knob), use the arrow keys on a
 focused fader, double click to return to the default. Every open page shows the same values.
@@ -521,7 +529,9 @@ focused fader, double click to return to the default. Every open page shows the 
 | `POST /api/set` | `{"name": "Cutoff", "value": 2400}` sets a control |
 | `POST /api/press` | `{"name": "Bells"}` presses a button |
 | `GET /api/events` | The values and meters as they change (server sent events, 20 times a second) |
-| `GET /api/snapshot`, `POST /api/snapshot` | All values, and restoring them |
+| `GET /api/snapshot`, `POST /api/snapshot` | All values, and restoring them (`?download` to save it as a file) |
+| `GET /api/presets` | `{"enabled": true, "names": [...]}`: the saved presets |
+| `POST /api/presets` | `{"action": "save", "name": "Groove"}` (or `"load"`, `"delete"`), answers with the names |
 | `POST /api/learn` | `{"name": "Cutoff"}` arms a control for MIDI learn, `{"name": ""}` stops |
 | `POST /api/unbind` | `{"name": "Cutoff"}` takes its controller from a control |
 | `POST /api/grid` | `{"name": "Beat", "pattern": 1, "set": [[pattern, row, step, field, value], ...]}` sets cells of a grid and/or asks for a pattern |

@@ -154,6 +154,20 @@ func (g *Grid) Clear(pattern int) {
 	}
 }
 
+// Copy copies every cell of a pattern to another
+func (g *Grid) Copy(from, to int) {
+	if from == to || from < 0 || from >= g.Patterns || to < 0 || to >= g.Patterns {
+		return
+	}
+	for row := range g.Rows {
+		for step := range g.Steps {
+			for f := range g.Fields {
+				g.Set(to, row, step, f, g.Value(from, row, step, f))
+			}
+		}
+	}
+}
+
 // Pattern returns the pattern asked for (on the page, or with SetPattern)
 func (g *Grid) Pattern() int { return int(g.pattern.Load()) }
 

@@ -121,6 +121,7 @@ func main() {
 	buffer := flag.Int("buffer", 256, "the buffer size (the latency) with portaudio")
 	addr := flag.String("addr", "localhost:8087", "the address of the control panel page (empty: no panel)")
 	bindingsFile := flag.String("bindings", "keyboard-midi.json", "the file the MIDI learn bindings of the panel are kept in")
+	presetDir := flag.String("presets", "keyboard-presets", "the folder the presets saved on the panel's page are kept in")
 	flag.Parse()
 
 	if *list {
@@ -314,6 +315,9 @@ func main() {
 
 		ctl.MIDI(kb)
 		if err := ctl.KeepBindings(*bindingsFile); err != nil {
+			log.Fatal(err)
+		}
+		if err := ctl.Presets(*presetDir); err != nil { // a sound with its keys and mix, saved by name
 			log.Fatal(err)
 		}
 		go func() {

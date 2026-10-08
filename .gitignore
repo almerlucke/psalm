@@ -34,3 +34,15 @@ go.work
 go.work.sum
 
 .idea/
+
+# presets saved from the control panels of the examples
+drummachine-presets/
+panel-presets/
+keyboard-presets/
+drum-presets/
+
+# MIDI learn bindings kept by the control panels of the examples
+drummachine-midi.json
+keyboard-midi.json
+panel-midi.json
+tutorial-midi.json

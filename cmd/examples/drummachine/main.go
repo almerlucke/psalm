@@ -3,8 +3,11 @@
 // Seven rows (kick, snare, clap, closed and open hihat, percussion, an 808 bass), 16 steps, four
 // patterns. On the page: tap a step to switch it, drag to paint, right click (or long press, or
 // shift click) a step to edit its velocity, chance, roll, nudge, pitch and condition; tap a row's
-// name for its tools (clear, shift, Euclid, random, copy the pattern). The pattern tabs switch
-// patterns when the pattern comes round. Swing, humanizing and the fill switch act on the whole
+// name for its tools (clear, shift, Euclid, random). The pattern tabs switch patterns when the
+// pattern comes round; Copy and Clear next to them copy the pattern on view to another (A to B,
+// then change B a little) or clear it. Presets in the header save the whole setup (every pattern,
+// the swing, the levels, the tempo) by name and load it again, in the folder -presets; Download
+// and Upload do the same with a file. Swing, humanizing and the fill switch act on the whole
 // beat, every row has its level, length (rows loop apart), mute and solo. The open hihat is choked
 // by the closed one.
 //
@@ -54,6 +57,7 @@ func main() {
 	useMIDI := flag.Bool("midi", false, "move the controls from a MIDI controller too (MIDI learn on the page)")
 	renderTo := flag.String("render", "", "render 8 bars to this WAV file instead of playing")
 	seed := flag.Uint64("seed", 0, "seed for the chances and the humanizing: the same seed plays the same")
+	presetDir := flag.String("presets", "drummachine-presets", "the folder the setups saved on the page are kept in")
 	flag.Parse()
 	if *seed != 0 {
 		psalm.Seed(*seed)
@@ -132,6 +136,9 @@ func main() {
 		if err := ctl.KeepBindings("drummachine-midi.json"); err != nil {
 			log.Fatal(err)
 		}
+	}
+	if err := ctl.Presets(*presetDir); err != nil {
+		log.Fatal(err)
 	}
 	go func() {
 		if err := ctl.Serve(*addr); err != nil {

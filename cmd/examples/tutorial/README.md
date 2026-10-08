@@ -34,7 +34,7 @@ steps leave that to the small [`tutorial`](tutorial/tutorial.go) package (`tutor
 | [12-tuning](12-tuning/main.go) | Tuning a part (`score.Config.Tuning`): equal temperament and just intonation | The same organ chords in both: listen for the beating that disappears |
 | [13-song](13-song/main.go) | Everything together | A short song: intro, verse, chorus and outro |
 | [14-panel](14-panel/main.go) | A control panel on a web page (`panel`): faders, knobs, toggles, buttons, selects and meters bound to the patch, curves and smoothing, the threads, presets, MIDI learn | The loop of the earlier steps, changed live from a browser or a phone: the filter, the levels, the tempo, the arpeggio |
-| [15-drum-machine](15-drum-machine/main.go) | The step sequencer (`stepseq`): a grid of steps on the panel, every step with velocity, chance, roll, nudge, pitch and condition; rows of their own length, choke groups, swing; patterns switched by the arrangement | A beat with ghost notes, rolls and random skips, a fill on the switch, pattern B for the chorus, along with a written bass |
+| [15-drum-machine](15-drum-machine/main.go) | The step sequencer (`stepseq`): a grid of steps on the panel, every step with velocity, chance, roll, nudge, pitch and condition; rows of their own length, choke groups, swing; patterns switched by the arrangement, copied from one to another; presets of the whole setup | A beat with ghost notes, rolls and random skips, a fill on the switch, pattern B for the chorus, along with a written bass |
 
 ## The concepts at a glance
 

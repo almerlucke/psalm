@@ -26,7 +26,15 @@
 // with a written bass part, and the arrangement switches the drums to pattern B for the chorus
 // (an event, step 9: asked for in the bar before, since a new pattern starts when the one playing
 // comes round). On the page: tap a step to switch it, drag to paint, right click (or long
-// press) a step to edit its fields, tap a row's name for its tools.
+// press) a step to edit its fields, tap a row's name for its tools. Copy next to the pattern tabs
+// copies the pattern on view to another: A to B, then make B your own.
+//
+// A beat you like is kept with a preset: the folder for them is given to the panel, and the page
+// saves the whole setup (every pattern, the swing, the levels) by name and loads it again. Download
+// and Upload do the same with a file.
+//
+//	ctl.Presets("drum-presets")                                                 // Save and Load on the page
+//	ctl.LoadPreset("Groove")                                                    // or from code
 //
 //	go run ./cmd/examples/tutorial/15-drum-machine          then open http://localhost:8080
 package main
@@ -154,6 +162,9 @@ func main() {
 	mix.Channel("bass", bass, mixer.StripConfig{})
 
 	if !tutorial.Rendering() {
+		if err := ctl.Presets("drum-presets"); err != nil {
+			log.Fatal(err)
+		}
 		go func() {
 			if err := ctl.Serve(*addr); err != nil {
 				log.Fatal(err)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"syscall"
 	"time"
 )
@@ -92,6 +93,8 @@ type server struct {
 //	POST /api/unbind    {"name": "Cutoff"} takes its controller from a control
 //	POST /api/grid      {"name": "Drums", "pattern": 1, "set": [[pattern, row, step, field, value], ...]}
 //	                    sets cells of a grid and/or asks for a pattern
+//	GET  /api/presets   {"enabled": true, "names": [...]}: the saved setups (see Presets)
+//	POST /api/presets   {"action": "save" (or "load", "delete"), "name": "Groove"}
 func (pn *Panel) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +124,49 @@ func (pn *Panel) Handler() http.Handler {
 		}
 	})
 	mux.HandleFunc("GET /api/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Has("download") { // a file to keep, named after the panel
+			w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", pn.title+".json"))
+		}
 		writeJSON(w, pn.Snapshot())
+	})
+	mux.HandleFunc("GET /api/presets", func(w http.ResponseWriter, r *http.Request) {
+		names, err := pn.PresetNames()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"enabled": pn.presetsEnabled(), "names": names})
+	})
+	mux.HandleFunc("POST /api/presets", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Action string `json:"action"`
+			Name   string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var err error
+		switch req.Action {
+		case "save":
+			err = pn.SavePreset(req.Name)
+		case "load":
+			err = pn.LoadPreset(req.Name)
+		case "delete":
+			err = pn.DeletePreset(req.Name)
+		default:
+			err = fmt.Errorf("no action %q: save, load or delete", req.Action)
+		}
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, os.ErrNotExist) {
+				status = http.StatusNotFound
+			}
+			http.Error(w, err.Error(), status)
+			return
+		}
+		names, _ := pn.PresetNames()
+		writeJSON(w, map[string]any{"enabled": true, "names": names})
 	})
 	mux.HandleFunc("POST /api/snapshot", func(w http.ResponseWriter, r *http.Request) {
 		var values map[string]float64
@@ -210,6 +255,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 // description is the panel as the page sees it
 type description struct {
 	Title    string    `json:"title"`
+	Presets  bool      `json:"presets"` // whether the page can save and load setups
 	Sections []section `json:"sections"`
 }
 
@@ -250,7 +296,7 @@ func (pn *Panel) describe() description {
 	pn.mu.Lock()
 	sections := append([]string(nil), pn.sections...)
 	pn.mu.Unlock()
-	d := description{Title: pn.title}
+	d := description{Title: pn.title, Presets: pn.presetsEnabled()}
 	index := map[string]int{}
 	for _, name := range sections {
 		index[name] = len(d.Sections)

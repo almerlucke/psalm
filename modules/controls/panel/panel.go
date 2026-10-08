@@ -63,6 +63,7 @@ type Panel struct {
 
 	grids map[string]*Grid
 	order []item // the controls and grids in the order they were declared, for the page
+	presetState
 }
 
 // item is a control or a grid, in the order of the panel

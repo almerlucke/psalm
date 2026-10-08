@@ -22,7 +22,7 @@ body {
 	font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
 	-webkit-user-select: none; user-select: none; touch-action: manipulation;
 }
-header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 4px; }
+header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 4px; flex-wrap: wrap; }
 h1 { font-size: 18px; margin: 0; font-weight: 600; }
 #status { width: 9px; height: 9px; border-radius: 50%; background: var(--meter-high); }
 #status.on { background: var(--meter-low); }
@@ -55,6 +55,12 @@ select { font: inherit; color: var(--ink); background: var(--card); border: 1px 
 
 header .spacer { flex: 1; }
 #learn { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+#presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+#presets button, #presets select, #presets input { min-height: 34px; min-width: 0; padding: 4px 10px; font-size: 13px; }
+#presets input { font: inherit; font-size: 13px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; width: 120px; }
+#presets .sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+#note { font-size: 12px; color: var(--muted); min-width: 0; }
+#note.error { color: var(--meter-high); }
 .cc { font-size: 11px; color: var(--muted); min-height: 14px; white-space: nowrap; }
 .cc .unbind { display: none; margin-left: 4px; padding: 0 4px; border-radius: 4px; cursor: pointer; }
 body.learn .cc .unbind { display: inline; }
@@ -70,6 +76,8 @@ body.learn .control.armed { outline: 2px solid var(--accent); animation: armed 1
 .gridhead .name { max-width: none; margin-right: 6px; }
 .gridhead button { min-width: 38px; min-height: 32px; padding: 4px 10px; }
 .gridhead button.playing { box-shadow: inset 0 -3px 0 var(--meter-low); }
+.gridhead .tools { display: flex; gap: 6px; align-items: center; margin-left: 10px; }
+.gridhead select { min-height: 32px; padding: 4px 8px; font-size: 13px; }
 .gridscroll { overflow-x: auto; max-width: calc(100vw - 64px); }
 .steps { display: grid; gap: 3px; align-items: center; }
 .rowname { font-size: 12px; color: var(--muted); padding-right: 8px; cursor: pointer; white-space: nowrap; }
@@ -90,7 +98,7 @@ body.learn .control.armed { outline: 2px solid var(--accent); animation: armed 1
 </style>
 </head>
 <body>
-<header><span id="status" title="connection"></span><h1 id="title">Panel</h1><span class="spacer"></span><button id="learn" title="Tap a control, then move a knob or fader on your MIDI controller">MIDI learn</button></header>
+<header><span id="status" title="connection"></span><h1 id="title">Panel</h1><span class="spacer"></span><span id="note"></span><span id="presets" hidden></span><button id="learn" title="Tap a control, then move a knob or fader on your MIDI controller">MIDI learn</button></header>
 <main id="panel"></main>
 <script>
 "use strict";
@@ -290,6 +298,39 @@ function grid(p) {
 		b.addEventListener("click", () => { pattern = i; render(); post("/api/grid", {name: p.name, pattern: i}); });
 		head.append(b); patButtons.push(b);
 	}
+	// the pattern on view: copy it to another, or clear it
+	const hasHits = pt => { for (let r = 0; r < R; r++) for (let s = 0; s < S; s++) if (cells[idx(pt, r, s, 0)] > level.default) return true; return false; };
+	const letter = i => i < 26 ? String.fromCharCode(65 + i) : String(i + 1);
+	const patTools = div("tools");
+	let copyTo = null;
+	if (d.patterns > 1) {
+		copyTo = document.createElement("select");
+		copyTo.title = "the pattern to copy to";
+		for (let i = 0; i < d.patterns; i++) { const o = document.createElement("option"); o.value = i; o.textContent = "to " + letter(i); copyTo.append(o); }
+		const copy = document.createElement("button");
+		copy.textContent = "Copy";
+		copy.title = "copy this pattern to another";
+		copy.addEventListener("click", () => {
+			const dst = Number(copyTo.value), list = [];
+			if (dst === pattern) return;
+			if (hasHits(dst) && !confirm(`Pattern ${letter(dst)} has steps: replace them with ${letter(pattern)}?`)) return;
+			for (let r = 0; r < R; r++) for (let s = 0; s < S; s++) for (let f = 0; f < F; f++) list.push([dst, r, s, f, cells[idx(pattern, r, s, f)]]);
+			setCells(list);
+			note(`copied ${letter(pattern)} to ${letter(dst)}`);
+		});
+		patTools.append(copy, copyTo);
+	}
+	const clear = document.createElement("button");
+	clear.textContent = "Clear";
+	clear.title = "clear this pattern";
+	clear.addEventListener("click", () => {
+		if (hasHits(pattern) && !confirm(`Clear pattern ${letter(pattern)}?`)) return;
+		const list = [];
+		for (let r = 0; r < R; r++) for (let s = 0; s < S; s++) d.fields.forEach((f, i) => list.push([pattern, r, s, i, f.default]));
+		setCells(list);
+	});
+	patTools.append(clear);
+	head.append(patTools);
 	const scroll = div("gridscroll"), table = div("steps");
 	table.style.gridTemplateColumns = `auto repeat(${S}, minmax(20px, 1fr))`;
 	const cellEls = [], rowEls = [];
@@ -436,21 +477,6 @@ function grid(p) {
 				for (let s = 0; s < len; s++) list.push(cellSet(r, s, 0, Math.random() * 100 < Number(density.value) ? onValue : level.default));
 				setCells(list);
 			});
-			if (d.patterns > 1) {
-				const to = document.createElement("select");
-				for (let i = 0; i < d.patterns; i++) if (i !== pattern) { const o = document.createElement("option"); o.value = i; o.textContent = "to " + String.fromCharCode(65 + i); to.append(o); }
-				const label = document.createElement("label"); label.textContent = "pattern"; label.append(to); insp.append(label);
-				button("Copy pattern", () => {
-					const dst = Number(to.value), list = [];
-					for (let rr = 0; rr < R; rr++) for (let s = 0; s < S; s++) for (let f = 0; f < F; f++) list.push([dst, rr, s, f, cells[idx(pattern, rr, s, f)]]);
-					setCells(list);
-				});
-			}
-			button("Clear pattern", () => {
-				const list = [];
-				for (let rr = 0; rr < R; rr++) for (let s = 0; s < S; s++) d.fields.forEach((f, i) => list.push([pattern, rr, s, i, f.default]));
-				setCells(list);
-			});
 		} else {
 			insp.textContent = "tap a step to switch it, drag to paint; right click, long press or shift click a step to edit it; tap a row name for its tools";
 		}
@@ -458,6 +484,10 @@ function grid(p) {
 
 	function render() {
 		patButtons.forEach((b, i) => { b.classList.toggle("on", i === pattern); b.classList.toggle("playing", i === playing); });
+		if (copyTo) { // never to itself
+			Array.from(copyTo.options).forEach((o, i) => o.disabled = i === pattern);
+			if (Number(copyTo.value) === pattern) copyTo.value = (pattern + 1) % d.patterns;
+		}
 		for (let r = 0; r < R; r++) {
 			rowEls[r].classList.toggle("selected", selectedRow === r);
 			for (let s = 0; s < S; s++) {
@@ -558,7 +588,84 @@ async function build() {
 		}
 		main.append(sec);
 	}
+	presets(d.presets);
 	listen();
+}
+
+// a short message in the header
+let noteTimer = null;
+function note(text, error) {
+	const n = document.getElementById("note");
+	n.textContent = text; n.classList.toggle("error", !!error);
+	clearTimeout(noteTimer);
+	noteTimer = setTimeout(() => n.textContent = "", error ? 6000 : 2500);
+}
+
+// presets: save, load and delete setups by name (when the panel keeps them), download and upload one
+function presets(enabled) {
+	const bar = document.getElementById("presets");
+	bar.hidden = false;
+	const el = (tag, text, title) => { const e = document.createElement(tag); if (text) e.textContent = text; if (title) e.title = title; return e; };
+	let names = [], fill = () => {};
+	const answer = async res => {
+		if (!res.ok) { note((await res.text()).trim(), true); return false; }
+		names = (await res.json()).names || [];
+		fill();
+		return true;
+	};
+	const act = async (action, name) => {
+		try { return await answer(await fetch("/api/presets", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action, name})})); }
+		catch (e) { note("no connection", true); return false; }
+	};
+	if (enabled) {
+		const input = el("input"); input.placeholder = "name"; input.maxLength = 64;
+		input.setAttribute("aria-label", "preset name");
+		const save = el("button", "Save", "save the setup under this name");
+		const choice = el("select", "", "a saved setup");
+		const load = el("button", "Load", "set the panel to this setup");
+		const del = el("button", "Delete", "delete this setup");
+		const sep = el("span"); sep.className = "sep";
+		bar.append(input, save, choice, load, del, sep);
+		fill = () => {
+			const keep = choice.value;
+			choice.innerHTML = "";
+			if (!names.length) { const o = el("option", "no presets"); o.value = ""; choice.append(o); }
+			for (const n of names) { const o = el("option", n); o.value = n; choice.append(o); }
+			if (names.includes(keep)) choice.value = keep;
+			load.disabled = del.disabled = !names.length;
+		};
+		const doSave = async () => {
+			const name = input.value.trim();
+			if (!name) { input.focus(); note("give the preset a name", true); return; }
+			if (names.includes(name) && !confirm(`Replace preset "${name}"?`)) return;
+			if (await act("save", name)) { choice.value = name; input.value = ""; note(`saved "${name}"`); }
+		};
+		save.addEventListener("click", doSave);
+		input.addEventListener("keydown", e => { if (e.key === "Enter") doSave(); });
+		load.addEventListener("click", async () => { const n = choice.value; if (n && await act("load", n)) note(`loaded "${n}"`); });
+		del.addEventListener("click", async () => {
+			const n = choice.value;
+			if (n && confirm(`Delete preset "${n}"?`) && await act("delete", n)) note(`deleted "${n}"`);
+		});
+		fetch("/api/presets").then(answer).catch(() => {});
+	}
+	const down = el("button", "Download", "the setup as a file");
+	down.addEventListener("click", () => { const a = el("a"); a.href = "/api/snapshot?download"; a.download = ""; document.body.append(a); a.click(); a.remove(); });
+	const file = el("input"); file.type = "file"; file.accept = ".json,application/json"; file.hidden = true;
+	const up = el("button", "Upload", "set the panel to a setup from a file");
+	up.addEventListener("click", () => file.click());
+	file.addEventListener("change", async () => {
+		const f = file.files[0];
+		file.value = "";
+		if (!f) return;
+		try {
+			const values = JSON.parse(await f.text());
+			const res = await fetch("/api/snapshot", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(values)});
+			if (!res.ok) throw new Error((await res.text()).trim());
+			note(`loaded ${f.name}`);
+		} catch (e) { note(`${f.name}: ${e.message}`, true); }
+	});
+	bar.append(down, up, file);
 }
 
 function listen() {

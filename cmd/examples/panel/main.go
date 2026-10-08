@@ -46,6 +46,7 @@ func main() {
 	useMIDI := flag.Bool("midi", false, "move the controls from a MIDI controller (MIDI learn on the page)")
 	device := flag.String("midi-device", "", "the raw MIDI device (empty is the first controller)")
 	bindingsFile := flag.String("bindings", "panel-midi.json", "the file the MIDI bindings are kept in")
+	presetDir := flag.String("presets", "panel-presets", "the folder the presets saved on the page are kept in")
 	flag.Parse()
 
 	psalm.PushConfig(psalm.Config{BPM: 96, PPQ: 240, SampleRate: 44100, BufferSize: 512})
@@ -127,6 +128,10 @@ func main() {
 		}
 	}
 
+	// setups saved on the page by name, a file each
+	if err := ctl.Presets(*presetDir); err != nil {
+		log.Fatal(err)
+	}
 	go func() {
 		if err := ctl.Serve(*addr); err != nil {
 			log.Fatal(err)
