@@ -9,7 +9,7 @@ play it live through an audio engine or render it to a sound file.
 | Page | What's in it |
 |---|---|
 | [Core concepts](core-concepts.md) | Psalm, config, modules, audio and value connections, messages, control ticks, rendering, audio engines |
-| [Controls](controls.md) | Sequencing and control modules: `timer`, `steps`, `templ`, `score` (notes in beats, notation, sequencer), `arrange` (song form, parts, automation, events), `keyboard` (MIDI, see [MIDI](midi.md)), `gen`, `dispatch`, `logger` |
+| [Controls](controls.md) | Sequencing and control modules: `timer`, `steps`, `templ`, `score` (notes in beats, notation, sequencer), `arrange` (song form, parts, automation, events), `keyboard` (MIDI, see [MIDI](midi.md)), `panel` (faders, knobs, buttons and meters on a web page), `gen`, `dispatch`, `logger` |
 | [Sources](sources.md) | Sound sources: `player`, `blosc` oscillator, `lfo`, `granular` |
 | [Synths](synths.md) | `poly` voice allocation, the `subtractive` synth, the 4 operator `fm` synth, the 6 operator `dx` engine with SysEx loading, the `grains` granular sampler, the `pulsar` synth, the `wavetable` synth, the physically modelled `piano`, `drums` |
 | [Effects](effects.md) | Reverbs (`freeverb`, `fdnreverb`, `shimmer`, `convolver`), `chorus`, `flanger`, `pingpong`, `vocoder`, `granulator` (with freeze), `pitchshift`, `pan`, `latency` |

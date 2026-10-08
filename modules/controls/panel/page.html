@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Panel</title>
+<style>
+:root {
+	--bg: #f4f4f2; --card: #ffffff; --ink: #1d1d1f; --muted: #6e6e73; --line: #d8d8d4;
+	--track: #e6e6e2; --accent: #2f6fdb; --accent-ink: #ffffff; --meter-low: #2fa36b;
+	--meter-mid: #d9a514; --meter-high: #d94a3d; --shadow: 0 1px 3px rgba(0,0,0,.08);
+}
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #141416; --card: #1f1f22; --ink: #ececee; --muted: #9a9aa0; --line: #34343a;
+		--track: #2c2c31; --accent: #5b8ff0; --accent-ink: #0e0e10; --shadow: none;
+	}
+}
+* { box-sizing: border-box; }
+body {
+	margin: 0; background: var(--bg); color: var(--ink);
+	font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+	-webkit-user-select: none; user-select: none; touch-action: manipulation;
+}
+header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 4px; }
+h1 { font-size: 18px; margin: 0; font-weight: 600; }
+#status { width: 9px; height: 9px; border-radius: 50%; background: var(--meter-high); }
+#status.on { background: var(--meter-low); }
+main { display: flex; flex-wrap: wrap; gap: 14px; padding: 12px 16px 24px; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 10px 12px 12px; }
+section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+.controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.control { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 64px; }
+.name { font-size: 12px; color: var(--muted); text-align: center; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.value { font-size: 12px; font-variant-numeric: tabular-nums; min-height: 16px; }
+
+.fader { position: relative; width: 44px; height: 180px; touch-action: none; cursor: ns-resize; outline: none; }
+.fader .track { position: absolute; left: 19px; top: 8px; bottom: 8px; width: 6px; border-radius: 3px; background: var(--track); }
+.fader .fill { position: absolute; left: 19px; bottom: 8px; width: 6px; border-radius: 3px; background: var(--accent); }
+.fader .thumb { position: absolute; left: 6px; width: 32px; height: 16px; margin-bottom: -8px; border-radius: 4px; background: var(--card); border: 2px solid var(--accent); }
+.fader:focus-visible .thumb { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+
+.knob { width: 56px; height: 56px; touch-action: none; cursor: ns-resize; outline: none; }
+.knob .bg { fill: none; stroke: var(--track); stroke-width: 6; stroke-linecap: round; }
+.knob .arc { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; }
+.knob .dot { fill: var(--ink); }
+
+button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 10px 14px; min-width: 64px; min-height: 44px; cursor: pointer; touch-action: manipulation; }
+button.on, button.down { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+select { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; min-height: 44px; max-width: 160px; }
+
+.meter { position: relative; width: 16px; height: 180px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.meter .rms { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(to top, var(--meter-low) 0 70%, var(--meter-mid) 70% 90%, var(--meter-high) 90%); clip-path: inset(100% 0 0 0); }
+.meter .peak { position: absolute; left: 0; right: 0; height: 2px; background: var(--ink); bottom: 0; }
+
+header .spacer { flex: 1; }
+#learn { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+.cc { font-size: 11px; color: var(--muted); min-height: 14px; white-space: nowrap; }
+.cc .unbind { display: none; margin-left: 4px; padding: 0 4px; border-radius: 4px; cursor: pointer; }
+body.learn .cc .unbind { display: inline; }
+body.learn .cc .unbind:hover { background: var(--track); color: var(--ink); }
+body.learn .control.bindable { outline: 1px dashed var(--line); outline-offset: 4px; border-radius: 6px; cursor: pointer; }
+body.learn .control.armed { outline: 2px solid var(--accent); animation: armed 1s ease-in-out infinite; }
+@keyframes armed { 50% { outline-color: transparent; } }
+</style>
+</head>
+<body>
+<header><span id="status" title="connection"></span><h1 id="title">Panel</h1><span class="spacer"></span><button id="learn" title="Tap a control, then move a knob or fader on your MIDI controller">MIDI learn</button></header>
+<main id="panel"></main>
+<script>
+"use strict";
+const widgets = {};       // name -> {param, show(value)}
+const touching = new Set(); // controls being moved here: their echoes from the patch are ignored
+
+const clamp01 = x => Math.max(0, Math.min(1, x));
+function position(p, v) {
+	if (p.max === p.min) return 0;
+	return clamp01(p.curve === "exp" ? Math.log(v / p.min) / Math.log(p.max / p.min) : (v - p.min) / (p.max - p.min));
+}
+function valueAt(p, x) {
+	x = clamp01(x);
+	let v = p.curve === "exp" ? p.min * Math.pow(p.max / p.min, x) : p.min + (p.max - p.min) * x;
+	if (p.step > 0) v = p.min + Math.round((v - p.min) / p.step) * p.step;
+	return Math.max(Math.min(p.min, p.max), Math.min(Math.max(p.min, p.max), v));
+}
+function format(p, v) {
+	const a = Math.abs(v);
+	const text = p.step >= 1 ? v.toFixed(0) : a >= 1000 ? v.toFixed(0) : a >= 100 ? v.toFixed(1) : v.toFixed(2);
+	return p.unit ? text + " " + p.unit : text;
+}
+
+// sending: at most one request per control per frame, the last value wins
+const pending = new Map();
+let scheduled = false;
+function send(name, value) {
+	pending.set(name, value);
+	if (scheduled) return;
+	scheduled = true;
+	requestAnimationFrame(() => {
+		scheduled = false;
+		for (const [n, v] of pending) post("/api/set", {name: n, value: v});
+		pending.clear();
+	});
+}
+function post(url, body) {
+	return fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)}).catch(() => {});
+}
+
+// a vertical drag on an element: from its height (a fader) or relative to where it started (a knob)
+function drag(el, p, getPos, onMove, relative) {
+	let startY = 0, startPos = 0;
+	el.addEventListener("pointerdown", e => {
+		el.setPointerCapture(e.pointerId);
+		touching.add(p.name);
+		startY = e.clientY; startPos = getPos();
+		move(e);
+		e.preventDefault();
+	});
+	const move = e => {
+		if (!el.hasPointerCapture(e.pointerId)) return;
+		let x;
+		if (relative) {
+			x = startPos + (startY - e.clientY) / (e.shiftKey ? 600 : 150);
+		} else {
+			const r = el.getBoundingClientRect();
+			x = 1 - (e.clientY - r.top - 8) / (r.height - 16);
+		}
+		onMove(clamp01(x));
+	};
+	el.addEventListener("pointermove", move);
+	const up = e => { if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId); touching.delete(p.name); };
+	el.addEventListener("pointerup", up);
+	el.addEventListener("pointercancel", up);
+	el.addEventListener("dblclick", () => onMove(position(p, p.default)));
+	el.addEventListener("keydown", e => {
+		const step = e.shiftKey ? 0.1 : 0.01;
+		if (e.key === "ArrowUp" || e.key === "ArrowRight") { onMove(clamp01(getPos() + step)); e.preventDefault(); }
+		if (e.key === "ArrowDown" || e.key === "ArrowLeft") { onMove(clamp01(getPos() - step)); e.preventDefault(); }
+	});
+}
+
+function labelled(p, inner, valueEl) {
+	const box = document.createElement("div");
+	box.className = "control";
+	const name = document.createElement("div");
+	name.className = "name"; name.textContent = p.name; name.title = p.name;
+	box.append(name, inner);
+	if (valueEl) box.append(valueEl);
+	return box;
+}
+
+function fader(p) {
+	const el = document.createElement("div");
+	el.className = "fader"; el.tabIndex = 0;
+	el.innerHTML = '<div class="track"></div><div class="fill"></div><div class="thumb"></div>';
+	const fill = el.querySelector(".fill"), thumb = el.querySelector(".thumb");
+	const val = document.createElement("div"); val.className = "value";
+	let pos = 0;
+	const show = v => {
+		pos = position(p, v);
+		const px = `calc(8px + ${pos} * (100% - 16px))`;
+		thumb.style.bottom = px; fill.style.height = `calc(${pos} * (100% - 16px))`;
+		val.textContent = format(p, v);
+	};
+	drag(el, p, () => pos, x => { const v = valueAt(p, x); show(v); send(p.name, v); }, false);
+	return {el: labelled(p, el, val), show};
+}
+
+function knob(p) {
+	const ns = "http://www.w3.org/2000/svg";
+	const svg = document.createElementNS(ns, "svg");
+	svg.setAttribute("viewBox", "0 0 56 56"); svg.setAttribute("class", "knob"); svg.setAttribute("tabindex", "0");
+	const arc = (from, to) => {
+		const pt = a => [28 + 22 * Math.cos(a), 28 + 22 * Math.sin(a)];
+		const [x1, y1] = pt(from), [x2, y2] = pt(to);
+		return `M ${x1} ${y1} A 22 22 0 ${to - from > Math.PI ? 1 : 0} 1 ${x2} ${y2}`;
+	};
+	const start = Math.PI * 0.75, sweep = Math.PI * 1.5;
+	const bg = document.createElementNS(ns, "path"); bg.setAttribute("class", "bg"); bg.setAttribute("d", arc(start, start + sweep));
+	const fg = document.createElementNS(ns, "path"); fg.setAttribute("class", "arc");
+	const dot = document.createElementNS(ns, "circle"); dot.setAttribute("class", "dot"); dot.setAttribute("r", "3");
+	svg.append(bg, fg, dot);
+	const val = document.createElement("div"); val.className = "value";
+	let pos = 0;
+	const show = v => {
+		pos = position(p, v);
+		const a = start + sweep * pos;
+		fg.setAttribute("d", pos > 0.001 ? arc(start, a) : "");
+		dot.setAttribute("cx", 28 + 13 * Math.cos(a)); dot.setAttribute("cy", 28 + 13 * Math.sin(a));
+		val.textContent = format(p, v);
+	};
+	drag(svg, p, () => pos, x => { const v = valueAt(p, x); show(v); send(p.name, v); }, true);
+	return {el: labelled(p, svg, val), show};
+}
+
+function toggle(p) {
+	const b = document.createElement("button");
+	b.textContent = p.name;
+	let on = false;
+	const show = v => { on = v >= 0.5; b.classList.toggle("on", on); };
+	b.addEventListener("click", () => { show(on ? 0 : 1); send(p.name, on ? 1 : 0); });
+	const box = document.createElement("div"); box.className = "control"; box.append(b);
+	return {el: box, show};
+}
+
+function button(p) {
+	const b = document.createElement("button");
+	b.textContent = p.name;
+	b.addEventListener("pointerdown", () => { b.classList.add("down"); post("/api/press", {name: p.name}); });
+	const up = () => b.classList.remove("down");
+	b.addEventListener("pointerup", up); b.addEventListener("pointerleave", up);
+	b.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") post("/api/press", {name: p.name}); });
+	const box = document.createElement("div"); box.className = "control"; box.append(b);
+	return {el: box, show: () => {}};
+}
+
+function choice(p) {
+	const s = document.createElement("select");
+	p.options.forEach((o, i) => { const opt = document.createElement("option"); opt.value = i; opt.textContent = o; s.append(opt); });
+	s.addEventListener("change", () => send(p.name, Number(s.value)));
+	return {el: labelled(p, s), show: v => { s.value = String(Math.round(v)); }};
+}
+
+function meter(p) {
+	const el = document.createElement("div");
+	el.className = "meter";
+	el.innerHTML = '<div class="rms" style="top:0"></div><div class="peak"></div>';
+	const rms = el.querySelector(".rms"), peak = el.querySelector(".peak");
+	const height = db => clamp01((db + 60) / 60); // -60 to 0 dB
+	const val = document.createElement("div"); val.className = "value";
+	return {
+		el: labelled(p, el, val),
+		show: () => {},
+		levels: ([pk, r]) => {
+			rms.style.clipPath = `inset(${(1 - height(r)) * 100}% 0 0 0)`;
+			peak.style.bottom = `calc(${height(pk) * 100}% - 2px)`;
+			val.textContent = pk <= -119 ? "-∞" : pk.toFixed(1);
+		},
+	};
+}
+
+const builders = {fader, knob, toggle, button, select: choice, meter};
+
+// MIDI learn: in learn mode a tap on a control arms it (its value stays), the next control change
+// from the controller binds to it; the × next to a binding takes it away
+let learnMode = false;
+function setLearnMode(on, local = true) {
+	learnMode = on;
+	document.body.classList.toggle("learn", on);
+	document.getElementById("learn").classList.toggle("on", on);
+	if (!on && local) post("/api/learn", {name: ""});
+}
+document.getElementById("learn").addEventListener("click", () => setLearnMode(!learnMode));
+document.addEventListener("keydown", e => { if (e.key === "Escape" && learnMode) setLearnMode(false); });
+
+function bindable(w, p) {
+	const tag = document.createElement("div");
+	tag.className = "cc";
+	tag.innerHTML = '<span class="label"></span><span class="unbind" title="unbind">×</span>';
+	w.el.append(tag);
+	w.el.classList.add("bindable");
+	w.binding = b => {
+		tag.querySelector(".label").textContent = b ? (b.channel ? `ch ${b.channel} · ` : "") + `CC ${b.controller}` : "";
+		tag.querySelector(".unbind").style.visibility = b ? "visible" : "hidden";
+	};
+	w.binding(p.cc);
+	// in learn mode the control doesn't move: the tap arms it (capture: before the control sees it)
+	const learn = e => {
+		if (!learnMode) return;
+		e.stopPropagation();
+		e.preventDefault();
+		if (e.type !== "pointerdown") return;
+		if (e.target.classList.contains("unbind")) post("/api/unbind", {name: p.name});
+		else post("/api/learn", {name: p.name});
+	};
+	for (const type of ["pointerdown", "click", "dblclick", "keydown"]) w.el.addEventListener(type, learn, true);
+}
+
+function showMIDI(m) {
+	if (m.learning && !learnMode) setLearnMode(true, false); // armed elsewhere: show it here too
+	for (const [name, w] of Object.entries(widgets)) {
+		if (w.binding) w.binding(m.bindings[name]);
+		w.el.classList.toggle("armed", name === m.learning);
+	}
+}
+
+async function build() {
+	const d = await (await fetch("/api/panel")).json();
+	document.title = d.title;
+	document.getElementById("title").textContent = d.title;
+	const main = document.getElementById("panel");
+	for (const s of d.sections) {
+		const sec = document.createElement("section");
+		const h = document.createElement("h2"); h.textContent = s.name;
+		const row = document.createElement("div"); row.className = "controls";
+		sec.append(h, row);
+		for (const p of s.controls) {
+			const w = builders[p.kind](p);
+			w.param = p;
+			widgets[p.name] = w;
+			w.show(p.value);
+			if (p.kind !== "meter") bindable(w, p);
+			row.append(w.el);
+		}
+		main.append(sec);
+	}
+	listen();
+}
+
+function listen() {
+	const status = document.getElementById("status");
+	const events = new EventSource("/api/events");
+	events.onopen = () => status.classList.add("on");
+	events.onerror = () => status.classList.remove("on");
+	events.onmessage = e => {
+		status.classList.add("on");
+		const u = JSON.parse(e.data);
+		for (const [name, v] of Object.entries(u.values || {})) {
+			if (!touching.has(name) && widgets[name]) widgets[name].show(v);
+		}
+		for (const [name, lv] of Object.entries(u.meters || {})) {
+			if (widgets[name] && widgets[name].levels) widgets[name].levels(lv);
+		}
+		if (u.midi) showMIDI(u.midi);
+	};
+}
+
+build();
+</script>
+</body>
+</html>

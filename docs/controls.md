@@ -431,6 +431,90 @@ ringing sound finishes naturally.
 `Loop` count). `PrintSections(true)` prints sections as they start, `PositionAt(tick)` returns the
 position at any tick and `form.Schedule()` the start time of every section.
 
+## panel
+
+`modules/controls/panel`
+
+Control a patch while it plays: faders, knobs, toggles, buttons and selects declared in code next
+to the patch, bound to the settings of its modules, and meters showing levels. `Serve` makes a web
+page of them: open it in a browser on the same computer, or on a phone or tablet on the network.
+
+```go
+ctl := panel.New(p, "Synth")
+
+ctl.Section("Filter")
+ctl.Fader("Cutoff", 200, 12000, panel.Exp, panel.Message(filter, "cutoff"), panel.Default(2400), panel.Unit("Hz"), panel.Smooth(0.05))
+ctl.Knob("Resonance", 0, 0.95, panel.Linear, panel.Message(filter, "resonance"))
+
+ctl.Section("Play")
+ctl.Fader("Tempo", 60, 160, panel.Linear, panel.Func(func(v float64) { p.Env().SetBPM(v) }), panel.Default(96), panel.Step(1))
+ctl.Toggle("Sustain", panel.Message(piano, "sustain"))
+ctl.Button("Bells", bells.Bang)
+ctl.Select("Preset", []string{"warm", "bright"}, func(i int) { /* switch */ })
+ctl.Meter("Master", mix.Master())
+
+go ctl.Serve("localhost:8080") // ":8080" to reach it from other devices
+_ = p.Listen()
+```
+
+| Control | |
+|---|---|
+| `Fader(name, min, max, curve, target, options...)` | A vertical fader. `panel.Linear` moves in even steps (levels in dB, amounts), `panel.Exp` in even steps per octave (frequencies, times; the range above 0) |
+| `Knob(...)` | The same as a knob, dragged up and down |
+| `Toggle(name, target)` | On (1) and off (0): a pedal, a mute, a freeze |
+| `Button(name, func())` | Calls the function every time it is pressed: start a sample, go to the next scene |
+| `Select(name, options, func(i int))` | A choice between options |
+| `Meter(name, module)` | The peak and RMS level of the output of a module: a synth, a mixer strip, the master |
+| `Section(name)` | Starts a group: the controls after it are shown together |
+
+**Targets**: `panel.Message(module, key)` sends the value as a message (`"cutoff"`, `"volume"`,
+`"send.hall"`, `"sustain"`, any setting a module takes by name), `panel.Input(module, index)` to a
+value input, `panel.Func(f)` calls a function, `panel.Targets(...)` sends to several.
+
+**Options**: `Default(v)` (the start value, sent when the patch starts, and where a double click
+returns; the minimum otherwise), `Unit("Hz")`, `Step(1)` (round to steps), `Smooth(seconds)`
+(glide to a new value instead of jumping, evenly along the travel: through the octaves on an
+exponential fader).
+
+**Threads**: the panel is a control module in the patch. Changes (from the page, or from your own
+code on any goroutine with `ctl.Param("Cutoff").Set(v)` and `Press()`) are applied on the audio
+thread at the next control tick, and the audio thread never waits for them; button functions and
+select functions run there too. Declare the controls before the patch plays.
+
+**MIDI**: `ctl.MIDI(kb)` connects a keyboard (from `keyboard`): the control changes (CC) of the
+controller move the controls bound to them. Bind in code, `ctl.Param("Cutoff").BindCC(0, 74)`
+(channel 1-16, 0 for any), or learn: press **MIDI learn** on the page, tap a control and move a
+knob or fader on the controller (`Param.Learn()` from code). A controller moves one control: binding
+it again takes it from the control that had it. A fader or knob follows the controller over its
+travel (by its curve), a toggle is on from 64 up, a button is pressed when the controller goes up
+past 64, a select picks an option over the travel. `panel.Pickup()` makes a fader or knob wait
+until the controller reaches its value (soft takeover), so it doesn't jump after it was moved on the
+page. `Bindings`, `SetBindings`, `SaveBindings(path)` and `LoadBindings(path)` keep the mapping of a
+controller; `ctl.ControlChange(channel, controller, value)` takes control changes from any other
+MIDI source.
+
+**Snapshots**: `ctl.Snapshot()` returns every value by name, `Restore(values)` sets them,
+`Save(path)` and `Load(path)` keep them in a JSON file: presets of the patch.
+
+**The page** follows the system's light or dark mode and works with touch (several faders at once
+on a tablet). Drag a fader or knob (Shift for fine steps on a knob), use the arrow keys on a
+focused fader, double click to return to the default. Every open page shows the same values.
+`ctl.Handler()` gives the page and its JSON API as an `http.Handler` to serve yourself:
+
+| Route | |
+|---|---|
+| `GET /` | The page |
+| `GET /api/panel` | The controls: kinds, ranges, options and values |
+| `POST /api/set` | `{"name": "Cutoff", "value": 2400}` sets a control |
+| `POST /api/press` | `{"name": "Bells"}` presses a button |
+| `GET /api/events` | The values and meters as they change (server sent events, 20 times a second) |
+| `GET /api/snapshot`, `POST /api/snapshot` | All values, and restoring them |
+| `POST /api/learn` | `{"name": "Cutoff"}` arms a control for MIDI learn, `{"name": ""}` stops |
+| `POST /api/unbind` | `{"name": "Cutoff"}` takes its controller from a control |
+
+The server is plain `net/http`: there is no login, so serve it on `localhost` unless you trust the
+network it is on.
+
 ## gen
 
 `modules/controls/gen`

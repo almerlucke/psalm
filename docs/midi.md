@@ -158,3 +158,10 @@ synth name, a preset name or both (`wavetable glass`) switch too, and `list` sho
 piano takes the velocity itself and has its pedals, fm and dx take it too; the other synths play
 the velocity as the amplitude, and the sustain pedal holds their notes (`HoldNotes`).
 `-monitor` prints every event.
+
+A control panel runs alongside on a web page, `http://localhost:8080` (`-addr` to move it, empty to
+leave it out): the sound (every synth and preset, previous and next, all notes off), the
+transposition, the velocity curve, the volume and the hall, and meters. A switch from the keyboard
+or the terminal moves the panel along. Press MIDI learn on the page, tap a control and turn a knob
+on the keyboard: from then on the knob moves it; the bindings are kept in `keyboard-midi.json`
+(`-bindings`). See [panel](controls.md#panel).

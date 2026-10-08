@@ -1,6 +1,6 @@
 # Arranging in psalm: a tutorial
 
-Thirteen short programs, one idea each, from a single note to a whole song. Every step plays: you
+Fourteen short programs, one idea each, from a single note to a whole song, and then playing it live from a control panel. Every step plays: you
 hear what the code does while you read it. Read them in order, each builds on the one before.
 
 Run a step from the root of the repository (the steps load sounds from `assets`):
@@ -33,6 +33,7 @@ steps leave that to the small [`tutorial`](tutorial/tutorial.go) package (`tutor
 | [11-streams](11-streams/main.go) | Parts played by generators (`arrange.Stream`): rhythm and message generators, section parameters, streams driving any module | A glass melody wandering over a pentatonic scale, never the same twice |
 | [12-tuning](12-tuning/main.go) | Tuning a part (`score.Config.Tuning`): equal temperament and just intonation | The same organ chords in both: listen for the beating that disappears |
 | [13-song](13-song/main.go) | Everything together | A short song: intro, verse, chorus and outro |
+| [14-panel](14-panel/main.go) | A control panel on a web page (`panel`): faders, knobs, toggles, buttons, selects and meters bound to the patch, curves and smoothing, the threads, presets, MIDI learn | The loop of the earlier steps, changed live from a browser or a phone: the filter, the levels, the tempo, the arpeggio |
 
 ## The concepts at a glance
 
@@ -56,8 +57,13 @@ call functions at a moment (`At`, `OnSection`, `OnBar`) or turn modules on per s
 
 **The mixer** (`modules/mixer`): channels, buses and groups; every setting can be automated.
 
+**The panel** (`modules/controls/panel`): controls declared next to the patch and bound to its
+settings (`panel.Message`, `panel.Input`, `panel.Func`), served as a web page (`Serve`), movable
+from a MIDI controller (MIDI learn), with presets (`Save`, `Load`).
+
 ## Further
 
 - [docs/controls.md](../../../docs/controls.md): `score` and `arrange` in full
 - [docs/harmony.md](../../../docs/harmony.md): chords, keys, the harmony check and tunings
+- [docs/controls.md#panel](../../../docs/controls.md#panel): the panel in full, its page and its API
 - The big examples use all of this: `cmd/examples/showcase` (an orchestral piece), `cmd/examples/creation` (the seven days of Genesis), `cmd/examples/piano` (a tour of the piano)

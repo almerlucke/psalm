@@ -7,8 +7,14 @@
 //
 // The notes play with the velocity curve chosen (-curve). The piano takes the velocity itself and
 // has its pedals (sustain with half pedaling, sostenuto, soft); fm and dx take the velocity too,
-// the other synths play it as the amplitude, and the sustain pedal holds their notes. Every MIDI event is printed with
-// -monitor.
+// the other synths play it as the amplitude, and the sustain pedal holds their notes. Every MIDI
+// event is printed with -monitor.
+//
+// A control panel runs alongside on a web page (http://localhost:8080, -addr to move it, empty to
+// leave it out): the sound (every synth and preset, previous and next, all notes off), the
+// transposition and the velocity curve, the volume and the hall, and meters. Press MIDI learn on
+// the page, tap a control and turn a knob on the keyboard: the knob moves it from then on (the
+// bindings are kept in keyboard-midi.json).
 //
 //	go run ./cmd/examples/keyboard -list                  the MIDI devices
 //	go run ./cmd/examples/keyboard                        the first keyboard, through portaudio
@@ -37,6 +43,7 @@ import (
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/midi"
 	"github.com/almerlucke/psalm/modules/controls/keyboard"
+	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/dx"
@@ -112,6 +119,8 @@ func main() {
 	transpose := flag.Int("transpose", 0, "semitones")
 	monitor := flag.Bool("monitor", true, "print every MIDI event")
 	buffer := flag.Int("buffer", 256, "the buffer size (the latency) with portaudio")
+	addr := flag.String("addr", "localhost:8087", "the address of the control panel page (empty: no panel)")
+	bindingsFile := flag.String("bindings", "keyboard-midi.json", "the file the MIDI learn bindings of the panel are kept in")
 	flag.Parse()
 
 	if *list {
@@ -176,7 +185,8 @@ func main() {
 	defer p.Close()
 
 	instruments := newInstruments(p)
-	p.Out(mixInstruments(p, instruments))
+	mix := mixInstruments(p, instruments)
+	p.Out(mix.Master())
 
 	// the instrument and preset to start with
 	current := slices.IndexFunc(instruments, func(in *instrument) bool { return in.name == *synth })
@@ -202,27 +212,55 @@ func main() {
 	// change switches to (as MIDI has it: keyboards send it along with their program changes), the
 	// program change its preset (here, on the audio thread)
 	kb := keyboard.New(merged{input, commands}, in.keys(cfg), synthOf(in))
+
+	// every sound (a synth and a preset), in order, for the panel
+	type sound struct{ synth, preset int }
+	var sounds []sound
+	var labels []string
+	for i, in := range instruments {
+		for j, name := range in.presets {
+			sounds = append(sounds, sound{i, j})
+			labels = append(labels, in.name+" · "+name)
+		}
+	}
+	soundIndex := func(synth, preset int) int {
+		return slices.Index(sounds, sound{synth, preset})
+	}
+	var soundSelect *panel.Param // the sound on the panel, following every switch
+
+	// switchTo plays another synth and preset (on the audio thread): the notes of the one left are
+	// released, the pedals of a piano left come up
+	switchTo := func(synth, preset int, tick psalm.CtrlTick) {
+		in := instruments[synth]
+		preset = (preset%len(in.presets) + len(in.presets)) % len(in.presets)
+		if synth == current && int64(preset) == in.selected.Load() {
+			return
+		}
+		old := instruments[current]
+		kb.AllNotesOff(tick)
+		if old.name == "piano" {
+			synthOf(old).Receive(psalm.Message{"sustain": 0.0, "sostenuto": 0.0, "soft": 0.0}, 0)
+		}
+		current = synth
+		in.selected.Store(int64(preset))
+		kb.SetConfig(in.keys(cfg))
+		kb.SetTargets(synthOf(in))
+		playing.Store(int64(current))
+		if soundSelect != nil {
+			soundSelect.Set(float64(soundIndex(synth, preset)))
+		}
+		log.Printf("%s: %s", in.name, in.presets[preset])
+	}
+
+	// bank select chooses the synth the next program change switches to (as MIDI has it: keyboards
+	// send it along with their program changes), the program change its preset
 	bank := current
 	kb.OnControl(midi.CCBankSelect, func(value float64, _ psalm.CtrlTick) {
 		if b := int(value*127 + 0.5); b < len(instruments) {
 			bank = b
 		}
 	})
-	kb.OnProgram(func(program int, tick psalm.CtrlTick) {
-		old := instruments[current]
-		kb.AllNotesOff(tick)
-		if old.name == "piano" {
-			// the pedals of the piano left come up, its notes ring out
-			synthOf(old).Receive(psalm.Message{"sustain": 0.0, "sostenuto": 0.0, "soft": 0.0}, 0)
-		}
-		current = bank
-		in := instruments[current]
-		in.selected.Store(int64(program % len(in.presets)))
-		kb.SetConfig(in.keys(cfg))
-		kb.SetTargets(synthOf(in))
-		playing.Store(int64(current))
-		log.Printf("%s: %s", in.name, in.presets[in.selected.Load()])
-	})
+	kb.OnProgram(func(program int, tick psalm.CtrlTick) { switchTo(bank, program, tick) })
 	if *monitor {
 		kb.OnEvent(func(e midi.Event, _ psalm.CtrlTick) {
 			if k := e.Message.Kind(); k != midi.Clock && k != midi.ActiveSensing {
@@ -231,6 +269,60 @@ func main() {
 		})
 	}
 	kb.AddTo(p)
+
+	// --- the control panel: the sound, the keyboard and the mix on a web page, its controls
+	// movable from the knobs of the keyboard too (MIDI learn on the page) ---
+
+	if *addr != "" {
+		ctl := panel.New(p, "Keyboard")
+
+		ctl.Section("Sound")
+		soundSelect = ctl.Select("Sound", labels, func(i int) { switchTo(sounds[i].synth, sounds[i].preset, psalm.CtrlTick{}) },
+			panel.Default(float64(soundIndex(current, int(in.selected.Load())))))
+		step := func(by int) {
+			next := (soundIndex(current, int(instruments[current].selected.Load())) + by + len(sounds)) % len(sounds)
+			switchTo(sounds[next].synth, sounds[next].preset, psalm.CtrlTick{})
+		}
+		ctl.Button("Previous", func() { step(-1) })
+		ctl.Button("Next", func() { step(1) })
+		ctl.Button("All notes off", func() {
+			kb.AllNotesOff(psalm.CtrlTick{})
+			synthOf(instruments[current]).Receive(psalm.Message{"sustain": 0.0, "sostenuto": 0.0, "soft": 0.0}, 0)
+		})
+
+		ctl.Section("Keys")
+		ctl.Fader("Transpose", -24, 24, panel.Linear, panel.Func(func(v float64) {
+			cfg.Transpose = int(v)
+			kb.SetConfig(instruments[current].keys(cfg))
+		}), panel.Default(float64(*transpose)), panel.Step(1), panel.Unit("st"))
+		curves := []keyboard.Curve{keyboard.Soft, keyboard.Linear, keyboard.Hard}
+		curveNames := []string{"soft", "linear", "hard"}
+		if !slices.Contains(curves, cfg.Curve) { // an exponent of its own from -curve
+			curves = append(curves, cfg.Curve)
+			curveNames = append(curveNames, *curve)
+		}
+		ctl.Select("Velocity curve", curveNames, func(i int) {
+			cfg.Curve = curves[i]
+			kb.SetConfig(instruments[current].keys(cfg))
+		}, panel.Default(float64(slices.Index(curves, cfg.Curve))))
+
+		ctl.Section("Mix")
+		ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(mix.Master(), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03))
+		ctl.Fader("Hall", -40, 6, panel.Linear, panel.Message(mix.Strip("hall"), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03))
+		ctl.Meter("Master", mix.Master())
+		ctl.Meter("Hall out", mix.Strip("hall"))
+
+		ctl.MIDI(kb)
+		if err := ctl.KeepBindings(*bindingsFile); err != nil {
+			log.Fatal(err)
+		}
+		go func() {
+			if err := ctl.Serve(*addr); err != nil {
+				log.Fatal(err)
+			}
+		}()
+		log.Printf("the control panel: http://%s", *addr)
+	}
 
 	go readCommands(commands, max(*channel, 1), instruments, &playing)
 
@@ -275,10 +367,9 @@ func newInstruments(p *psalm.Psalm) []*instrument {
 	}, synthKeys, 0.3))
 }
 
-// mixInstruments puts the synths on a mixer with the hall and returns its output: idle synths
-// rest, so all can be there. The presets are calibrated to the same loudness, every channel gets
-// the same volume
-func mixInstruments(p *psalm.Psalm, instruments []*instrument) psalm.Modular {
+// mixInstruments puts the synths on a mixer with the hall: idle synths rest, so all can be there.
+// The presets are calibrated to the same loudness, every channel gets the same volume
+func mixInstruments(p *psalm.Psalm, instruments []*instrument) *mixer.Mixer {
 	mix := mixer.New(p)
 	vienna := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/Musikvereinsaal.wav"))
 	mix.Bus("hall", mixer.StripConfig{}, convolver.New(vienna, convolver.Config{PartitionSize: 512, Mix: 1, Gain: 0.7}).AddTo(p))
@@ -287,7 +378,7 @@ func mixInstruments(p *psalm.Psalm, instruments []*instrument) psalm.Modular {
 			mix.Channel(in.name+"/"+preset, in.synths[preset], mixer.StripConfig{Volume: -3.5, Sends: map[string]float64{"hall": in.hall}})
 		}
 	}
-	return mix.Master()
+	return mix
 }
 
 func names(instruments []*instrument) []string {

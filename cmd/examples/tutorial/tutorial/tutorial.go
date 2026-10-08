@@ -31,6 +31,9 @@ func New(bpm float64) *psalm.Psalm {
 	return psalm.New(paengine.New(psalm.SampleRate(), psalm.BufferSize()))
 }
 
+// Rendering tells whether the step renders to a file (-render) instead of playing
+func Rendering() bool { return *renderTo != "" }
+
 // Play sends a module to the speakers and plays until you stop it (Ctrl-C), or with -render writes
 // seconds of it (and a few seconds for the sound to ring out) to the file
 func Play(p *psalm.Psalm, out psalm.Modular, seconds float64) {
