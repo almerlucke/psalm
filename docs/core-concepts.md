@@ -76,6 +76,8 @@ Useful methods on every module:
 | `AddTo(p)` | Adds the module to a patch (required) |
 | `In(...)` | Connects audio outputs of other modules to this module's inputs |
 | `ValueIn(...)` | Connects value outputs of other modules to this module's value inputs |
+| `Disconnect(out, to, in)` / `ValueDisconnect(out, to, in)` | Takes an audio or value connection away |
+| `DisconnectAll()` | Takes every connection of the module away, in and out, audio and values |
 | `SetID(id)` / `ID()` | Name the module (also used by `poly` for note off) |
 | `SetMuted(bool)` | Muted modules still run but output silence |
 | `Receive(value, index)` | Receive a plain value on a value input |
@@ -102,6 +104,41 @@ When the indices are left out, the output index is 0 and the input index counts 
 one input, always give `0, 0` explicitly.
 
 `p.Out(...)` connects modules to the patch output the same way.
+
+### Changing a patch while it plays
+
+Connections can be taken away again, and modules taken out of a patch:
+
+```go
+synth.Disconnect(0, reverb, 0)      // synth output 0 no longer into reverb input 0
+lfo.ValueDisconnect(0, filter, 1)   // the value connection
+module.DisconnectAll()              // everything in and out, audio and values
+p.Remove(module)                    // out of the patch: disconnected, no more control ticks
+```
+
+`Remove` works on a patch within the patch (a `psalm.Patch`) too: it keeps its own modules and
+connections, so it can be added again later (`sub.AddTo(p)` and connect it), or to another patch.
+A module that is removed stops at once: a sound it was making is cut off.
+
+While a patch plays, the audio thread walks its modules and connections every buffer, so change
+them there: `p.Do(f)` runs `f` between two buffers (at once while the patch is stopped or renders
+offline). Everything one `f` does happens in the same pause, so the patch never plays half a
+change:
+
+```go
+p.Do(func() {
+	p.Remove(oldLead)
+	newLead.AddTo(p)
+	reverb.In(newLead)
+})
+```
+
+`Do` can be called from any goroutine (a web page, a MIDI handler, a timer); keep the changes
+short, the audio waits for them. `p.Restart()` sets the patch back to its start (see
+[controls](controls.md#panel)).
+
+A patch can also play within another one with a clock and a tempo of its own: `p.NewSub()`, see
+[playlist](playlist.md#patches-within-a-patch).
 
 ## Values and messages
 

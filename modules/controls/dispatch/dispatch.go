@@ -62,6 +62,12 @@ func (d *Dispatch) AddEvents(events ...*Event) *Dispatch {
 	return d
 }
 
+// Restart dispatches the events done again, from the start of the patch (psalm.Restarter)
+func (d *Dispatch) Restart() {
+	d.events = append(d.done, d.events...)
+	d.done = d.done[:0:0]
+}
+
 func (d *Dispatch) CtrlTick(tick psalm.CtrlTick) {
 	for len(d.events) > 0 {
 		event := d.events[0]

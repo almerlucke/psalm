@@ -40,6 +40,9 @@ type Modular interface {
 	In(...any) Modular
 	ValueConnect(int, Modular, int)
 	ValueIn(...any) Modular
+	Disconnect(int, Modular, int) bool
+	ValueDisconnect(int, Modular, int) bool
+	DisconnectAll()
 	AddTo(Patcher) Modular
 	Config() Config
 	CtrlTick(CtrlTick)
@@ -56,6 +59,7 @@ type Module struct {
 	inputs       []*Socket
 	outputs      []*Socket
 	valueOutputs map[int][]*Connection
+	valueInputs  []valueLink // who sends values to the module, to disconnect it
 	config       Config
 	env          *Env          // the environment of the patch the module belongs to
 	rng          *rand.Rand    // the module's own random stream, taken on first use
@@ -87,6 +91,23 @@ type TailInputs interface {
 type Latent interface {
 	SignalLatency() int
 }
+
+// valueLink is a value connection seen from the module receiving: the module sending, its output
+// and the input
+type valueLink struct {
+	from    Modular
+	out, in int
+}
+
+// moduleOf returns the Module of a modular (every module embeds one), nil for none
+func moduleOf(m Modular) *Module {
+	if b, ok := m.(interface{ base() *Module }); ok {
+		return b.base()
+	}
+	return nil
+}
+
+func (m *Module) base() *Module { return m }
 
 // silence is the level below which audio counts as silent (-120 dB)
 const silence = 1e-6
@@ -315,6 +336,71 @@ func (m *Module) In(args ...any) Modular {
 
 func (m *Module) ValueConnect(outIndex int, to Modular, inIndex int) {
 	m.valueOutputs[outIndex] = append(m.valueOutputs[outIndex], &Connection{Index: inIndex, Module: to})
+	if b := moduleOf(to); b != nil {
+		b.valueInputs = append(b.valueInputs, valueLink{from: m.self, out: outIndex, in: inIndex})
+	}
+}
+
+// Disconnect takes away the audio connection from an output of the module to an input of another
+// (every one, when they were connected more than once), and tells whether there was one. Change
+// the connections of a patch that plays on the audio thread: with Psalm.Do
+func (m *Module) Disconnect(outIndex int, to Modular, inIndex int) bool {
+	if outIndex < 0 || outIndex >= len(m.outputs) || inIndex < 0 || inIndex >= to.NumInputs() {
+		return false
+	}
+	out := m.outputs[outIndex].RemoveConnection(to, inIndex)
+	in := to.Input(inIndex).RemoveConnection(m.self, outIndex)
+	return out || in
+}
+
+// ValueDisconnect takes away the value connection from a value output of the module to a value
+// input of another, and tells whether there was one
+func (m *Module) ValueDisconnect(outIndex int, to Modular, inIndex int) bool {
+	conns := m.valueOutputs[outIndex]
+	kept := make([]*Connection, 0, len(conns))
+	for _, c := range conns {
+		if c.Module != to || c.Index != inIndex {
+			kept = append(kept, c)
+		}
+	}
+	if len(kept) == len(conns) {
+		return false
+	}
+	m.valueOutputs[outIndex] = kept // a new list: a Send going on keeps the one it has
+	if b := moduleOf(to); b != nil {
+		links := make([]valueLink, 0, len(b.valueInputs))
+		for _, l := range b.valueInputs {
+			if l.from != m.self || l.out != outIndex || l.in != inIndex {
+				links = append(links, l)
+			}
+		}
+		b.valueInputs = links
+	}
+	return true
+}
+
+// DisconnectAll takes away every connection of the module: the audio coming in and going out, the
+// values it sends and the values sent to it. The module is on its own afterwards, ready to be
+// removed from its patch (Patch.Remove does both) or connected elsewhere
+func (m *Module) DisconnectAll() {
+	for i, in := range m.inputs {
+		for _, c := range in.Connections {
+			c.Module.Disconnect(c.Index, m.self, i)
+		}
+	}
+	for i, out := range m.outputs {
+		for _, c := range out.Connections {
+			m.Disconnect(i, c.Module, c.Index)
+		}
+	}
+	for i, conns := range m.valueOutputs {
+		for _, c := range conns {
+			m.ValueDisconnect(i, c.Module, c.Index)
+		}
+	}
+	for _, l := range m.valueInputs {
+		l.from.ValueDisconnect(l.out, m.self, l.in)
+	}
 }
 
 func (m *Module) ValueIn(args ...any) Modular {

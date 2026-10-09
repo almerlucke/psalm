@@ -10,7 +10,7 @@
 // the other synths play it as the amplitude, and the sustain pedal holds their notes. Every MIDI
 // event is printed with -monitor.
 //
-// A control panel runs alongside on a web page (http://localhost:8080, -addr to move it, empty to
+// A control panel runs alongside on a web page (http://localhost:8087, -addr to move it, empty to
 // leave it out): the sound (every synth and preset, previous and next, all notes off), the
 // transposition and the velocity curve, the volume and the hall, and meters. Press MIDI learn on
 // the page, tap a control and turn a knob on the keyboard: the knob moves it from then on (the

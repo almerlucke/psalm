@@ -79,6 +79,13 @@ func (s *Streamer) SetGain(gain float64) {
 	s.gain = gain
 }
 
+// Restart starts the part again from the start of the song (psalm.Restarter): the stream of the
+// first section is asked for again
+func (s *Streamer) Restart() {
+	s.form.Transport().restart()
+	s.section, s.loop, s.stream, s.next = -1, -1, nil, 0
+}
+
 // number returns a number or the next value of a generator
 func number(v any, otherwise float64) float64 {
 	switch n := v.(type) {
@@ -103,7 +110,7 @@ func number(v any, otherwise float64) float64 {
 func (s *Streamer) CtrlTick(tick psalm.CtrlTick) {
 	t := tick.TickTimestamp - 1
 	ppq := s.Config().PPQ
-	pos := s.form.PositionAt(t, ppq)
+	pos := s.form.Transport().At(t, ppq)
 	if pos.Ended {
 		s.stream = nil
 		return

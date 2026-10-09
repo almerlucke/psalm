@@ -429,7 +429,33 @@ ringing sound finishes naturally.
 **Events**: `OnSection(f)` at the start of every section, `OnBar(f)` at every bar, with a
 `Position` (song beat and bar, the section, `SectionBar()`, `Progress` through the section and the
 `Loop` count). `PrintSections(true)` prints sections as they start, `PositionAt(tick)` returns the
-position at any tick and `form.Schedule()` the start time of every section.
+position at any tick of the song as written and `form.Schedule()` the start time of every section.
+
+**The transport**: `form.Transport()` is the song clock of the form. It says where the song is and
+decides which section comes next, and that can change while the song plays: every part of the form
+follows it (parts, streams, lanes, the tempo, events). Without changes it plays the sections in
+order, exactly as before.
+
+```go
+tr := form.Transport()
+tr.SetEnabled("Bridge", false) // switched off: skipped, until it is on again (or queued)
+tr.Queue("Chorus")             // play the chorus next; Queue("") takes it back
+tr.SetRepeat(true)             // the section playing again and again
+tr.SetJump(arrange.AtBar)      // a queued section starts at the next bar, not at the end of the section
+tr.Controls(ctl, "Song")       // all of it on a panel
+```
+
+A queued section starts from its first bar, on a bar line, so the song stays in time; going back
+(or repeating) counts as a loop, so streams start again. A section queued before the song starts
+is where it starts; one queued after a song that doesn't loop has ended starts it again at once.
+`Playing()` returns the section playing and how far it is, `Order()` the sections a pass plays now;
+`Duration()` and `Schedule()` of the arrangement leave the sections that are off out (a render
+plays the song without them). All of it can be called from any goroutine.
+
+`tr.Controls(ctl, name)` adds a cue list to a panel (a tile per section: tap to play it next, the
+dot turns it on or off, the section playing shows how far it is), a Repeat switch (`"<name>
+repeat"`) and a Jump at choice (`"<name> jump"`). They are kept in presets. Every tile is a button
+named `"<name>/<section>"` that a MIDI pad can play (MIDI learn on the page, or `BindNote`).
 
 ## panel
 
@@ -453,7 +479,7 @@ ctl.Button("Bells", bells.Bang)
 ctl.Select("Preset", []string{"warm", "bright"}, func(i int) { /* switch */ })
 ctl.Meter("Master", mix.Master())
 
-go ctl.Serve("localhost:8080") // ":8080" to reach it from other devices
+go ctl.Serve("localhost:8087") // ":8087" to reach it from other devices
 _ = p.Listen()
 ```
 
@@ -477,6 +503,13 @@ to)`, `grid.SetPattern` work from any goroutine;
 whatever plays the grid tells the page `SetPlaying`, `SetPlayhead` and `SetLength` (per row). Grids
 are in snapshots (as `name/pattern/row/step/field`, the cells away from their defaults). The step
 sequencer below plays one.
+
+**Cue lists**: `ctl.Cues(name, cuer)` adds a row of tiles for anything with named cues, one
+playing and one asked for next (a `panel.Cuer`: `CueNames`, `CueState`, `QueueCue`, `EnableCue`).
+Tap a tile to ask for it next, tap its dot to turn it on or off. Which cues are on is in snapshots
+(as `name/cue`, 1 or 0). Every tile is a button too, named `"<list>/<cue>"`: tap a tile in MIDI
+learn mode and hit a pad, or `ctl.Param("Song/Chorus").BindNote(0, 36)` (`cues.Tile(i)` is the
+same button). The song transport of `arrange` is one (`Transport.Controls`).
 
 **Labels**: `panel.Label("M")` shows a short text on the page instead of the name (names have to
 be unique, labels can repeat).
@@ -503,12 +536,32 @@ it again takes it from the control that had it. A fader or knob follows the cont
 travel (by its curve), a toggle is on from 64 up, a button is pressed when the controller goes up
 past 64, a select picks an option over the travel. `panel.Pickup()` makes a fader or knob wait
 until the controller reaches its value (soft takeover), so it doesn't jump after it was moved on the
-page. `Bindings`, `SetBindings`, `SaveBindings(path)` and `LoadBindings(path)` keep the mapping of a
-controller; `ctl.ControlChange(channel, controller, value)` takes control changes from any other
-MIDI source.
+page. Buttons and toggles take notes too, for pads that send notes: `BindNote(channel, note)`, or
+MIDI learn with a pad (a note on presses a button, switches a toggle over; `ctl.NoteOn(channel,
+note, velocity)` takes notes from any other source). Binding a controller or note takes it from
+the control that had it, also when one of the two listens on any channel. `Bindings`,
+`SetBindings`, `SaveBindings(path)` and `LoadBindings(path)` keep the mapping of a controller;
+`ctl.ControlChange(channel, controller, value)` takes control changes from any other MIDI source.
 
 **Snapshots**: `ctl.Snapshot()` returns every value by name, `Restore(values)` sets them,
 `Save(path)` and `Load(path)` keep them in a JSON file: presets of the patch.
+
+**Start and stop**: a panel made for a patch that plays through a sound card has a Start/Stop
+button in the page's header (the space bar does the same). Stopping stands the whole patch still
+where it is (the song, the sequencers, a ringing note) and starting goes on from there; the meters
+show silence while it stands. Changes made while it is stopped are applied when it plays again.
+**Restart** next to it goes back to the start: the song, the parts, the streams and the step
+sequencers play from the beginning (a section asked for next is forgotten, the conditions of the
+steps count from the start), sounds that ring go on ringing. Pressed while stopped, the patch
+starts from the beginning when it plays again. `ctl.SetPlayer(pl)` gives the buttons to anything
+with `AudioStart`, `AudioStop` and `Running` (and `Restart` for the restart button; `nil` takes them
+away). `psalm.Psalm`'s `AudioStart` and `AudioStop` can be called from any goroutine and do nothing
+when it already plays or stands still; `Running()` tells which.
+
+`p.Restart()` (from any goroutine) sets the clock of the patch back to 0 at the next buffer and
+calls `Restart()` on every module that keeps time of its own: a `psalm.Restarter`, also in patches
+within the patch. The arrangement, the parts (`score.Sequencer`), the streams, the step sequencer
+and `dispatch` are; a module of your own that counts time can be one too.
 
 **Presets**: `ctl.Presets("presets")` gives the panel a folder for setups (made when it isn't
 there), a JSON file each. The page then has a presets bar: type a name and Save, pick one and Load
@@ -534,6 +587,8 @@ focused fader, double click to return to the default. Every open page shows the 
 | `POST /api/presets` | `{"action": "save", "name": "Groove"}` (or `"load"`, `"delete"`), answers with the names |
 | `POST /api/learn` | `{"name": "Cutoff"}` arms a control for MIDI learn, `{"name": ""}` stops |
 | `POST /api/unbind` | `{"name": "Cutoff"}` takes its controller from a control |
+| `POST /api/audio` | `{"running": false}` stops the sound of the patch, `true` starts it again, `{"restart": true}` goes back to the start |
+| `POST /api/cues` | `{"name": "Song", "queue": 2}` asks for a cue next (-1 takes it back), `{"name": "Song", "cue": 3, "on": false}` switches one off |
 | `POST /api/grid` | `{"name": "Beat", "pattern": 1, "set": [[pattern, row, step, field, value], ...]}` sets cells of a grid and/or asks for a pattern |
 
 The server is plain `net/http`: there is no login, so serve it on `localhost` unless you trust the
@@ -562,7 +617,7 @@ seq := stepseq.New(p, grid, stepseq.Config{StepsPerBeat: 4, Swing: 0.56, Humaniz
 	Row("hat", stepseq.Sound(kit, "hat"), stepseq.Choke(1)).
 	Row("open", stepseq.Sound(kit, "open"), stepseq.Choke(1))
 seq.Controls(ctl) // swing, humanize, fill; level, length, mute and solo per row
-go ctl.Serve("localhost:8080")
+go ctl.Serve("localhost:8087")
 ```
 
 **A step** (the fields of the grid, `stepseq.Velocity` ... `stepseq.Condition` in code):

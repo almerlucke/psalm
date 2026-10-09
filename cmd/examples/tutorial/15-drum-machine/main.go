@@ -36,7 +36,7 @@
 //	ctl.Presets("drum-presets")                                                 // Save and Load on the page
 //	ctl.LoadPreset("Groove")                                                    // or from code
 //
-//	go run ./cmd/examples/tutorial/15-drum-machine          then open http://localhost:8080
+//	go run ./cmd/examples/tutorial/15-drum-machine          then open http://localhost:8087
 package main
 
 import (
@@ -57,7 +57,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "localhost:8080", "the address of the panel's page")
+	addr := flag.String("addr", "localhost:8087", "the address of the panel's page")
 	p := tutorial.New(100)
 
 	// --- the kit: samples in a sound bank, played by a drum synth by name ---

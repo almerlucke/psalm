@@ -9,7 +9,7 @@
 //	ctl.Toggle("Sustain", panel.Message(piano, "sustain"))
 //	ctl.Button("Bells", bells.Bang)
 //	ctl.Meter("Master", mix.Master())
-//	go ctl.Serve("localhost:8080")
+//	go ctl.Serve("localhost:8087")
 package panel
 
 import (
@@ -62,14 +62,35 @@ type Panel struct {
 	closed  bool
 
 	grids map[string]*Grid
-	order []item // the controls and grids in the order they were declared, for the page
+	cues  map[string]*Cues
+	order []item // the controls, grids and cue lists in the order they were declared, for the page
+
+	player Player // started and stopped from the page, nil for none
 	presetState
 }
 
-// item is a control or a grid, in the order of the panel
+// item is a control, a grid or a cue list, in the order of the panel
 type item struct {
 	param *Param
 	grid  *Grid
+	cues  *Cues
+}
+
+// taken tells whether a control, grid or cue list has a name (with the lock held)
+func (pn *Panel) taken(name string) bool {
+	_, ok := pn.byName[name]
+	return ok || pn.grids[name] != nil || pn.cues[name] != nil
+}
+
+// cueLists returns the cue lists in the order they were declared
+func (pn *Panel) cueLists() []*Cues {
+	var cs []*Cues
+	for _, it := range pn.items() {
+		if it.cues != nil {
+			cs = append(cs, it.cues)
+		}
+	}
+	return cs
 }
 
 // items returns the controls and grids in order
@@ -92,7 +113,7 @@ func (pn *Panel) Grids() []*Grid {
 
 // New creates a panel with a title and adds it to the patch
 func New(p psalm.Patcher, title string) *Panel {
-	pn := &Panel{Module: psalm.NewControl(), title: title, byName: map[string]*Param{}, buffer: -1}
+	pn := &Panel{Module: psalm.NewControl(), title: title, byName: map[string]*Param{}, buffer: -1, player: playerOf(p)}
 	pn.SetSelf(pn)
 	pn.AddTo(p)
 	return pn
@@ -125,7 +146,13 @@ func (pn *Panel) Params() []*Param {
 func (pn *Panel) add(par *Param) *Param {
 	pn.mu.Lock()
 	defer pn.mu.Unlock()
-	if _, ok := pn.byName[par.Name]; ok || pn.grids[par.Name] != nil {
+	return pn.addLocked(par, true)
+}
+
+// addLocked adds a control with the lock held; a control that isn't shown is part of another one
+// on the page (the tiles of a cue list), and can still be found by name and bound to MIDI
+func (pn *Panel) addLocked(par *Param, shown bool) *Param {
+	if pn.taken(par.Name) {
 		panic(fmt.Sprintf("panel: a control named %q twice", par.Name))
 	}
 	if pn.section == "" {
@@ -135,7 +162,9 @@ func (pn *Panel) add(par *Param) *Param {
 	par.Section = pn.section
 	par.panel = pn
 	pn.params = append(pn.params, par)
-	pn.order = append(pn.order, item{param: par})
+	if shown {
+		pn.order = append(pn.order, item{param: par})
+	}
 	pn.byName[par.Name] = par
 	return par
 }

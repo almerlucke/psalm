@@ -22,8 +22,8 @@ const updateInterval = 50 * time.Millisecond
 // Serve serves the panel as a web page on an address and blocks until Close; run it on its own
 // goroutine before playing the patch, and Close the panel when the program stops:
 //
-//	go ctl.Serve("localhost:8080") // this computer only
-//	go ctl.Serve(":8080")          // also from a phone or tablet on the same network
+//	go ctl.Serve("localhost:8087") // this computer only
+//	go ctl.Serve(":8087")          // also from a phone or tablet on the same network
 //	defer ctl.Close()
 //
 // Every page open on the panel shows the same values: a fader moved on one moves on the others
@@ -93,6 +93,10 @@ type server struct {
 //	POST /api/unbind    {"name": "Cutoff"} takes its controller from a control
 //	POST /api/grid      {"name": "Drums", "pattern": 1, "set": [[pattern, row, step, field, value], ...]}
 //	                    sets cells of a grid and/or asks for a pattern
+//	POST /api/cues      {"name": "Song", "queue": 2} asks for a cue next (-1 takes it back),
+//	                    {"name": "Song", "cue": 2, "on": false} switches one off
+//	POST /api/audio     {"running": false} stops the sound of the patch, true starts it, {"restart": true}
+//	                    sets it back to the start (see SetPlayer)
 //	GET  /api/presets   {"enabled": true, "names": [...]}: the saved setups (see Presets)
 //	POST /api/presets   {"action": "save" (or "load", "delete"), "name": "Groove"}
 func (pn *Panel) Handler() http.Handler {
@@ -230,6 +234,64 @@ func (pn *Panel) Handler() http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+	mux.HandleFunc("POST /api/cues", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name  string `json:"name"`
+			Queue *int   `json:"queue"`
+			Cue   *int   `json:"cue"`
+			On    *bool  `json:"on"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		cs := pn.CuesByName(req.Name)
+		if cs == nil {
+			http.Error(w, fmt.Sprintf("no cue list named %q", req.Name), http.StatusNotFound)
+			return
+		}
+		if req.Queue != nil {
+			cs.Queue(*req.Queue)
+		}
+		if req.Cue != nil && req.On != nil {
+			cs.Enable(*req.Cue, *req.On)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /api/audio", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Running *bool `json:"running"`
+			Restart bool  `json:"restart"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		pl := pn.Player()
+		if pl == nil {
+			http.Error(w, "the panel has no player to start and stop", http.StatusNotFound)
+			return
+		}
+		if req.Restart {
+			r, ok := pl.(restarter)
+			if !ok {
+				http.Error(w, "the player can't go back to the start", http.StatusNotFound)
+				return
+			}
+			r.Restart()
+		}
+		if req.Running != nil {
+			start := pl.AudioStop
+			if *req.Running {
+				start = pl.AudioStart
+			}
+			if err := start(); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		writeJSON(w, map[string]bool{"running": pl.Running()})
+	})
 	mux.HandleFunc("GET /api/events", pn.events)
 	return mux
 }
@@ -256,6 +318,9 @@ func writeJSON(w http.ResponseWriter, v any) {
 type description struct {
 	Title    string    `json:"title"`
 	Presets  bool      `json:"presets"` // whether the page can save and load setups
+	Player   bool      `json:"player"`  // whether the page can start and stop the sound
+	Running  bool      `json:"running"` // whether the sound plays
+	Restart  bool      `json:"restart"` // whether the page can set the sound back to its start
 	Sections []section `json:"sections"`
 }
 
@@ -278,6 +343,13 @@ type control struct {
 	Value   float64   `json:"value"`
 	CC      *Binding  `json:"cc,omitempty"`
 	Grid    *gridDesc `json:"grid,omitempty"`
+	Cues    *cuesDesc `json:"cues,omitempty"`
+}
+
+// cuesDesc is a cue list as the page sees it
+type cuesDesc struct {
+	Names []string `json:"names"`
+	State CueState `json:"state"`
 }
 
 // gridDesc is a grid as the page sees it: the cells in the order pattern, row, step, field
@@ -297,12 +369,21 @@ func (pn *Panel) describe() description {
 	sections := append([]string(nil), pn.sections...)
 	pn.mu.Unlock()
 	d := description{Title: pn.title, Presets: pn.presetsEnabled()}
+	if pl := pn.Player(); pl != nil {
+		d.Player, d.Running = true, pl.Running()
+		_, d.Restart = pl.(restarter)
+	}
 	index := map[string]int{}
 	for _, name := range sections {
 		index[name] = len(d.Sections)
 		d.Sections = append(d.Sections, section{Name: name})
 	}
 	for _, it := range pn.items() {
+		if cs := it.cues; cs != nil {
+			i := index[cs.Section]
+			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: CuesKind, Name: cs.Name, Cues: &cuesDesc{Names: cs.Names, State: cs.State()}})
+			continue
+		}
 		if g := it.grid; g != nil {
 			i := index[g.Section]
 			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: GridKind, Name: g.Name, Grid: &gridDesc{
@@ -317,8 +398,8 @@ func (pn *Panel) describe() description {
 			Kind: par.Kind, Name: par.Name, Min: par.Min, Max: par.Max, Curve: par.Curve, Step: par.Step,
 			Unit: par.Unit, Label: par.Label, Default: par.Default, Options: par.Options, Value: par.Value(),
 		}
-		if ch, ctl, ok := par.CC(); ok {
-			c.CC = &Binding{ch, ctl}
+		if b, ok := par.Binding(); ok {
+			c.CC = &b
 		}
 		d.Sections[i].Controls = append(d.Sections[i].Controls, c)
 	}
@@ -331,6 +412,12 @@ type update struct {
 	Meters map[string][2]float64  `json:"meters,omitempty"`
 	MIDI   *midiUpdate            `json:"midi,omitempty"` // when the bindings or learning changed
 	Grids  map[string]*gridUpdate `json:"grids,omitempty"`
+	Cues   map[string]CueState    `json:"cues,omitempty"`
+	Audio  *audioUpdate           `json:"audio,omitempty"` // when the sound starts or stops
+}
+
+type audioUpdate struct {
+	Running bool `json:"running"`
 }
 
 // gridUpdate is what changed of a grid: its cells (all of them, when any changed), the patterns,
@@ -369,14 +456,21 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 	sent := map[string]float64{}
 	midiSent := int64(-1)
 	gridsSent := map[string]*gridSent{}
+	cuesSent := map[string]string{}
+	runningSent := -1
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
 	for {
 		u := update{Values: map[string]float64{}, Meters: map[string][2]float64{}}
+		pl := pn.Player()
+		stopped := pl != nil && !pl.Running() // the meters stand still: show silence
 		for _, par := range pn.Params() {
 			switch par.Kind {
 			case MeterKind:
 				peak, rms := par.Levels()
+				if stopped {
+					peak, rms = -120, -120
+				}
 				u.Meters[par.Name] = [2]float64{peak, rms}
 			case ButtonKind:
 			default:
@@ -410,6 +504,26 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 				u.Grids[g.Name] = gu
 			}
 		}
+		for _, cs := range pn.cueLists() {
+			st := cs.State()
+			if key := fmt.Sprint(st); key != cuesSent[cs.Name] {
+				cuesSent[cs.Name] = key
+				if u.Cues == nil {
+					u.Cues = map[string]CueState{}
+				}
+				u.Cues[cs.Name] = st
+			}
+		}
+		if pl != nil {
+			running := 0
+			if pl.Running() {
+				running = 1
+			}
+			if running != runningSent {
+				runningSent = running
+				u.Audio = &audioUpdate{Running: running == 1}
+			}
+		}
 		if n := pn.bindings.Load(); n != midiSent {
 			midiSent = n
 			u.MIDI = &midiUpdate{Bindings: pn.Bindings()}
@@ -417,7 +531,7 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 				u.MIDI.Learning = l.Name
 			}
 		}
-		if len(u.Values) > 0 || len(u.Meters) > 0 || u.MIDI != nil || len(u.Grids) > 0 {
+		if len(u.Values) > 0 || len(u.Meters) > 0 || u.MIDI != nil || len(u.Grids) > 0 || len(u.Cues) > 0 || u.Audio != nil {
 			data, _ := json.Marshal(u)
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 				return

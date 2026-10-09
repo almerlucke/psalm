@@ -23,21 +23,33 @@ import (
 // 64 up (a latching button, or a fader; a momentary button holds it on while it is pressed), a
 // button is pressed when the controller goes up past 64 and a select picks an option over the
 // controller's travel.
+//
+// Buttons and toggles (and the tiles of a cue list) can be bound to notes too, for the pads of a
+// controller that send notes: a note on presses a button and switches a toggle over.
 
-// cc is a binding: the channel (1-16, 0 any) and the controller, packed for an atomic, 0 is none
-func packCC(channel, controller int) int32 { return int32(channel<<8|controller) + 1 }
+// pack packs a binding for an atomic, 0 is none
+func pack(b Binding) int32 {
+	note := 0
+	if b.Note {
+		note = 1
+	}
+	return int32(note<<16|b.Channel<<8|b.Controller) + 1
+}
 
-func unpackCC(code int32) (channel, controller int) {
+func unpack(code int32) Binding {
 	code--
-	return int(code >> 8), int(code & 0xff)
+	return Binding{Channel: int(code>>8) & 0xff, Controller: int(code & 0xff), Note: code>>16 != 0}
 }
 
 // MIDI connects a keyboard (from the keyboard package): its control changes move the controls bound
-// to them, on the audio thread
+// to them, its notes press the buttons bound to them, on the audio thread
 func (pn *Panel) MIDI(kb *keyboard.Keyboard) *Panel {
 	kb.OnEvent(func(e midi.Event, _ psalm.CtrlTick) {
-		if e.Message.Kind() == midi.ControlChange {
+		switch e.Message.Kind() {
+		case midi.ControlChange:
 			pn.ControlChange(e.Message.Channel(), e.Message.Controller(), e.Message.Value())
+		case midi.NoteOn:
+			pn.NoteOn(e.Message.Channel(), e.Message.Note(), e.Message.Velocity())
 		}
 	})
 	return pn
@@ -47,29 +59,52 @@ func (pn *Panel) MIDI(kb *keyboard.Keyboard) *Panel {
 // source: a control learning takes the controller, the controls bound to it follow. Call it from
 // one goroutine (the audio thread, as MIDI does)
 func (pn *Panel) ControlChange(channel, controller, value int) {
+	pn.receive(Binding{Channel: channel, Controller: controller}, value)
+}
+
+// NoteOn takes a note on (channel 1-16, note and velocity 0-127, 0 is a note off) from any MIDI
+// source: a button or toggle learning takes the note, the buttons bound to it are pressed and the
+// toggles switched over. Call it from the goroutine that calls ControlChange
+func (pn *Panel) NoteOn(channel, note, velocity int) {
+	if velocity > 0 {
+		pn.receive(Binding{Channel: channel, Controller: note, Note: true}, velocity)
+	}
+}
+
+// receive moves the controls bound to a controller or note
+func (pn *Panel) receive(in Binding, value int) {
 	pos := math.Max(0, math.Min(float64(value)/127, 1))
-	if learner := pn.learning.Swap(nil); learner != nil {
-		code := packCC(channel, controller)
-		for _, par := range pn.params {
-			if par != learner {
-				par.cc.CompareAndSwap(code, 0) // a controller moves one control
-			}
-		}
+	if learner := pn.learning.Load(); learner != nil && (!in.Note || learner.takesNotes()) && pn.learning.CompareAndSwap(learner, nil) {
+		code := pack(in)
+		pn.release(in, learner, pn.params) // a controller moves one control
 		learner.cc.Store(code)
 		learner.caught.Store(true)
 		learner.lastPos = pos
 		pn.bindings.Add(1)
 	}
 	for _, par := range pn.params {
-		code := par.cc.Load()
-		if code == 0 {
+		b, ok := par.Binding()
+		if !ok || b.Note != in.Note || b.Controller != in.Controller || (b.Channel != 0 && b.Channel != in.Channel) {
 			continue
 		}
-		ch, ctl := unpackCC(code)
-		if ctl != controller || (ch != 0 && ch != channel) {
-			continue
+		if in.Note {
+			par.fromNote()
+		} else {
+			par.fromMIDI(pos)
 		}
-		par.fromMIDI(pos)
+	}
+}
+
+// takesNotes tells whether a control can be bound to a note: buttons and toggles
+func (par *Param) takesNotes() bool { return par.Kind == ButtonKind || par.Kind == ToggleKind }
+
+// fromNote presses a button or switches a toggle over
+func (par *Param) fromNote() {
+	switch par.Kind {
+	case ButtonKind:
+		par.Press()
+	case ToggleKind:
+		par.set(1 - math.Round(par.Value()))
 	}
 }
 
@@ -110,17 +145,40 @@ func (par *Param) BindCC(channel, controller int) *Param {
 	if par.Kind == MeterKind {
 		panic(fmt.Sprintf("panel: a meter (%q) can't be moved by a controller", par.Name))
 	}
+	return par.bind(Binding{Channel: channel, Controller: controller})
+}
+
+// BindNote binds a note to a button or toggle (or the tile of a cue list): channel 1-16, or 0 for
+// any channel. A note on presses the button, switches the toggle over
+func (par *Param) BindNote(channel, note int) *Param {
+	if !par.takesNotes() {
+		panic(fmt.Sprintf("panel: only buttons and toggles can be bound to a note, not %q", par.Name))
+	}
+	return par.bind(Binding{Channel: channel, Controller: note, Note: true})
+}
+
+// bind binds a controller or note, taking it from a control that had it
+func (par *Param) bind(b Binding) *Param {
 	if par.panel != nil {
-		code := packCC(channel, controller)
-		for _, other := range par.panel.Params() {
-			if other != par {
-				other.cc.CompareAndSwap(code, 0)
-			}
-		}
+		par.panel.release(b, par, par.panel.Params())
 		par.panel.bindings.Add(1)
 	}
-	par.cc.Store(packCC(channel, controller))
+	par.cc.Store(pack(b))
 	return par
+}
+
+// release takes a controller or note from the controls (but one) bound to it: on the same channel,
+// or on any channel when one of the two is
+func (pn *Panel) release(b Binding, keep *Param, params []*Param) {
+	for _, par := range params {
+		code := par.cc.Load()
+		if par == keep || code == 0 {
+			continue
+		}
+		if o := unpack(code); o.Note == b.Note && o.Controller == b.Controller && (o.Channel == b.Channel || o.Channel == 0 || b.Channel == 0) {
+			par.cc.CompareAndSwap(code, 0)
+		}
+	}
 }
 
 // Unbind takes the controller from the control
@@ -131,18 +189,26 @@ func (par *Param) Unbind() {
 	}
 }
 
-// CC returns the controller bound to the control, and false when it has none
+// CC returns the controller bound to the control, and false when it has none (or a note)
 func (par *Param) CC() (channel, controller int, ok bool) {
-	code := par.cc.Load()
-	if code == 0 {
+	b, ok := par.Binding()
+	if !ok || b.Note {
 		return 0, 0, false
 	}
-	channel, controller = unpackCC(code)
-	return channel, controller, true
+	return b.Channel, b.Controller, true
 }
 
-// Learn arms the control: the next control change binds its controller to it. Learning another
-// control, or StopLearning, disarms it
+// Binding returns the controller or note bound to the control, and false when it has none
+func (par *Param) Binding() (Binding, bool) {
+	code := par.cc.Load()
+	if code == 0 {
+		return Binding{}, false
+	}
+	return unpack(code), true
+}
+
+// Learn arms the control: the next control change binds its controller to it (or the next note,
+// for a button or toggle). Learning another control, or StopLearning, disarms it
 func (par *Param) Learn() {
 	if par.Kind != MeterKind && par.panel != nil {
 		par.panel.learning.Store(par)
@@ -159,18 +225,19 @@ func (pn *Panel) StopLearning() {
 	pn.bindings.Add(1)
 }
 
-// Binding is a controller bound to a control
+// Binding is a controller (or a note) bound to a control
 type Binding struct {
-	Channel    int `json:"channel"` // 1-16, 0 is any
-	Controller int `json:"controller"`
+	Channel    int  `json:"channel"`        // 1-16, 0 is any
+	Controller int  `json:"controller"`     // the controller, or the note
+	Note       bool `json:"note,omitempty"` // a note instead of a controller
 }
 
-// Bindings returns the controller of every control that has one, by name
+// Bindings returns the controller or note of every control that has one, by name
 func (pn *Panel) Bindings() map[string]Binding {
 	bs := map[string]Binding{}
 	for _, par := range pn.Params() {
-		if ch, ctl, ok := par.CC(); ok {
-			bs[par.Name] = Binding{ch, ctl}
+		if b, ok := par.Binding(); ok {
+			bs[par.Name] = b
 		}
 	}
 	return bs
@@ -179,8 +246,8 @@ func (pn *Panel) Bindings() map[string]Binding {
 // SetBindings binds the controllers of a map from Bindings; the controls not in it are unbound
 func (pn *Panel) SetBindings(bs map[string]Binding) {
 	for _, par := range pn.Params() {
-		if b, ok := bs[par.Name]; ok && par.Kind != MeterKind {
-			par.cc.Store(packCC(b.Channel, b.Controller))
+		if b, ok := bs[par.Name]; ok && par.Kind != MeterKind && (!b.Note || par.takesNotes()) {
+			par.cc.Store(pack(b))
 		} else {
 			par.cc.Store(0)
 		}

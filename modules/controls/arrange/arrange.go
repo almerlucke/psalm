@@ -30,6 +30,8 @@ type Form struct {
 	Sections    []Section
 	BeatsPerBar float64
 	Loop        bool // the song starts again after the last section
+
+	transport *Transport
 }
 
 // NewForm creates a form of sections with 4 beats per bar that loops
@@ -72,7 +74,8 @@ func (f *Form) Section(name string) (Section, bool) {
 	return Section{}, false
 }
 
-// PositionAt returns the position at a tick (counted from the start of the patch) for a PPQ
+// PositionAt returns the position at a tick (counted from the start of the song) for a PPQ, when
+// the song plays as written: every section in order. The transport says where it is while it plays
 func (f *Form) PositionAt(t int64, ppq int) Position {
 	songTicks := int64(f.Beats() * float64(ppq))
 	var pos Position
@@ -86,6 +89,7 @@ func (f *Form) PositionAt(t int64, ppq int) Position {
 		pos.Ended = true
 	}
 	t %= songTicks
+	pos.Tick = t
 	pos.Beat = float64(t) / float64(ppq)
 	barBeats := f.BeatsPerBar
 	pos.Bar = int(pos.Beat / barBeats)
@@ -147,12 +151,18 @@ func (f *Form) Compile(name string, sc Score) []score.Note {
 	return notes
 }
 
-// Part compiles a part, creates a sequencer for it that loops with the song, connects it to the
-// synth and adds it to the patch
+// Part compiles a part, creates a sequencer for it that follows the transport of the form (in
+// order, looping with the song, skipping and repeating sections as the transport does), connects it
+// to the synth and adds it to the patch
 func (f *Form) Part(p psalm.Patcher, synth psalm.Modular, name string, cfg score.Config, sc Score) *score.Sequencer {
 	cfg.Loop = f.Loop
 	cfg.Length = f.Beats()
 	seq := score.NewSequencer(f.Compile(name, sc), cfg)
+	tr, ppq := f.Transport(), seq.Config().PPQ
+	seq.SetClock(func(tick int64) (int64, bool) {
+		pos := tr.At(tick, ppq)
+		return pos.Tick, !pos.Ended
+	})
 	seq.AddTo(p)
 	synth.ValueIn(seq)
 	return seq

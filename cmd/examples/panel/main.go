@@ -2,10 +2,10 @@
 //
 // A pad and an arpeggio loop through a filter. The panel next to the patch gives them faders,
 // knobs, toggles, buttons, a select and meters, and serves them as a page: open it in a browser on
-// this computer, or (with -addr :8080) on a phone or tablet on the same network, and play.
+// this computer, or (with -addr :8087) on a phone or tablet on the same network, and play.
 //
-//	go run ./cmd/examples/panel                  then open http://localhost:8080
-//	go run ./cmd/examples/panel -addr :8080      reachable from other devices on the network
+//	go run ./cmd/examples/panel                  then open http://localhost:8087
+//	go run ./cmd/examples/panel -addr :8087      reachable from other devices on the network
 //	go run ./cmd/examples/panel -midi            with the first MIDI controller (-midi-device for another)
 //
 // With a MIDI controller, press MIDI learn on the page, tap a control and turn a knob: the knob

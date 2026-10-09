@@ -6,8 +6,9 @@ import (
 )
 
 // Snapshot returns the value of every fader, knob, toggle and select by name, and the cells of the
-// grids (as "grid/pattern/row/step/field", the cells at their defaults left out): the state of the
-// panel, to keep and restore (a preset of the patch)
+// grids (as "grid/pattern/row/step/field", the cells at their defaults left out) and which cues of
+// the cue lists are on (as "list/cue", 1 or 0): the state of the panel, to keep and restore (a
+// preset of the patch)
 func (pn *Panel) Snapshot() map[string]float64 {
 	values := map[string]float64{}
 	for _, par := range pn.Params() {
@@ -17,6 +18,9 @@ func (pn *Panel) Snapshot() map[string]float64 {
 	}
 	for _, g := range pn.Grids() {
 		g.snapshot(values)
+	}
+	for _, cs := range pn.cueLists() {
+		cs.snapshot(values)
 	}
 	return values
 }
@@ -30,6 +34,9 @@ func (pn *Panel) Restore(values map[string]float64) {
 	}
 	for _, g := range pn.Grids() {
 		g.restore(values)
+	}
+	for _, cs := range pn.cueLists() {
+		cs.restore(values)
 	}
 }
 

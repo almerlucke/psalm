@@ -55,6 +55,12 @@ select { font: inherit; color: var(--ink); background: var(--card); border: 1px 
 
 header .spacer { flex: 1; }
 #learn { min-height: 34px; padding: 6px 12px; font-size: 13px; }
+#run { min-height: 34px; min-width: 84px; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }
+#run .icon { width: 10px; height: 10px; background: currentColor; }
+#restart { min-height: 34px; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }
+#restart .icon { width: 0; height: 0; border-style: solid; border-width: 6px 9px 6px 0; border-color: transparent currentColor transparent transparent; box-shadow: -3px 0 0 -1px currentColor; margin-left: 3px; }
+#run.stopped .icon { width: 0; height: 0; background: none; border-style: solid; border-width: 6px 0 6px 10px; border-color: transparent transparent transparent currentColor; }
+body.stopped main { opacity: .75; }
 #presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 #presets button, #presets select, #presets input { min-height: 34px; min-width: 0; padding: 4px 10px; font-size: 13px; }
 #presets input { font: inherit; font-size: 13px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; width: 120px; }
@@ -94,11 +100,30 @@ body.learn .control.armed { outline: 2px solid var(--accent); animation: armed 1
 .inspector label { display: flex; flex-direction: column; gap: 4px; }
 .inspector input[type=range] { width: 130px; accent-color: var(--accent); }
 .inspector .title { color: var(--ink); font-weight: 600; align-self: center; }
+/* cue lists: a tile per cue */
+.cuebox { display: flex; flex-direction: column; gap: 8px; align-items: stretch; max-width: 100%; }
+.cuebox .name { max-width: none; text-align: left; }
+.cuelist { display: flex; flex-wrap: wrap; gap: 8px; }
+.cue { position: relative; min-width: 96px; min-height: 56px; padding: 8px 34px 12px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; overflow: hidden; display: flex; align-items: center; font-size: 14px; }
+.cue:hover { border-color: var(--muted); }
+.cue .bar { position: absolute; left: 0; bottom: 0; height: 4px; background: var(--accent); width: 0; }
+.cue.playing { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.cue.queued { animation: queued 0.8s ease-in-out infinite; border-color: var(--meter-mid); }
+@keyframes queued { 50% { border-color: transparent; } }
+.cue.off .label { color: var(--muted); text-decoration: line-through; }
+.cue .switch { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; }
+.cue .switch::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--meter-low); }
+.cue.off .switch::after { background: transparent; border: 1px solid var(--muted); }
+.cue .tag { position: absolute; left: 10px; bottom: 6px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.cuehint { font-size: 12px; color: var(--muted); }
+.cue .cc { position: absolute; left: 10px; top: 4px; min-height: 0; font-size: 10px; }
+body.learn .cue.bindable { outline: 1px dashed var(--line); outline-offset: 2px; }
+body.learn .cue.armed { outline: 2px solid var(--accent); animation: armed 1s ease-in-out infinite; }
 .inspector button, .inspector select { min-height: 32px; padding: 4px 10px; font-size: 13px; }
 </style>
 </head>
 <body>
-<header><span id="status" title="connection"></span><h1 id="title">Panel</h1><span class="spacer"></span><span id="note"></span><span id="presets" hidden></span><button id="learn" title="Tap a control, then move a knob or fader on your MIDI controller">MIDI learn</button></header>
+<header><span id="status" title="connection"></span><h1 id="title">Panel</h1><button id="run" hidden title="start or stop the sound (space)"><span class="icon"></span><span class="text">Stop</span></button><button id="restart" hidden title="back to the start"><span class="icon"></span>Restart</button><span class="spacer"></span><span id="note"></span><span id="presets" hidden></span><button id="learn" title="Tap a control, then move a knob or fader on your MIDI controller">MIDI learn</button></header>
 <main id="panel"></main>
 <script>
 "use strict";
@@ -523,10 +548,60 @@ function grid(p) {
 	};
 }
 
-const builders = {fader, knob, toggle, button, select: choice, meter, grid};
+// a cue list: a tile per cue; tap to ask for it next (again to take that back), the switch turns it
+// on or off. The cue playing shows how far it is, the one asked for blinks
+function cues(p) {
+	const d = p.cues;
+	let state = d.state;
+	const div = cls => { const e = document.createElement("div"); e.className = cls; return e; };
+	const el = div("cuebox control");
+	const title = div("name"); title.textContent = p.label || p.name;
+	const list = div("cuelist");
+	const hint = div("cuehint");
+	hint.textContent = "tap one to play it next, tap again to take that back; the dot turns it on or off";
+	const tiles = d.names.map((name, i) => {
+		const t = div("cue");
+		t.title = name;
+		t.innerHTML = '<span class="label"></span><span class="switch" title="on or off"></span><span class="tag"></span><span class="bar"></span>';
+		t.querySelector(".label").textContent = name;
+		// every tile is a button of its own on the panel ("Song/Chorus"): MIDI learn binds a pad to it
+		const tile = {el: t}, tileName = p.name + "/" + name;
+		bindable(tile, {name: tileName});
+		widgets[tileName] = tile;
+		t.addEventListener("click", e => {
+			if (e.target.closest(".switch")) {
+				state.enabled[i] = !state.enabled[i];
+				render();
+				post("/api/cues", {name: p.name, cue: i, on: state.enabled[i]});
+				return;
+			}
+			state.queued = state.queued === i ? -1 : i;
+			render();
+			post("/api/cues", {name: p.name, queue: state.queued});
+		});
+		list.append(t);
+		return t;
+	});
+	el.append(title, list, hint);
+	function render() {
+		tiles.forEach((t, i) => {
+			const playing = i === state.playing, queued = i === state.queued, on = state.enabled[i];
+			t.classList.toggle("playing", playing);
+			t.classList.toggle("queued", queued);
+			t.classList.toggle("off", !on);
+			t.querySelector(".bar").style.width = playing ? (state.progress * 100).toFixed(1) + "%" : "0";
+			t.querySelector(".tag").textContent = queued ? "next" : playing ? "playing" : on ? "" : "off";
+		});
+	}
+	render();
+	return {el, show() {}, update(st) { state = st; render(); }};
+}
+
+const builders = {fader, knob, toggle, button, select: choice, meter, grid, cues};
 
 // MIDI learn: in learn mode a tap on a control arms it (its value stays), the next control change
-// from the controller binds to it; the × next to a binding takes it away
+// from the controller binds to it (or the next note, for a button, a toggle or the tile of a cue
+// list); the × next to a binding takes it away
 let learnMode = false;
 function setLearnMode(on, local = true) {
 	learnMode = on;
@@ -544,7 +619,7 @@ function bindable(w, p) {
 	w.el.append(tag);
 	w.el.classList.add("bindable");
 	w.binding = b => {
-		tag.querySelector(".label").textContent = b ? (b.channel ? `ch ${b.channel} · ` : "") + `CC ${b.controller}` : "";
+		tag.querySelector(".label").textContent = b ? (b.channel ? `ch ${b.channel} · ` : "") + (b.note ? `note ${b.controller}` : `CC ${b.controller}`) : "";
 		tag.querySelector(".unbind").style.visibility = b ? "visible" : "hidden";
 	};
 	w.binding(p.cc);
@@ -583,13 +658,54 @@ async function build() {
 			w.param = p;
 			widgets[p.name] = w;
 			w.show(p.value);
-			if (p.kind !== "meter" && p.kind !== "grid") bindable(w, p);
+			if (p.kind !== "meter" && p.kind !== "grid" && p.kind !== "cues") bindable(w, p);
 			row.append(w.el);
 		}
 		main.append(sec);
 	}
 	presets(d.presets);
+	if (d.player) player(d.running, d.restart);
 	listen();
+}
+
+// start and stop: the whole patch stands still where it is and goes on from there
+let showRunning = () => {};
+function player(running, canRestart) {
+	const b = document.getElementById("run");
+	b.hidden = false;
+	if (canRestart) {
+		const r = document.getElementById("restart");
+		r.hidden = false;
+		r.addEventListener("click", async () => {
+			try {
+				const res = await fetch("/api/audio", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({restart: true})});
+				if (!res.ok) throw new Error((await res.text()).trim());
+				note(running ? "back to the start" : "back to the start: press Start to play");
+			} catch (e) { note(e.message, true); }
+		});
+	}
+	showRunning = on => {
+		running = on;
+		b.classList.toggle("stopped", !on);
+		b.querySelector(".text").textContent = on ? "Stop" : "Start";
+		document.body.classList.toggle("stopped", !on);
+	};
+	const toggle = async () => {
+		const want = !running;
+		showRunning(want);
+		try {
+			const res = await fetch("/api/audio", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({running: want})});
+			if (!res.ok) throw new Error((await res.text()).trim());
+			showRunning((await res.json()).running);
+		} catch (e) { showRunning(!want); note(e.message, true); }
+	};
+	b.addEventListener("click", toggle);
+	document.addEventListener("keydown", e => { // space, when no field or button has the keys
+		if (e.key !== " " || e.repeat || e.target.closest("input, select, textarea, button, [tabindex]")) return;
+		e.preventDefault();
+		toggle();
+	});
+	showRunning(running);
 }
 
 // a short message in the header
@@ -683,6 +799,10 @@ function listen() {
 			if (widgets[name] && widgets[name].levels) widgets[name].levels(lv);
 		}
 		if (u.midi) showMIDI(u.midi);
+		if (u.audio) showRunning(u.audio.running);
+		for (const [name, st] of Object.entries(u.cues || {})) {
+			if (widgets[name] && widgets[name].update) widgets[name].update(st);
+		}
 		for (const [name, gu] of Object.entries(u.grids || {})) {
 			if (widgets[name] && widgets[name].update) widgets[name].update(gu);
 		}

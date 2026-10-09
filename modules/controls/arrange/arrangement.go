@@ -10,11 +10,12 @@ import (
 
 // Position is a moment in the song
 type Position struct {
+	Tick     int64   // ticks since the start of the song (of the current loop)
 	Beat     float64 // beats since the start of the song (of the current loop)
 	Bar      int     // bar in the song, from 0
 	Section  Section
 	Progress float64 // 0-1 through the section
-	Loop     int     // how many times the song looped
+	Loop     int     // how many times the song looped (or went back to an earlier section, or repeated one)
 	Ended    bool    // the song doesn't loop and is over
 }
 
@@ -182,7 +183,7 @@ func (a *Arrangement) setTempo(bpm float64) {
 }
 
 // timing returns the start time of every section and the length of one pass of the song in
-// seconds, following the tempo lane
+// seconds, following the tempo lane and leaving out the sections the transport has switched off
 func (a *Arrangement) timing() (map[int]float64, float64) {
 	base := a.Env().BPM() // the tempo of the sections without a curve
 	if a.pushed {
@@ -192,24 +193,26 @@ func (a *Arrangement) timing() (map[int]float64, float64) {
 	step := max(1, ppq/48)
 	seconds := 0.0
 	starts := map[int]float64{}
-	songTicks := int64(a.form.Beats() * float64(ppq))
-	for t := int64(0); t < songTicks; t += step {
-		pos := a.PositionAt(t)
-		if _, ok := starts[pos.Section.Index]; !ok && pos.Bar == pos.Section.StartBar {
-			starts[pos.Section.Index] = seconds
-		}
-		bpm := base
-		if a.tempo != nil {
-			if v := a.tempo.value(pos); v > 0 {
-				bpm = v
+	barTicks := a.form.BeatsPerBar * float64(ppq)
+	for _, s := range a.form.Transport().Order() {
+		starts[s.Index] = seconds
+		from, to := int64(float64(s.StartBar)*barTicks), int64(float64(s.StartBar+s.Bars)*barTicks)
+		for t := from; t < to; t += step {
+			pos := a.form.PositionAt(t, int(ppq))
+			bpm := base
+			if a.tempo != nil {
+				if v := a.tempo.value(pos); v > 0 {
+					bpm = v
+				}
 			}
+			seconds += float64(min(step, to-t)) / float64(ppq) * 60 / bpm
 		}
-		seconds += float64(step) / float64(ppq) * 60 / bpm
 	}
 	return starts, seconds
 }
 
-// Duration returns the length of one pass of the song in seconds, following the tempo lane
+// Duration returns the length of one pass of the song in seconds, following the tempo lane (the
+// sections switched off left out)
 func (a *Arrangement) Duration() float64 {
 	_, d := a.timing()
 	return d
@@ -220,7 +223,12 @@ func (a *Arrangement) Schedule() string {
 	starts, seconds := a.timing()
 	var b strings.Builder
 	for _, s := range a.form.Sections {
-		fmt.Fprintf(&b, "%6.1fs  bar %3d  %-12s %d bars\n", starts[s.Index], s.StartBar+1, s.Name, s.Bars)
+		start, ok := starts[s.Index]
+		if !ok {
+			fmt.Fprintf(&b, "%7s  bar %3d  %-12s %d bars (off)\n", "", s.StartBar+1, s.Name, s.Bars)
+			continue
+		}
+		fmt.Fprintf(&b, "%6.1fs  bar %3d  %-12s %d bars\n", start, s.StartBar+1, s.Name, s.Bars)
 	}
 	end := "end"
 	if a.form.Loop {
@@ -277,14 +285,28 @@ func (a *Arrangement) At(section string, bar int, f func()) *Arrangement {
 	})
 }
 
-// PositionAt returns the position at a tick (counted from the start of the patch)
+// PositionAt returns the position at a tick (counted from the start of the song) when the song
+// plays as written; Transport().Playing() tells where it is while it plays
 func (a *Arrangement) PositionAt(t int64) Position {
 	return a.form.PositionAt(t, a.Config().PPQ)
 }
 
+// Restart follows the song from its start again (psalm.Restarter): the first section and bar
+// events come again and every lane sends its value
+func (a *Arrangement) Restart() {
+	a.form.Transport().restart()
+	a.section, a.bar = -1, -1
+	for _, au := range a.automations {
+		au.valid = false
+	}
+}
+
+// Transport returns the transport of the form: the song clock the arrangement follows
+func (a *Arrangement) Transport() *Transport { return a.form.Transport() }
+
 func (a *Arrangement) CtrlTick(tick psalm.CtrlTick) {
 	t := tick.TickTimestamp - 1
-	pos := a.PositionAt(t)
+	pos := a.form.Transport().At(t, a.Config().PPQ)
 
 	if pos.Bar != a.bar {
 		a.bar = pos.Bar

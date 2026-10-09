@@ -112,6 +112,7 @@ type Sequencer struct {
 	gain   float64
 	last   int64
 	rng    *rand.Rand
+	clock  func(tick int64) (int64, bool)
 }
 
 // NewSequencer creates a sequencer playing notes
@@ -162,6 +163,21 @@ func (s *Sequencer) SetNotes(notes []Note) {
 func (s *Sequencer) resume() {
 	last := s.last
 	s.next = sort.Search(len(s.events), func(i int) bool { return s.events[i].tick > last })
+}
+
+// SetClock makes the sequencer follow a clock instead of the ticks of the patch: the clock turns a
+// tick of the patch into the tick of the sequence to play (false: nothing plays). The sequence can
+// jump: it goes on from wherever the clock says. A song transport (arrange) sets it
+func (s *Sequencer) SetClock(clock func(tick int64) (int64, bool)) {
+	s.clock = clock
+}
+
+// Restart plays the notes from the start again (psalm.Restarter)
+func (s *Sequencer) Restart() {
+	if s.last >= 0 && s.cfg.Feel.random() {
+		s.build() // a new pass, a new performance
+	}
+	s.last, s.next = -1, 0
 }
 
 // SetFeel changes the feel from the next note on
@@ -253,16 +269,24 @@ func (s *Sequencer) build() {
 
 func (s *Sequencer) CtrlTick(tick psalm.CtrlTick) {
 	t := tick.TickTimestamp - 1
-	if !s.cfg.Loop && t >= s.length {
+	if s.clock != nil {
+		c, ok := s.clock(t)
+		if !ok {
+			return
+		}
+		t = c
+	} else if !s.cfg.Loop && t >= s.length {
 		return
 	}
 	pos := t % s.length
 
-	// a new loop: start from the first event (at or after the position)
+	// a new loop (or a jump back): start from the first event at or after the position
 	if pos < s.last {
-		if pos < s.last && s.cfg.Feel.random() {
+		if s.cfg.Feel.random() {
 			s.build() // a new pass, a new performance
 		}
+		s.next = sort.Search(len(s.events), func(i int) bool { return s.events[i].tick >= pos })
+	} else if pos > s.last+1 { // a jump forward
 		s.next = sort.Search(len(s.events), func(i int) bool { return s.events[i].tick >= pos })
 	}
 	s.last = pos

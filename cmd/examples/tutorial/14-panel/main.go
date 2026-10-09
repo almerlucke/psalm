@@ -2,8 +2,8 @@
 //
 // Everything so far was decided in code before the song played. A panel lets you change things
 // while it plays: faders, knobs, toggles, buttons and selects on a web page, bound to settings of
-// the modules, and meters showing levels. Run this step and open http://localhost:8080 in a
-// browser (start it with -addr :8080 to open it on a phone or tablet on the same network).
+// the modules, and meters showing levels. Run this step and open http://localhost:8087 in a
+// browser (start it with -addr :8087 to open it on a phone or tablet on the same network).
 //
 //	ctl := panel.New(p, "Tutorial")
 //	ctl.Section("Filter")                                       the controls after it are shown together
@@ -13,7 +13,7 @@
 //	ctl.Button("Bells", bells.Bang)                             calls a function when pressed
 //	ctl.Select("Arpeggio", names, func(i int) { ... })          one of some options
 //	ctl.Meter("Master", mix.Master())                           the level of a module
-//	go ctl.Serve("localhost:8080")                              the page
+//	go ctl.Serve("localhost:8087")                              the page
 //
 // A fader moves by a curve: panel.Linear in even steps (levels in dB, amounts), panel.Exp in even
 // steps per octave (frequencies). Options: panel.Default (where it starts, and where a double click
@@ -66,7 +66,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", "localhost:8080", "the address of the panel's page")
+	addr := flag.String("addr", "localhost:8087", "the address of the panel's page")
 	useMIDI := flag.Bool("midi", false, "move the controls from the first MIDI keyboard or controller too")
 	p := tutorial.New(96)
 

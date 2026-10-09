@@ -249,3 +249,32 @@ func TestControls(t *testing.T) {
 		t.Fatal("the swing control should start at the swing of the config")
 	}
 }
+
+func TestRestart(t *testing.T) {
+	r := newRig(t, Config{}, "kick", "clap")
+	r.on("kick", 0, 8)
+	r.on("clap", 4)
+	for i, c := range Conditions {
+		if c == "first" {
+			r.set("clap", 4, Condition, float64(i)) // only the first time round
+		}
+	}
+	r.run(16 + 6) // into the second time round
+	r.grid.Set(1, r.grid.Row("kick"), 0, Velocity, 0.8)
+	r.grid.SetPattern(1)
+	r.seq.Restart()
+	r.tick = 0
+	kick, clap := r.recs["kick"], r.recs["clap"]
+	kick.times, clap.times = nil, nil
+	r.run(8)
+	if len(kick.times) != 1 || !near(kick.times[0], 0) || r.grid.Playing() != 1 {
+		t.Fatalf("a restart should play from the first step, with the pattern asked for: %v, playing %d", kick.times, r.grid.Playing())
+	}
+	r.grid.SetPattern(0)
+	r.seq.Restart()
+	r.tick = 0
+	r.run(8)
+	if len(clap.times) != 1 {
+		t.Fatal("after a restart the conditions count from the start: the first time round again")
+	}
+}

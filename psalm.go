@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log"
 	"math"
+	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/almerlucke/psalm/audio"
@@ -22,7 +24,88 @@ type Psalm struct {
 	tickTimestamp   int64
 
 	// Audio
-	engine audio.Engine
+	engine  audio.Engine
+	audioMu sync.Mutex  // serializes starting and stopping (from the main goroutine, a panel's page)
+	running atomic.Bool // the engine is started
+	restart atomic.Bool // back to the start at the next buffer
+
+	// changes to make on the audio thread, between two buffers
+	doMu  sync.Mutex
+	doing []func()
+
+	host *Psalm      // the patch this one plays within (NewSub), nil for a patch of its own
+	held atomic.Bool // the clock stands still (HoldClock)
+}
+
+// Do makes a change to the patch where it is safe: on the audio thread between two buffers while
+// it plays, at once while it doesn't (stopped, or rendering offline from the goroutine calling).
+// Connecting, disconnecting, adding and removing modules while the patch plays goes through Do:
+//
+//	p.Do(func() {
+//		p.Remove(oldSynth)
+//		newSynth.AddTo(p)
+//		mixer.Channel(...)
+//	})
+//
+// The changes are made in the order they were asked for, all of one function in the same pause, so
+// the patch never plays half a change. Keep them short: the audio waits for them. It can be called
+// from any goroutine, but not from within f (or a function f calls Do from)
+func (p *Psalm) Do(f func()) {
+	if p.host != nil { // within another patch: on its audio thread
+		p.host.Do(f)
+		return
+	}
+	p.audioMu.Lock()
+	defer p.audioMu.Unlock()
+	if !p.running.Load() {
+		p.doPending() // what was asked before it stopped first
+		f()
+		return
+	}
+	p.doMu.Lock()
+	p.doing = append(p.doing, f)
+	p.doMu.Unlock()
+}
+
+// doPending makes the changes asked for; on the audio thread it never waits for the lock (a change
+// being asked for right then is made at the next buffer)
+func (p *Psalm) doPending() {
+	if !p.doMu.TryLock() {
+		return
+	}
+	fs := p.doing
+	p.doing = nil
+	p.doMu.Unlock()
+	for _, f := range fs {
+		f()
+	}
+}
+
+// Restarter is a module that keeps time of its own (a sequencer, an arrangement): Restart sets it
+// back to the start of the patch. It is called on the audio thread, by Psalm.Restart
+type Restarter interface {
+	Restart()
+}
+
+// Restart sets the patch back to its start at the next buffer: the clock goes back to 0 and every
+// module that keeps time of its own (a Restarter, also in patches within the patch) starts again,
+// so the song, the parts and the sequencers play from the beginning. Sounds that ring go on
+// ringing. It can be called from any goroutine, also while the patch is stopped (it starts from the
+// beginning when it plays again)
+func (p *Psalm) Restart() { p.restart.Store(true) }
+
+// restartModules restarts the modules that keep time, in patches within patches too (a Restarter
+// restarts what it holds itself: a patch within a patch with a clock of its own, NewSub)
+func restartModules(modules []Modular) {
+	for _, m := range modules {
+		if r, ok := m.(Restarter); ok {
+			r.Restart()
+			continue
+		}
+		if sub, ok := m.(interface{ Modules() []Modular }); ok {
+			restartModules(sub.Modules())
+		}
+	}
 }
 
 // New creates a patch to play through an audio engine (nil renders offline). It creates the
@@ -44,6 +127,43 @@ func New(engine audio.Engine) *Psalm {
 		cfg.SampleRate = engine.GetSampleRate()
 		cfg.BufferSize = engine.GetBufferSize()
 	}
+	return p.init(cfg)
+}
+
+// NewSub creates a patch to play within this one, with a clock and an environment of its own: its
+// own tempo (Env().SetBPM), its own random streams, its ticks counted from 0 when it starts to
+// play. A song of a playlist is one. Like New it makes its environment current: build its modules
+// right after it (and make the environment of this patch current again after, SetCurrentEnv, to
+// build more of this one). It has the sample rate and buffer size of this patch, the tempo and PPQ
+// of the config (PushConfig).
+//
+// It plays when it runs: the module it is added to, or connected to, runs it once per buffer, and
+// then it ticks its own modules. The control ticks of the patch around it don't reach them
+func (p *Psalm) NewSub() *Psalm {
+	return p.NewSubWith(CurrentStackConfig())
+}
+
+// NewSubWith is NewSub with a config of its own (the tempo and PPQ; the sample rate and buffer size
+// are always the ones of this patch), for building on another goroutine than the one pushing configs
+func (p *Psalm) NewSubWith(cfg Config) *Psalm {
+	cfg.SampleRate, cfg.BufferSize = p.config.SampleRate, p.config.BufferSize
+	sub := &Psalm{host: p}
+	return sub.init(cfg)
+}
+
+// HoldClock makes the clock of the patch stand still, or go on: no ticks, so no new notes and no
+// moving song, while the sound goes on (notes that sound ring out, a reverb tails). A song that
+// ended in a playlist holds its clock
+func (p *Psalm) HoldClock(hold bool) { p.held.Store(hold) }
+
+// ClockHeld tells whether the clock stands still
+func (p *Psalm) ClockHeld() bool { return p.held.Load() }
+
+// CtrlTick does nothing: a patch with a clock of its own ticks its modules itself, when it runs
+func (p *Psalm) CtrlTick(CtrlTick) {}
+
+// init creates the environment and the patch
+func (p *Psalm) init(cfg Config) *Psalm {
 	env := NewEnv(cfg)
 	SetCurrentEnv(env)
 
@@ -116,20 +236,48 @@ func (p *Psalm) ToSoundFile(filePath string, fileFormat writer.FileFormat, numSe
 	return wr.Write(writeBuffers, true)
 }
 
+// AudioStart starts playing through the audio engine; the patch goes on from where it stopped.
+// Starting a patch that plays does nothing. It can be called from any goroutine
 func (p *Psalm) AudioStart() error {
 	if p.engine == nil {
 		return errors.New("engine not initialized")
 	}
-	return p.engine.Start()
+	p.audioMu.Lock()
+	defer p.audioMu.Unlock()
+	if p.running.Load() {
+		return nil
+	}
+	if err := p.engine.Start(); err != nil {
+		return err
+	}
+	p.running.Store(true)
+	return nil
 }
 
+// AudioStop stops playing: the patch stands still (every module where it is) until AudioStart.
+// Stopping a patch that doesn't play does nothing. It can be called from any goroutine
 func (p *Psalm) AudioStop() error {
 	if p.engine == nil {
 		return errors.New("engine not initialized")
 	}
-
-	return p.engine.Stop()
+	p.audioMu.Lock()
+	defer p.audioMu.Unlock()
+	if !p.running.Load() {
+		return nil
+	}
+	if err := p.engine.Stop(); err != nil {
+		return err
+	}
+	p.running.Store(false)
+	p.doPending() // the changes still waiting for a buffer are made now
+	return nil
 }
+
+// Running tells whether the patch plays through its audio engine
+func (p *Psalm) Running() bool { return p.running.Load() }
+
+// Live tells whether the patch has an audio engine to play through (it renders offline without)
+func (p *Psalm) Live() bool { return p.engine != nil }
 
 func (p *Psalm) Listen() error {
 	err := p.AudioStart()
@@ -148,7 +296,10 @@ func (p *Psalm) Listen() error {
 
 func (p *Psalm) Close() {
 	if p.engine != nil {
+		p.audioMu.Lock()
+		defer p.audioMu.Unlock()
 		_ = p.engine.Close()
+		p.running.Store(false)
 	}
 }
 
@@ -174,13 +325,25 @@ func (p *Psalm) audioCallback(in, out [][]float32) {
 }
 
 func (p *Psalm) Run() {
+	if p.hasRun { // within another patch it runs once per buffer, however many pull it
+		return
+	}
+	p.doPending()
+	if p.restart.Swap(false) {
+		p.sampleTimestamp, p.tickTimestamp, p.sampleCnt = 0, 0, 0
+		restartModules(p.modules)
+	}
+	if p.held.Load() {
+		p.Patch.Run()
+		return
+	}
 	for n := range p.config.BufferSize {
 		p.sampleTimestamp++
 		p.sampleCnt += 1.0
 		for p.sampleCnt >= p.samplesPerTick {
 			p.sampleCnt -= p.samplesPerTick
 			p.tickTimestamp++
-			p.CtrlTick(CtrlTick{
+			p.Patch.CtrlTick(CtrlTick{
 				SampleTimestamp: p.sampleTimestamp,
 				TickTimestamp:   p.tickTimestamp,
 				SampleOffset:    n,

@@ -74,7 +74,7 @@ func (pn *Panel) Grid(name string, rows []string, steps, patterns int, fields ..
 
 	pn.mu.Lock()
 	defer pn.mu.Unlock()
-	if _, ok := pn.byName[name]; ok || pn.grids[name] != nil {
+	if pn.taken(name) {
 		panic(fmt.Sprintf("panel: a control named %q twice", name))
 	}
 	if pn.section == "" {

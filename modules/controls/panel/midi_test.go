@@ -139,7 +139,7 @@ func TestSaveBindings(t *testing.T) {
 	if err := pn.LoadBindings(path); err != nil {
 		t.Fatal(err)
 	}
-	if bs := pn.Bindings(); len(bs) != 1 || bs["A"] != (Binding{1, 10}) {
+	if bs := pn.Bindings(); len(bs) != 1 || bs["A"] != (Binding{Channel: 1, Controller: 10}) {
 		t.Fatalf("loading should restore the bindings exactly, got %v", bs)
 	}
 }
@@ -201,7 +201,7 @@ func TestLearnAPI(t *testing.T) {
 		t.Fatalf("the page should hear what is learning, got %+v", u.MIDI)
 	}
 	pn.ControlChange(1, 74, 64)
-	if u := next(); u.MIDI == nil || u.MIDI.Bindings["Cutoff"] != (Binding{1, 74}) || u.MIDI.Learning != "" {
+	if u := next(); u.MIDI == nil || u.MIDI.Bindings["Cutoff"] != (Binding{Channel: 1, Controller: 74}) || u.MIDI.Learning != "" {
 		t.Fatalf("the page should hear the new binding, got %+v", u.MIDI)
 	}
 	res = postJSON(t, srv.URL+"/api/unbind", `{"name": "Cutoff"}`)

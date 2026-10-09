@@ -37,6 +37,7 @@ func (m *internalOutputModule) Receive(value any, index int) {
 type Patcher interface {
 	Modular
 	Add(m Modular) Patcher
+	Remove(m Modular) bool
 	PatchInput(index int) Modular
 	PatchOutput(index int) Modular
 	Out(...any) Patcher
@@ -79,6 +80,25 @@ func (p *Patch) SetSkipInputs(skip bool) {
 func (p *Patch) Add(m Modular) Patcher {
 	p.modules = append(p.modules, m)
 	return p
+}
+
+// Remove takes a module out of the patch: it is disconnected from everything (DisconnectAll) and
+// gets no control ticks anymore. A patch within the patch keeps its own modules and connections,
+// so it can be added again later, or elsewhere. It tells whether the module was in the patch.
+// Change a patch that plays on the audio thread: with Psalm.Do
+func (p *Patch) Remove(m Modular) bool {
+	kept := make([]Modular, 0, len(p.modules))
+	for _, other := range p.modules {
+		if other != m {
+			kept = append(kept, other)
+		}
+	}
+	if len(kept) == len(p.modules) {
+		return false
+	}
+	p.modules = kept // a new list: a loop over the modules going on keeps the one it has
+	m.DisconnectAll()
+	return true
 }
 
 // Modules returns the modules added to the patch

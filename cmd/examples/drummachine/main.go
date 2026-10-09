@@ -15,8 +15,8 @@
 // happens now and then, a clap on every second time round and a snare roll only with the fill; B
 // rolls up into a fill; C and D are empty, to write your own.
 //
-//	go run ./cmd/examples/drummachine                    then open http://localhost:8080
-//	go run ./cmd/examples/drummachine -addr :8080        from a phone or tablet on the network
+//	go run ./cmd/examples/drummachine                    then open http://localhost:8087
+//	go run ./cmd/examples/drummachine -addr :8087        from a phone or tablet on the network
 //	go run ./cmd/examples/drummachine -midi              the knobs of a MIDI controller too (MIDI learn)
 //	go run ./cmd/examples/drummachine -render beat.wav   render 8 bars of pattern A to a file
 package main

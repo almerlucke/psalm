@@ -18,6 +18,7 @@ play it live through an audio engine or render it to a sound file.
 | [Rendering](rendering.md) | Offline rendering with reverb tails, stems, repeatable renders (`psalm.Seed`), profiling per module and the `meter` module (peak, RMS, LUFS) |
 | [Conventions](conventions.md) | Channels, units, messages, value inputs per module, tempo, randomness, silence and latency |
 | [Mixer](mixer.md) | The `mixer`: channel strips (volume, pan, mute, solo, sends, meters), effect buses, groups with inserts and a master with a lookahead limiter |
+| [Playlist](playlist.md) | Songs one after the other in one patch: each with its own tempo and clock, built ahead while the one before plays, ringing out, gaps or cross fades, queued and skipped from code or a panel; patches within a patch (`NewSub`) |
 | [Filters](filters.md) | The `filters` module: SVF, Moog style ladder, biquad EQ and formant (vowel) filters |
 | [Blocks](blocks.md) | Low level DSP building blocks used by the modules (`fft`, filters, `pitchshift`, `blosc`, `delay`) |
 | [Examples](examples.md) | The example programs in `cmd/examples` and what they demonstrate |

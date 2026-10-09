@@ -318,6 +318,15 @@ func (s *Sequencer) Controls(ctl *panel.Panel) {
 	}
 }
 
+// Restart plays the grid from its first step again, with the pattern asked for (psalm.Restarter):
+// the conditions count from the start again
+func (s *Sequencer) Restart() {
+	s.scheduled, s.step, s.start, s.pending = 0, -1, 0, s.pending[:0]
+	s.pattern = s.grid.Pattern()
+	s.headStart, s.headPattern, s.switchAt = 0, s.pattern, -1
+	s.grid.SetPlaying(s.pattern)
+}
+
 // ticksPerStep is the length of a step in ticks of the patch
 func (s *Sequencer) ticksPerStep() float64 { return float64(s.Config().PPQ) / s.cfg.StepsPerBeat }
 
