@@ -36,6 +36,7 @@ type Transport struct {
 	// what is playing, for the page and other goroutines
 	playing  atomic.Int32  // the section playing, -1 before the start and after the end
 	progress atomic.Uint64 // through it, 0-1 (float64 bits)
+	over     atomic.Bool   // the song ended (a form that doesn't loop)
 
 	// the clock, on the audio thread
 	mu      sync.Mutex
@@ -137,6 +138,13 @@ func (t *Transport) Playing() (section string, progress float64) {
 	return t.form.Sections[i].Name, math.Float64frombits(t.progress.Load())
 }
 
+// Ended tells whether the song ended: a form that doesn't loop played its last section (and
+// nothing was asked for after it). A playlist ends a song when its transport ended
+func (t *Transport) Ended() bool { return t.over.Load() }
+
+// Form returns the form the transport plays
+func (t *Transport) Form() *Form { return t.form }
+
 // Order returns the sections one pass of the song plays now: the sections that are on, in order
 func (t *Transport) Order() []Section {
 	var order []Section
@@ -168,6 +176,7 @@ func (t *Transport) At(tick int64, ppq int) Position {
 		}
 	}
 	t.pos = t.position()
+	t.over.Store(t.ended)
 	if t.ended {
 		t.playing.Store(-1)
 	} else {
@@ -184,6 +193,7 @@ func (t *Transport) restart() {
 	defer t.mu.Unlock()
 	t.started = false
 	t.queued.Store(-1)
+	t.over.Store(false)
 }
 
 // ticks returns the length of a bar and of the song in ticks

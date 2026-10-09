@@ -49,6 +49,41 @@ page) goes back to the start of the playlist: the first song that is on plays fr
 once, the songs sounding fade away in a moment and a song asked for next is forgotten (in the
 first song, it starts again in place).
 
+**Songs with sections**: a song can hand its transport (step 16 of the tutorial, `arrange`) to the
+playlist, `Built{Out: mix.Master(), Length: arrangement.Duration(), Transport: form.Transport()}`.
+Then the song ends when its transport ended, wherever its sections took it: a section skipped
+ends it sooner, a repeated one later (its form doesn't loop; the song ends with its last
+section). `Length` is still how long it plays as written: how far the song is, and the duration
+of a render. With a cross fade the next song fades in from the end, over the song ringing out.
+
+`list.SectionControls(ctl, "Sections")` puts the sections of the song playing on a panel: a tile
+per section that changes with the song (tap one to play it next, its dot to switch it off), Repeat
+and Jump at (they count for every song: `SetSectionRepeat`, `SetSectionJump`). The tiles' buttons
+are named by position, `"Sections/1"`, `"Sections/2"`, ..., so a MIDI pad plays the second section
+of whatever song plays. Which sections are on is not in presets: every song has its own, and a
+song played again is built again, its sections as written. `list.Sections()` is the transport of
+the song playing, from code. Step 18 of the tutorial is a setlist like this.
+
+**Songs with controls of their own**: a song can make its own panel in `Build`, in its own
+patch, with controls bound to its own modules, and hand it over: `Built{..., Panel: ctl}`.
+
+```go
+ctl := panel.New(p, "Groove") // p is the song's patch
+ctl.Fader("Tempo", 90, 120, panel.Linear, panel.Func(func(v float64) { p.Env().SetBPM(v) }), panel.Default(104))
+return playlist.Built{Out: mix.Master(), Length: arrangement.Duration(), Panel: ctl}
+```
+
+`list.SongControls(ctl, "Song")` shows the panel of the song playing on the playlist's page (a
+`Mount`, see [panel](controls.md#panel)): its sections and controls under the song's name, and the
+next song's when it starts. The song's controls apply on the song's own clock. MIDI reaches the
+song playing (the control changes and notes go to the playlist's panel and on to the song's), MIDI
+learn on the page binds its controls, and what is bound is kept for the song: built again, it gets
+its bindings back. The values of its controls are kept too: a song that plays again has them as
+you left them, and the presets of the playlist's panel hold the controls of every song that played
+(as `"Song/Groove/Tempo"`, after the name of the mount). Loading a preset sets the song playing at
+once and the other songs when they start. `list.SongPanel()` is the panel of the song playing,
+from code.
+
 **On a panel**: `list.Controls(ctl, "Songs")` adds a tile per song (tap one to play it next, its
 dot to pass it over, the song playing shows how far it is; every tile is a button
 `"Songs/<song>"` a MIDI pad can play) and a Next button (`"Songs next"`). With Start/Stop and
@@ -66,6 +101,9 @@ render.ToFile(p, "list.wav", render.Options{Seconds: list.Duration(), Tail: 8})
 ```
 
 `Close()` stops the background building (it returns once a song being built is done).
+
+Step 17 of the tutorial ([`cmd/examples/tutorial/17-playlist`](../cmd/examples/tutorial/17-playlist/main.go))
+plays three short songs this way, with the tiles on a panel.
 
 ## Patches within a patch
 

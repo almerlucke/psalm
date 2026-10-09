@@ -292,6 +292,7 @@ func (pn *Panel) Handler() http.Handler {
 		}
 		writeJSON(w, map[string]bool{"running": pl.Running()})
 	})
+	mux.HandleFunc("/mount/{name}/", pn.serveMount)
 	mux.HandleFunc("GET /api/events", pn.events)
 	return mux
 }
@@ -330,25 +331,27 @@ type section struct {
 }
 
 type control struct {
-	Kind    Kind      `json:"kind"`
-	Name    string    `json:"name"`
-	Min     float64   `json:"min"`
-	Max     float64   `json:"max"`
-	Curve   Curve     `json:"curve"`
-	Step    float64   `json:"step"`
-	Unit    string    `json:"unit,omitempty"`
-	Label   string    `json:"label,omitempty"`
-	Default float64   `json:"default"`
-	Options []string  `json:"options,omitempty"`
-	Value   float64   `json:"value"`
-	CC      *Binding  `json:"cc,omitempty"`
-	Grid    *gridDesc `json:"grid,omitempty"`
-	Cues    *cuesDesc `json:"cues,omitempty"`
+	Kind    Kind       `json:"kind"`
+	Name    string     `json:"name"`
+	Min     float64    `json:"min"`
+	Max     float64    `json:"max"`
+	Curve   Curve      `json:"curve"`
+	Step    float64    `json:"step"`
+	Unit    string     `json:"unit,omitempty"`
+	Label   string     `json:"label,omitempty"`
+	Default float64    `json:"default"`
+	Options []string   `json:"options,omitempty"`
+	Value   float64    `json:"value"`
+	CC      *Binding   `json:"cc,omitempty"`
+	Grid    *gridDesc  `json:"grid,omitempty"`
+	Cues    *cuesDesc  `json:"cues,omitempty"`
+	Mount   *mountDesc `json:"mount,omitempty"`
 }
 
 // cuesDesc is a cue list as the page sees it
 type cuesDesc struct {
 	Names []string `json:"names"`
+	Slots int      `json:"slots,omitempty"` // tiles named by position: the cues change
 	State CueState `json:"state"`
 }
 
@@ -379,9 +382,14 @@ func (pn *Panel) describe() description {
 		d.Sections = append(d.Sections, section{Name: name})
 	}
 	for _, it := range pn.items() {
+		if mt := it.mount; mt != nil {
+			i := index[mt.Section]
+			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: MountKind, Name: mt.Name, Mount: describeMount(mt.Mounted())})
+			continue
+		}
 		if cs := it.cues; cs != nil {
 			i := index[cs.Section]
-			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: CuesKind, Name: cs.Name, Cues: &cuesDesc{Names: cs.Names, State: cs.State()}})
+			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: CuesKind, Name: cs.Name, Cues: &cuesDesc{Names: cs.Names, Slots: cs.Slots, State: cs.State()}})
 			continue
 		}
 		if g := it.grid; g != nil {
@@ -414,6 +422,7 @@ type update struct {
 	Grids  map[string]*gridUpdate `json:"grids,omitempty"`
 	Cues   map[string]CueState    `json:"cues,omitempty"`
 	Audio  *audioUpdate           `json:"audio,omitempty"` // when the sound starts or stops
+	Mounts map[string]*mountDesc  `json:"mounts,omitempty"`
 }
 
 type audioUpdate struct {
@@ -457,6 +466,7 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 	midiSent := int64(-1)
 	gridsSent := map[string]*gridSent{}
 	cuesSent := map[string]string{}
+	mountsSent := map[string]*Panel{}
 	runningSent := -1
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
@@ -504,6 +514,17 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 				u.Grids[g.Name] = gu
 			}
 		}
+		for _, mt := range pn.mountList() {
+			child := mt.Mounted()
+			if last, ok := mountsSent[mt.Name]; ok && last == child {
+				continue
+			}
+			mountsSent[mt.Name] = child
+			if u.Mounts == nil {
+				u.Mounts = map[string]*mountDesc{}
+			}
+			u.Mounts[mt.Name] = describeMount(child)
+		}
 		for _, cs := range pn.cueLists() {
 			st := cs.State()
 			if key := fmt.Sprint(st); key != cuesSent[cs.Name] {
@@ -531,7 +552,7 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 				u.MIDI.Learning = l.Name
 			}
 		}
-		if len(u.Values) > 0 || len(u.Meters) > 0 || u.MIDI != nil || len(u.Grids) > 0 || len(u.Cues) > 0 || u.Audio != nil {
+		if len(u.Values) > 0 || len(u.Meters) > 0 || u.MIDI != nil || len(u.Grids) > 0 || len(u.Cues) > 0 || u.Audio != nil || len(u.Mounts) > 0 {
 			data, _ := json.Marshal(u)
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 				return

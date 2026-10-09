@@ -292,3 +292,24 @@ func TestRestartSong(t *testing.T) {
 		t.Fatalf("a restart should forget the section asked for and ask the streams again (%d)", streamed)
 	}
 }
+
+func TestTransportEnded(t *testing.T) {
+	tr := abc(false).Transport()
+	if tr.Form() == nil || tr.Ended() {
+		t.Fatal("a transport that didn't play yet has not ended")
+	}
+	tr.SetEnabled("B", false)
+	var tick int64
+	bars(tr, &tick, 3, nil) // A A C
+	if tr.Ended() {
+		t.Fatal("the last section playing: not ended yet")
+	}
+	bars(tr, &tick, 1, nil)
+	if !tr.Ended() {
+		t.Fatal("after the last section that is on the song ended")
+	}
+	tr.restart()
+	if tr.Ended() {
+		t.Fatal("a restart starts the song again")
+	}
+}

@@ -61,11 +61,13 @@ type Panel struct {
 	servers []server
 	closed  bool
 
-	grids map[string]*Grid
-	cues  map[string]*Cues
-	order []item // the controls, grids and cue lists in the order they were declared, for the page
+	grids  map[string]*Grid
+	cues   map[string]*Cues
+	mounts map[string]*Mount
+	order  []item // the controls, grids and cue lists in the order they were declared, for the page
 
 	player Player // started and stopped from the page, nil for none
+	id     int64  // every panel its own (a mount shows which one it shows)
 	presetState
 }
 
@@ -74,12 +76,13 @@ type item struct {
 	param *Param
 	grid  *Grid
 	cues  *Cues
+	mount *Mount
 }
 
 // taken tells whether a control, grid or cue list has a name (with the lock held)
 func (pn *Panel) taken(name string) bool {
 	_, ok := pn.byName[name]
-	return ok || pn.grids[name] != nil || pn.cues[name] != nil
+	return ok || pn.grids[name] != nil || pn.cues[name] != nil || pn.mounts[name] != nil
 }
 
 // cueLists returns the cue lists in the order they were declared
@@ -113,7 +116,7 @@ func (pn *Panel) Grids() []*Grid {
 
 // New creates a panel with a title and adds it to the patch
 func New(p psalm.Patcher, title string) *Panel {
-	pn := &Panel{Module: psalm.NewControl(), title: title, byName: map[string]*Param{}, buffer: -1, player: playerOf(p)}
+	pn := &Panel{Module: psalm.NewControl(), title: title, byName: map[string]*Param{}, buffer: -1, player: playerOf(p), id: panelIDs.Add(1)}
 	pn.SetSelf(pn)
 	pn.AddTo(p)
 	return pn

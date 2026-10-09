@@ -9,10 +9,12 @@ package playlist
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/panel"
 )
 
@@ -27,6 +29,17 @@ type Song struct {
 type Built struct {
 	Out    psalm.Modular // what to hear, stereo (output 0): the master of the song's mixer
 	Length float64       // seconds the song plays (an arrangement's Duration), 0 is until it is skipped
+
+	// Transport makes the song end when its transport ended, wherever the sections took it (a
+	// section skipped, repeated or asked for): its form doesn't loop then. Length is still how
+	// long it plays as written: for how far the song is, and the duration of a render. The section
+	// controls of the playlist (SectionControls) steer the transport of the song playing
+	Transport *arrange.Transport
+
+	// Panel is the song's own panel (panel.New(p, ...) in Build): its controls, bound to the song's
+	// modules. The panel of the playlist shows the one of the song playing (SongControls); MIDI
+	// reaches it, and what MIDI learn binds is kept for the song when it is built again
+	Panel *panel.Panel
 }
 
 // Config sets how the songs follow each other
@@ -76,6 +89,16 @@ type Playlist struct {
 	skip    atomic.Bool
 	playing atomic.Int32  // the song playing, -1 none
 	prog    atomic.Uint64 // float64 bits, through it (0-1)
+
+	// the sections of the song playing (a song with a transport)
+	sections      atomic.Pointer[arrange.Transport]
+	sectionRepeat atomic.Bool
+	sectionJump   atomic.Int32
+
+	// the panel of the song playing, and what MIDI learn bound per song
+	panel    atomic.Pointer[songNow]
+	bindings sync.Map // per song name what MIDI learn bound
+	values   sync.Map // per song name the values of its controls (a snapshot of its panel)
 
 	// the audio thread
 	voices  []*voice
@@ -147,6 +170,17 @@ func (pl *Playlist) build(i int) *built {
 		panic(fmt.Sprintf("playlist: song %q has nothing to hear (Built.Out)", pl.songs[i].Name))
 	}
 	sub.Out(b.Out)
+	if b.Transport != nil {
+		b.Transport.Form().Loop = false // the song ends with its last section
+	}
+	if b.Panel != nil { // what was learned for the song the time before
+		if bs, ok := pl.bindings.Load(pl.songs[i].Name); ok {
+			b.Panel.SetBindings(bs.(map[string]panel.Binding))
+		}
+		if vs, ok := pl.values.Load(pl.songs[i].Name); ok { // its controls as they were (or a preset)
+			b.Panel.Restore(vs.(map[string]float64))
+		}
+	}
 	return &built{index: i, sub: sub, Built: b}
 }
 
@@ -291,8 +325,20 @@ func (pl *Playlist) Synthesize() {
 		}
 	}
 
-	// the song playing reaching its end: ask for the next one (early, to cross fade)
-	if cur := pl.current; cur != nil && !cur.ended && cur.length > 0 {
+	// a song with a transport ends when its transport ended: the next one now (fading over it)
+	if cur := pl.current; cur != nil && !cur.ended && cur.Transport != nil {
+		if cur.Transport.Ended() {
+			pl.end(cur)
+			if !cur.handed {
+				cur.handed = true
+				pl.pending = pl.next(cur.index)
+				if pl.cfg.Crossfade == 0 {
+					pl.gapLeft = pl.seconds(pl.cfg.Gap)
+				}
+			}
+		}
+	} else if cur != nil && !cur.ended && cur.length > 0 {
+		// the song playing reaching its end: ask for the next one (early, to cross fade)
 		cross := pl.seconds(pl.cfg.Crossfade)
 		if !cur.handed && cur.elapsed >= cur.length-cross {
 			cur.handed = true
@@ -379,6 +425,18 @@ func (pl *Playlist) start(b *built) {
 	pl.voices = append(pl.voices, v)
 	pl.current = v
 	pl.playing.Store(int32(b.index))
+	if tr := b.Transport; tr != nil { // the section controls steer it
+		tr.SetRepeat(pl.sectionRepeat.Load()).SetJump(arrange.JumpAt(pl.sectionJump.Load()))
+	}
+	pl.sections.Store(b.Transport)
+	if b.Panel != nil {
+		if vs, ok := pl.values.Load(pl.songs[b.index].Name); ok { // a preset loaded since it was built
+			b.Panel.Restore(vs.(map[string]float64))
+		}
+		pl.panel.Store(&songNow{index: b.index, panel: b.Panel})
+	} else {
+		pl.panel.Store(nil)
+	}
 }
 
 // end ends a song: its clock holds, what sounds rings out
@@ -386,6 +444,16 @@ func (pl *Playlist) end(v *voice) {
 	if !v.ended {
 		v.ended = true
 		v.sub.HoldClock(true)
+		if v.Transport != nil {
+			pl.sections.CompareAndSwap(v.Transport, nil)
+		}
+		if v.Panel != nil {
+			if now := pl.panel.Load(); now != nil && now.panel == v.Panel {
+				pl.panel.CompareAndSwap(now, nil)
+			}
+			pl.bindings.Store(pl.songs[v.index].Name, v.Panel.Bindings())
+			pl.values.Store(pl.songs[v.index].Name, v.Panel.Snapshot())
+		}
 	}
 }
 
@@ -582,5 +650,167 @@ func (pl *Playlist) EnableCue(i int, on bool) { pl.SetEnabled(i, on) }
 func (pl *Playlist) Controls(ctl *panel.Panel, name string) *Playlist {
 	ctl.Cues(name, pl)
 	ctl.Button(name+" next", pl.Skip, panel.Label("Next"))
+	return pl
+}
+
+// sections shows the sections of the song playing as a cue list on a panel (panel.Cuer)
+type sections struct{ pl *Playlist }
+
+func (c sections) CueNames() []string {
+	if tr := c.pl.sections.Load(); tr != nil {
+		return tr.Sections()
+	}
+	return nil
+}
+
+func (c sections) CueState() panel.CueState {
+	st := panel.CueState{Playing: -1, Queued: -1}
+	tr := c.pl.sections.Load()
+	if tr == nil {
+		return st
+	}
+	playing, progress := tr.Playing()
+	queued := tr.Queued()
+	for i, name := range tr.Sections() {
+		if name == playing {
+			st.Playing, st.Progress = i, progress
+		}
+		if name == queued {
+			st.Queued = i
+		}
+		st.Enabled = append(st.Enabled, tr.Enabled(name))
+	}
+	return st
+}
+
+func (c sections) QueueCue(i int) {
+	if tr := c.pl.sections.Load(); tr != nil {
+		if names := tr.Sections(); i < 0 {
+			tr.Queue("")
+		} else if i < len(names) {
+			tr.Queue(names[i])
+		}
+	}
+}
+
+func (c sections) EnableCue(i int, on bool) {
+	if tr := c.pl.sections.Load(); tr != nil {
+		if names := tr.Sections(); i >= 0 && i < len(names) {
+			tr.SetEnabled(names[i], on)
+		}
+	}
+}
+
+// SetSectionRepeat makes the section playing repeat, in the song playing and in the songs after it
+func (pl *Playlist) SetSectionRepeat(on bool) *Playlist {
+	pl.sectionRepeat.Store(on)
+	if tr := pl.sections.Load(); tr != nil {
+		tr.SetRepeat(on)
+	}
+	return pl
+}
+
+// SetSectionJump sets when a section asked for starts, in the song playing and the songs after it
+func (pl *Playlist) SetSectionJump(at arrange.JumpAt) *Playlist {
+	pl.sectionJump.Store(int32(at))
+	if tr := pl.sections.Load(); tr != nil {
+		tr.SetJump(at)
+	}
+	return pl
+}
+
+// Sections returns the transport of the song playing (a song with a transport), nil for none
+func (pl *Playlist) Sections() *arrange.Transport { return pl.sections.Load() }
+
+// sectionSlots is how many section tiles have a button of their own for MIDI
+const sectionSlots = 16
+
+// SectionControls puts the sections of the song playing on a panel (songs built with a
+// Transport): a tile per section, changing with the song (tap one to play it next, its dot to
+// switch it off), Repeat and Jump at, like a transport's Controls (arrange). The tiles' buttons are
+// named by position ("<name>/1", "<name>/2", ...) for MIDI pads; which sections are on is not in
+// presets (every song has its own), Repeat and Jump at are, and count for every song
+func (pl *Playlist) SectionControls(ctl *panel.Panel, name string) *Playlist {
+	ctl.Cues(name, sections{pl}, panel.CueSlots(sectionSlots))
+	ctl.Toggle(name+" repeat", panel.Func(func(v float64) { pl.SetSectionRepeat(v >= 0.5) }), panel.Label("Repeat"))
+	ctl.Select(name+" jump", []string{"section end", "next bar"}, func(i int) { pl.SetSectionJump(arrange.JumpAt(i)) },
+		panel.Label("Jump at"))
+	return pl
+}
+
+// songPanel mounts the panel of the song playing (panel.Mounter)
+type songPanel struct{ pl *Playlist }
+
+func (m songPanel) Mounted() *panel.Panel {
+	if now := m.pl.panel.Load(); now != nil {
+		return now.panel
+	}
+	return nil
+}
+
+// songNow is the song playing with a panel
+type songNow struct {
+	index int
+	panel *panel.Panel
+}
+
+// SnapshotMount gives the values of the controls of every song, as "<song>/<control>": of the song
+// playing as they are now, of the others as they were when they played (or were loaded); songs that
+// didn't play yet are left out (panel.MountKeeper: they are in the presets of the playlist's panel)
+func (m songPanel) SnapshotMount() map[string]float64 {
+	values := map[string]float64{}
+	now := m.pl.panel.Load()
+	m.pl.values.Range(func(k, v any) bool {
+		for key, x := range v.(map[string]float64) {
+			values[k.(string)+"/"+key] = x
+		}
+		return true
+	})
+	if now != nil {
+		name := m.pl.songs[now.index].Name
+		for key := range values { // the song playing: as it is now
+			if strings.HasPrefix(key, name+"/") {
+				delete(values, key)
+			}
+		}
+		for key, x := range now.panel.Snapshot() {
+			values[name+"/"+key] = x
+		}
+	}
+	return values
+}
+
+// RestoreMount sets the controls of the songs: the song playing at once, the others when they are
+// built (panel.MountKeeper)
+func (m songPanel) RestoreMount(values map[string]float64) {
+	per := map[string]map[string]float64{}
+	for _, s := range m.pl.songs {
+		prefix := s.Name + "/"
+		for key, x := range values {
+			if rest, ok := strings.CutPrefix(key, prefix); ok {
+				if per[s.Name] == nil {
+					per[s.Name] = map[string]float64{}
+				}
+				per[s.Name][rest] = x
+			}
+		}
+	}
+	now := m.pl.panel.Load()
+	for name, vs := range per {
+		m.pl.values.Store(name, vs)
+		if now != nil && m.pl.songs[now.index].Name == name {
+			now.panel.Restore(vs)
+		}
+	}
+}
+
+// SongPanel returns the panel of the song playing (a song built with a Panel), nil for none
+func (pl *Playlist) SongPanel() *panel.Panel { return songPanel{pl}.Mounted() }
+
+// SongControls shows the controls of the song playing on a panel (songs built with a Panel): its
+// panel, as on its own page, changing with the song; the heading is the title of the song's panel.
+// The control changes and notes of MIDI reach it, MIDI learn binds its controls (kept for the song)
+func (pl *Playlist) SongControls(ctl *panel.Panel, name string) *Playlist {
+	ctl.Mount(name, songPanel{pl})
 	return pl
 }

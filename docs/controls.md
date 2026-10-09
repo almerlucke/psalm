@@ -509,7 +509,18 @@ playing and one asked for next (a `panel.Cuer`: `CueNames`, `CueState`, `QueueCu
 Tap a tile to ask for it next, tap its dot to turn it on or off. Which cues are on is in snapshots
 (as `name/cue`, 1 or 0). Every tile is a button too, named `"<list>/<cue>"`: tap a tile in MIDI
 learn mode and hit a pad, or `ctl.Param("Song/Chorus").BindNote(0, 36)` (`cues.Tile(i)` is the
-same button). The song transport of `arrange` is one (`Transport.Controls`).
+same button). The song transport of `arrange` is one (`Transport.Controls`). With
+`panel.CueSlots(n)` the cues can change while it plays (the sections of the song a playlist plays):
+the page redraws the tiles when they change, the buttons are named by position (`"Sections/1"` to
+`"Sections/<n>"`) and which cues are on is not in snapshots.
+
+**Mounts**: `ctl.Mount(name, mounter)` shows another panel inside this one: the one a
+`panel.Mounter` gives now (`Mounted() *Panel`), and another one when it gives another, like the
+panel of the song a playlist plays (`playlist.SongControls`). The page shows it as on its own page
+(it is served under `/mount/<name>/`), the control changes and notes of MIDI reach it, and MIDI
+learn on the page binds its controls. A mounter that is a `panel.MountKeeper` (`SnapshotMount`,
+`RestoreMount`) keeps values in this panel's snapshots and presets too, as `"<mount>/..."`: the
+playlist keeps the controls of every song this way.
 
 **Labels**: `panel.Label("M")` shows a short text on the page instead of the name (names have to
 be unique, labels can repeat).
@@ -588,6 +599,7 @@ focused fader, double click to return to the default. Every open page shows the 
 | `POST /api/learn` | `{"name": "Cutoff"}` arms a control for MIDI learn, `{"name": ""}` stops |
 | `POST /api/unbind` | `{"name": "Cutoff"}` takes its controller from a control |
 | `POST /api/audio` | `{"running": false}` stops the sound of the patch, `true` starts it again, `{"restart": true}` goes back to the start |
+| `/mount/<name>/...` | The page and API of the panel mounted at a mount (`/mount/Song/api/set`, ...) |
 | `POST /api/cues` | `{"name": "Song", "queue": 2}` asks for a cue next (-1 takes it back), `{"name": "Song", "cue": 3, "on": false}` switches one off |
 | `POST /api/grid` | `{"name": "Beat", "pattern": 1, "set": [[pattern, row, step, field, value], ...]}` sets cells of a grid and/or asks for a pattern |
 

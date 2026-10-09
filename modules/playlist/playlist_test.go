@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/panel"
 )
 
@@ -253,5 +254,172 @@ func TestLiveBuildsAhead(t *testing.T) {
 	r.levels(2)
 	if i, _ := r.pl.Playing(); i != 0 {
 		t.Fatalf("live a restart should start the first song at once, playing %d", i)
+	}
+}
+
+// sectioned is a test song of three sections of a bar (2 seconds at 120): a tone, ended by its
+// transport
+func sectioned(name string, level float32, tones map[string]*tone) Song {
+	return Song{Name: name, Build: func(p *psalm.Psalm) Built {
+		t := &tone{Module: psalm.NewModule(nil, []int{2}), level: level, song: p}
+		t.SetSelf(t)
+		t.AddTo(p)
+		tones[name] = t
+		form := arrange.NewForm(arrange.Section{Name: "One", Bars: 1}, arrange.Section{Name: "Two", Bars: 1}, arrange.Section{Name: "Three", Bars: 1})
+		a := arrange.NewArrangement(form)
+		a.AddTo(p)
+		return Built{Out: t, Length: a.Duration(), Transport: form.Transport()}
+	}}
+}
+
+func TestSectionsOfTheSongPlaying(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 96, SampleRate: 1000, BufferSize: 10})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	tones := map[string]*tone{}
+	pl := New(p, Config{}, sectioned("A", 0.1, tones), sectioned("B", 0.2, tones))
+	p.Out(pl)
+	ctl := panel.New(p, "Test")
+	pl.SectionControls(ctl, "Sections")
+	cs := ctl.CuesByName("Sections")
+	run := func(n int) []float64 {
+		var ls []float64
+		for range n {
+			p.ResetRun()
+			p.Run()
+			ls = append(ls, math.Round(float64(pl.Output(0).Channels[0][9])*1000)/1000)
+		}
+		return ls
+	}
+	run(10)
+	if st := cs.State(); !slices.Equal(st.Names, []string{"One", "Two", "Three"}) || st.Playing != 0 {
+		t.Fatalf("the tiles should show the sections of the song playing: %+v", st)
+	}
+	cs.Enable(1, false) // A without its second section: it ends after 4 seconds, not 6
+	ls := run(450)
+	if ls[390] != 0.1 || ls[420] != 0.2 {
+		t.Fatalf("A should end when its transport ended (at 4 s), B start: %v %v", ls[390], ls[420])
+	}
+	if st := cs.State(); st.Playing != 0 || st.Enabled[1] != true {
+		t.Fatalf("the tiles should show B's sections now, as written: %+v", st)
+	}
+	ctl.Param("Sections repeat").Set(1)
+	ctl.CtrlTick(psalm.CtrlTick{TickTimestamp: 1})
+	if !pl.Sections().Repeat() {
+		t.Fatal("repeat should reach the transport of the song playing")
+	}
+	ls = run(800) // B's first section again and again: still B after 8 seconds
+	if ls[799] != 0.2 || pl.Sections().Ended() {
+		t.Fatalf("a repeated section should keep the song going: %v", ls[799])
+	}
+	pl.SetSectionRepeat(false)
+	run(900) // the rest of the section and the two after it, and ringing out
+	if !pl.Done() || pl.Sections() != nil || len(cs.State().Names) != 0 {
+		t.Fatal("after the last song ended there are no sections to show")
+	}
+}
+
+func TestSongPanels(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 96, SampleRate: 1000, BufferSize: 10})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	panels := map[string]*panel.Panel{}
+	withPanel := func(s Song) Song {
+		build := s.Build
+		s.Build = func(sub *psalm.Psalm) Built {
+			b := build(sub)
+			ctl := panel.New(sub, s.Name)
+			ctl.Fader("Level", 0, 1, panel.Linear, nil)
+			panels[s.Name] = ctl
+			b.Panel = ctl
+			return b
+		}
+		return s
+	}
+	tones := map[string]*tone{}
+	pl := New(p, Config{}, withPanel(song("A", 0.1, 1, 0, tones)), withPanel(song("B", 0.2, 1, 0, tones)))
+	p.Out(pl)
+	host := panel.New(p, "Host")
+	pl.SongControls(host, "Song")
+	run := func(n int) {
+		for range n {
+			p.ResetRun()
+			p.Run()
+		}
+	}
+	run(10)
+	if pl.SongPanel() != panels["A"] || host.CuesByName("Song") != nil {
+		t.Fatal("the panel of A should be mounted while A plays")
+	}
+	panels["A"].Param("Level").BindCC(0, 21) // as MIDI learn would
+	run(100)
+	if pl.SongPanel() != panels["B"] {
+		t.Fatal("the panel of B should be mounted while B plays")
+	}
+	bs, ok := pl.bindings.Load("A")
+	if !ok || bs.(map[string]panel.Binding)["Level"].Controller != 21 {
+		t.Fatal("what was bound in A should be kept for A")
+	}
+	run(200)
+	if pl.SongPanel() != nil {
+		t.Fatal("after the last song nothing is mounted")
+	}
+	again := pl.build(0) // A built again (live, when it plays again)
+	if b, ok := again.Panel.Param("Level").Binding(); !ok || b.Controller != 21 {
+		t.Fatal("a song built again should get back what was bound for it")
+	}
+}
+
+func TestSongValuesInPresets(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 96, SampleRate: 1000, BufferSize: 10})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	panels := map[string]*panel.Panel{}
+	withPanel := func(s Song) Song {
+		build := s.Build
+		s.Build = func(sub *psalm.Psalm) Built {
+			b := build(sub)
+			ctl := panel.New(sub, s.Name)
+			ctl.Fader("Level", 0, 1, panel.Linear, nil, panel.Default(0.5))
+			panels[s.Name] = ctl
+			b.Panel = ctl
+			return b
+		}
+		return s
+	}
+	tones := map[string]*tone{}
+	pl := New(p, Config{Loop: true}, withPanel(song("A", 0.1, 1, 0, tones)), withPanel(song("B", 0.2, 1, 0, tones)))
+	p.Out(pl)
+	host := panel.New(p, "Host")
+	host.Fader("Volume", 0, 1, panel.Linear, nil)
+	pl.SongControls(host, "Song")
+	run := func(n int) {
+		for range n {
+			p.ResetRun()
+			p.Run()
+		}
+	}
+	run(10)
+	panels["A"].Param("Level").Set(0.8)
+	run(100) // into B
+	panels["B"].Param("Level").Set(0.3)
+	snap := host.Snapshot()
+	if snap["Song/A/Level"] != 0.8 || snap["Song/B/Level"] != 0.3 {
+		t.Fatalf("the presets should hold the controls of every song that played: %v", snap)
+	}
+
+	// a preset loaded: B (playing) at once, A when it plays again
+	snap["Song/A/Level"], snap["Song/B/Level"] = 0.1, 0.9
+	host.Restore(snap)
+	if panels["B"].Param("Level").Value() != 0.9 {
+		t.Fatal("the song playing should get its values from the preset at once")
+	}
+	run(100) // A again (loop): offline the same panel
+	if pl.SongPanel() != panels["A"] || panels["A"].Param("Level").Value() != 0.1 {
+		t.Fatalf("a song starting should get its values from the preset: %v", panels["A"].Param("Level").Value())
+	}
+	again := pl.build(1) // B built again (live)
+	if again.Panel.Param("Level").Value() != 0.9 {
+		t.Fatal("a song built again should keep its values")
 	}
 }

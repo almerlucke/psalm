@@ -171,3 +171,50 @@ func TestToggleNote(t *testing.T) {
 		t.Fatal("and off again")
 	}
 }
+
+// changing is a cue list whose cues change
+type changing struct {
+	cueList
+	names []string
+}
+
+func (c *changing) CueNames() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.names)
+}
+
+func TestCueSlots(t *testing.T) {
+	pn, _ := newPanel()
+	c := &changing{cueList: *newCueList(), names: []string{"Intro", "Verse", "Chorus"}}
+	cs := pn.Cues("Sections", c, CueSlots(4))
+	if pn.Param("Sections/1") == nil || pn.Param("Sections/4") == nil || pn.Param("Sections/Intro") != nil {
+		t.Fatal("the tiles of a list with slots should be named by position")
+	}
+	if st := cs.State(); !slices.Equal(st.Names, c.names) {
+		t.Fatalf("the state should hold the cues there are now: %v", st.Names)
+	}
+	if d := pn.describe(); d.Sections[0].Controls[0].Cues.Slots != 4 {
+		t.Fatal("the page should know the cues change")
+	}
+	c.mu.Lock()
+	c.names = []string{"A", "B"}
+	c.mu.Unlock()
+	cs.Queue(2) // there are two now
+	if c.CueState().Queued != -1 {
+		t.Fatal("a cue past the cues there are now should be left out")
+	}
+	pn.Param("Sections/2").Press()
+	pn.CtrlTick(psalm.CtrlTick{TickTimestamp: 1})
+	if c.CueState().Queued != 1 {
+		t.Fatal("the second tile's button should ask for the second cue, whatever it is")
+	}
+	pn.Param("Sections/4").Press()
+	pn.CtrlTick(psalm.CtrlTick{TickTimestamp: 2})
+	if c.CueState().Queued != 1 {
+		t.Fatal("a slot without a cue does nothing")
+	}
+	if snap := pn.Snapshot(); len(snap) != 0 {
+		t.Fatalf("cues that change are not in snapshots: %v", snap)
+	}
+}

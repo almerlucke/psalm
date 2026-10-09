@@ -100,6 +100,16 @@ body.learn .control.armed { outline: 2px solid var(--accent); animation: armed 1
 .inspector label { display: flex; flex-direction: column; gap: 4px; }
 .inspector input[type=range] { width: 130px; accent-color: var(--accent); }
 .inspector .title { color: var(--ink); font-weight: 600; align-self: center; }
+/* a mounted panel (the panel of the song playing): its page, without a header, in a frame */
+section.mounthost { flex-basis: 100%; background: none; border: none; box-shadow: none; padding: 0; }
+section.mounthost h2 { margin: 4px 0 6px; }
+.mountbox { width: 100%; }
+.mountbox iframe { width: 100%; border: 0; display: block; height: 0; color-scheme: normal; }
+.mountbox .none { font-size: 12px; color: var(--muted); padding: 6px 0; }
+body.embed header { display: none; }
+body.embed { background: transparent; }
+body.embed main { padding: 0 0 4px; }
+
 /* cue lists: a tile per cue */
 .cuebox { display: flex; flex-direction: column; gap: 8px; align-items: stretch; max-width: 100%; }
 .cuebox .name { max-width: none; text-align: left; }
@@ -156,7 +166,7 @@ function send(name, value) {
 	scheduled = true;
 	requestAnimationFrame(() => {
 		scheduled = false;
-		for (const [n, v] of pending) post("/api/set", {name: n, value: v});
+		for (const [n, v] of pending) post("api/set", {name: n, value: v});
 		pending.clear();
 	});
 }
@@ -264,10 +274,10 @@ function toggle(p) {
 function button(p) {
 	const b = document.createElement("button");
 	b.textContent = p.label || p.name; b.title = p.name;
-	b.addEventListener("pointerdown", () => { b.classList.add("down"); post("/api/press", {name: p.name}); });
+	b.addEventListener("pointerdown", () => { b.classList.add("down"); post("api/press", {name: p.name}); });
 	const up = () => b.classList.remove("down");
 	b.addEventListener("pointerup", up); b.addEventListener("pointerleave", up);
-	b.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") post("/api/press", {name: p.name}); });
+	b.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") post("api/press", {name: p.name}); });
 	const box = document.createElement("div"); box.className = "control"; box.append(b);
 	return {el: box, show: () => {}};
 }
@@ -320,7 +330,7 @@ function grid(p) {
 		const b = document.createElement("button");
 		b.textContent = i < 26 ? String.fromCharCode(65 + i) : String(i + 1);
 		b.title = "pattern " + b.textContent;
-		b.addEventListener("click", () => { pattern = i; render(); post("/api/grid", {name: p.name, pattern: i}); });
+		b.addEventListener("click", () => { pattern = i; render(); post("api/grid", {name: p.name, pattern: i}); });
 		head.append(b); patButtons.push(b);
 	}
 	// the pattern on view: copy it to another, or clear it
@@ -380,7 +390,7 @@ function grid(p) {
 		if (!list.length) return;
 		for (const [pt, r, s, f, v] of list) cells[idx(pt, r, s, f)] = v;
 		render(); inspect(true);
-		post("/api/grid", {name: p.name, set: list});
+		post("api/grid", {name: p.name, set: list});
 	}
 	const cellSet = (r, s, f, v) => [pattern, r, s, f, v];
 
@@ -552,40 +562,47 @@ function grid(p) {
 // on or off. The cue playing shows how far it is, the one asked for blinks
 function cues(p) {
 	const d = p.cues;
-	let state = d.state;
+	let state = d.state, names = d.slots ? d.state.names || [] : d.state.names || d.names;
 	const div = cls => { const e = document.createElement("div"); e.className = cls; return e; };
 	const el = div("cuebox control");
 	const title = div("name"); title.textContent = p.label || p.name;
 	const list = div("cuelist");
 	const hint = div("cuehint");
 	hint.textContent = "tap one to play it next, tap again to take that back; the dot turns it on or off";
-	const tiles = d.names.map((name, i) => {
-		const t = div("cue");
-		t.title = name;
-		t.innerHTML = '<span class="label"></span><span class="switch" title="on or off"></span><span class="tag"></span><span class="bar"></span>';
-		t.querySelector(".label").textContent = name;
-		// every tile is a button of its own on the panel ("Song/Chorus"): MIDI learn binds a pad to it
-		const tile = {el: t}, tileName = p.name + "/" + name;
-		bindable(tile, {name: tileName});
-		widgets[tileName] = tile;
-		t.addEventListener("click", e => {
-			if (e.target.closest(".switch")) {
-				state.enabled[i] = !state.enabled[i];
-				render();
-				post("/api/cues", {name: p.name, cue: i, on: state.enabled[i]});
-				return;
-			}
-			state.queued = state.queued === i ? -1 : i;
-			render();
-			post("/api/cues", {name: p.name, queue: state.queued});
-		});
-		list.append(t);
-		return t;
-	});
 	el.append(title, list, hint);
+	let tiles = [];
+	// the tiles: every one a button of its own on the panel, "Song/Chorus" (or "Sections/2" for a
+	// list whose cues change): MIDI learn binds a pad to it
+	function makeTiles() {
+		list.innerHTML = "";
+		tiles = names.map((name, i) => {
+			const t = div("cue");
+			t.title = name;
+			t.innerHTML = '<span class="label"></span><span class="switch" title="on or off"></span><span class="tag"></span><span class="bar"></span>';
+			t.querySelector(".label").textContent = name;
+			const tile = {el: t}, tileName = p.name + "/" + (d.slots ? i + 1 : name);
+			bindable(tile, {name: tileName});
+			widgets[tileName] = tile;
+			t.addEventListener("click", e => {
+				if (e.target.closest(".switch")) {
+					state.enabled = state.enabled || [];
+					state.enabled[i] = !state.enabled[i];
+					render();
+					post("api/cues", {name: p.name, cue: i, on: state.enabled[i]});
+					return;
+				}
+				state.queued = state.queued === i ? -1 : i;
+				render();
+				post("api/cues", {name: p.name, queue: state.queued});
+			});
+			list.append(t);
+			return t;
+		});
+		if (lastMIDI) showMIDI(lastMIDI); // the bindings on the new tiles
+	}
 	function render() {
 		tiles.forEach((t, i) => {
-			const playing = i === state.playing, queued = i === state.queued, on = state.enabled[i];
+			const playing = i === state.playing, queued = i === state.queued, on = !!(state.enabled || [])[i];
 			t.classList.toggle("playing", playing);
 			t.classList.toggle("queued", queued);
 			t.classList.toggle("off", !on);
@@ -593,11 +610,63 @@ function cues(p) {
 			t.querySelector(".tag").textContent = queued ? "next" : playing ? "playing" : on ? "" : "off";
 		});
 	}
+	makeTiles();
 	render();
-	return {el, show() {}, update(st) { state = st; render(); }};
+	return {el, show() {}, update(st) {
+		state = st;
+		const now = d.slots ? st.names || [] : st.names || names; // a list with slots: no names, no cues (between songs)
+		if (now.join("\n") !== names.join("\n")) { names = now; makeTiles(); }
+		render();
+	}};
 }
 
-const builders = {fader, knob, toggle, button, select: choice, meter, grid, cues};
+// a mounted panel: the page of another panel (under mount/<name>/) in a frame, another one when
+// another panel is mounted
+const frames = new Set();
+function mount(p) {
+	const el = document.createElement("div");
+	el.className = "mountbox control";
+	const frame = document.createElement("iframe");
+	frame.title = p.name;
+	const none = document.createElement("div");
+	none.className = "none";
+	none.textContent = "nothing to show";
+	el.append(frame, none);
+	frames.add(frame);
+	let heading = null, shown = -1;
+	const show = m => {
+		if (!heading) heading = el.closest("section") && el.closest("section").querySelector("h2");
+		if (heading) heading.textContent = m.title ? m.title : (heading.dataset.name || "");
+		frame.hidden = !m.title;
+		none.hidden = !!m.title;
+		if (m.id === shown) return; // the same panel: it stays as it is
+		shown = m.id;
+		if (m.title) frame.src = "mount/" + encodeURIComponent(p.name) + "/?embed&id=" + m.id;
+		else { frame.src = "about:blank"; frame.style.height = "0"; }
+	};
+	setTimeout(() => show(p.mount), 0); // once it is on the page
+	return {el, show() {}, update: show};
+}
+
+// a frame tells its height (and asks for learn mode), the frames follow learn mode here
+window.addEventListener("message", e => {
+	const m = e.data || {};
+	for (const f of frames) {
+		if (f.contentWindow !== e.source) continue;
+		if (m.psalm === "height") f.style.height = m.height + "px";
+	}
+	if (m.psalm === "learn" && window.parent === window && m.on !== learnMode) setLearnMode(m.on, false);
+	if (m.psalm === "learn" && window.parent !== window && e.source === window.parent) setLearnMode(m.on, !m.on);
+});
+const embedded = new URLSearchParams(location.search).has("embed");
+if (embedded) {
+	document.body.classList.add("embed");
+	const tell = () => window.parent.postMessage({psalm: "height", height: Math.ceil(document.body.getBoundingClientRect().height)}, "*");
+	new ResizeObserver(tell).observe(document.body);
+	window.addEventListener("load", tell);
+}
+
+const builders = {fader, knob, toggle, button, select: choice, meter, grid, cues, mount};
 
 // MIDI learn: in learn mode a tap on a control arms it (its value stays), the next control change
 // from the controller binds to it (or the next note, for a button, a toggle or the tile of a cue
@@ -605,9 +674,11 @@ const builders = {fader, knob, toggle, button, select: choice, meter, grid, cues
 let learnMode = false;
 function setLearnMode(on, local = true) {
 	learnMode = on;
+	for (const f of frames) if (f.contentWindow) f.contentWindow.postMessage({psalm: "learn", on}, "*");
+	if (embedded && local) window.parent.postMessage({psalm: "learn", on}, "*");
 	document.body.classList.toggle("learn", on);
 	document.getElementById("learn").classList.toggle("on", on);
-	if (!on && local) post("/api/learn", {name: ""});
+	if (!on && local) post("api/learn", {name: ""});
 }
 document.getElementById("learn").addEventListener("click", () => setLearnMode(!learnMode));
 document.addEventListener("keydown", e => { if (e.key === "Escape" && learnMode) setLearnMode(false); });
@@ -629,13 +700,15 @@ function bindable(w, p) {
 		e.stopPropagation();
 		e.preventDefault();
 		if (e.type !== "pointerdown") return;
-		if (e.target.classList.contains("unbind")) post("/api/unbind", {name: p.name});
-		else post("/api/learn", {name: p.name});
+		if (e.target.classList.contains("unbind")) post("api/unbind", {name: p.name});
+		else post("api/learn", {name: p.name});
 	};
 	for (const type of ["pointerdown", "click", "dblclick", "keydown"]) w.el.addEventListener(type, learn, true);
 }
 
+let lastMIDI = null;
 function showMIDI(m) {
+	lastMIDI = m;
 	if (m.learning && !learnMode) setLearnMode(true, false); // armed elsewhere: show it here too
 	for (const [name, w] of Object.entries(widgets)) {
 		if (w.binding) w.binding(m.bindings[name]);
@@ -644,13 +717,14 @@ function showMIDI(m) {
 }
 
 async function build() {
-	const d = await (await fetch("/api/panel")).json();
+	const d = await (await fetch("api/panel")).json();
 	document.title = d.title;
 	document.getElementById("title").textContent = d.title;
 	const main = document.getElementById("panel");
 	for (const s of d.sections) {
 		const sec = document.createElement("section");
-		const h = document.createElement("h2"); h.textContent = s.name;
+		const h = document.createElement("h2"); h.textContent = s.name; h.dataset.name = s.name;
+		if (s.controls.some(c => c.kind === "mount")) sec.className = "mounthost";
 		const row = document.createElement("div"); row.className = "controls";
 		sec.append(h, row);
 		for (const p of s.controls) {
@@ -658,7 +732,7 @@ async function build() {
 			w.param = p;
 			widgets[p.name] = w;
 			w.show(p.value);
-			if (p.kind !== "meter" && p.kind !== "grid" && p.kind !== "cues") bindable(w, p);
+			if (p.kind !== "meter" && p.kind !== "grid" && p.kind !== "cues" && p.kind !== "mount") bindable(w, p);
 			row.append(w.el);
 		}
 		main.append(sec);
@@ -678,7 +752,7 @@ function player(running, canRestart) {
 		r.hidden = false;
 		r.addEventListener("click", async () => {
 			try {
-				const res = await fetch("/api/audio", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({restart: true})});
+				const res = await fetch("api/audio", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({restart: true})});
 				if (!res.ok) throw new Error((await res.text()).trim());
 				note(running ? "back to the start" : "back to the start: press Start to play");
 			} catch (e) { note(e.message, true); }
@@ -694,7 +768,7 @@ function player(running, canRestart) {
 		const want = !running;
 		showRunning(want);
 		try {
-			const res = await fetch("/api/audio", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({running: want})});
+			const res = await fetch("api/audio", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({running: want})});
 			if (!res.ok) throw new Error((await res.text()).trim());
 			showRunning((await res.json()).running);
 		} catch (e) { showRunning(!want); note(e.message, true); }
@@ -730,7 +804,7 @@ function presets(enabled) {
 		return true;
 	};
 	const act = async (action, name) => {
-		try { return await answer(await fetch("/api/presets", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action, name})})); }
+		try { return await answer(await fetch("api/presets", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action, name})})); }
 		catch (e) { note("no connection", true); return false; }
 	};
 	if (enabled) {
@@ -763,10 +837,10 @@ function presets(enabled) {
 			const n = choice.value;
 			if (n && confirm(`Delete preset "${n}"?`) && await act("delete", n)) note(`deleted "${n}"`);
 		});
-		fetch("/api/presets").then(answer).catch(() => {});
+		fetch("api/presets").then(answer).catch(() => {});
 	}
 	const down = el("button", "Download", "the setup as a file");
-	down.addEventListener("click", () => { const a = el("a"); a.href = "/api/snapshot?download"; a.download = ""; document.body.append(a); a.click(); a.remove(); });
+	down.addEventListener("click", () => { const a = el("a"); a.href = "api/snapshot?download"; a.download = ""; document.body.append(a); a.click(); a.remove(); });
 	const file = el("input"); file.type = "file"; file.accept = ".json,application/json"; file.hidden = true;
 	const up = el("button", "Upload", "set the panel to a setup from a file");
 	up.addEventListener("click", () => file.click());
@@ -776,7 +850,7 @@ function presets(enabled) {
 		if (!f) return;
 		try {
 			const values = JSON.parse(await f.text());
-			const res = await fetch("/api/snapshot", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(values)});
+			const res = await fetch("api/snapshot", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(values)});
 			if (!res.ok) throw new Error((await res.text()).trim());
 			note(`loaded ${f.name}`);
 		} catch (e) { note(`${f.name}: ${e.message}`, true); }
@@ -786,7 +860,7 @@ function presets(enabled) {
 
 function listen() {
 	const status = document.getElementById("status");
-	const events = new EventSource("/api/events");
+	const events = new EventSource("api/events");
 	events.onopen = () => status.classList.add("on");
 	events.onerror = () => status.classList.remove("on");
 	events.onmessage = e => {
@@ -800,6 +874,9 @@ function listen() {
 		}
 		if (u.midi) showMIDI(u.midi);
 		if (u.audio) showRunning(u.audio.running);
+		for (const [name, m] of Object.entries(u.mounts || {})) {
+			if (widgets[name] && widgets[name].update) widgets[name].update(m);
+		}
 		for (const [name, st] of Object.entries(u.cues || {})) {
 			if (widgets[name] && widgets[name].update) widgets[name].update(st);
 		}

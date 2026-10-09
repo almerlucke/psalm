@@ -93,6 +93,11 @@ func (pn *Panel) receive(in Binding, value int) {
 			par.fromMIDI(pos)
 		}
 	}
+	for _, mt := range pn.mountList() { // the panels mounted get it too
+		if child := mt.Mounted(); child != nil && child != pn {
+			child.receive(in, value)
+		}
+	}
 }
 
 // takesNotes tells whether a control can be bound to a note: buttons and toggles
