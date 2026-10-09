@@ -36,10 +36,30 @@ after `Config.Tail` seconds (8).
 | Field | Meaning |
 |---|---|
 | `Gap` | Seconds between the end of a song and the start of the next; the song before rings on |
-| `Crossfade` | Seconds the next song starts before the end of one, the two fading over each other (no gap) |
+| `Crossfade` | Seconds the next song starts before the end of one, the two fading over each other (no gap), by an equal power curve so the loudness stays even |
 | `Tail` | Seconds a song that ended may ring before it fades away (0 is 8) |
 | `FadeOut` | Seconds a skipped song fades out (0 is 1.5) |
 | `Loop` | After the last song the first again |
+| `OnBar`, `Phrase` | The next song comes in on a bar line of the song playing (with `Phrase`, the first bar of a phrase of that many bars), its first tick on the exact sample |
+| `BeatsPerBar` | The bar of songs without a transport, for `OnBar` (0 is 4; a song with a transport has the bar of its form) |
+| `MatchTempo` | The next song starts at the tempo of the song playing and glides to its own over the cross fade |
+| `BassSwap`, `BassSwapAt` | Halfway the cross fade the low end goes over from the song playing to the next (below 180 Hz): the next comes in without it, the song playing gives it up, so two basses don't fight |
+
+**Mixing like a DJ**: with a cross fade the songs overlap. A song with a fixed length starts the
+next one `Crossfade` seconds before its end. A song with a transport knows its end once the rest is
+fixed (nothing asked for, no repeat, a form that doesn't loop: the rest of the section playing and
+the sections after it that are on, `Transport.BeatsLeft`), so it starts the next one in time too;
+if its sections change after the next one came in, it just fades away. With `OnBar` the next song
+waits for the bar line (or phrase) of the song playing after that moment, and its first beat falls
+exactly on it; a song that ends before the bar line doesn't hold it up. During the overlap the song
+playing goes on (and ends as it would: its clock holds, it rings), while it fades out.
+
+```go
+playlist.Config{Crossfade: 4, OnBar: true, Phrase: 1, MatchTempo: true, BassSwap: true}
+```
+
+With `OnBar` the start of a song depends on the bar lines, so `Duration()` is only an estimate:
+render until the playlist is done, `render.Options{Seconds: list.Duration(), Tail: 8, Until: list.Done}`.
 
 **Playing it** (from any goroutine): `Queue(i)` / `QueueSong(name)` asks for a song next (it
 starts when the song playing ends), `Skip()` ends the song playing now (it fades out, the next
@@ -94,10 +114,11 @@ next ones in the background while a song plays, and the first song is kept built
 restart starts it right away (build the rest of the patch before it plays:
 building a song switches the current environment for a moment). A song that isn't built yet when
 it is due (just asked for) starts as soon as it is. Offline every song is built by `New`, so a
-render is the same every time and `Duration()` knows the length of the list:
+render is the same every time and `Duration()` knows the length of the list (an estimate with
+`OnBar` and `MatchTempo`: render on until it is done):
 
 ```go
-render.ToFile(p, "list.wav", render.Options{Seconds: list.Duration(), Tail: 8})
+render.ToFile(p, "list.wav", render.Options{Seconds: list.Duration(), Tail: 8, Until: list.Done})
 ```
 
 `Close()` stops the background building (it returns once a song being built is done).

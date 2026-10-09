@@ -33,8 +33,9 @@ type Psalm struct {
 	doMu  sync.Mutex
 	doing []func()
 
-	host *Psalm      // the patch this one plays within (NewSub), nil for a patch of its own
-	held atomic.Bool // the clock stands still (HoldClock)
+	host  *Psalm      // the patch this one plays within (NewSub), nil for a patch of its own
+	held  atomic.Bool // the clock stands still (HoldClock)
+	delay float64     // samples the clock waits before its next tick (DelayStart), after a restart
 }
 
 // Do makes a change to the patch where it is safe: on the audio thread between two buffers while
@@ -158,6 +159,25 @@ func (p *Psalm) HoldClock(hold bool) { p.held.Store(hold) }
 
 // ClockHeld tells whether the clock stands still
 func (p *Psalm) ClockHeld() bool { return p.held.Load() }
+
+// Ticks returns the ticks of the patch's clock since it started (or restarted): where a song is,
+// for a playlist bringing the next one in on its bar lines. Read it on the audio thread
+func (p *Psalm) Ticks() int64 { return p.tickTimestamp }
+
+// SamplesUntil returns the samples from the start of the next buffer until the tick at a position
+// (counted from 0, as modules see it: TickTimestamp - 1) comes, at the current tempo. Read it on the
+// audio thread
+func (p *Psalm) SamplesUntil(position int64) float64 {
+	return float64(position-p.tickTimestamp)*p.samplesPerTick + (p.samplesPerTick - p.sampleCnt)
+}
+
+// SamplesPerTick returns the samples between two ticks at the current tempo
+func (p *Psalm) SamplesPerTick() float64 { return p.samplesPerTick }
+
+// DelayStart makes the clock wait a number of samples before its next tick: a song starting
+// within a buffer, sample exact (its first notes come that many samples into the buffer). Call it
+// on the audio thread, before the patch runs
+func (p *Psalm) DelayStart(samples float64) { p.delay += samples }
 
 // CtrlTick does nothing: a patch with a clock of its own ticks its modules itself, when it runs
 func (p *Psalm) CtrlTick(CtrlTick) {}
@@ -332,6 +352,10 @@ func (p *Psalm) Run() {
 	if p.restart.Swap(false) {
 		p.sampleTimestamp, p.tickTimestamp, p.sampleCnt = 0, 0, 0
 		restartModules(p.modules)
+	}
+	if p.delay != 0 {
+		p.sampleCnt -= p.delay
+		p.delay = 0
 	}
 	if p.held.Load() {
 		p.Patch.Run()

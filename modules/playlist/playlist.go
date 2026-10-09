@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/filters/biquad"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/panel"
 )
@@ -49,6 +50,14 @@ type Config struct {
 	Tail      float64 // seconds a song that ended may ring before it fades away (0 is 8)
 	FadeOut   float64 // seconds a skipped song fades out (0 is 1.5)
 	Loop      bool    // after the last song the first again
+
+	// mixing like a DJ (with a cross fade)
+	OnBar       bool    // the next song comes in on a bar line of the song playing, sample exact
+	Phrase      int     // with OnBar, on the first bar of a phrase of this many bars (0 is 1: any bar)
+	BeatsPerBar float64 // the bar of songs without a transport, for OnBar (0 is 4)
+	MatchTempo  bool    // the next song starts at the tempo of the song playing and glides to its own over the cross fade
+	BassSwap    bool    // the basses swap halfway the cross fade: the next song comes in without its low end, the song playing gives it up
+	BassSwapAt  float64 // Hz below which the bass is swapped (0 is 180)
 }
 
 // built is a song built, ready to play
@@ -61,16 +70,17 @@ type built struct {
 // voice is a song sounding: playing, or ringing out
 type voice struct {
 	*built
-	elapsed  int64   // samples played
-	length   int64   // samples it plays, 0 for no end
-	gain     float64 // now
-	target   float64
-	step     float64 // per sample toward the target
-	ended    bool    // its clock holds: ringing out
-	handed   bool    // the next song was asked for
-	ringing  int64   // samples since it ended
-	quiet    int64   // samples it has been silent while ringing
-	fading   bool    // fading away, then gone
+	elapsed  int64 // samples played
+	length   int64 // samples it plays, 0 for no end
+	fade     fade
+	tempo    *glide // its tempo gliding to its own (MatchTempo)
+	bass     *bassCut
+	ended    bool  // its clock holds: ringing out
+	handed   bool  // the next song was asked for
+	early    bool  // asked for before its end (a cross fade): it can still change
+	ringing  int64 // samples since it ended
+	quiet    int64 // samples it has been silent while ringing
+	fading   bool  // fading away, then gone
 	finished bool
 }
 
@@ -104,6 +114,7 @@ type Playlist struct {
 	voices  []*voice
 	pending int   // the song to start, -1 none
 	gapLeft int64 // samples before it starts
+	onBar   bool  // the next song waits for a bar line of the song playing
 	current *voice
 	started bool
 	done    atomic.Bool // the playlist ended
@@ -285,12 +296,49 @@ func (pl *Playlist) seconds(s float64) int64 {
 	return int64(math.Round(s * pl.Config().SampleRate))
 }
 
-// fade sets a voice moving to a gain over some seconds
-func (pl *Playlist) fade(v *voice, to, seconds float64) {
-	v.target = to
-	n := float64(max(1, pl.seconds(seconds)))
-	v.step = (to - v.gain) / n
+// fade is the gain of a song moving from one level to another over a number of samples, by an equal
+// power curve: two songs fading over each other keep their loudness
+type fade struct {
+	from, to float64
+	pos, len int64
 }
+
+// gain returns the gain a number of samples on
+func (f *fade) gain(ahead int64) float64 {
+	if f.len <= 0 || f.pos+ahead >= f.len {
+		return f.to
+	}
+	x := float64(f.pos+ahead) / float64(f.len) * math.Pi / 2
+	return f.from*math.Cos(x) + f.to*math.Sin(x)
+}
+
+func (f *fade) done() bool { return f.pos >= f.len }
+
+// fadeTo sets a voice moving to a gain over a number of samples, from where it is
+func (pl *Playlist) fadeTo(v *voice, to float64, samples int64) {
+	v.fade = fade{from: v.fade.gain(0), to: to, len: max(1, samples)}
+}
+
+// fade sets a voice moving to a gain over some seconds
+func (pl *Playlist) fade(v *voice, to, seconds float64) { pl.fadeTo(v, to, pl.seconds(seconds)) }
+
+// glide is a tempo gliding from one to another over a number of samples
+type glide struct {
+	from, to float64
+	pos, len int64
+}
+
+// bassCut is a high pass taking the low end of a song away, or giving it back, halfway a cross fade
+type bassCut struct {
+	filters [2]*biquad.Biquad
+	pos     float64 // 0 is open (no cut), 1 the cut at its frequency
+	target  float64
+	at      int64 // the sample of the fade it starts moving
+	hz      float64
+}
+
+// cutoff returns the frequency of the high pass at a position: 20 Hz open, hz cut
+func (b *bassCut) cutoff() float64 { return 20 * math.Pow(b.hz/20, b.pos) }
 
 // Synthesize plays the songs sounding into the output, and moves the playlist on
 func (pl *Playlist) Synthesize() {
@@ -325,39 +373,56 @@ func (pl *Playlist) Synthesize() {
 		}
 	}
 
-	// a song with a transport ends when its transport ended: the next one now (fading over it)
-	if cur := pl.current; cur != nil && !cur.ended && cur.Transport != nil {
-		if cur.Transport.Ended() {
-			pl.end(cur)
-			if !cur.handed {
-				cur.handed = true
-				pl.pending = pl.next(cur.index)
-				if pl.cfg.Crossfade == 0 {
-					pl.gapLeft = pl.seconds(pl.cfg.Gap)
-				}
-			}
-		}
-	} else if cur != nil && !cur.ended && cur.length > 0 {
-		// the song playing reaching its end: ask for the next one (early, to cross fade)
-		cross := pl.seconds(pl.cfg.Crossfade)
-		if !cur.handed && cur.elapsed >= cur.length-cross {
-			cur.handed = true
-			pl.pending = pl.next(cur.index)
-			if cross == 0 {
-				pl.gapLeft = pl.seconds(pl.cfg.Gap)
-			}
-		}
-		if cur.elapsed >= cur.length {
-			pl.end(cur)
+	// songs reaching their end hold their clock and ring out (a song fading under the next one too):
+	// a song with a transport when its transport ended, the others at their length
+	for _, v := range pl.voices {
+		if !v.ended && ((v.Transport != nil && v.Transport.Ended()) || (v.Transport == nil && v.length > 0 && v.elapsed >= v.length)) {
+			pl.end(v)
 		}
 	}
 
-	// the next song: when the gap is over and it is built
+	// the next song asked for early (a cross fade) but not in yet: the end of the song playing may
+	// have moved (a section asked for, a repeat: it plays on, the next comes later), or another song
+	// was tapped (that one comes in)
+	if cur := pl.current; cur != nil && cur.handed && cur.early && !cur.ended && pl.pending >= 0 {
+		if due, _ := pl.due(cur); !due {
+			cur.handed, cur.early, pl.pending, pl.onBar = false, false, -1, false
+		} else if q := pl.queued.Load(); q >= 0 && int(q) != pl.pending {
+			pl.pending = int(q)
+		}
+	}
+
+	// the song playing near its end: the next one is asked for, early for a cross fade
+	if cur := pl.current; cur != nil && !cur.handed {
+		if due, early := pl.due(cur); due {
+			cur.handed, cur.early = true, early
+			pl.pending = pl.next(cur.index)
+			pl.gapLeft, pl.onBar = 0, early && pl.cfg.OnBar
+			if pl.cfg.Crossfade == 0 {
+				pl.gapLeft = pl.seconds(pl.cfg.Gap)
+			}
+		}
+	}
+
+	// the next song: when the gap is over (or on the bar line) and it is built
 	if pl.pending >= 0 {
-		if pl.gapLeft > 0 {
+		delay, onTheBar := 0.0, true
+		if pl.onBar {
+			delay, onTheBar = pl.barLine(buffer)
+		}
+		switch {
+		case pl.gapLeft > 0:
 			pl.gapLeft -= buffer
-		} else if b := pl.take(pl.pending); b != nil {
-			pl.start(b)
+		case !onTheBar:
+		default:
+			if b := pl.take(pl.pending); b != nil {
+				onBar := pl.onBar
+				pl.onBar = false
+				pl.start(b) // the tempo is set (MatchTempo)
+				if onBar {  // its first tick comes a tick after it starts: wait the rest
+					b.sub.DelayStart(math.Max(0, delay-b.sub.SamplesPerTick()))
+				}
+			}
 		}
 	}
 
@@ -383,6 +448,48 @@ func (pl *Playlist) Synthesize() {
 	} else {
 		pl.playing.Store(-1)
 	}
+}
+
+// due tells whether the next song is due after a song: when it ended, or (with a cross fade) when
+// its end is less than the cross fade away; early is the latter
+func (pl *Playlist) due(v *voice) (due, early bool) {
+	if v.ended {
+		return true, false
+	}
+	if pl.cfg.Crossfade <= 0 {
+		return false, false
+	}
+	if v.Transport != nil {
+		beats, known := v.Transport.BeatsLeft()
+		return known && beats*60/v.sub.Env().BPM() <= pl.cfg.Crossfade, true
+	}
+	return v.length > 0 && v.elapsed >= v.length-pl.seconds(pl.cfg.Crossfade), true
+}
+
+// barLine tells whether the song playing reaches the first bar of a phrase within the coming buffer,
+// and how many samples into it its first tick comes (the next song's first tick then comes there,
+// sample exact); a song that ended (or none) doesn't hold the next one up
+func (pl *Playlist) barLine(buffer int64) (float64, bool) {
+	cur := pl.current
+	if cur == nil || cur.ended {
+		return 0, true
+	}
+	bpb := pl.cfg.BeatsPerBar
+	if cur.Transport != nil {
+		bpb = cur.Transport.Form().BeatsPerBar
+	}
+	if bpb <= 0 {
+		bpb = 4
+	}
+	phrase := float64(max(1, pl.cfg.Phrase))
+	every := int64(math.Round(phrase * bpb * float64(cur.sub.Config().PPQ))) // ticks between two phrase starts
+	ticks := cur.sub.Ticks()                                                 // the positions 0 to ticks-1 came
+	next := (ticks + every - 1) / every * every                              // the first phrase start to come
+	samples := cur.sub.SamplesUntil(next)
+	if samples >= float64(buffer) {
+		return 0, false
+	}
+	return samples, true
 }
 
 // firstOn returns the first song that is on, -1 for none
@@ -415,12 +522,35 @@ func (pl *Playlist) start(b *built) {
 	if pl.current != nil && pl.current.sub == b.sub {
 		pl.current = nil
 	}
-	v := &voice{built: b, length: pl.seconds(b.Length), gain: 1, target: 1}
+	v := &voice{built: b, length: pl.seconds(b.Length), fade: fade{from: 1, to: 1}}
 	if prev := pl.current; prev != nil && pl.cfg.Crossfade > 0 && !prev.fading {
-		v.gain = 0
-		pl.fade(v, 1, pl.cfg.Crossfade)
-		pl.fade(prev, 0, pl.cfg.Crossfade)
+		n := pl.seconds(pl.cfg.Crossfade)
+		v.fade = fade{from: 0, to: 1, len: n}
+		pl.fadeTo(prev, 0, n)
 		prev.fading = true
+		if pl.cfg.MatchTempo { // the next song at the tempo of the song playing, gliding to its own
+			env := b.sub.Env()
+			if from, own := prev.sub.Env().BPM(), env.BPM(); from != own {
+				env.SetBPM(from)
+				v.tempo = &glide{from: from, to: own, len: n}
+			}
+		}
+		if pl.cfg.BassSwap { // halfway: the low end goes over from the song playing to the next
+			hz := pl.cfg.BassSwapAt
+			if hz <= 0 {
+				hz = 180
+			}
+			sr := pl.Config().SampleRate
+			newCut := func(pos, target float64) *bassCut {
+				b := &bassCut{pos: pos, target: target, at: n / 2, hz: hz}
+				for c := range b.filters {
+					b.filters[c] = biquad.New(biquad.HighPass, b.cutoff(), 0.707, 0, sr)
+				}
+				return b
+			}
+			v.bass = newCut(1, 0)
+			prev.bass = newCut(0, 1)
+		}
 	}
 	pl.voices = append(pl.voices, v)
 	pl.current = v
@@ -460,27 +590,49 @@ func (pl *Playlist) end(v *voice) {
 // sound runs a song for a buffer and adds it to the output at its gain; a song that rang out (or
 // faded away) is finished
 func (pl *Playlist) sound(v *voice, out psalm.Channels) {
+	buffer := int64(len(out[0]))
+	if g := v.tempo; g != nil { // gliding to its own tempo
+		g.pos += buffer
+		if g.pos >= g.len {
+			v.sub.Env().SetBPM(g.to)
+			v.tempo = nil
+		} else {
+			v.sub.Env().SetBPM(g.from + (g.to-g.from)*float64(g.pos)/float64(g.len))
+		}
+	}
 	v.sub.ResetRun()
 	v.sub.Run()
 	in := v.sub.Output(0).Channels
+	b := v.bass
+	if b != nil && v.fade.pos >= b.at && b.pos != b.target { // the swap: over a quarter of a second
+		step := float64(buffer) / float64(pl.seconds(0.25))
+		if b.target > b.pos {
+			b.pos = math.Min(b.target, b.pos+step)
+		} else {
+			b.pos = math.Max(b.target, b.pos-step)
+		}
+		for _, f := range b.filters {
+			f.SetFrequency(b.cutoff())
+		}
+	}
+	if b != nil && b.pos == 0 && b.target == 0 { // open again: no filter
+		v.bass, b = nil, nil
+	}
 	loud := false
 	for i := range out[0] {
-		if v.gain != v.target {
-			v.gain += v.step
-			if (v.step > 0 && v.gain > v.target) || (v.step < 0 && v.gain < v.target) || v.step == 0 {
-				v.gain = v.target
-			}
-		}
-		g := float32(v.gain)
+		g := v.fade.gain(int64(i))
 		for c := range out {
 			x := in[c%len(in)][i]
+			if b != nil {
+				x = float32(b.filters[c%2].Process(float64(x)))
+			}
 			if x > 1e-5 || x < -1e-5 {
 				loud = true
 			}
-			out[c][i] += x * g
+			out[c][i] += x * float32(g)
 		}
 	}
-	buffer := int64(len(out[0]))
+	v.fade.pos += buffer
 	v.elapsed += buffer
 	if !v.ended {
 		return
@@ -492,7 +644,7 @@ func (pl *Playlist) sound(v *voice, out psalm.Channels) {
 		v.quiet += buffer
 	}
 	switch {
-	case v.fading && v.gain == 0 && v.target == 0:
+	case v.fading && v.fade.done() && v.fade.to == 0:
 		v.finished = true
 	case v.quiet >= pl.seconds(0.5): // rung out
 		v.finished = true

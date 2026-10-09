@@ -31,6 +31,20 @@
 // The page shows the panel of the song playing, and another one when the next song starts. MIDI
 // reaches it too, and what MIDI learn binds on it is kept for the song.
 //
+// The songs are mixed like a DJ set: the next song comes in while the one playing ends, and the two
+// overlap for a few seconds:
+//
+//	Crossfade: 4       the next song starts four seconds before the end, the two fading over each other
+//	                   (equal power: the loudness stays the same); a song with a transport knows its
+//	                   end once the sections that are left are fixed
+//	OnBar, Phrase: 1   the next song comes in on a bar line of the song playing, its first beat
+//	                   exactly on it
+//	MatchTempo         the next song starts at the tempo of the song playing and glides to its own
+//	BassSwap           halfway the overlap the low end goes over from one song to the other, so two
+//	                   basses don't fight
+//
+// -mix=false plays the songs one after the other, with a second between them.
+//
 // MIDI: with -midi the pads of a controller can play songs and sections (MIDI learn on the page).
 // The section tiles' buttons are named by position, "Sections/1", "Sections/2", ...: the pad bound
 // to the second tile plays the second section of whatever song is playing.
@@ -41,6 +55,7 @@
 //
 //	go run ./cmd/examples/tutorial/18-setlist               then open http://localhost:8087
 //	go run ./cmd/examples/tutorial/18-setlist -midi
+//	go run ./cmd/examples/tutorial/18-setlist -mix=false
 //	go run ./cmd/examples/tutorial/18-setlist -render set.wav
 package main
 
@@ -75,9 +90,14 @@ type (
 func main() {
 	addr := flag.String("addr", "localhost:8087", "the address of the panel's page")
 	useMIDI := flag.Bool("midi", false, "play songs and sections from the pads of the first MIDI controller (MIDI learn on the page)")
+	djMix := flag.Bool("mix", true, "mix the songs into each other like a DJ set (false: one after the other)")
 	p := tutorial.New(100)
 
-	list := playlist.New(p, playlist.Config{Gap: 1, Loop: !tutorial.Rendering()},
+	cfg := playlist.Config{Gap: 1, Loop: !tutorial.Rendering()}
+	if *djMix {
+		cfg.Crossfade, cfg.OnBar, cfg.Phrase, cfg.MatchTempo, cfg.BassSwap = 4, true, 1, true, true
+	}
+	list := playlist.New(p, cfg,
 		playlist.Song{Name: "Morning", Build: morning},
 		playlist.Song{Name: "Groove", Build: groove},
 		playlist.Song{Name: "Evening", Build: evening},
@@ -122,7 +142,7 @@ func main() {
 		defer ctl.Close()
 		fmt.Printf("the setlist: http://%s\n", *addr)
 	}
-	tutorial.Play(p, mix.Master(), list.Duration())
+	tutorial.PlayUntil(p, mix.Master(), list.Duration(), list.Done) // rendering: until the last song rang out
 }
 
 // withHall gives a song a mixer with a hall of its own

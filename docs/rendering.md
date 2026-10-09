@@ -15,6 +15,11 @@ stats, err := render.ToFile(p, "song.wav", render.Options{Seconds: 180, Tail: 10
 fmt.Println(stats) // rendered 184.2 s in 31.0 s: 5.9x real time (17% of a core live), peak -1.3 dB, ...
 ```
 
+`Options`: `Seconds` to render, `Tail` up to this many seconds more while the output still sounds
+(it stops once it is silent, `Silence` dB, -80), and `Until`: a function that keeps the render
+going after `Seconds` until it returns true, for a patch whose length isn't known before (a
+playlist mixing on bar lines: `Until: list.Done`).
+
 | Function | |
 |---|---|
 | `ToFile(p, path, opts)` | Renders the patch output to a stereo 32 bit float WAV file |

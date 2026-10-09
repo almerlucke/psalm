@@ -313,3 +313,40 @@ func TestTransportEnded(t *testing.T) {
 		t.Fatal("a restart starts the song again")
 	}
 }
+
+func TestTransportBeatsLeft(t *testing.T) {
+	tr := abc(false).Transport()
+	var tick int64
+	tr.At(0, testPPQ)
+	if beats, known := tr.BeatsLeft(); !known || beats != 16 {
+		t.Fatalf("at the start the whole song is left: %v", beats)
+	}
+	tr.SetEnabled("B", false)
+	if beats, _ := tr.BeatsLeft(); beats != 12 {
+		t.Fatalf("a section that is off doesn't count: %v", beats)
+	}
+	tr.SetEnabled("B", true)
+	bars(tr, &tick, 3, nil) // A A B
+	for range 4 {           // a beat into C, the last section
+		tr.At(tick, testPPQ)
+		tick++
+	}
+	tr.At(tick, testPPQ)
+	if beats, known := tr.BeatsLeft(); !known || beats != 3 {
+		t.Fatalf("a beat into the last bar three beats are left: %v %v", beats, known)
+	}
+	tr.SetRepeat(true)
+	if _, known := tr.BeatsLeft(); known {
+		t.Fatal("a repeated section doesn't end the song")
+	}
+	tr.SetRepeat(false).Queue("A")
+	if _, known := tr.BeatsLeft(); known {
+		t.Fatal("a section asked for doesn't end the song")
+	}
+	tr.Queue("")
+	looping := abc(true).Transport()
+	looping.At(0, testPPQ)
+	if _, known := looping.BeatsLeft(); known {
+		t.Fatal("a form that loops doesn't end")
+	}
+}

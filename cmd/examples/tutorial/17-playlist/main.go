@@ -95,7 +95,7 @@ func main() {
 		defer ctl.Close()
 		fmt.Printf("the playlist: http://%s\n", *addr)
 	}
-	tutorial.Play(p, mix.Master(), list.Duration())
+	tutorial.PlayUntil(p, mix.Master(), list.Duration(), list.Done) // rendering: until the last song rang out
 }
 
 // withHall gives a song a mixer with a hall of its own

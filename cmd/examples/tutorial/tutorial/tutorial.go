@@ -37,6 +37,12 @@ func Rendering() bool { return *renderTo != "" }
 // Play sends a module to the speakers and plays until you stop it (Ctrl-C), or with -render writes
 // seconds of it (and a few seconds for the sound to ring out) to the file
 func Play(p *psalm.Psalm, out psalm.Modular, seconds float64) {
+	PlayUntil(p, out, seconds, nil)
+}
+
+// PlayUntil is Play, rendering on after the seconds until done returns true (a playlist that is
+// done), then the ring out
+func PlayUntil(p *psalm.Psalm, out psalm.Modular, seconds float64, done func() bool) {
 	defer p.Close()
 	p.Out(out)
 	if *renderTo == "" {
@@ -46,7 +52,7 @@ func Play(p *psalm.Psalm, out psalm.Modular, seconds float64) {
 		}
 		return
 	}
-	stats, err := render.ToFile(p, *renderTo, render.Options{Seconds: seconds, Tail: 3})
+	stats, err := render.ToFile(p, *renderTo, render.Options{Seconds: seconds, Tail: 3, Until: done})
 	if err != nil {
 		panic(err)
 	}

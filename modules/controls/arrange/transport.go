@@ -142,6 +142,33 @@ func (t *Transport) Playing() (section string, progress float64) {
 // nothing was asked for after it). A playlist ends a song when its transport ended
 func (t *Transport) Ended() bool { return t.over.Load() }
 
+// BeatsLeft returns the beats before the song ends, when that is known: nothing is asked for next,
+// the section playing doesn't repeat and the form doesn't loop, so the rest of the section playing
+// and the sections after it that are on are what plays (true and 0 once it ended). Otherwise false.
+// A playlist starts the next song this long before the end, to fade them over each other
+func (t *Transport) BeatsLeft() (float64, bool) {
+	if t.over.Load() {
+		return 0, true
+	}
+	if t.repeat.Load() || t.queued.Load() >= 0 || t.form.Loop {
+		return 0, false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.started || t.ppq <= 0 || t.form.Bars() <= 0 {
+		return 0, false
+	}
+	cur := t.section()
+	_, end := t.sectionTicks(cur)
+	beats := float64(end-t.song) / float64(t.ppq)
+	for i := cur + 1; i < len(t.form.Sections); i++ {
+		if !t.off[i].Load() {
+			beats += float64(t.form.Sections[i].Bars) * t.form.BeatsPerBar
+		}
+	}
+	return beats, true
+}
+
 // Form returns the form the transport plays
 func (t *Transport) Form() *Form { return t.form }
 

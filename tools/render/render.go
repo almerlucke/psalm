@@ -27,6 +27,10 @@ type Options struct {
 	Seconds float64 // length to render
 	Tail    float64 // up to this many seconds more while the output still sounds (reverb tails), stopping once it is silent
 	Silence float64 // dB below which the tail counts as silent (0 is -80)
+
+	// Until keeps rendering after Seconds until it returns true (a playlist that is done: its
+	// length isn't known before), then the tail. It is asked once per buffer, at most 10 minutes on
+	Until func() bool
 }
 
 // Stats describe a render
@@ -76,7 +80,16 @@ func Run(p *psalm.Psalm, opts Options, each func(out psalm.Channels)) Stats {
 	}
 	threshold := math.Pow(10, silence/20)
 
-	for b := 0; b < buffers+maxTail; b++ {
+	tailFrom, waiting := buffers, opts.Until != nil
+	limit := buffers + int(math.Ceil(600*sr/float64(bs)))
+	for b := 0; b < tailFrom+maxTail; b++ {
+		if waiting && b >= buffers {
+			if opts.Until() || b >= limit {
+				waiting, tailFrom = false, b
+			} else {
+				tailFrom = b + 1
+			}
+		}
 		p.ResetRun()
 		p.Run()
 		out := p.Output(0).Channels
@@ -87,7 +100,7 @@ func Run(p *psalm.Psalm, opts Options, each func(out psalm.Channels)) Stats {
 		}
 		rendered++
 
-		if b >= buffers {
+		if b >= tailFrom && !waiting {
 			peak := 0.0
 			for _, ch := range out {
 				for _, x := range ch {

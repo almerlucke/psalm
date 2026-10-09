@@ -19,9 +19,16 @@ type tone struct {
 	song  *psalm.Psalm
 	ticks []int64
 	held  int
+	clock *int64  // the first sample of the buffer playing (set by the test), for at
+	at    []int64 // the samples of the ticks
 }
 
-func (t *tone) CtrlTick(tick psalm.CtrlTick) { t.ticks = append(t.ticks, tick.TickTimestamp) }
+func (t *tone) CtrlTick(tick psalm.CtrlTick) {
+	t.ticks = append(t.ticks, tick.TickTimestamp)
+	if t.clock != nil { // the sample of the whole patch the tick comes at
+		t.at = append(t.at, *t.clock+int64(tick.SampleOffset))
+	}
+}
 func (t *tone) Synthesize() {
 	v := float32(0)
 	if !t.song.ClockHeld() {
@@ -155,7 +162,8 @@ func TestQueueAndSkip(t *testing.T) {
 func TestCrossfade(t *testing.T) {
 	r := newRig(t, Config{Crossfade: 0.4}, nil)
 	ls := r.levels(100) // A, and B fading in from 0.6 s
-	if ls[55] != 0.1 || math.Abs(ls[79]-0.15) > 0.01 || ls[99] < 0.19 {
+	// an equal power fade: halfway both at 0.707
+	if ls[55] != 0.1 || math.Abs(ls[79]-0.212) > 0.01 || ls[99] < 0.19 {
 		t.Fatalf("B should fade in over A's last 0.4 seconds, A out: %v %v %v", ls[55], ls[79], ls[99])
 	}
 	if d := r.pl.Duration(); math.Abs(d-2.2) > 1e-9 {
@@ -421,5 +429,138 @@ func TestSongValuesInPresets(t *testing.T) {
 	again := pl.build(1) // B built again (live)
 	if again.Panel.Param("Level").Value() != 0.9 {
 		t.Fatal("a song built again should keep its values")
+	}
+}
+
+// dj is a rig for the mixing: sectioned songs, a sample clock for the tones
+type dj struct {
+	p     *psalm.Psalm
+	pl    *Playlist
+	tones map[string]*tone
+	clock int64
+}
+
+func newDJ(t *testing.T, cfg Config, songs ...func(map[string]*tone) Song) *dj {
+	t.Helper()
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 96, SampleRate: 1000, BufferSize: 10})
+	t.Cleanup(func() { psalm.PopConfig() })
+	d := &dj{p: psalm.New(nil), tones: map[string]*tone{}}
+	var list []Song
+	for _, s := range songs {
+		s := s(d.tones)
+		build := s.Build
+		s.Build = func(p *psalm.Psalm) Built {
+			b := build(p)
+			d.tones[s.Name].clock = &d.clock
+			return b
+		}
+		list = append(list, s)
+	}
+	d.pl = New(d.p, cfg, list...)
+	d.p.Out(d.pl)
+	return d
+}
+
+func (d *dj) run(n int) {
+	for range n {
+		d.p.ResetRun()
+		d.p.Run()
+		d.clock += 10
+	}
+}
+
+// at returns a sectioned song at a tempo
+func at(name string, level float32, bpm float64) func(map[string]*tone) Song {
+	return func(tones map[string]*tone) Song {
+		s := sectioned(name, level, tones)
+		build := s.Build
+		s.Build = func(p *psalm.Psalm) Built {
+			p.Env().SetBPM(bpm)
+			return build(p)
+		}
+		return s
+	}
+}
+
+func TestCrossfadeWithTransport(t *testing.T) {
+	d := newDJ(t, Config{Crossfade: 1}, at("A", 0.1, 120), at("B", 0.2, 120)) // songs of 6 seconds
+	d.run(490)
+	if _, ok := d.tones["B"]; ok && len(d.tones["B"].ticks) > 0 {
+		t.Fatal("B should not start before the last second of A")
+	}
+	d.run(20)
+	if b := d.tones["B"]; b == nil || len(b.ticks) == 0 {
+		t.Fatal("B should start a second before A ends, A telling its end from its transport")
+	}
+}
+
+func TestOnTheBar(t *testing.T) {
+	// A at 120: bars of 2 seconds, phrases of 2 bars: 0, 4 s; the cross fade window opens at 3.5 s
+	d := newDJ(t, Config{Crossfade: 2.5, OnBar: true, Phrase: 2}, at("A", 0.1, 120), at("B", 0.2, 120))
+	d.run(700)
+	a, b := d.tones["A"], d.tones["B"]
+	if b == nil || len(b.at) == 0 {
+		t.Fatal("B should have started")
+	}
+	// A's tick at 4 s, the second phrase (a phrase is 2 bars of 4 beats: 2*4*96 = 768 ticks)
+	phraseStart := a.at[768]
+	if b.at[0] != phraseStart {
+		t.Fatalf("B's first tick should come exactly on A's phrase start: sample %d, not %d", b.at[0], phraseStart)
+	}
+}
+
+func TestMatchTempo(t *testing.T) {
+	d := newDJ(t, Config{Crossfade: 1, MatchTempo: true}, at("A", 0.1, 120), at("B", 0.2, 60))
+	d.run(503) // B started at 5 s (A is 6 s long)
+	b := d.tones["B"]
+	if b == nil || math.Abs(b.song.Env().BPM()-120) > 2 { // a few buffers into the glide
+		t.Fatalf("B should start at A's tempo: %v", b.song.Env().BPM())
+	}
+	d.run(100)
+	if bpm := b.song.Env().BPM(); bpm != 60 {
+		t.Fatalf("after the cross fade B should be at its own tempo: %v", bpm)
+	}
+}
+
+func TestBassSwap(t *testing.T) {
+	d := newDJ(t, Config{Crossfade: 1, BassSwap: true}, at("A", 0.1, 120), at("B", 0.2, 120))
+	d.run(502) // B started at 5 s
+	in, out := d.pl.current, d.pl.voices[0]
+	if in.bass == nil || in.bass.pos != 1 || out.bass == nil || out.bass.pos != 0 {
+		t.Fatal("B should come in without its low end, A with it")
+	}
+	d.run(90) // past the middle and the quarter second of the swap
+	if in.bass != nil || out.bass == nil || out.bass.pos != 1 {
+		t.Fatal("halfway the low end should go over from A to B")
+	}
+}
+
+// tapping while the next song waits to come in (a cross fade on the bar line): it still counts
+func TestTapWhileMixing(t *testing.T) {
+	// songs of three bars of 2 seconds; the window opens at 4.5 s, the bar line is A's end at 6 s
+	d := newDJ(t, Config{Crossfade: 1.5, OnBar: true}, at("A", 0.1, 120), at("B", 0.2, 120), at("C", 0.4, 120))
+	d.run(500) // 5 s: B is due, waiting for the bar line
+	if d.pl.pending != 1 {
+		t.Fatalf("B should be waiting to come in, pending %d", d.pl.pending)
+	}
+	d.pl.Queue(2) // C tapped
+	d.run(120)
+	if i, _ := d.pl.Playing(); i != 2 {
+		t.Fatalf("the song tapped should come in instead, playing %d", i)
+	}
+
+	d = newDJ(t, Config{Crossfade: 1.5, OnBar: true}, at("A", 0.1, 120), at("B", 0.2, 120))
+	d.run(500)
+	d.pl.Sections().Queue("One") // A's first section again: A goes on
+	d.run(200)                   // 7 s
+	if i, _ := d.pl.Playing(); i != 0 || d.pl.pending >= 0 {
+		t.Fatalf("a section tapped should keep the song playing, the next one later: playing %d, pending %d", i, d.pl.pending)
+	}
+	if name, _ := d.pl.Sections().Playing(); name != "One" {
+		t.Fatalf("A should play the section tapped, not %q", name)
+	}
+	d.run(530) // One, Two, Three from 6 s: A ends at 12 s, B comes in on that bar line
+	if i, _ := d.pl.Playing(); i != 1 {
+		t.Fatalf("after the sections B should come in, playing %d", i)
 	}
 }
