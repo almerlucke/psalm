@@ -1,6 +1,7 @@
 package psalm
 
 import (
+	"slices"
 	"sync"
 	"testing"
 )
@@ -205,5 +206,74 @@ func TestDo(t *testing.T) {
 	_ = p.AudioStop()
 	if len(sink.Input(0).Connections) != 0 {
 		t.Fatal("every change should have been made")
+	}
+}
+
+// levels runs buffers and returns the first and last sample of the module's output in each
+func levels(p *Psalm, m Modular, n int) (firsts, lasts []float32) {
+	for range n {
+		run(p)
+		ch := m.Output(0).Channels[0]
+		firsts, lasts = append(firsts, ch[0]), append(lasts, ch[len(ch)-1])
+	}
+	return firsts, lasts
+}
+
+func TestFadeOutIn(t *testing.T) {
+	p := New(nil)
+	src := newTest(0, 1, 0.5)
+	src.AddTo(p)
+	p.Out(src)
+	run(p)
+	done := false
+	seconds := 3 * float64(p.Config().BufferSize) / p.Config().SampleRate // three buffers
+	src.FadeOut(seconds, func() { done = true })
+	firsts, lasts := levels(p, src, 5)
+	if firsts[0] != 0.5 || !(lasts[0] < 0.5 && lasts[1] < lasts[0] && lasts[2] < 0.001 && firsts[3] == 0) || !done {
+		t.Fatalf("the output should fade to silence over three buffers: %v %v (done %v)", firsts, lasts, done)
+	}
+	if firsts[4] != 0 || !src.Faded() {
+		t.Fatal("after a fade out the module stays silent")
+	}
+	src.FadeIn(seconds)
+	_, lasts = levels(p, src, 4)
+	if !(lasts[0] > 0 && lasts[0] < lasts[1] && lasts[3] == 0.5) || src.Faded() {
+		t.Fatalf("a fade in should bring it back: %v", lasts)
+	}
+	src.SetFaded(true)
+	if f, _ := levels(p, src, 1); f[0] != 0 {
+		t.Fatal("SetFaded should silence at once")
+	}
+}
+
+func TestFadeRemove(t *testing.T) {
+	p := New(nil)
+	src, sink := newTest(0, 1, 0.5), newTest(1, 1, 0)
+	ctl := newTest(0, 0, 0)
+	for _, m := range []Modular{src, sink, ctl} {
+		m.AddTo(p)
+	}
+	sink.In(src)
+	p.Out(sink)
+	run(p)
+	seconds := 2 * float64(p.Config().BufferSize) / p.Config().SampleRate
+	p.FadeRemove(src, seconds)
+	p.FadeRemove(ctl, seconds) // nothing hears it: gone after the next buffer
+	_, lasts := levels(p, sink, 1)
+	if lasts[0] >= 0.5 || lasts[0] <= 0 {
+		t.Fatalf("the source should be fading: %v", lasts)
+	}
+	if slices.Contains(p.Modules(), Modular(ctl)) {
+		t.Fatal("a module nothing hears should be removed at once")
+	}
+	if !slices.Contains(p.Modules(), Modular(src)) {
+		t.Fatal("a sounding module should be removed after its fade, not before")
+	}
+	levels(p, sink, 2)
+	if slices.Contains(p.Modules(), Modular(src)) || len(sink.Input(0).Connections) != 0 || len(p.leaving) != 0 {
+		t.Fatal("after its fade the module should be removed and disconnected")
+	}
+	if f, _ := levels(p, sink, 1); f[0] != 0 {
+		t.Fatal("silence after the removal")
 	}
 }

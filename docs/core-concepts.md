@@ -118,7 +118,22 @@ p.Remove(module)                    // out of the patch: disconnected, no more c
 
 `Remove` works on a patch within the patch (a `psalm.Patch`) too: it keeps its own modules and
 connections, so it can be added again later (`sub.AddTo(p)` and connect it), or to another patch.
-A module that is removed stops at once: a sound it was making is cut off.
+A module that is removed stops at once: a sound it was making is cut off. To take a sounding
+module away without a click, fade it out first:
+
+```go
+p.FadeRemove(oldLead, 0.5)        // fades out over half a second, then removed (Remove)
+pad.FadeOut(2, nil)               // silent after two seconds, stays in the patch
+pad.FadeIn(2)                     // back again
+newLead.SetFaded(true)            // start silent (before it plays) ...
+newLead.FadeIn(1)                 // ... and fade it in
+```
+
+The fade is on the module's output (every output, a quarter of a sine so it eases in), so
+everything it plays into hears it. `FadeOut` and `FadeIn` can be called from any goroutine; the
+fade starts at the next buffer. A module nothing hears (a control module, one nothing pulls audio
+from) is removed by `FadeRemove` at the end of the next buffer. For a channel of a mixer, use
+`mix.Remove(name, seconds)` (see [mixer](mixer.md#removing-strips)).
 
 While a patch plays, the audio thread walks its modules and connections every buffer, so change
 them there: `p.Do(f)` runs `f` between two buffers (at once while the patch is stopped or renders
@@ -138,7 +153,9 @@ short, the audio waits for them. `p.Restart()` sets the patch back to its start 
 [controls](controls.md#panel)).
 
 A patch can also play within another one with a clock and a tempo of its own: `p.NewSub()`, see
-[playlist](playlist.md#patches-within-a-patch).
+[playlist](playlist.md#patches-within-a-patch). New modules belong to the current environment:
+the one of the last `psalm.New` (or `NewSub`), or, for a goroutine building within a patch with
+`p.Within(func() { ... })`, that patch's, whatever other goroutines build meanwhile.
 
 ## Values and messages
 

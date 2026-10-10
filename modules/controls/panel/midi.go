@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"math"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -44,14 +45,29 @@ func unpack(code int32) Binding {
 // MIDI connects a keyboard (from the keyboard package): its control changes move the controls bound
 // to them, its notes press the buttons bound to them, on the audio thread
 func (pn *Panel) MIDI(kb *keyboard.Keyboard) *Panel {
-	kb.OnEvent(func(e midi.Event, _ psalm.CtrlTick) {
+	pn.midiFrom(func(f func(midi.Event, psalm.CtrlTick)) { kb.OnEvent(f) }, true)
+	return pn
+}
+
+// midiFrom takes the events of a MIDI source (subscribe gives them to a function): the control
+// changes, and the notes when notes is true
+func (pn *Panel) midiFrom(subscribe func(func(midi.Event, psalm.CtrlTick)), notes bool) {
+	subscribe(func(e midi.Event, _ psalm.CtrlTick) {
 		switch e.Message.Kind() {
 		case midi.ControlChange:
 			pn.ControlChange(e.Message.Channel(), e.Message.Controller(), e.Message.Value())
 		case midi.NoteOn:
-			pn.NoteOn(e.Message.Channel(), e.Message.Note(), e.Message.Velocity())
+			if notes {
+				pn.NoteOn(e.Message.Channel(), e.Message.Note(), e.Message.Velocity())
+			}
 		}
 	})
+}
+
+// MIDIControllers connects a keyboard for its control changes only: its keys play notes (a synth),
+// they don't press buttons and MIDI learn doesn't take them. MIDI takes the notes too, for pads
+func (pn *Panel) MIDIControllers(kb *keyboard.Keyboard) *Panel {
+	pn.midiFrom(func(f func(midi.Event, psalm.CtrlTick)) { kb.OnEvent(f) }, false)
 	return pn
 }
 
@@ -238,6 +254,7 @@ type Binding struct {
 }
 
 // Bindings returns the controller or note of every control that has one, by name
+// (and what the mounts keep, as "mount/...": the controls of every song of a playlist)
 func (pn *Panel) Bindings() map[string]Binding {
 	bs := map[string]Binding{}
 	for _, par := range pn.Params() {
@@ -245,16 +262,35 @@ func (pn *Panel) Bindings() map[string]Binding {
 			bs[par.Name] = b
 		}
 	}
+	for _, mt := range pn.mountList() {
+		if k, ok := mt.m.(MountBinder); ok {
+			for key, b := range k.BindingsMount() {
+				bs[mt.Name+"/"+key] = b
+			}
+		}
+	}
 	return bs
 }
 
 // SetBindings binds the controllers of a map from Bindings; the controls not in it are unbound
+// (the mounts that keep bindings get theirs)
 func (pn *Panel) SetBindings(bs map[string]Binding) {
 	for _, par := range pn.Params() {
 		if b, ok := bs[par.Name]; ok && par.Kind != MeterKind && (!b.Note || par.takesNotes()) {
 			par.cc.Store(pack(b))
 		} else {
 			par.cc.Store(0)
+		}
+	}
+	for _, mt := range pn.mountList() {
+		if k, ok := mt.m.(MountBinder); ok {
+			mine := map[string]Binding{}
+			for key, b := range bs {
+				if rest, ok := strings.CutPrefix(key, mt.Name+"/"); ok {
+					mine[rest] = b
+				}
+			}
+			k.SetBindingsMount(mine)
 		}
 	}
 	pn.bindings.Add(1)
@@ -284,21 +320,20 @@ func (pn *Panel) LoadBindings(path string) error {
 	return nil
 }
 
-// KeepBindings keeps the bindings in a file: it loads them now (when the file is there) and saves
-// them every time they change from then on, so what you learn is there the next time. Saving goes
-// on in the background as long as the program runs; an error saving is left out
+// KeepBindings keeps the bindings in a file (those of the songs of a playlist too, see MountBinder):
+// it loads them now (when the file is there) and saves them every time they change from then on, so
+// what you learn is there the next time. Saving goes on in the background as long as the program
+// runs; an error saving is left out
 func (pn *Panel) KeepBindings(path string) error {
 	if err := pn.LoadBindings(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	seen, saved := pn.bindings.Load(), fmt.Sprint(pn.Bindings()) // before: a change right after counts
+	saved := fmt.Sprint(pn.Bindings()) // before: a change right after counts
 	go func() {
 		for range time.Tick(keepInterval) {
-			if n := pn.bindings.Load(); n != seen {
-				seen = n
-				if now := fmt.Sprint(pn.Bindings()); now != saved && pn.SaveBindings(path) == nil {
-					saved = now
-				}
+			// compared every time: the mounted panels (the songs) learn too
+			if now := fmt.Sprint(pn.Bindings()); now != saved && pn.SaveBindings(path) == nil {
+				saved = now
 			}
 		}
 	}()

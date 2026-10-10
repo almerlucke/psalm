@@ -64,6 +64,7 @@ type Config struct {
 type built struct {
 	index int
 	sub   *psalm.Psalm
+	now   *songNow // the song with its panel, made here so starting it makes nothing
 	Built
 }
 
@@ -75,12 +76,13 @@ type voice struct {
 	fade     fade
 	tempo    *glide // its tempo gliding to its own (MatchTempo)
 	bass     *bassCut
-	ended    bool  // its clock holds: ringing out
-	handed   bool  // the next song was asked for
-	early    bool  // asked for before its end (a cross fade): it can still change
-	ringing  int64 // samples since it ended
-	quiet    int64 // samples it has been silent while ringing
-	fading   bool  // fading away, then gone
+	ended    bool    // its clock holds: ringing out
+	handed   bool    // the next song was asked for
+	early    bool    // asked for before its end (a cross fade): it can still change
+	progress float64 // how far it is, kept while its end isn\'t known (a song with a transport)
+	ringing  int64   // samples since it ended
+	quiet    int64   // samples it has been silent while ringing
+	fading   bool    // fading away, then gone
 	finished bool
 }
 
@@ -130,16 +132,16 @@ type Playlist struct {
 	all       []*built // offline: every song, built up front
 	once      sync.Once
 	closeOnce sync.Once
+	keepCh    chan kept     // songs that ended, their bindings and values to keep
+	quit      chan struct{} // closed by Close: the builder stops (wake is never closed: the audio thread pokes it)
+	kept      atomic.Int64  // counts what was kept (and presets loaded), for a song being built meanwhile
 	stopped   chan struct{} // closed when the builder stopped
 }
 
-// building keeps building songs one at a time: building switches the current environment
-var building sync.Mutex
-
 // New creates a playlist playing songs in a patch and adds it to the patch. The first song is built
 // at once. In a patch that plays through a sound card the next song is built in the background
-// while a song plays (build the rest of the patch before it plays: building switches the current
-// environment); offline every song is built here, so a render is the same every time
+// while a song plays, in an environment of its own (the rest of the program can build its own
+// modules meanwhile); offline every song is built here, so a render is the same every time
 func New(p *psalm.Psalm, cfg Config, songs ...Song) *Playlist {
 	if len(songs) == 0 {
 		panic("playlist: no songs")
@@ -152,7 +154,7 @@ func New(p *psalm.Psalm, cfg Config, songs ...Song) *Playlist {
 	}
 	pl := &Playlist{
 		Module: psalm.NewModule(nil, []int{2}), host: p, cfg: cfg, songs: songs, live: p.Live(),
-		off: make([]atomic.Bool, len(songs)), pending: 0, want: -1, last: -1, wake: make(chan struct{}, 1),
+		off: make([]atomic.Bool, len(songs)), pending: 0, want: -1, last: -1, wake: make(chan struct{}, 1), keepCh: make(chan kept, 64), quit: make(chan struct{}),
 		config: psalm.CurrentStackConfig(),
 	}
 	pl.SetSelf(pl)
@@ -169,14 +171,12 @@ func New(p *psalm.Psalm, cfg Config, songs ...Song) *Playlist {
 	return pl
 }
 
-// build builds a song in a patch of its own, the current environment kept
+// build builds a song in a patch of its own: its modules belong to it, whatever other goroutines
+// build meanwhile
 func (pl *Playlist) build(i int) *built {
-	building.Lock()
-	defer building.Unlock()
-	prev := psalm.CurrentEnv()
-	defer psalm.SetCurrentEnv(prev)
 	sub := pl.host.NewSubWith(pl.config)
-	b := pl.songs[i].Build(sub)
+	var b Built
+	sub.Within(func() { b = pl.songs[i].Build(sub) })
 	if b.Out == nil {
 		panic(fmt.Sprintf("playlist: song %q has nothing to hear (Built.Out)", pl.songs[i].Name))
 	}
@@ -184,21 +184,76 @@ func (pl *Playlist) build(i int) *built {
 	if b.Transport != nil {
 		b.Transport.Form().Loop = false // the song ends with its last section
 	}
-	if b.Panel != nil { // what was learned for the song the time before
-		if bs, ok := pl.bindings.Load(pl.songs[i].Name); ok {
-			b.Panel.SetBindings(bs.(map[string]panel.Binding))
-		}
-		if vs, ok := pl.values.Load(pl.songs[i].Name); ok { // its controls as they were (or a preset)
-			b.Panel.Restore(vs.(map[string]float64))
+	bl := &built{index: i, sub: sub, Built: b}
+	if b.Panel != nil {
+		bl.now = &songNow{index: i, panel: b.Panel}
+		pl.apply(bl) // what was learned for the song the time before, its controls as they were (or a preset)
+	}
+	return bl
+}
+
+// apply gives a song built the bindings and values kept for it
+func (pl *Playlist) apply(b *built) {
+	if b.Panel == nil {
+		return
+	}
+	name := pl.songs[b.index].Name
+	if bs, ok := pl.bindings.Load(name); ok {
+		b.Panel.SetBindings(bs.(map[string]panel.Binding))
+	}
+	if vs, ok := pl.values.Load(name); ok {
+		b.Panel.Restore(vs.(map[string]float64))
+	}
+}
+
+// kept is a song that ended, its bindings and values to keep (off the audio thread)
+type kept struct {
+	index int
+	panel *panel.Panel
+}
+
+// keep keeps the bindings and values of a song that ended: in the background live (the builder
+// does it), at once offline
+func (pl *Playlist) keep(v *voice) {
+	k := kept{index: v.index, panel: v.Panel}
+	if pl.live {
+		select {
+		case pl.keepCh <- k:
+			return
+		default: // full (it never is): keep it here
 		}
 	}
-	return &built{index: i, sub: sub, Built: b}
+	pl.store(k)
+}
+
+// store keeps the bindings and values of a song, and gives them to a copy of it built already
+func (pl *Playlist) store(k kept) {
+	name := pl.songs[k.index].Name
+	pl.bindings.Store(name, k.panel.Bindings())
+	pl.values.Store(name, k.panel.Snapshot())
+	pl.kept.Add(1)
+	pl.buildMu.Lock()
+	for _, b := range []*built{pl.ready, pl.first} {
+		if b != nil && b.index == k.index && b.Panel != k.panel {
+			pl.apply(b)
+		}
+	}
+	pl.buildMu.Unlock()
 }
 
 // builder builds the song that comes next, in the background
 func (pl *Playlist) builder() {
 	defer close(pl.stopped)
-	for range pl.wake {
+	for {
+		select {
+		case k := <-pl.keepCh:
+			pl.store(k)
+			continue
+		case <-pl.quit:
+			pl.storeWaiting() // what is left to keep
+			return
+		case <-pl.wake:
+		}
 	build:
 		for {
 			pl.buildMu.Lock()
@@ -213,12 +268,12 @@ func (pl *Playlist) builder() {
 			pl.buildMu.Unlock()
 			switch {
 			case needNext: // the song due first
-				b := pl.build(next)
+				b := pl.buildKept(next)
 				pl.buildMu.Lock()
 				pl.ready = b
 				pl.buildMu.Unlock()
 			case needFirst: // then the first song, for a restart
-				b := pl.build(first)
+				b := pl.buildKept(first)
 				pl.buildMu.Lock()
 				pl.first = b
 				pl.buildMu.Unlock()
@@ -227,6 +282,29 @@ func (pl *Playlist) builder() {
 			}
 		}
 	}
+}
+
+// storeWaiting keeps the songs waiting to be kept
+func (pl *Playlist) storeWaiting() {
+	for {
+		select {
+		case k := <-pl.keepCh:
+			pl.store(k)
+		default:
+			return
+		}
+	}
+}
+
+// buildKept builds a song with what is kept for it, also what was kept while it was being built (a
+// preset loaded, a song that ended)
+func (pl *Playlist) buildKept(i int) *built {
+	before := pl.kept.Load()
+	b := pl.build(i)
+	if pl.kept.Load() != before {
+		pl.apply(b)
+	}
+	return b
 }
 
 // poke wakes the builder up
@@ -440,11 +518,7 @@ func (pl *Playlist) Synthesize() {
 
 	if cur := pl.current; cur != nil && !cur.ended {
 		pl.playing.Store(int32(cur.index))
-		p := 0.0
-		if cur.length > 0 {
-			p = math.Min(1, float64(cur.elapsed)/float64(cur.length))
-		}
-		pl.prog.Store(math.Float64bits(p))
+		pl.prog.Store(math.Float64bits(pl.progress(cur)))
 	} else {
 		pl.playing.Store(-1)
 	}
@@ -490,6 +564,23 @@ func (pl *Playlist) barLine(buffer int64) (float64, bool) {
 		return 0, false
 	}
 	return samples, true
+}
+
+// progress returns how far a song is (0-1): a song with a transport by what it played and what is
+// left (the sections skipped or repeated count; while the end isn't known, a section asked for or
+// repeating, it stays where it was), the others by their length
+func (pl *Playlist) progress(v *voice) float64 {
+	if v.Transport != nil {
+		if beats, known := v.Transport.BeatsLeft(); known {
+			left := beats * 60 / v.sub.Env().BPM() * pl.Config().SampleRate
+			v.progress = float64(v.elapsed) / math.Max(1, float64(v.elapsed)+left)
+		}
+		return v.progress
+	}
+	if v.length > 0 {
+		return math.Min(1, float64(v.elapsed)/float64(v.length))
+	}
+	return 0
 }
 
 // firstOn returns the first song that is on, -1 for none
@@ -559,14 +650,7 @@ func (pl *Playlist) start(b *built) {
 		tr.SetRepeat(pl.sectionRepeat.Load()).SetJump(arrange.JumpAt(pl.sectionJump.Load()))
 	}
 	pl.sections.Store(b.Transport)
-	if b.Panel != nil {
-		if vs, ok := pl.values.Load(pl.songs[b.index].Name); ok { // a preset loaded since it was built
-			b.Panel.Restore(vs.(map[string]float64))
-		}
-		pl.panel.Store(&songNow{index: b.index, panel: b.Panel})
-	} else {
-		pl.panel.Store(nil)
-	}
+	pl.panel.Store(b.now) // nil for a song without a panel
 }
 
 // end ends a song: its clock holds, what sounds rings out
@@ -581,8 +665,7 @@ func (pl *Playlist) end(v *voice) {
 			if now := pl.panel.Load(); now != nil && now.panel == v.Panel {
 				pl.panel.CompareAndSwap(now, nil)
 			}
-			pl.bindings.Store(pl.songs[v.index].Name, v.Panel.Bindings())
-			pl.values.Store(pl.songs[v.index].Name, v.Panel.Snapshot())
+			pl.keep(v)
 		}
 	}
 }
@@ -774,7 +857,12 @@ func (pl *Playlist) Names() []string {
 // Close stops building songs in the background; it returns once a song being built is done
 func (pl *Playlist) Close() {
 	pl.once.Do(func() {}) // never start the builder after this
-	pl.closeOnce.Do(func() { close(pl.wake) })
+	pl.closeOnce.Do(func() {
+		close(pl.quit)
+		if pl.stopped == nil { // no builder: keep what is waiting here
+			pl.storeWaiting()
+		}
+	})
 	if pl.stopped != nil {
 		<-pl.stopped
 	}
@@ -932,8 +1020,9 @@ func (m songPanel) SnapshotMount() map[string]float64 {
 	return values
 }
 
-// RestoreMount sets the controls of the songs: the song playing at once, the others when they are
-// built (panel.MountKeeper)
+// RestoreMount sets the controls of the songs: the song playing at once, the songs built already
+// (ahead, or every one offline) too, the others when they are built (panel.MountKeeper). It runs on
+// the goroutine loading the preset, never on the audio thread
 func (m songPanel) RestoreMount(values map[string]float64) {
 	per := map[string]map[string]float64{}
 	for _, s := range m.pl.songs {
@@ -952,6 +1041,69 @@ func (m songPanel) RestoreMount(values map[string]float64) {
 		m.pl.values.Store(name, vs)
 		if now != nil && m.pl.songs[now.index].Name == name {
 			now.panel.Restore(vs)
+		}
+	}
+	m.pl.kept.Add(1) // a song being built now gets them too
+	m.pl.buildMu.Lock()
+	builtAlready := append([]*built{m.pl.ready, m.pl.first}, m.pl.all...)
+	m.pl.buildMu.Unlock()
+	for _, b := range builtAlready {
+		if b != nil && (now == nil || b.Panel != now.panel) {
+			m.pl.apply(b)
+		}
+	}
+}
+
+// BindingsMount gives what MIDI learn bound on the controls of every song, as "<song>/<control>":
+// of the song playing as they are now, of the others as they were kept (panel.MountBinder: they are
+// in the bindings of the playlist's panel, KeepBindings saves them)
+func (m songPanel) BindingsMount() map[string]panel.Binding {
+	bs := map[string]panel.Binding{}
+	m.pl.bindings.Range(func(k, v any) bool {
+		for key, b := range v.(map[string]panel.Binding) {
+			bs[k.(string)+"/"+key] = b
+		}
+		return true
+	})
+	if now := m.pl.panel.Load(); now != nil {
+		name := m.pl.songs[now.index].Name
+		for key := range bs {
+			if strings.HasPrefix(key, name+"/") {
+				delete(bs, key)
+			}
+		}
+		for key, b := range now.panel.Bindings() {
+			bs[name+"/"+key] = b
+		}
+	}
+	return bs
+}
+
+// SetBindingsMount binds the controls of every song: the song playing at once, the songs built
+// already too, the others when they are built (panel.MountBinder, from LoadBindings)
+func (m songPanel) SetBindingsMount(bs map[string]panel.Binding) {
+	now := m.pl.panel.Load()
+	for _, s := range m.pl.songs {
+		mine := map[string]panel.Binding{}
+		for key, b := range bs {
+			if rest, ok := strings.CutPrefix(key, s.Name+"/"); ok {
+				mine[rest] = b
+			}
+		}
+		m.pl.bindings.Store(s.Name, mine)
+		if now != nil && m.pl.songs[now.index].Name == s.Name {
+			now.panel.SetBindings(mine)
+		}
+	}
+	m.pl.kept.Add(1) // a song being built now gets them too
+	m.pl.buildMu.Lock()
+	builtAlready := append([]*built{m.pl.ready, m.pl.first}, m.pl.all...)
+	m.pl.buildMu.Unlock()
+	for _, b := range builtAlready {
+		if b != nil && b.Panel != nil && (now == nil || b.Panel != now.panel) {
+			if bs, ok := m.pl.bindings.Load(m.pl.songs[b.index].Name); ok {
+				b.Panel.SetBindings(bs.(map[string]panel.Binding))
+			}
 		}
 	}
 }

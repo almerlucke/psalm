@@ -98,7 +98,8 @@ return playlist.Built{Out: mix.Master(), Length: arrangement.Duration(), Panel: 
 next song's when it starts. The song's controls apply on the song's own clock. MIDI reaches the
 song playing (the control changes and notes go to the playlist's panel and on to the song's), MIDI
 learn on the page binds its controls, and what is bound is kept for the song: built again, it gets
-its bindings back. The values of its controls are kept too: a song that plays again has them as
+its bindings back. They are in the bindings of the playlist's panel too (as `"Song/Groove/Tempo"`),
+so `ctl.KeepBindings(file)` saves them and the next run of the program has them again. The values of its controls are kept too: a song that plays again has them as
 you left them, and the presets of the playlist's panel hold the controls of every song that played
 (as `"Song/Groove/Tempo"`, after the name of the mount). Loading a preset sets the song playing at
 once and the other songs when they start. `list.SongPanel()` is the panel of the song playing,
@@ -111,8 +112,10 @@ Restart in the page's header that is a whole player.
 
 **Building**: in a patch that plays through a sound card the first song is built by `New`, the
 next ones in the background while a song plays, and the first song is kept built too, so a
-restart starts it right away (build the rest of the patch before it plays:
-building a song switches the current environment for a moment). A song that isn't built yet when
+restart starts it right away. A song is built in an environment of its own (`NewSubWith` and
+`Within`), so the rest of the program can build its own modules meanwhile, on any goroutine. A
+song that ends hands its control values and MIDI bindings to the builder to keep, so nothing but
+the sound happens on the audio thread when songs change. A song that isn't built yet when
 it is due (just asked for) starts as soon as it is. Offline every song is built by `New`, so a
 render is the same every time and `Duration()` knows the length of the list (an estimate with
 `OnBar` and `MatchTempo`: render on until it is done):
@@ -133,5 +136,11 @@ sample rate and buffer size of the patch around it, and a clock and an environme
 (tempo, PPQ, random streams). It ticks its own modules when it runs, from tick 1, whatever time
 the patch around it is at; the control ticks of the patch around it don't reach them. Its `Do`
 goes to the patch around it (the audio thread there), `Restart` restarts only it, and
-`HoldClock(true)` makes its clock stand still while its sound goes on. `NewSubWith(cfg)` takes a
-config of its own instead of the one pushed (`PushConfig`), for building on another goroutine.
+`HoldClock(true)` makes its clock stand still while its sound goes on.
+
+To build one on another goroutine while other goroutines build too, use `NewSubWith(cfg)` (a config
+of its own instead of the one pushed, `PushConfig`) and build within it: `sub.Within(func() { ... })`
+makes its environment current for that goroutine only, so modules other goroutines create meanwhile
+belong to their own patch. `NewSub()` makes its environment current for the whole program, like
+`psalm.New`. `PushConfig` and `PopConfig` can be called from any goroutine (the stack is one for
+the program: push and pop in pairs).

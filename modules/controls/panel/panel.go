@@ -61,10 +61,11 @@ type Panel struct {
 	servers []server
 	closed  bool
 
-	grids  map[string]*Grid
-	cues   map[string]*Cues
-	mounts map[string]*Mount
-	order  []item // the controls, grids and cue lists in the order they were declared, for the page
+	grids     map[string]*Grid
+	cues      map[string]*Cues
+	mounts    map[string]*Mount
+	mountsNow atomic.Pointer[[]*Mount] // the mounts in order, for the audio thread
+	order     []item                   // the controls, grids and cue lists in the order they were declared, for the page
 
 	player Player // started and stopped from the page, nil for none
 	id     int64  // every panel its own (a mount shows which one it shows)

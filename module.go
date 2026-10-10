@@ -1,7 +1,9 @@
 package psalm
 
 import (
+	"math"
 	"math/rand/v2"
+	"sync/atomic"
 	"time"
 )
 
@@ -67,6 +69,10 @@ type Module struct {
 	quietIn      int           // samples the input and output have been silent (modules with a tail)
 	quietOut     bool          // the last output was silent
 	skipping     bool          // skipping its work while silent
+
+	fadeReq atomic.Pointer[fadeRequest] // a fade asked for (FadeOut, FadeIn)
+	fade    *fading                     // the fade going on, on the audio thread
+	silent  bool                        // faded out
 }
 
 // Tailer is a module that can skip its work while it is silent: when its input and output have
@@ -249,6 +255,7 @@ func (m *Module) Run() {
 				}
 				m.skipping = true
 			}
+			m.applyFade() // silent: a fade goes on (and ends) all the same
 			return
 		}
 		m.skipping = false
@@ -272,6 +279,90 @@ func (m *Module) Run() {
 	if m.muted {
 		for _, out := range m.outputs {
 			out.Clear()
+		}
+	}
+	m.applyFade()
+}
+
+// fading is a fade of the module's output: from one gain to another over a number of samples
+type fading struct {
+	from, to float64
+	pos, len int64
+	then     func()
+}
+
+// gain returns the gain of the fade a number of samples on: a quarter of a sine (cosine out), so
+// it eases in and keeps the loudness of two modules fading over each other
+func (f *fading) gain(ahead int64) float64 {
+	if f.pos+ahead >= f.len {
+		return f.to
+	}
+	x := float64(f.pos+ahead) / float64(f.len) * math.Pi / 2
+	return f.from*math.Cos(x) + f.to*math.Sin(x)
+}
+
+// fadeRequest is a fade asked for (from any goroutine), started at the next run
+type fadeRequest struct {
+	to, seconds float64
+	then        func()
+}
+
+// FadeOut fades the output of the module to silence over some seconds, then calls then (on the
+// audio thread, nil for nothing); the module stays silent until FadeIn. It can be called from any
+// goroutine, the fade starts at the next buffer. Patch.FadeRemove fades a module out and removes it
+func (m *Module) FadeOut(seconds float64, then func()) {
+	m.fadeReq.Store(&fadeRequest{to: 0, seconds: seconds, then: then})
+}
+
+// FadeIn fades the output of the module in over some seconds, from where it is (silent after
+// FadeOut); start a module silent and fade it in with SetFaded(true) first
+func (m *Module) FadeIn(seconds float64) {
+	m.fadeReq.Store(&fadeRequest{to: 1, seconds: seconds})
+}
+
+// SetFaded makes the module silent (true) or sound (false) at once, as after a fade; set it before
+// the patch plays (or on the audio thread)
+func (m *Module) SetFaded(silent bool) {
+	m.fade, m.silent = nil, silent
+}
+
+// Faded tells whether the module is silent after a fade out
+func (m *Module) Faded() bool { return m.silent && m.fade == nil }
+
+// applyFade applies the fade to the outputs (a fade asked for starts here)
+func (m *Module) applyFade() {
+	if r := m.fadeReq.Swap(nil); r != nil {
+		from := 1.0
+		switch {
+		case m.fade != nil:
+			from = m.fade.gain(0)
+		case m.silent:
+			from = 0
+		}
+		m.fade = &fading{from: from, to: r.to, len: max(1, int64(math.Round(r.seconds*m.config.SampleRate))), then: r.then}
+	}
+	f := m.fade
+	if f == nil {
+		if m.silent {
+			for _, out := range m.outputs {
+				out.Clear()
+			}
+		}
+		return
+	}
+	n := int64(m.config.BufferSize)
+	for _, out := range m.outputs {
+		for _, ch := range out.Channels {
+			for i := range ch {
+				ch[i] *= float32(f.gain(int64(i)))
+			}
+		}
+	}
+	f.pos += n
+	if f.pos >= f.len {
+		m.fade, m.silent = nil, f.to == 0
+		if f.then != nil {
+			f.then()
 		}
 	}
 }

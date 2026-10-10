@@ -1,6 +1,9 @@
 package psalm
 
-import "container/list"
+import (
+	"container/list"
+	"sync"
+)
 
 type Listener interface {
 	OnConfigChanged()
@@ -13,8 +16,24 @@ const (
 	DefaultPPQ        = 240
 )
 
-var _configList *list.List
-var _configListeners = make(map[Listener]bool)
+var (
+	configMu         sync.Mutex // guards the stack and the listeners: configs are pushed from any goroutine
+	_configList      *list.List
+	_configListeners = make(map[Listener]bool)
+)
+
+// configChanged tells the listeners, outside the lock
+func configChanged() {
+	configMu.Lock()
+	listeners := make([]Listener, 0, len(_configListeners))
+	for l := range _configListeners {
+		listeners = append(listeners, l)
+	}
+	configMu.Unlock()
+	for _, l := range listeners {
+		l.OnConfigChanged()
+	}
+}
 
 type Config struct {
 	SampleRate float64
@@ -42,35 +61,41 @@ func init() {
 }
 
 func AddConfigListener(listener Listener) {
+	configMu.Lock()
 	_configListeners[listener] = true
+	configMu.Unlock()
 }
 
 func RemoveConfigListener(listener Listener) {
+	configMu.Lock()
 	delete(_configListeners, listener)
+	configMu.Unlock()
 }
 
 // PushConfig sets the config of the current environment (the patch being built, or the next
-// psalm.New), keeping the one before on a stack for PopConfig
+// psalm.New), keeping the one before on a stack for PopConfig. It can be called from any goroutine;
+// the stack is one for the program, so push and pop in pairs
 func PushConfig(config Config) {
+	configMu.Lock()
 	_configList.PushFront(config)
+	configMu.Unlock()
 	CurrentEnv().setConfig(config)
-	for listener := range _configListeners {
-		listener.OnConfigChanged()
-	}
+	configChanged()
 }
 
 func PopConfig() Config {
+	configMu.Lock()
 	var cfg Config
 	front := _configList.Front()
 	if front == nil {
+		configMu.Unlock()
 		return cfg
 	}
 	cfg = front.Value.(Config)
 	_configList.Remove(front)
+	configMu.Unlock()
 	CurrentEnv().setConfig(CurrentStackConfig())
-	for listener := range _configListeners {
-		listener.OnConfigChanged()
-	}
+	configChanged()
 	return cfg
 }
 
@@ -81,6 +106,8 @@ func CurrentConfig() Config {
 
 // CurrentStackConfig returns the config on top of the PushConfig stack
 func CurrentStackConfig() Config {
+	configMu.Lock()
+	defer configMu.Unlock()
 	var cfg Config
 	front := _configList.Front()
 	if front == nil {

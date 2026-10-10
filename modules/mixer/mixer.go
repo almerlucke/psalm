@@ -15,7 +15,9 @@ package mixer
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strings"
+	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/meter"
@@ -26,7 +28,7 @@ type Mixer struct {
 	aligned bool
 	p       psalm.Patcher
 	master  *Master
-	strips  []*Strip // in the order they were created
+	strips  atomic.Pointer[[]*Strip] // in the order they were created; replaced, never changed (the audio thread reads it)
 	inputs  map[string]psalm.Modular
 }
 
@@ -45,7 +47,7 @@ func (m *Mixer) Master() *Master {
 
 // Strip returns a strip (channel, group or bus return) by name
 func (m *Mixer) Strip(name string) *Strip {
-	for _, s := range m.strips {
+	for _, s := range m.list() {
 		if s.name == name {
 			return s
 		}
@@ -55,8 +57,18 @@ func (m *Mixer) Strip(name string) *Strip {
 
 // Strips returns the strips (channels, groups and bus returns) in the order they were created
 func (m *Mixer) Strips() []*Strip {
-	return m.strips
+	return m.list()
 }
+
+// list returns the strips
+func (m *Mixer) list() []*Strip {
+	if l := m.strips.Load(); l != nil {
+		return *l
+	}
+	return nil
+}
+
+func (m *Mixer) setStrips(l []*Strip) { m.strips.Store(&l) }
 
 // Channel adds a strip for a source (any module with an audio output 0)
 func (m *Mixer) Channel(name string, source psalm.Modular, cfg StripConfig) *Strip {
@@ -75,6 +87,7 @@ func (m *Mixer) Group(name string, cfg StripConfig, inserts ...psalm.Modular) *S
 	s := m.add(name, cfg, true)
 	s.kind = groupStrip
 	s.In(chain(in, inserts))
+	s.owned = append([]psalm.Modular{in}, inserts...)
 	return s
 }
 
@@ -88,7 +101,51 @@ func (m *Mixer) Bus(name string, cfg StripConfig, effects ...psalm.Modular) *Str
 	s := m.add(name, cfg, true)
 	s.kind = busStrip
 	s.In(chain(in, effects))
+	s.owned = append([]psalm.Modular{in}, effects...)
 	return s
+}
+
+// Remove takes a strip out of the mixer: it fades out over some seconds (no click), then it is
+// disconnected and removed from the patch. A group or a bus goes with what it is made of (its input
+// and its inserts or effects); a group can only go when no strip plays into it any more, a bus
+// leaves the sends to it going nowhere. A channel's source stays in the patch: remove it too
+// (p.FadeRemove(source, seconds)) or play it elsewhere. Call it on the audio thread while the patch
+// plays (Psalm.Do), like Patch.Remove
+func (m *Mixer) Remove(name string, seconds float64) error {
+	s := m.Strip(name)
+	if s == nil {
+		return fmt.Errorf("mixer: no strip named %q", name)
+	}
+	if s.kind == groupStrip {
+		for _, other := range m.list() {
+			if other.cfg.Group == name && !other.removing {
+				return fmt.Errorf("mixer: %s still plays into group %q: remove it first", other.name, name)
+			}
+		}
+	}
+	if s.removing {
+		return nil
+	}
+	s.removing = true
+	detach := func() {
+		m.setStrips(slices.DeleteFunc(slices.Clone(m.list()), func(o *Strip) bool { return o == s }))
+		m.p.Remove(s)
+		for _, mod := range s.owned {
+			m.p.Remove(mod)
+		}
+		switch s.kind {
+		case groupStrip:
+			delete(m.inputs, name)
+		case busStrip:
+			delete(m.inputs, "bus:"+name)
+		}
+	}
+	if seconds <= 0 {
+		detach()
+		return nil
+	}
+	s.FadeOut(seconds, detach)
+	return nil
 }
 
 // add creates a strip and routes its output and sends
@@ -111,7 +168,7 @@ func (m *Mixer) add(name string, cfg StripConfig, safe bool) *Strip {
 	s := newStrip(m, name, cfg, safe)
 	s.SetID(name) // for profiles
 	s.AddTo(m.p)
-	m.strips = append(m.strips, s)
+	m.setStrips(append(slices.Clone(m.list()), s))
 
 	// output 0 to the group or the master
 	if cfg.Group == "" {
@@ -135,13 +192,13 @@ func (m *Mixer) add(name string, cfg StripConfig, safe bool) *Strip {
 // call it again after adding strips while playing
 func (m *Mixer) Align() {
 	m.aligned = true
-	for _, s := range m.strips {
+	for _, s := range m.list() {
 		s.setDelay(0)
 	}
 	var align func(dest string)
 	align = func(dest string) {
 		var members []*Strip
-		for _, s := range m.strips {
+		for _, s := range m.list() {
 			if s.cfg.Group == dest && s.kind != busStrip {
 				members = append(members, s)
 			}
@@ -200,7 +257,7 @@ func chain(first psalm.Modular, rest []psalm.Modular) psalm.Modular {
 }
 
 func (m *Mixer) anySolo() bool {
-	for _, s := range m.strips {
+	for _, s := range m.list() {
 		if s.cfg.Solo && !s.safe {
 			return true
 		}
@@ -210,7 +267,7 @@ func (m *Mixer) anySolo() bool {
 
 // ResetMeters starts measuring again
 func (m *Mixer) ResetMeters() {
-	for _, s := range m.strips {
+	for _, s := range m.list() {
 		s.meter.reset()
 	}
 	m.master.meter.reset()
@@ -225,7 +282,7 @@ func (m *Mixer) Meters() string {
 	line := func(name string, peak, rms float64) {
 		fmt.Fprintf(&b, "%-14s peak %6.1f dB  rms %6.1f dB\n", name, peak, rms)
 	}
-	for _, s := range m.strips {
+	for _, s := range m.list() {
 		peak, rms := s.Levels()
 		line(s.name, peak, rms)
 	}

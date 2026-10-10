@@ -2,6 +2,7 @@ package psalm
 
 import (
 	"fmt"
+	"slices"
 )
 
 type internalInputModule struct {
@@ -50,6 +51,7 @@ type Patch struct {
 	inputModules  []*internalInputModule
 	outputModules []*internalOutputModule
 	skipInputs    bool
+	leaving       []Modular // fading out to be removed (FadeRemove)
 }
 
 func NewPatch(ins []int, outs []int) *Patch {
@@ -97,6 +99,9 @@ func (p *Patch) Remove(m Modular) bool {
 		return false
 	}
 	p.modules = kept // a new list: a loop over the modules going on keeps the one it has
+	if i := slices.Index(p.leaving, m); i >= 0 {
+		p.leaving = slices.Delete(slices.Clone(p.leaving), i, i+1)
+	}
 	m.DisconnectAll()
 	return true
 }
@@ -178,6 +183,28 @@ func (p *Patch) Run() {
 			out.Clear()
 		}
 	}
+	p.applyFade()
+
+	// modules fading out to be removed that nothing heard this buffer: nothing to fade, gone now
+	for _, m := range p.leaving {
+		if !m.HasRun() {
+			p.Remove(m)
+		}
+	}
+}
+
+// FadeRemove fades a module out over some seconds and then removes it (Remove): no click when it is
+// sounding. A module nothing hears (a control module, or one nothing pulls audio from) is removed at
+// the end of the next buffer. Call it where Remove is called: on the audio thread while the patch
+// plays (Psalm.Do)
+func (p *Patch) FadeRemove(m Modular, seconds float64) {
+	b := moduleOf(m)
+	if b == nil || len(b.outputs) == 0 || seconds <= 0 {
+		p.Remove(m)
+		return
+	}
+	p.leaving = append(p.leaving, m)
+	b.FadeOut(seconds, func() { p.Remove(m) })
 }
 
 func (p *Patch) Out(args ...any) Patcher {

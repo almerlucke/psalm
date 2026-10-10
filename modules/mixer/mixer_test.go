@@ -2,6 +2,7 @@ package mixer
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -341,5 +342,60 @@ func TestBusLatencyIsNotCompensated(t *testing.T) {
 	l, _ := render(p, mix, 4)
 	if at := peaks(l); len(at) != 2 || at[0] != 0 || at[1] != 500 {
 		t.Fatalf("expected the dry click at 0 and the wet one at 500, got %v", at)
+	}
+}
+
+func TestRemove(t *testing.T) {
+	p, mix := setup()
+	fx := newGainer(1).AddTo(p)
+	mix.Bus("fx", StripConfig{}, fx)
+	mix.Group("g", StripConfig{})
+	a := newSource(psalm.Mono, constant(0.2)).AddTo(p)
+	mix.Channel("a", a, StripConfig{Sends: map[string]float64{"fx": 0.5}})
+	mix.Channel("b", newSource(psalm.Mono, constant(0.1)).AddTo(p), StripConfig{Group: "g"})
+	l, _ := render(p, mix, 4)
+	if want := 0.2 + 0.1 + 0.1; math.Abs(last(l)-want) > 1e-6 {
+		t.Fatalf("a, its send and b through the group: %v, got %v", want, last(l))
+	}
+
+	if err := mix.Remove("nope", 0); err == nil {
+		t.Fatal("an unknown strip is an error")
+	}
+	if err := mix.Remove("g", 0); err == nil || !strings.Contains(err.Error(), "b still plays into") {
+		t.Fatalf("a group with strips in it can't go: %v", err)
+	}
+
+	seconds := 2 * float64(psalm.BufferSize()) / psalm.SampleRate()
+	if err := mix.Remove("a", seconds); err != nil {
+		t.Fatal(err)
+	}
+	l, _ = render(p, mix, 1)
+	if !(last(l) < l[0]-0.05 && last(l) > 0.1) { // going down, not cut
+		t.Fatalf("a should fade out (and its send with it), not stop: %v ... %v", l[0], last(l))
+	}
+	l, _ = render(p, mix, 3)
+	if math.Abs(last(l)-0.1) > 1e-6 || mix.Strip("a") != nil || len(mix.Strips()) != 3 {
+		t.Fatalf("after the fade only b is left: %v, strips %d", last(l), len(mix.Strips()))
+	}
+	if len(a.Output(0).Connections) != 0 {
+		t.Fatal("the source of a removed channel should be left on its own")
+	}
+
+	// a bus goes with its effects, a group once it is empty
+	if err := mix.Remove("fx", 0); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(p.Modules(), fx) || mix.Strip("fx") != nil {
+		t.Fatal("a bus removed should take its effects with it")
+	}
+	if err := mix.Remove("b", 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := mix.Remove("g", 0); err != nil {
+		t.Fatalf("an empty group can go: %v", err)
+	}
+	l, _ = render(p, mix, 2)
+	if last(l) != 0 || len(mix.Strips()) != 0 {
+		t.Fatalf("nothing left: %v, %d strips", last(l), len(mix.Strips()))
 	}
 }

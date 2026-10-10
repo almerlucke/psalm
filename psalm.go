@@ -18,7 +18,7 @@ type Psalm struct {
 	*Patch
 
 	// Control
-	samplesPerTick  float64
+	samplesPerTick  atomic.Uint64 // float64 bits: the tempo can change from any goroutine
 	sampleCnt       float64
 	sampleTimestamp int64
 	tickTimestamp   int64
@@ -136,21 +136,38 @@ func New(engine audio.Engine) *Psalm {
 // play. A song of a playlist is one. Like New it makes its environment current: build its modules
 // right after it (and make the environment of this patch current again after, SetCurrentEnv, to
 // build more of this one). It has the sample rate and buffer size of this patch, the tempo and PPQ
-// of the config (PushConfig).
+// of the config (PushConfig). To build one on another goroutine (in the background, while other
+// goroutines build too), use NewSubWith and Within instead.
 //
 // It plays when it runs: the module it is added to, or connected to, runs it once per buffer, and
 // then it ticks its own modules. The control ticks of the patch around it don't reach them
 func (p *Psalm) NewSub() *Psalm {
-	return p.NewSubWith(CurrentStackConfig())
-}
-
-// NewSubWith is NewSub with a config of its own (the tempo and PPQ; the sample rate and buffer size
-// are always the ones of this patch), for building on another goroutine than the one pushing configs
-func (p *Psalm) NewSubWith(cfg Config) *Psalm {
+	cfg := CurrentStackConfig()
 	cfg.SampleRate, cfg.BufferSize = p.config.SampleRate, p.config.BufferSize
 	sub := &Psalm{host: p}
 	return sub.init(cfg)
 }
+
+// NewSubWith is NewSub for building on another goroutine (a song built in the background): it has a
+// config of its own (the tempo and PPQ; the sample rate and buffer size are always the ones of this
+// patch) and makes nothing current for the program. Build its modules within it:
+//
+//	sub := p.NewSubWith(cfg)
+//	sub.Within(func() { synth := subtractive.NewPoly(...).AddTo(sub) })
+//
+// Other goroutines building modules meanwhile build them in their own patch
+func (p *Psalm) NewSubWith(cfg Config) *Psalm {
+	cfg.SampleRate, cfg.BufferSize = p.config.SampleRate, p.config.BufferSize
+	sub := &Psalm{host: p}
+	env := NewEnv(cfg)
+	within(env, func() { sub.build(env) })
+	return sub
+}
+
+// Within runs f with the environment of the patch current for the goroutine calling only: the
+// modules f creates belong to this patch, whatever other goroutines build meanwhile. Build a patch
+// made with NewSubWith within it
+func (p *Psalm) Within(f func()) { within(p.Env(), f) }
 
 // HoldClock makes the clock of the patch stand still, or go on: no ticks, so no new notes and no
 // moving song, while the sound goes on (notes that sound ring out, a reverb tails). A song that
@@ -168,11 +185,12 @@ func (p *Psalm) Ticks() int64 { return p.tickTimestamp }
 // (counted from 0, as modules see it: TickTimestamp - 1) comes, at the current tempo. Read it on the
 // audio thread
 func (p *Psalm) SamplesUntil(position int64) float64 {
-	return float64(position-p.tickTimestamp)*p.samplesPerTick + (p.samplesPerTick - p.sampleCnt)
+	spt := p.SamplesPerTick()
+	return float64(position-p.tickTimestamp)*spt + (spt - p.sampleCnt)
 }
 
 // SamplesPerTick returns the samples between two ticks at the current tempo
-func (p *Psalm) SamplesPerTick() float64 { return p.samplesPerTick }
+func (p *Psalm) SamplesPerTick() float64 { return math.Float64frombits(p.samplesPerTick.Load()) }
 
 // DelayStart makes the clock wait a number of samples before its next tick: a song starting
 // within a buffer, sample exact (its first notes come that many samples into the buffer). Call it
@@ -182,11 +200,15 @@ func (p *Psalm) DelayStart(samples float64) { p.delay += samples }
 // CtrlTick does nothing: a patch with a clock of its own ticks its modules itself, when it runs
 func (p *Psalm) CtrlTick(CtrlTick) {}
 
-// init creates the environment and the patch
+// init creates the environment and the patch, and makes the environment current
 func (p *Psalm) init(cfg Config) *Psalm {
 	env := NewEnv(cfg)
 	SetCurrentEnv(env)
+	return p.build(env)
+}
 
+// build creates the patch in the current environment (env)
+func (p *Psalm) build(env *Env) *Psalm {
 	p.Patch = NewPatch([]int{2}, []int{2})
 	p.SetSelf(p)
 	p.SetID("psalm")
@@ -205,7 +227,7 @@ func (p *Psalm) OnConfigChanged() {
 }
 
 func (p *Psalm) updateCtrlTick() {
-	p.samplesPerTick = p.Env().TickDuration() * p.config.SampleRate
+	p.samplesPerTick.Store(math.Float64bits(p.Env().TickDuration() * p.config.SampleRate))
 }
 
 func (p *Psalm) ToSoundFile(filePath string, fileFormat writer.FileFormat, numSeconds float64, sampleRate float64, normalize bool) error {
@@ -364,8 +386,8 @@ func (p *Psalm) Run() {
 	for n := range p.config.BufferSize {
 		p.sampleTimestamp++
 		p.sampleCnt += 1.0
-		for p.sampleCnt >= p.samplesPerTick {
-			p.sampleCnt -= p.samplesPerTick
+		for p.sampleCnt >= p.SamplesPerTick() { // read every time: a tick can change the tempo (a tempo lane)
+			p.sampleCnt -= p.SamplesPerTick()
 			p.tickTimestamp++
 			p.Patch.CtrlTick(CtrlTick{
 				SampleTimestamp: p.sampleTimestamp,

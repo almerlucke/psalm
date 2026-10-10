@@ -21,8 +21,8 @@
 //	Loop       after the last song the first again
 //
 // Playing through the sound card, a song is built when it is needed: the next one in the background
-// while one plays, so it starts in time. Build everything else of the patch before it plays (the
-// mixer, the panel): building a song switches the current patch for a moment. A render builds every
+// while one plays, so it starts in time; it is built in its own patch, so the rest of the program
+// can go on building meanwhile. A render builds every
 // song at the start, so it is the same every time, and list.Duration() is the length of the list.
 //
 // On the page (list.Controls, step 14): a tile per song, tap one to play it next or its dot to pass
@@ -75,7 +75,7 @@ func main() {
 	)
 	defer list.Close()
 
-	// --- the patch around it: a mixer and the page, built before it plays ---
+	// --- the patch around it: a mixer and the page ---
 
 	mix := mixer.New(p)
 	songs := mix.Channel("songs", list, mixer.StripConfig{})

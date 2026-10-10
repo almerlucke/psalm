@@ -2,7 +2,11 @@ package playlist
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -562,5 +566,164 @@ func TestTapWhileMixing(t *testing.T) {
 	d.run(530) // One, Two, Three from 6 s: A ends at 12 s, B comes in on that bar line
 	if i, _ := d.pl.Playing(); i != 1 {
 		t.Fatalf("after the sections B should come in, playing %d", i)
+	}
+}
+
+// live the values of a song that ended are kept in the background and given to the copy built for
+// a restart
+func TestKeptLive(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 96, SampleRate: 1000, BufferSize: 10})
+	defer psalm.PopConfig()
+	p := psalm.New(engine{})
+	panels := map[*panel.Panel]string{}
+	var mu sync.Mutex
+	withPanel := func(s Song) Song {
+		build := s.Build
+		s.Build = func(sub *psalm.Psalm) Built {
+			b := build(sub)
+			ctl := panel.New(sub, s.Name)
+			ctl.Fader("Level", 0, 1, panel.Linear, nil, panel.Default(0.5))
+			mu.Lock()
+			panels[ctl] = s.Name
+			mu.Unlock()
+			b.Panel = ctl
+			return b
+		}
+		return s
+	}
+	tones := map[string]*tone{}
+	pl := New(p, Config{}, withPanel(song("A", 0.1, 1, 0, tones)), withPanel(song("B", 0.2, 1, 0, tones)))
+	defer pl.Close()
+	p.Out(pl)
+	run := func(n int) {
+		for range n {
+			p.ResetRun()
+			p.Run()
+		}
+	}
+	run(10)
+	pl.SongPanel().Param("Level").Set(0.7) // A's control moved
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) { // into B, and the first song built for a restart
+		run(10)
+		pl.buildMu.Lock()
+		ready := pl.first != nil
+		pl.buildMu.Unlock()
+		if i, _ := pl.Playing(); i == 1 && ready {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	var first *built
+	for time.Now().Before(deadline) { // the keeper keeps A's values and gives them to the copy
+		pl.buildMu.Lock()
+		first = pl.first
+		pl.buildMu.Unlock()
+		if first != nil && first.Panel.Param("Level").Value() == 0.7 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if first == nil || first.Panel.Param("Level").Value() != 0.7 {
+		t.Fatal("the copy of A built for a restart should get A's values, kept in the background")
+	}
+	p.Restart()
+	run(2)
+	if pl.SongPanel() != first.Panel || pl.SongPanel().Param("Level").Value() != 0.7 {
+		t.Fatal("a restart should play A with its values")
+	}
+}
+
+// what MIDI learn binds on the songs' controls is in the playlist panel's bindings: KeepBindings
+// saves it and loads it back, the songs get it when they play
+func TestSongBindingsKept(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 96, SampleRate: 1000, BufferSize: 10})
+	defer psalm.PopConfig()
+	panels := map[string]*panel.Panel{}
+	withPanel := func(s Song) Song {
+		build := s.Build
+		s.Build = func(sub *psalm.Psalm) Built {
+			b := build(sub)
+			ctl := panel.New(sub, s.Name)
+			ctl.Fader("Level", 0, 1, panel.Linear, nil)
+			panels[s.Name] = ctl
+			b.Panel = ctl
+			return b
+		}
+		return s
+	}
+	play := func() (*psalm.Psalm, *Playlist, *panel.Panel) {
+		p := psalm.New(nil)
+		tones := map[string]*tone{}
+		pl := New(p, Config{Loop: true}, withPanel(song("A", 0.1, 1, 0, tones)), withPanel(song("B", 0.2, 1, 0, tones)))
+		p.Out(pl)
+		host := panel.New(p, "Host")
+		host.Fader("Volume", 0, 1, panel.Linear, nil)
+		pl.SongControls(host, "Song")
+		return p, pl, host
+	}
+	run := func(p *psalm.Psalm, n int) {
+		for range n {
+			p.ResetRun()
+			p.Run()
+		}
+	}
+	p, _, host := play()
+	run(p, 10)
+	panels["A"].Param("Level").BindCC(1, 21) // learned on A while it plays
+	if b := host.Bindings()["Song/A/Level"]; b.Controller != 21 {
+		t.Fatalf("the song playing's bindings should be in the host's: %v", host.Bindings())
+	}
+	run(p, 100) // into B: A's are kept
+	panels["B"].Param("Level").BindCC(1, 22)
+	file := filepath.Join(t.TempDir(), "bindings.json")
+	if err := host.SaveBindings(file); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(file)
+	if !strings.Contains(string(data), `"Song/A/Level"`) || !strings.Contains(string(data), `"Song/B/Level"`) {
+		t.Fatalf("the file should hold the bindings of both songs:\n%s", data)
+	}
+
+	// the next run of the program: loaded at the start, A gets its binding when it is built
+	p, _, host = play()
+	if err := host.LoadBindings(file); err != nil {
+		t.Fatal(err)
+	}
+	run(p, 2)
+	if b, ok := panels["A"].Param("Level").Binding(); !ok || b.Controller != 21 {
+		t.Fatal("A should get its binding back from the file")
+	}
+	run(p, 100)
+	if b, ok := panels["B"].Param("Level").Binding(); !ok || b.Controller != 22 {
+		t.Fatal("B should get its binding back from the file")
+	}
+	host.ControlChange(1, 22, 127)
+	if panels["B"].Param("Level").Value() != 1 {
+		t.Fatal("the knob should move B's control")
+	}
+}
+
+// the progress of a song with sections follows what it plays: a section skipped ends it sooner, the
+// bar reaches the end with the song
+func TestProgressWithSections(t *testing.T) {
+	d := newDJ(t, Config{}, at("A", 0.1, 120), at("B", 0.2, 120)) // three sections of 2 s
+	d.run(100)                                                    // 1 s
+	if _, p := d.pl.Playing(); math.Abs(p-1.0/6) > 0.02 {
+		t.Fatalf("a second into six: %v", p)
+	}
+	d.pl.Sections().SetEnabled("Two", false) // now 4 s long
+	d.run(1)
+	if _, p := d.pl.Playing(); math.Abs(p-1.0/4) > 0.02 {
+		t.Fatalf("a second into four after a section is switched off: %v", p)
+	}
+	d.run(250) // 3.5 s
+	if _, p := d.pl.Playing(); math.Abs(p-3.5/4) > 0.02 {
+		t.Fatalf("three and a half seconds into four: %v", p)
+	}
+	d.pl.Sections().SetRepeat(true) // the end isn't known: it stays where it was
+	d.run(100)
+	if _, p := d.pl.Playing(); math.Abs(p-3.5/4) > 0.02 {
+		t.Fatalf("while repeating it should stay: %v", p)
 	}
 }

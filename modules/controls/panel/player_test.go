@@ -30,10 +30,10 @@ func (f *fakePlayer) Running() bool    { return f.running.Load() }
 // restartable is a player that goes back to the start
 type restartable struct {
 	fakePlayer
-	restarts int
+	restarts atomic.Int32
 }
 
-func (r *restartable) Restart() { r.restarts++ }
+func (r *restartable) Restart() { r.restarts.Add(1) }
 
 func TestPlayer(t *testing.T) {
 	pn, _ := newPanel()
@@ -112,7 +112,7 @@ func TestPlayer(t *testing.T) {
 	if !pn.describe().Restart {
 		t.Fatal("a player with Restart should have the button")
 	}
-	if res := postJSON(t, srv.URL+"/api/audio", `{"restart": true}`); res.StatusCode != 200 || rp.restarts != 1 || rp.Running() {
+	if res := postJSON(t, srv.URL+"/api/audio", `{"restart": true}`); res.StatusCode != 200 || rp.restarts.Load() != 1 || rp.Running() {
 		t.Fatal("restart should go back to the start, and leave the sound as it was (stopped)")
 	}
 	pn.SetPlayer(nil)

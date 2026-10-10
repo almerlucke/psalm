@@ -241,3 +241,23 @@ func TestKeepBindings(t *testing.T) {
 		t.Fatal("a new panel should load the bindings saved by the first")
 	}
 }
+
+func TestMIDIControllersOnly(t *testing.T) {
+	pn, _ := newPanel()
+	mute := pn.Toggle("Mute", nil)
+	var handlers []func(midi.Event, psalm.CtrlTick)
+	pn.midiFrom(func(f func(midi.Event, psalm.CtrlTick)) { handlers = append(handlers, f) }, false)
+	mute.Learn()
+	for _, f := range handlers {
+		f(midi.Event{Message: midi.Message{0x90, 60, 100}}, psalm.CtrlTick{}) // a key
+	}
+	if pn.Learning() != mute {
+		t.Fatal("with the controllers only, a key should not be learned")
+	}
+	for _, f := range handlers {
+		f(midi.Event{Message: midi.Message{0xB0, 21, 127}}, psalm.CtrlTick{}) // a knob
+	}
+	if b, ok := mute.Binding(); !ok || b.Note || b.Controller != 21 {
+		t.Fatal("a knob should be learned")
+	}
+}

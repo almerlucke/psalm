@@ -520,7 +520,9 @@ panel of the song a playlist plays (`playlist.SongControls`). The page shows it 
 (it is served under `/mount/<name>/`), the control changes and notes of MIDI reach it, and MIDI
 learn on the page binds its controls. A mounter that is a `panel.MountKeeper` (`SnapshotMount`,
 `RestoreMount`) keeps values in this panel's snapshots and presets too, as `"<mount>/..."`: the
-playlist keeps the controls of every song this way.
+playlist keeps the controls of every song this way. A mounter that is a `panel.MountBinder`
+(`BindingsMount`, `SetBindingsMount`) keeps MIDI bindings the same way: they are in `Bindings()` as
+`"<mount>/..."`, so `KeepBindings` saves and loads what was learned on every song's controls.
 
 **Labels**: `panel.Label("M")` shows a short text on the page instead of the name (names have to
 be unique, labels can repeat).
@@ -549,7 +551,9 @@ past 64, a select picks an option over the travel. `panel.Pickup()` makes a fade
 until the controller reaches its value (soft takeover), so it doesn't jump after it was moved on the
 page. Buttons and toggles take notes too, for pads that send notes: `BindNote(channel, note)`, or
 MIDI learn with a pad (a note on presses a button, switches a toggle over; `ctl.NoteOn(channel,
-note, velocity)` takes notes from any other source). Binding a controller or note takes it from
+note, velocity)` takes notes from any other source). For a keyboard whose keys play a synth,
+`ctl.MIDIControllers(kb)` takes only its knobs and faders: a key then never presses a button or
+gets learned. Binding a controller or note takes it from
 the control that had it, also when one of the two listens on any channel. `Bindings`,
 `SetBindings`, `SaveBindings(path)` and `LoadBindings(path)` keep the mapping of a controller;
 `ctl.ControlChange(channel, controller, value)` takes control changes from any other MIDI source.
@@ -580,6 +584,12 @@ or Delete. From code: `SavePreset(name)`, `LoadPreset(name)`, `DeletePreset(name
 `PresetNames()`. A name is letters, digits, spaces, `-`, `_` and `.` (up to 64), so it stays in
 the folder. Download and Upload on the page keep a setup in a file of your own, with or without
 the folder.
+
+**Tests of the page**: `page_test.go` drives the page in headless Chrome (the DevTools protocol on
+a pipe, no other dependencies): every kind of control, the tiles of cue lists (also cue lists whose
+cues come and go), mounts, the grid, MIDI learn, Start/Stop and Restart, presets; any error the page
+throws fails the test. They run with `go test` when Chrome is installed (`PSALM_CHROME` names
+another browser), and are skipped with `-short`.
 
 **The page** follows the system's light or dark mode and works with touch (several faders at once
 on a tablet). Drag a fader or knob (Shift for fine steps on a knob), use the arrow keys on a

@@ -54,6 +54,25 @@ too, with the same settings. `mix.Strip(name)` finds one.
 them: `arrangement.Automate(lane, mix.Strip("strings"), 1)`. **Messages**: `volume`, `pan`,
 `mute`, `solo` and `send.<bus>`.
 
+## Removing strips
+
+`mix.Remove(name, seconds)` takes a strip out of the mixer while it plays: it fades out over the
+seconds (no click; its sends fade with it), then it is disconnected and removed from the patch.
+
+```go
+p.Do(func() {
+	mix.Remove("lead", 1)          // the channel fades out and goes
+	p.FadeRemove(oldLead, 1)       // and its source (Remove leaves a channel's source in the patch)
+	mix.Channel("lead", newLead, mixer.StripConfig{})
+})
+```
+
+A group or a bus goes with what it is made of (its input and its inserts or effects). A group can
+only go once no strip plays into it (remove those first: an error says which); a bus leaves the
+sends to it going nowhere. Call it on the audio thread while the patch plays (`Psalm.Do`). The
+other strips keep the delays `Align` gave them; call `Align` again if a removed strip was the late
+one.
+
 ## Latency
 
 A strip whose signal is late (a vocoder, a fully wet convolver: anything implementing

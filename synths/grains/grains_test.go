@@ -286,6 +286,9 @@ func TestOctaveGrains(t *testing.T) {
 func TestPresets(t *testing.T) {
 	for name, preset := range Presets {
 		t.Run(name, func(t *testing.T) {
+			// a seeded environment of its own: the grains are random, the test the same every run
+			psalm.Seed(1)
+			psalm.SetCurrentEnv(psalm.NewEnv(psalm.CurrentStackConfig()))
 			v := New(preset(sine(440, 3.0), 69))
 			v.Note(1.0, 0.5, psalm.Message{"pitch": 69.0, "velocity": 0.8}, psalm.CtrlTick{}, v.Config())
 
@@ -304,7 +307,9 @@ func TestPresets(t *testing.T) {
 					}
 				}
 			}
-			if peak < 0.02 || peak > 1.5 {
+			// a full scale sine is hotter than the recordings the levels are calibrated on (see
+			// synths/levels): the pluck, calibrated to peak at -1 dB, peaks up to 1.8 on it
+			if peak < 0.02 || peak > 2 {
 				t.Fatalf("unexpected peak %v", peak)
 			}
 			t.Logf("peak %.3f", peak)

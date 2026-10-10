@@ -26,6 +26,16 @@ type MountKeeper interface {
 	RestoreMount(values map[string]float64)
 }
 
+// MountBinder is a mounter that keeps the MIDI bindings of the panels it mounts in this panel's
+// bindings (Bindings, SetBindings, KeepBindings), also of the ones not mounted now: what MIDI learn
+// bound on the controls of every song of a playlist. Keys as for MountKeeper ("Groove/Tempo", in the
+// bindings "Song/Groove/Tempo")
+type MountBinder interface {
+	Mounter
+	BindingsMount() map[string]Binding
+	SetBindingsMount(bs map[string]Binding)
+}
+
 // Mount is a place on the panel showing another panel
 type Mount struct {
 	Name    string
@@ -55,21 +65,22 @@ func (pn *Panel) Mount(name string, m Mounter) *Mount {
 	}
 	pn.mounts[name] = mt
 	pn.order = append(pn.order, item{mount: mt})
+	list := append([]*Mount(nil), pn.mountList()...) // a new list: the audio thread reads it without a lock
+	list = append(list, mt)
+	pn.mountsNow.Store(&list)
 	return mt
 }
 
 // Mounted returns the panel the mount shows now, nil for none
 func (mt *Mount) Mounted() *Panel { return mt.m.Mounted() }
 
-// mountList returns the mounts in the order they were declared
+// mountList returns the mounts in the order they were declared, without a lock (MIDI reads it on
+// the audio thread for every message)
 func (pn *Panel) mountList() []*Mount {
-	var ms []*Mount
-	for _, it := range pn.items() {
-		if it.mount != nil {
-			ms = append(ms, it.mount)
-		}
+	if l := pn.mountsNow.Load(); l != nil {
+		return *l
 	}
-	return ms
+	return nil
 }
 
 // serveMount serves the page and the API of a mounted panel under /mount/<name>/

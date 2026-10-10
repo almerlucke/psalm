@@ -66,6 +66,9 @@ type Strip struct {
 	open   float64 // mute gain, 0-1
 	sendG  []float64
 	meter  levelMeter
+
+	owned    []psalm.Modular // what a group or bus is made of (its input, inserts, effects)
+	removing bool            // fading out to be removed (Mixer.Remove)
 }
 
 func newStrip(m *Mixer, name string, cfg StripConfig, safe bool) *Strip {

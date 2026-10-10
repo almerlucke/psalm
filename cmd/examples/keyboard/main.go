@@ -313,7 +313,7 @@ func main() {
 		ctl.Meter("Master", mix.Master())
 		ctl.Meter("Hall out", mix.Strip("hall"))
 
-		ctl.MIDI(kb)
+		ctl.MIDIControllers(kb) // the knobs; the keys play the synth (MIDI learn doesn't take them)
 		if err := ctl.KeepBindings(*bindingsFile); err != nil {
 			log.Fatal(err)
 		}
