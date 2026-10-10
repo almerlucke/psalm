@@ -37,6 +37,15 @@ negative tick value is a rest: the timer waits that many ticks without banging.
 
 The `tick` in output 0 lets templates and synths start notes sample accurately.
 
+**It follows the clock of its patch.** A timer that misses control ticks (taken out of the patch for
+a while, in a patch that isn't processed) catches up silently when the ticks reach it again: its
+durations go by without bangs (bursts and random draws included), and it goes on where it would
+have been, in time with the rest. So a part can be stopped by taking its timer out and come back on
+the beat, instead of running muted all the time. A timer added while the patch plays starts where it
+would be had it run from the start of the clock; `timer.New(...).FromNow()` starts it at its first
+tick instead (its first bang there). A restart (`Psalm.Restart`, or the clock going back) starts it
+again from its first duration.
+
 ## steps
 
 `modules/controls/timer/steps`
@@ -704,7 +713,8 @@ bar := psalm.PPQ() * 4
 dispatch.New(
 	dispatch.NewEvent(drums, bar*8, dispatch.Unmute),
 	dispatch.NewEvent(lead, bar*16, dispatch.Mute),
-	dispatch.NewEvent(reverb, bar*16, dispatch.Message, psalm.Message{"mix": 0.6}),
+	dispatch.NewSetting(reverb, bar*16, psalm.Message{"mix": 0.6}),
+	dispatch.NewEvent(bells, bar*24, dispatch.Message, psalm.Message{"bang": true}),
 ).AddTo(p)
 ```
 
@@ -714,7 +724,16 @@ dispatch.New(
 | `dispatch.Unmute` | `SetMuted(false)` |
 | `dispatch.Message` | `ReceiveMessage(What)` |
 
-Events are played once, sorted by time. More can be added with `AddEvents`.
+Events are played once, sorted by time (events at the same tick in the order given). More can be
+added with `AddEvents`.
+
+**It follows the clock of its patch.** Mutes, unmutes and settings (`NewSetting`, or an event with
+`State` set) are states; other messages are moments (a note, a bang). A dispatch that misses
+control ticks (out of the patch for a while) doesn't fire the events it missed all at once when the
+ticks reach it again: the states are set as they should be by now (only the latest mute of every
+module, its settings merged, later keys over earlier ones), the moments are left out. A dispatch
+added while the patch plays does the same with the events before its first tick. A restart (or the
+clock going back) dispatches from the start again.
 
 ## logger
 

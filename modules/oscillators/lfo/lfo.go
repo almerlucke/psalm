@@ -59,6 +59,7 @@ type LFO struct {
 	wf     WaveForm
 	wt     lookup.Table
 	kr     bool
+	last   int64 // the tick of the last control tick (control rate), 0 for none yet
 }
 
 func New(kr bool, fc float64, minVal float64, maxVal float64, wf WaveForm, wts ...lookup.Table) *LFO {
@@ -167,12 +168,36 @@ func (lfo *LFO) ReceiveMessage(msg psalm.Message) {
 // Restart starts the LFO again at its starting phase (psalm.Restarter, from Psalm.Restart)
 func (lfo *LFO) Restart() {
 	lfo.phasor.Reset()
+	lfo.last = 0
+}
+
+// advance moves the LFO on by ticks it didn't play (at control rate)
+func (lfo *LFO) advance(n int64) {
+	for range n {
+		lfo.phasor.Generate()
+		lfo.sh.Generate()
+	}
 }
 
 func (lfo *LFO) CtrlTick(tick psalm.CtrlTick) {
 	if !lfo.kr {
 		return
 	}
+	// it follows the clock of its patch: ticks it missed go by, one added while the patch plays is
+	// where it would be from the start, a clock going back (a restart) starts it again
+	now := tick.TickTimestamp
+	switch {
+	case lfo.last > 0 && now == lfo.last:
+		return
+	case lfo.last > 0 && now < lfo.last:
+		lfo.Restart()
+		lfo.advance(now - 1)
+	case lfo.last == 0:
+		lfo.advance(now - 1)
+	default:
+		lfo.advance(now - lfo.last - 1)
+	}
+	lfo.last = now
 
 	v := lfo.shaper.Shape(lfo.phasor.Generate())
 	r := lfo.sh.Generate()[0]

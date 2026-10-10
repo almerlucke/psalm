@@ -109,6 +109,10 @@ filter.ValueIn(lfo.New(true, 0.25, 200, 3000, lfo.Sine).AddTo(p), 0, 1)
 **Value inputs**: 0 frequency, 1 min, 2 max, 3 waveform.
 **Messages**: `frequency`, `minValue`, `maxValue`, `waveForm`.
 
+At control rate it follows the clock of its patch: ticks it misses (out of the patch for a while)
+go by, so it comes back at the phase it would have had; one added while the patch plays starts at
+the phase it would have from the start; a restart starts it at its starting phase.
+
 ## granular
 
 `modules/granular`
