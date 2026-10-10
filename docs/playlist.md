@@ -105,6 +105,11 @@ you left them, and the presets of the playlist's panel hold the controls of ever
 once and the other songs when they start. `list.SongPanel()` is the panel of the song playing,
 from code.
 
+**Parts**: `list.PartControls(ctl, "Parts")` puts the parts of the song playing on the panel
+(songs with a transport: the parts of its form), changing with the song: tap one to switch the part
+off or on, in time; the parts playing in the section light up. A song played again starts with all
+its parts on. See [controls](controls.md#arrange) (parts on and off).
+
 **On a panel**: `list.Controls(ctl, "Songs")` adds a tile per song (tap one to play it next, its
 dot to pass it over, the song playing shows how far it is; every tile is a button
 `"Songs/<song>"` a MIDI pad can play) and a Next button (`"Songs next"`). With Start/Stop and

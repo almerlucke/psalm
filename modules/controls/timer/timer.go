@@ -41,6 +41,14 @@ func (t *Timer) setNextDuration() {
 	}
 }
 
+// Restart starts the timer again from the start of its durations (psalm.Restarter, from
+// Psalm.Restart): the first duration starts with the next tick, as when the patch started
+func (t *Timer) Restart() {
+	t.counter, t.bang = 0, false
+	t.ticksGen.Reset()
+	t.setNextDuration()
+}
+
 func (t *Timer) CtrlTick(tick psalm.CtrlTick) {
 	if t.bang {
 		dur := t.ticks * t.Env().TickDuration()

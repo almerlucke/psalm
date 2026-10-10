@@ -350,9 +350,10 @@ type control struct {
 
 // cuesDesc is a cue list as the page sees it
 type cuesDesc struct {
-	Names []string `json:"names"`
-	Slots int      `json:"slots,omitempty"` // tiles named by position: the cues change
-	State CueState `json:"state"`
+	Names   []string `json:"names"`
+	Slots   int      `json:"slots,omitempty"`   // tiles named by position: the cues change
+	Toggles bool     `json:"toggles,omitempty"` // a tap switches a cue on or off
+	State   CueState `json:"state"`
 }
 
 // gridDesc is a grid as the page sees it: the cells in the order pattern, row, step, field
@@ -389,7 +390,7 @@ func (pn *Panel) describe() description {
 		}
 		if cs := it.cues; cs != nil {
 			i := index[cs.Section]
-			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: CuesKind, Name: cs.Name, Cues: &cuesDesc{Names: cs.Names, Slots: cs.Slots, State: cs.State()}})
+			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: CuesKind, Name: cs.Name, Cues: &cuesDesc{Names: cs.Names, Slots: cs.Slots, Toggles: cs.Toggles, State: cs.State()}})
 			continue
 		}
 		if g := it.grid; g != nil {

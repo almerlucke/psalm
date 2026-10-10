@@ -25,6 +25,12 @@ func New(templ template.Template) *Templ {
 	return g
 }
 
+// Restart starts the template's generators again from their start (psalm.Restarter, from
+// Psalm.Restart): sequences from their first value; random generators go on drawing
+func (t *Templ) Restart() {
+	t.templ.Reset()
+}
+
 func (t *Templ) Receive(value any, index int) {
 	var (
 		msg   psalm.Message

@@ -179,6 +179,7 @@ func (s *Steps) Reset() {
 	s.steps.Reset()
 	s.delayed = false
 	s.burstMode = false
+	s.remainingDuration, s.burstCount, s.burstDuration = 0, 0, 0
 }
 
 func (s *Steps) Continuous() bool {

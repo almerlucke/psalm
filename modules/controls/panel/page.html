@@ -568,7 +568,8 @@ function cues(p) {
 	const title = div("name"); title.textContent = p.label || p.name;
 	const list = div("cuelist");
 	const hint = div("cuehint");
-	hint.textContent = "tap one to play it next, tap again to take that back; the dot turns it on or off";
+	hint.textContent = d.toggles ? "tap one to switch it off or on; the ones lit play in this section" :
+		"tap one to play it next, tap again to take that back; the dot turns it on or off";
 	el.append(title, list, hint);
 	let tiles = [];
 	// the tiles: every one a button of its own on the panel, "Song/Chorus" (or "Sections/2" for a
@@ -591,6 +592,13 @@ function cues(p) {
 					post("api/cues", {name: p.name, cue: i, on: state.enabled[i]});
 					return;
 				}
+				if (d.toggles) { // a switch: on or off
+					state.enabled = state.enabled || [];
+					state.enabled[i] = !state.enabled[i];
+					render();
+					post("api/cues", {name: p.name, cue: i, on: state.enabled[i]});
+					return;
+				}
 				state.queued = state.queued === i ? -1 : i;
 				render();
 				post("api/cues", {name: p.name, queue: state.queued});
@@ -602,12 +610,13 @@ function cues(p) {
 	}
 	function render() {
 		tiles.forEach((t, i) => {
-			const playing = i === state.playing, queued = i === state.queued, on = !!(state.enabled || [])[i];
+			const playing = i === state.playing || !!(state.active || [])[i], queued = i === state.queued, on = !!(state.enabled || [])[i];
 			t.classList.toggle("playing", playing);
 			t.classList.toggle("queued", queued);
 			t.classList.toggle("off", !on);
 			t.querySelector(".bar").style.width = playing ? (state.progress * 100).toFixed(1) + "%" : "0";
-			t.querySelector(".tag").textContent = queued ? "next" : playing ? "playing" : on ? "" : "off";
+			// a switch that is off says so, also where its part would play (the light shows that)
+			t.querySelector(".tag").textContent = queued ? "next" : !on && d.toggles ? "off" : playing ? "playing" : on ? "" : "off";
 		});
 	}
 	makeTiles();

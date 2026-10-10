@@ -13,6 +13,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/score"
 )
 
 // tone sounds a level while the clock of its song goes, rings 5 buffers after it holds, and keeps
@@ -725,5 +726,50 @@ func TestProgressWithSections(t *testing.T) {
 	d.run(100)
 	if _, p := d.pl.Playing(); math.Abs(p-3.5/4) > 0.02 {
 		t.Fatalf("while repeating it should stay: %v", p)
+	}
+}
+
+// a song with parts: a keys part and a bass part over three sections of a bar
+func withParts(name string, level float32, parts ...string) func(map[string]*tone) Song {
+	return func(tones map[string]*tone) Song {
+		return Song{Name: name, Build: func(p *psalm.Psalm) Built {
+			t := &tone{Module: psalm.NewModule(nil, []int{2}), level: level, song: p}
+			t.SetSelf(t)
+			t.AddTo(p)
+			tones[name] = t
+			form := arrange.NewForm(arrange.Section{Name: "One", Bars: 1}, arrange.Section{Name: "Two", Bars: 1})
+			for _, part := range parts {
+				form.Part(p, t, part, score.Config{}, func(s arrange.Section) []score.Note {
+					return arrange.PerBar(s, func(int) []score.Note { return score.Notes(4, 60) })
+				})
+			}
+			a := arrange.NewArrangement(form)
+			a.AddTo(p)
+			return Built{Out: t, Length: a.Duration(), Transport: form.Transport()}
+		}}
+	}
+}
+
+func TestPartControls(t *testing.T) {
+	d := newDJ(t, Config{}, withParts("A", 0.1, "keys", "bass"), withParts("B", 0.2, "pad", "lead", "drums"))
+	ctl := panel.New(d.p, "Test")
+	d.pl.PartControls(ctl, "Parts")
+	cs := ctl.CuesByName("Parts")
+	d.run(10)
+	if st := cs.State(); !slices.Equal(st.Names, []string{"keys", "bass"}) || !slices.Equal(st.Active, []bool{true, true}) {
+		t.Fatalf("the parts of A, both playing: %+v", st)
+	}
+	cs.Enable(1, false)
+	if d.pl.Sections().Form().PartEnabled("bass") {
+		t.Fatal("the tile should switch A's bass off")
+	}
+	d.run(400) // into B
+	if st := cs.State(); !slices.Equal(st.Names, []string{"pad", "lead", "drums"}) || !slices.Equal(st.Enabled, []bool{true, true, true}) {
+		t.Fatalf("the parts of B, all on: %+v", st)
+	}
+	ctl.Param("Parts/3").Press() // a pad on the third tile
+	ctl.CtrlTick(psalm.CtrlTick{TickTimestamp: 1})
+	if d.pl.Sections().Form().PartEnabled("drums") {
+		t.Fatal("the third tile's button should switch B's third part")
 	}
 }

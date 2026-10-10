@@ -959,6 +959,21 @@ func (pl *Playlist) SetSectionJump(at arrange.JumpAt) *Playlist {
 	return pl
 }
 
+// PartControls puts the parts of the song playing on a panel (songs built with a Transport, whose
+// form has the parts): a tile per part, changing with the song; tap one to switch the part off or on,
+// the parts playing in the section light up (arrange.Form.PartControls for one song). The tiles'
+// buttons are named by position ("<name>/1", ...) for MIDI pads. A song played again is built again:
+// its parts start on, as written
+func (pl *Playlist) PartControls(ctl *panel.Panel, name string) *Playlist {
+	ctl.Cues(name, arrange.PartCues(func() *arrange.Form {
+		if tr := pl.sections.Load(); tr != nil {
+			return tr.Form()
+		}
+		return nil
+	}), panel.CueSlots(sectionSlots), panel.CueToggles())
+	return pl
+}
+
 // Sections returns the transport of the song playing (a song with a transport), nil for none
 func (pl *Playlist) Sections() *arrange.Transport { return pl.sections.Load() }
 

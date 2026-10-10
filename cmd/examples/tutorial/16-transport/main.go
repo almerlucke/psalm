@@ -12,6 +12,13 @@
 //	                                 section playing ends)
 //	tr.Controls(ctl, "Song")         all of it on the panel (step 14)
 //
+// The parts of the song can be switched off and on while it plays, the way a mixer's channels are
+// muted, but in time: a part that is off starts no new notes (what sounds rings out), and keeps its
+// place, so it comes back on the beat. It stays off until it is switched on again.
+//
+//	form.SetPartEnabled("bass", false)
+//	form.PartControls(ctl, "Parts")  a tile per part: tap to switch it; the ones playing in this section light up
+//
 // On the page a tile per section: tap one to play it next (tap it again to take that back), tap its
 // dot to turn it on or off. The section playing shows how far it is, the one queued blinks. Repeat
 // holds the section playing, Jump at says when a queued section starts. Jumps land on a bar line,
@@ -165,6 +172,8 @@ func main() {
 			tr.Queue(order[0].Name)
 		}
 	})
+	ctl.Section("Parts")
+	form.PartControls(ctl, "Parts")
 	ctl.Section("Mix")
 	ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(mix.Master(), "volume"), panel.Default(0), panel.Unit("dB"), panel.Smooth(0.03))
 	ctl.Meter("Master", mix.Master())

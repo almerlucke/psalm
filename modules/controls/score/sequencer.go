@@ -4,6 +4,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"sort"
+	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
 )
@@ -113,6 +114,7 @@ type Sequencer struct {
 	last   int64
 	rng    *rand.Rand
 	clock  func(tick int64) (int64, bool)
+	off    atomic.Bool // switched off: no new notes (SetEnabled)
 }
 
 // NewSequencer creates a sequencer playing notes
@@ -291,11 +293,21 @@ func (s *Sequencer) CtrlTick(tick psalm.CtrlTick) {
 	}
 	s.last = pos
 
+	off := s.off.Load()
 	for s.next < len(s.events) && s.events[s.next].tick == pos {
-		s.play(&s.events[s.next], tick)
+		if !off {
+			s.play(&s.events[s.next], tick)
+		}
 		s.next++
 	}
 }
+
+// SetEnabled switches the part on or off while it plays (from any goroutine): off, it starts no new
+// notes (the notes sounding ring out) and keeps its place, on again it goes on from there
+func (s *Sequencer) SetEnabled(on bool) { s.off.Store(!on) }
+
+// Enabled tells whether the part plays its notes
+func (s *Sequencer) Enabled() bool { return !s.off.Load() }
 
 func (s *Sequencer) play(e *event, tick psalm.CtrlTick) {
 	msg := psalm.Message{s.cfg.Key: e.pitch}

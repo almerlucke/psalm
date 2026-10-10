@@ -20,11 +20,12 @@ type Cuer interface {
 
 // CueState is the state of a cue list
 type CueState struct {
-	Playing  int      `json:"playing"`         // the cue playing, -1 none
-	Progress float64  `json:"progress"`        // through it, 0-1
-	Queued   int      `json:"queued"`          // the cue asked for next, -1 none
-	Enabled  []bool   `json:"enabled"`         // per cue whether it is on
-	Names    []string `json:"names,omitempty"` // the cues now (a cue list with slots, whose cues change)
+	Playing  int      `json:"playing"`          // the cue playing, -1 none
+	Progress float64  `json:"progress"`         // through it, 0-1
+	Queued   int      `json:"queued"`           // the cue asked for next, -1 none
+	Enabled  []bool   `json:"enabled"`          // per cue whether it is on
+	Names    []string `json:"names,omitempty"`  // the cues now (a cue list with slots, whose cues change)
+	Active   []bool   `json:"active,omitempty"` // per cue whether it sounds now (the parts playing in a section)
 }
 
 // CueOption is an option of a cue list
@@ -36,12 +37,17 @@ type CueOption func(*Cues)
 // second cue whatever it is. Which cues are on is not in snapshots (they are other cues every time)
 func CueSlots(n int) CueOption { return func(cs *Cues) { cs.Slots = n } }
 
+// CueToggles makes a cue list of switches (the parts of a song): a tap on a tile switches its cue on
+// or off (no cue is asked for next), the cues that sound now (CueState.Active) light up
+func CueToggles() CueOption { return func(cs *Cues) { cs.Toggles = true } }
+
 // Cues is a cue list on the panel
 type Cues struct {
 	Name    string
 	Section string
 	Names   []string // the cues when it was made
 	Slots   int      // tiles named by position, for cues that change (CueSlots); 0: named by cue
+	Toggles bool     // a tap switches a cue on or off (CueToggles)
 	tiles   []*Param
 	cuer    Cuer
 }
@@ -123,6 +129,11 @@ func (cs *Cues) Queue(i int) {
 // Toggle asks for a cue to play next, or takes the request back when it was asked for already
 func (cs *Cues) Toggle(i int) {
 	if i >= cs.count() {
+		return
+	}
+	if cs.Toggles { // switches: on or off
+		st := cs.State()
+		cs.Enable(i, !(i < len(st.Enabled) && st.Enabled[i]))
 		return
 	}
 	if cs.State().Queued == i {

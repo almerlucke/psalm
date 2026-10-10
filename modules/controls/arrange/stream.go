@@ -2,6 +2,7 @@ package arrange
 
 import (
 	"math"
+	"sync/atomic"
 
 	"github.com/almerlucke/genny"
 	"github.com/almerlucke/genny/template"
@@ -53,7 +54,16 @@ type Streamer struct {
 	next    float64 // tick of the next step
 	params  []*template.Parameter
 	gain    float64
+	off     atomic.Bool // switched off: its steps go by, nothing is sent (SetEnabled)
+	active  atomic.Bool // it has a stream in the section playing
 }
+
+// SetEnabled switches the part on or off while it plays (from any goroutine): off, its steps go by
+// (the rhythm and the messages keep their place) but nothing is sent
+func (s *Streamer) SetEnabled(on bool) { s.off.Store(!on) }
+
+// Enabled tells whether the part sends its notes
+func (s *Streamer) Enabled() bool { return !s.off.Load() }
 
 // Stream adds a part played by streams: it creates a streamer, connects it to value input 0 of a
 // module (the trigger input of a poly synth, the message input of most modules) and adds it to
@@ -71,6 +81,7 @@ func (f *Form) NewStream(p psalm.Patcher, name string, sc StreamScore) *Streamer
 	s.SetSelf(s)
 	s.SetID(name)
 	s.AddTo(p)
+	f.addPart(&part{name: name, enable: s.SetEnabled, enabled: s.Enabled, active: s.active.Load})
 	return s
 }
 
@@ -84,6 +95,7 @@ func (s *Streamer) SetGain(gain float64) {
 func (s *Streamer) Restart() {
 	s.form.Transport().restart()
 	s.section, s.loop, s.stream, s.next = -1, -1, nil, 0
+	s.active.Store(false)
 }
 
 // number returns a number or the next value of a generator
@@ -113,6 +125,7 @@ func (s *Streamer) CtrlTick(tick psalm.CtrlTick) {
 	pos := s.form.Transport().At(t, ppq)
 	if pos.Ended {
 		s.stream = nil
+		s.active.Store(false)
 		return
 	}
 
@@ -124,6 +137,7 @@ func (s *Streamer) CtrlTick(tick psalm.CtrlTick) {
 			s.next = float64(t) // a new stream starts with the section
 		}
 		s.stream = stream
+		s.active.Store(stream != nil)
 		s.params = s.params[:0]
 		for k, v := range pos.Section.Params {
 			s.params = append(s.params, template.NewParameter(k, v))
@@ -139,6 +153,7 @@ func (s *Streamer) CtrlTick(tick psalm.CtrlTick) {
 	for guard := 0; float64(t) >= math.Round(s.next) && guard < 64; guard++ {
 		if st.Rhythm.Done() && !st.Rhythm.Continuous() {
 			s.stream = nil // the rhythm ended, silent until the next section
+			s.active.Store(false)
 			return
 		}
 		step := st.Rhythm.Generate()
@@ -159,6 +174,10 @@ func (s *Streamer) play(st *Stream, step float64, sec Section, tick psalm.CtrlTi
 	}
 	if len(s.params) > 0 {
 		st.Message.SetParameters(s.params)
+	}
+	if s.off.Load() { // switched off: the step goes by
+		st.Message.Generate()
+		return
 	}
 
 	switch st.Output {

@@ -452,6 +452,16 @@ is where it starts; one queued after a song that doesn't loop has ended starts i
 `Duration()` and `Schedule()` of the arrangement leave the sections that are off out (a render
 plays the song without them). All of it can be called from any goroutine.
 
+**Parts on and off**: the parts of a form (`Part`, `Stream`) can be switched off and on while the
+song plays, like the channels of a mixer but in time: a part that is off starts no new notes (what
+sounds rings out) and keeps its place, so it comes back on the beat; it stays off through the
+sections until it is switched on. `form.Parts()` lists them, `form.SetPartEnabled("bass", false)`,
+`PartEnabled`, `PartPlaying` (it has notes in the section playing). `form.PartControls(ctl, name)`
+puts them on a panel: a tile per part, tap it to switch the part (the parts playing in the section
+light up, a part that is off says so); which parts are on is kept in presets. A playlist shows the
+parts of the song playing: `list.PartControls(ctl, name)`. (`score.Sequencer.SetEnabled` and
+`Streamer.SetEnabled` do it for one part.)
+
 `tr.Controls(ctl, name)` adds a cue list to a panel (a tile per section: tap to play it next, the
 dot turns it on or off, the section playing shows how far it is), a Repeat switch (`"<name>
 repeat"`) and a Jump at choice (`"<name> jump"`). They are kept in presets. Every tile is a button
@@ -512,7 +522,9 @@ learn mode and hit a pad, or `ctl.Param("Song/Chorus").BindNote(0, 36)` (`cues.T
 same button). The song transport of `arrange` is one (`Transport.Controls`). With
 `panel.CueSlots(n)` the cues can change while it plays (the sections of the song a playlist plays):
 the page redraws the tiles when they change, the buttons are named by position (`"Sections/1"` to
-`"Sections/<n>"`) and which cues are on is not in snapshots.
+`"Sections/<n>"`) and which cues are on is not in snapshots. With `panel.CueToggles()` the cues
+are switches (the parts of a song): a tap switches a cue on or off instead of asking for it, and the
+cues sounding now (`CueState.Active`) light up.
 
 **Mounts**: `ctl.Mount(name, mounter)` shows another panel inside this one: the one a
 `panel.Mounter` gives now (`Mounted() *Panel`), and another one when it gives another, like the
@@ -575,8 +587,10 @@ when it already plays or stands still; `Running()` tells which.
 
 `p.Restart()` (from any goroutine) sets the clock of the patch back to 0 at the next buffer and
 calls `Restart()` on every module that keeps time of its own: a `psalm.Restarter`, also in patches
-within the patch. The arrangement, the parts (`score.Sequencer`), the streams, the step sequencer
-and `dispatch` are; a module of your own that counts time can be one too.
+within the patch. The arrangement, the parts (`score.Sequencer`), the streams, the step sequencer,
+`dispatch`, the `timer` (its durations from the first, `steps` too), `templ` (its generators from
+their start: sequences start again, random ones go on drawing) and the `lfo` (its starting phase)
+are; a module of your own that counts time can be one too.
 
 **Presets**: `ctl.Presets("presets")` gives the panel a folder for setups (made when it isn't
 there), a JSON file each. The page then has a presets bar: type a name and Save, pick one and Load

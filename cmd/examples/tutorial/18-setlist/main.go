@@ -12,6 +12,11 @@
 //
 //	list.Controls(ctl, "Songs")             a tile per song, Next
 //	list.SectionControls(ctl, "Sections")   a tile per section of the song playing, Repeat, Jump at
+//	list.PartControls(ctl, "Parts")         a tile per part of the song playing: tap to switch it off or on
+//
+// The parts of the song playing are switches (step 16): a part that is off starts no new notes and
+// comes back in time; the parts playing in the section light up. A song played again starts with
+// all its parts on.
 //
 // The section tiles change with the song. They work as in step 16: tap one to play it next, its
 // dot to switch it off; Repeat holds the section playing, Jump at says when a section asked for
@@ -113,6 +118,8 @@ func main() {
 		list.Controls(ctl, "Songs")
 		ctl.Section("Sections")
 		list.SectionControls(ctl, "Sections")
+		ctl.Section("Parts")
+		list.PartControls(ctl, "Parts")
 		ctl.Section("Song")
 		list.SongControls(ctl, "Song")
 		ctl.Section("Mix")

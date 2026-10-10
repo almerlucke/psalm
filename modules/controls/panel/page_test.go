@@ -278,3 +278,32 @@ func TestPagePresets(t *testing.T) {
 	tb.tap(`[...document.querySelectorAll("#presets button")].find(b => b.textContent === "Load")`)
 	eventually(t, "the preset to be loaded", func() bool { return level.Value() == 0.75 })
 }
+
+// a cue list of switches (the parts of a song): a tap switches, the cues sounding light up
+func TestPageCueToggles(t *testing.T) {
+	b := startBrowser(t)
+	pn, _ := newPanel()
+	c := newCueList()
+	c.mu.Lock()
+	c.state.Playing = -1
+	c.state.Active = []bool{true, false, true}
+	c.mu.Unlock()
+	pn.Cues("Parts", c, CueToggles())
+	tb := b.open(t, serve(t, pn), built)
+	tile := func(i string) string { return `document.querySelectorAll(".cue")[` + i + `]` }
+	tb.waitFor(tile("0")+`.classList.contains("playing") && !`+tile("1")+`.classList.contains("playing") && `+tile("2")+`.classList.contains("playing")`, "the parts sounding lit")
+	tb.tap(tile("1"))
+	eventually(t, "a tap to switch the part off", func() bool { return !c.CueState().Enabled[1] })
+	tb.waitFor(tile("1")+`.classList.contains("off")`, "the tile to show it is off")
+	if q := c.CueState().Queued; q != -1 {
+		t.Fatalf("a switch should not ask for a cue: %d", q)
+	}
+	tb.tap(tile("2")) // off where it would play: it says off, still lit
+	tb.waitFor(tile("2")+`.querySelector(".tag").textContent === "off" && `+tile("2")+`.classList.contains("playing")`, "a part off where it would play")
+	tb.tap(tile("2"))
+	tb.tap(tile("1"))
+	eventually(t, "a tap again to switch it on", func() bool { return c.CueState().Enabled[1] })
+	if hint := tb.eval(`document.querySelector(".cuehint").textContent`); !strings.Contains(hint.(string), "switch it off or on") {
+		t.Fatalf("the hint should say what a tap does: %v", hint)
+	}
+}

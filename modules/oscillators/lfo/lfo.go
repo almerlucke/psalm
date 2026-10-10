@@ -164,6 +164,11 @@ func (lfo *LFO) ReceiveMessage(msg psalm.Message) {
 	})
 }
 
+// Restart starts the LFO again at its starting phase (psalm.Restarter, from Psalm.Restart)
+func (lfo *LFO) Restart() {
+	lfo.phasor.Reset()
+}
+
 func (lfo *LFO) CtrlTick(tick psalm.CtrlTick) {
 	if !lfo.kr {
 		return

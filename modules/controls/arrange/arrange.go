@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/score"
@@ -32,6 +33,8 @@ type Form struct {
 	Loop        bool // the song starts again after the last section
 
 	transport *Transport
+	partsMu   sync.Mutex
+	parts     []*part // the parts and streams, in the order they were added
 }
 
 // NewForm creates a form of sections with 4 beats per bar that loops
@@ -126,14 +129,24 @@ type Score func(s Section) []score.Note
 // the sections it doesn't play in, the amplitude scaled by the dynamics of each section. It panics
 // when a section doesn't last exactly its bars, naming the part and the section
 func (f *Form) Compile(name string, sc Score) []score.Note {
+	notes, _ := f.compile(name, sc)
+	return notes
+}
+
+// compile is Compile, also telling per section whether the part plays a note in it
+func (f *Form) compile(name string, sc Score) ([]score.Note, []bool) {
 	var notes []score.Note
-	for _, s := range f.Sections {
+	plays := make([]bool, len(f.Sections))
+	for i, s := range f.Sections {
 		expect := float64(s.Bars) * f.BeatsPerBar
 		s.BeatsPerBar = f.BeatsPerBar
 		ns := sc(s)
 		if ns == nil {
 			notes = append(notes, score.Rest(expect))
 			continue
+		}
+		for _, n := range ns {
+			plays[i] = plays[i] || !n.IsRest()
 		}
 		if got := score.Beats(ns); math.Abs(got-expect) > 1e-6 {
 			panic(fmt.Sprintf("arrange: %s lasts %v beats in the %s, expected %v (%d bars)", name, got, s.Name, expect, s.Bars))
@@ -148,7 +161,7 @@ func (f *Form) Compile(name string, sc Score) []score.Note {
 			notes = append(notes, n)
 		}
 	}
-	return notes
+	return notes, plays
 }
 
 // Part compiles a part, creates a sequencer for it that follows the transport of the form (in
@@ -157,8 +170,13 @@ func (f *Form) Compile(name string, sc Score) []score.Note {
 func (f *Form) Part(p psalm.Patcher, synth psalm.Modular, name string, cfg score.Config, sc Score) *score.Sequencer {
 	cfg.Loop = f.Loop
 	cfg.Length = f.Beats()
-	seq := score.NewSequencer(f.Compile(name, sc), cfg)
+	notes, plays := f.compile(name, sc)
+	seq := score.NewSequencer(notes, cfg)
 	tr, ppq := f.Transport(), seq.Config().PPQ
+	f.addPart(&part{name: name, enable: seq.SetEnabled, enabled: seq.Enabled, active: func() bool {
+		i := tr.playing.Load()
+		return i >= 0 && int(i) < len(plays) && plays[i]
+	}})
 	seq.SetClock(func(tick int64) (int64, bool) {
 		pos := tr.At(tick, ppq)
 		return pos.Tick, !pos.Ended
