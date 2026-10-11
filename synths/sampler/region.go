@@ -1,0 +1,256 @@
+// Package sampler plays multi-sampled instruments: recordings of an instrument spread over its keys
+// and played at several strengths. Each recording is a region: the keys and velocities it answers,
+// the key it was recorded at, how it loops and how it fades. A note plays every region that
+// matches it, so regions can be layered, and alternate recordings of the same note can take turns
+// (round robin) or be picked at random.
+//
+// Instruments can be built in code or loaded from SFZ, the plain text format most free sample
+// libraries come in:
+//
+//	inst, err := sampler.LoadSFZ("Salamander/piano.sfz")
+//	piano := sampler.NewPoly(sampler.Config{Instrument: inst}, 32).AddTo(p)
+package sampler
+
+import (
+	"fmt"
+	"math"
+)
+
+// Sound is the audio of a region: deinterleaved channels, with optional band limited copies for
+// playing it faster (depth 0 is the sound itself). Every sndfile.SoundFiler[float32] is a Sound;
+// NewSound makes one from samples in memory
+type Sound interface {
+	NumChannels() int
+	SampleRate() float64
+	NumFrames() int64
+	Depth() int
+	Buffer(channel int, depth int) []float32
+}
+
+// memSound is a Sound in memory
+type memSound struct {
+	sr       float64
+	channels [][]float32
+}
+
+// NewSound returns a sound of channels (all the same length) recorded at a sample rate
+func NewSound(sampleRate float64, channels ...[]float32) Sound {
+	return &memSound{sr: sampleRate, channels: channels}
+}
+
+func (s *memSound) NumChannels() int    { return len(s.channels) }
+func (s *memSound) SampleRate() float64 { return s.sr }
+func (s *memSound) Depth() int          { return 1 }
+func (s *memSound) Buffer(channel int, _ int) []float32 {
+	return s.channels[channel]
+}
+func (s *memSound) NumFrames() int64 {
+	if len(s.channels) == 0 {
+		return 0
+	}
+	return int64(len(s.channels[0]))
+}
+
+// LoopMode says how a region plays its sound
+type LoopMode int
+
+const (
+	NoLoop         LoopMode = iota // plays the sound once, a note off fades it out with the release
+	OneShot                        // plays the sound to its end, note offs are ignored (drums)
+	LoopContinuous                 // loops between LoopStart and LoopEnd until the release has faded it out
+	LoopSustain                    // loops while the key is down, then plays on to the end of the sound
+)
+
+// Trigger says when a region plays
+type Trigger int
+
+const (
+	OnAttack  Trigger = iota // when the key goes down
+	OnRelease                // when the key goes up (the damper of a piano, the release of a string)
+)
+
+// OffMode says how a region choked by another (OffBy) stops
+type OffMode int
+
+const (
+	OffFast   OffMode = iota // in a few milliseconds
+	OffNormal                // with its own release
+)
+
+// Envelope is the loudness of a region over a note, the times are in seconds and Sustain is a
+// level 0-1. The decay and release fall exponentially, -60 dB over their time
+type Envelope struct {
+	Delay, Attack, Hold, Decay float64
+	Sustain                    float64
+	Release                    float64
+}
+
+// Region is a sound and the notes it plays. Start from NewRegion, which fills in the defaults
+// (all keys, all velocities, root key 60, key tracking, full velocity tracking, a short release)
+type Region struct {
+	Sound Sound
+	Name  string // the file of the sound, for messages
+
+	LoKey, HiKey int // the keys it plays, MIDI 0-127
+	LoVel, HiVel int // the velocities it plays, 1-127
+
+	Root      float64 // the key the sound was recorded at
+	KeyTrack  float64 // cents per key, 100 plays the sound in tune over the keys, 0 at one pitch (drums)
+	Transpose float64 // semitones
+	Tune      float64 // cents
+
+	Volume   float64 // dB
+	Amp      float64 // linear gain on top of Volume, 0-1 (SFZ amplitude)
+	Pan      float64 // -1 (left) to 1 (right); a stereo sound is balanced
+	VelTrack float64 // 0-1: how much the velocity sets the loudness, 0 plays every velocity as loud
+
+	Offset int64 // the frame it starts from
+	End    int64 // the last frame it plays, 0 is the end of the sound
+
+	Loop          LoopMode
+	LoopStart     int64   // the first frame of the loop
+	LoopEnd       int64   // the last frame of the loop, 0 is the end of the sound
+	LoopCrossfade float64 // seconds the end of the loop fades into its start, for smooth loops
+
+	Trigger Trigger
+	RtDecay float64 // dB per second a release region is softer the longer the key was down
+
+	Group   int     // a choke group, 0 is none
+	OffBy   int     // a region of this group starting stops this one (an open hihat by a closed one)
+	OffMode OffMode // how it stops
+
+	SeqLength   int     // round robin: the region plays every SeqLength-th time its notes play...
+	SeqPosition int     // ...at this turn, 1 to SeqLength
+	LoRand      float64 // random choice: plays when a random number for the note is in [LoRand, HiRand)
+	HiRand      float64
+
+	Env Envelope
+
+	Cutoff      float64    // Hz, a filter on the region, 0 is none
+	Resonance   float64    // dB the filter peaks at its cutoff, 0 is none
+	Filter      FilterType // the kind of filter
+	FilVelTrack float64    // cents the cutoff rises at full velocity
+}
+
+// FilterType is the filter of a region
+type FilterType int
+
+const (
+	LowPass FilterType = iota
+	HighPass
+	BandPass
+)
+
+// NewRegion returns a region playing a sound on every key and velocity, in tune around key 60
+func NewRegion(sound Sound) Region {
+	return Region{
+		Sound:    sound,
+		LoKey:    0,
+		HiKey:    127,
+		LoVel:    1,
+		HiVel:    127,
+		Root:     60,
+		KeyTrack: 100,
+		Amp:      1,
+		VelTrack: 1,
+		HiRand:   1,
+		Env:      Envelope{Sustain: 1, Release: 0.05},
+	}
+}
+
+// Keys returns the region for the keys lo to hi, recorded at root
+func (r Region) Keys(lo, hi int, root float64) Region {
+	r.LoKey, r.HiKey, r.Root = lo, hi, root
+	return r
+}
+
+// Velocities returns the region for the velocities lo to hi (1-127)
+func (r Region) Velocities(lo, hi int) Region {
+	r.LoVel, r.HiVel = lo, hi
+	return r
+}
+
+// Instrument is the regions of a multi-sampled instrument. It doesn't change once built, so one
+// instrument can play in many synths
+type Instrument struct {
+	Regions []Region
+	// Unsupported lists the SFZ opcodes the file uses that the sampler doesn't know (they are left
+	// out), with how often
+	Unsupported map[string]int
+}
+
+// NewInstrument checks the regions and returns them as an instrument
+func NewInstrument(regions ...Region) (*Instrument, error) {
+	for i := range regions {
+		if err := regions[i].check(); err != nil {
+			return nil, err
+		}
+	}
+	return &Instrument{Regions: regions}, nil
+}
+
+// MustInstrument is NewInstrument that panics on a bad region
+func MustInstrument(regions ...Region) *Instrument {
+	inst, err := NewInstrument(regions...)
+	if err != nil {
+		panic(err)
+	}
+	return inst
+}
+
+// check fixes what can be fixed and says what can't
+func (r *Region) check() error {
+	name := r.Name
+	if name == "" {
+		name = "a region"
+	}
+	if r.Sound == nil || r.Sound.NumFrames() == 0 || r.Sound.NumChannels() == 0 {
+		return fmt.Errorf("sampler: %s has no sound", name)
+	}
+	n := r.Sound.NumFrames()
+	if r.End <= 0 || r.End >= n {
+		r.End = n - 1
+	}
+	if r.Offset < 0 || r.Offset > r.End {
+		return fmt.Errorf("sampler: %s starts at frame %d, after its end %d", name, r.Offset, r.End)
+	}
+	if r.Loop == LoopContinuous || r.Loop == LoopSustain {
+		if r.LoopEnd <= 0 || r.LoopEnd > r.End {
+			r.LoopEnd = r.End
+		}
+		if r.LoopStart < 0 || r.LoopStart >= r.LoopEnd {
+			return fmt.Errorf("sampler: %s loops from frame %d to %d", name, r.LoopStart, r.LoopEnd)
+		}
+		// the crossfade reads before the loop start, and can't be longer than the loop
+		xf := r.LoopCrossfade * r.Sound.SampleRate()
+		xf = math.Min(xf, math.Min(float64(r.LoopStart), float64(r.LoopEnd-r.LoopStart)))
+		r.LoopCrossfade = math.Max(0, xf/r.Sound.SampleRate())
+	}
+	if r.SeqLength > 0 && (r.SeqPosition < 1 || r.SeqPosition > r.SeqLength) {
+		return fmt.Errorf("sampler: %s has round robin turn %d of %d", name, r.SeqPosition, r.SeqLength)
+	}
+	if r.HiRand <= r.LoRand {
+		return fmt.Errorf("sampler: %s plays for random numbers [%g, %g)", name, r.LoRand, r.HiRand)
+	}
+	return nil
+}
+
+// plays says whether the region answers a key and velocity (1-127)
+func (r *Region) plays(key, vel int) bool {
+	return key >= r.LoKey && key <= r.HiKey && vel >= r.LoVel && vel <= r.HiVel
+}
+
+// Keys returns the lowest and highest key the instrument plays (-1, -1 when none)
+func (inst *Instrument) Keys() (lo, hi int) {
+	lo, hi = -1, -1
+	for i := range inst.Regions {
+		r := &inst.Regions[i]
+		if lo < 0 || r.LoKey < lo {
+			lo = r.LoKey
+		}
+		if r.HiKey > hi {
+			hi = r.HiKey
+		}
+	}
+	return lo, hi
+}

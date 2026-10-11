@@ -1,14 +1,17 @@
 // Keyboard: play the synths from a MIDI keyboard, live, in the Musikverein.
 //
-// Every synth that plays notes is there: the piano, subtractive, pulsar, wavetable, fm, dx and
-// grains, each with all its presets. Bank select (controller 0) switches the synth (in the order above) and a
-// program change its preset (in alphabetical order); typed in the terminal, a synth or a preset
-// name (or both: "wavetable glass") switches too, "list" shows them all.
+// Every synth that plays notes is there: the piano, subtractive, pulsar, wavetable, fm, dx, organ,
+// waveguide (plucked and bowed strings), modal (mallets and bells), vocal, pd, westcoast, supersaw,
+// drumsynth (its kits are its presets) and grains, each with all its presets. Bank select
+// (controller 0) switches the synth (in the order above) and a program change its preset (in
+// alphabetical order); typed in the terminal, a synth or a preset name (or both: "wavetable
+// glass") switches too, "list" shows them all.
 //
 // The notes play with the velocity curve chosen (-curve). The piano takes the velocity itself and
-// has its pedals (sustain with half pedaling, sostenuto, soft); fm and dx take the velocity too,
-// the other synths play it as the amplitude, and the sustain pedal holds their notes. Every MIDI
-// event is printed with -monitor.
+// has its pedals (sustain with half pedaling, sostenuto, soft); fm, dx, waveguide, modal, westcoast
+// and drumsynth take the velocity too, the organ doesn't feel it (as a real one), the other synths
+// play it as the amplitude, and the sustain pedal holds their notes. Every MIDI event is printed
+// with -monitor.
 //
 // A control panel runs alongside on a web page (http://localhost:8087, -addr to move it, empty to
 // leave it out): the sound (every synth and preset, previous and next, all notes off), the
@@ -46,14 +49,22 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/mixer"
+	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
+	"github.com/almerlucke/psalm/synths/modal"
+	"github.com/almerlucke/psalm/synths/organ"
+	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/subtractive"
+	"github.com/almerlucke/psalm/synths/supersaw"
+	"github.com/almerlucke/psalm/synths/vocal"
+	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
+	"github.com/almerlucke/psalm/synths/westcoast"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -89,7 +100,8 @@ func synthKeys(cfg keyboard.Config) keyboard.Config {
 	return cfg
 }
 
-// fm and dx take the velocity themselves (it brightens them), the sustain pedal holds their notes
+// fm, dx and the physical models take the velocity themselves (it brightens them, or plays the
+// mallet or the string harder), the sustain pedal holds their notes
 func velocityKeys(cfg keyboard.Config) keyboard.Config {
 	cfg.Dynamics, cfg.Controls, cfg.HoldNotes = 0, map[int]string{}, true
 	return cfg
@@ -112,7 +124,7 @@ func main() {
 	device := flag.String("device", "", "the raw MIDI device (empty is the first keyboard)")
 	useJack := flag.Bool("jack", false, "play through JACK, with a JACK MIDI input port")
 	demo := flag.Bool("demo", false, "play a phrase as MIDI instead of reading a keyboard")
-	synth := flag.String("synth", "piano", "the synth to start with: piano, subtractive, pulsar, wavetable, fm, dx or grains")
+	synth := flag.String("synth", "piano", "the synth to start with: piano, subtractive, pulsar, wavetable, fm, dx, organ, waveguide, modal, vocal, pd, westcoast, supersaw, drumsynth or grains")
 	preset := flag.String("preset", "", "the preset to start with (empty: felt for the piano, else the first)")
 	curve := flag.String("curve", "linear", "the velocity curve: soft, linear, hard or an exponent")
 	channel := flag.Int("channel", 0, "the MIDI channel (1-16), 0 is all")
@@ -361,6 +373,30 @@ func newInstruments(p *psalm.Psalm) []*instrument {
 		build("dx", slices.Collect(maps.Keys(dx.Presets)), func(n string) psalm.Modular {
 			return dx.NewPoly(dx.Presets[n](), 12, 2).AddTo(p)
 		}, velocityKeys, 0.3),
+		build("organ", slices.Collect(maps.Keys(organ.Presets)), func(n string) psalm.Modular {
+			return organ.New(organ.Presets[n]()).AddTo(p)
+		}, velocityKeys, 0.25),
+		build("waveguide", slices.Collect(maps.Keys(waveguide.Presets)), func(n string) psalm.Modular {
+			return waveguide.NewPoly(waveguide.Presets[n](), 12).AddTo(p)
+		}, velocityKeys, 0.3),
+		build("modal", slices.Collect(maps.Keys(modal.Presets)), func(n string) psalm.Modular {
+			return modal.NewPoly(modal.Presets[n](), 16).AddTo(p)
+		}, velocityKeys, 0.3),
+		build("vocal", slices.Collect(maps.Keys(vocal.Presets)), func(n string) psalm.Modular {
+			return vocal.NewPoly(vocal.Presets[n](), 8).AddTo(p)
+		}, synthKeys, 0.35),
+		build("pd", slices.Collect(maps.Keys(pd.Presets)), func(n string) psalm.Modular {
+			return pd.NewPoly(pd.Presets[n](), 12).AddTo(p)
+		}, synthKeys, 0.3),
+		build("westcoast", slices.Collect(maps.Keys(westcoast.Presets)), func(n string) psalm.Modular {
+			return westcoast.NewPoly(westcoast.Presets[n](), 12).AddTo(p)
+		}, velocityKeys, 0.3),
+		build("supersaw", slices.Collect(maps.Keys(supersaw.Presets)), func(n string) psalm.Modular {
+			return supersaw.NewPoly(supersaw.Presets[n](), 12).AddTo(p)
+		}, synthKeys, 0.3),
+		build("drumsynth", slices.Collect(maps.Keys(drumsynth.Kits)), func(n string) psalm.Modular {
+			return drumsynth.NewPoly(drumsynth.Config{Kit: drumsynth.Kits[n]()}, 16).AddTo(p)
+		}, velocityKeys, 0.15),
 	}
 	choir, err := sndfile.NewMipMapSoundFile[float32]("assets/sounds/various/mixkit-angelical-choir-654.wav", 4)
 	if err != nil {

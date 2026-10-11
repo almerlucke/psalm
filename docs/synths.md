@@ -1,6 +1,6 @@
 # Synths
 
-Synths: [poly](#poly) (voice allocation), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums).
+Synths: [poly](#poly) (voice allocation), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
 
 Presets of all synths are calibrated to the same loudness: a note at amplitude 1 plays at -12 LUFS
 (or peaks at -1 dBFS for percussive sounds), see [conventions](conventions.md#levels).
@@ -841,3 +841,331 @@ drms := drums.NewDrums(soundBank, 16, 2).AddTo(p)
 drms.ValueIn(templ.NewTrigger(0.5, template.Template{"sound": "kick", "speed": 1.0}).
 	ValueIn(timer.WithTicks(float64(psalm.PPQ())).AddTo(p)))
 ```
+
+## sampler
+
+`synths/sampler`
+
+A multi-sample instrument: recordings of an instrument spread over its keys and played at
+several strengths. Each recording is a region: the keys and velocities it answers, the key it
+was recorded at, how it loops and how it fades. A note plays every region that matches it, so
+regions layer; alternate recordings of the same note take turns (round robin) or are picked at
+random. Instruments load from SFZ, the plain text format most free sample libraries come in, or
+are built in code.
+
+```go
+inst, err := sampler.LoadSFZ("Salamander/piano.sfz")       // or sampler.MustSFZ
+piano := sampler.NewPoly(sampler.DefaultConfig(inst), 32).AddTo(p)
+
+// in code: a sound from a file or from memory, the keys it plays
+snd, _ := sampler.LoadFile("samples/c4.wav")
+low := sampler.NewRegion(snd).Keys(0, 64, 60)               // keys 0-64, recorded at 60
+inst = sampler.MustInstrument(low, high)
+```
+
+`sampler.New(cfg)` is a single voice, `sampler.NewPoly(cfg, n)` a `poly` synth whose voices share
+the round robin turns and the choke groups. An instrument doesn't change once built: one can play
+in many synths. `LoadSFZWith(path, sampler.MipMaps(4))` keeps band limited copies of every sound,
+for regions played far above their key.
+
+### Regions
+
+Start a region with `NewRegion(sound)` (all keys and velocities, root 60, in tune, full velocity
+tracking, a short release):
+
+| Field | SFZ | Meaning |
+|---|---|---|
+| `LoKey`, `HiKey` | `lokey`, `hikey`, `key` | The keys it plays (note names work in SFZ: `c4` is 60) |
+| `LoVel`, `HiVel` | `lovel`, `hivel` | The velocities it plays, 1-127 |
+| `Root` | `pitch_keycenter` | The key it was recorded at |
+| `KeyTrack` | `pitch_keytrack` | Cents per key: 100 in tune, 0 one pitch on every key (drums) |
+| `Transpose`, `Tune` | `transpose`, `tune` | Semitones, cents |
+| `Volume`, `Amp` | `volume`, `amplitude` | dB, and a linear gain |
+| `Pan` | `pan` | -1 to 1 (a stereo sound is balanced) |
+| `VelTrack` | `amp_veltrack` | 0-1, how much the velocity sets the loudness (velocity squared) |
+| `Offset`, `End` | `offset`, `end` | The frames it plays |
+| `Loop` | `loop_mode` | `NoLoop`, `OneShot` (ignores note offs), `LoopContinuous`, `LoopSustain` (loops while held, then plays on) |
+| `LoopStart`, `LoopEnd` | `loop_start`, `loop_end` | Frames of the loop |
+| `LoopCrossfade` | `loop_crossfade` | Seconds the end of the loop fades into its start |
+| `Trigger` | `trigger` | `OnAttack`, or `OnRelease`: plays when the key goes up |
+| `RtDecay` | `rt_decay` | dB per second a release region is softer the longer the key was down |
+| `Group`, `OffBy`, `OffMode` | `group`, `off_by`, `off_mode` | Choke groups: a region of group `OffBy` stops this one |
+| `SeqLength`, `SeqPosition` | `seq_length`, `seq_position` | Round robin |
+| `LoRand`, `HiRand` | `lorand`, `hirand` | Random choice per note |
+| `Env` | `ampeg_delay`, `_attack`, `_hold`, `_decay`, `_sustain`, `_release` | The amp envelope (seconds, sustain 0-1) |
+| `Cutoff`, `Resonance`, `Filter`, `FilVelTrack` | `cutoff`, `resonance`, `fil_type`, `fil_veltrack` | A filter per region |
+
+The SFZ loader knows `<control>` (`default_path`, `note_offset`, `octave_offset`), `<global>`,
+`<master>`, `<group>`, `<region>`, `#define` and `#include`. Opcodes it doesn't know are counted
+in `Instrument.Unsupported`. Sounds load with libsndfile: wav, aiff, flac, ogg.
+
+Notes take `pitch` (or `frequency`) and `velocity` (0-1). The levels are those of the recordings.
+
+## organ
+
+`synths/organ`
+
+A tonewheel organ: 91 wheels spinning all the time, which the keys tap at the pitches of the nine
+drawbars (16' 5 1/3' 8' 4' 2 2/3' 2' 1 3/5' 1 1/3' 1', 3 dB a step). Like the real one it is a
+whole instrument, not a set of voices: keys sharing a wheel share its phase, the wheels fold back
+at the ends, the percussion sounds on the first key of a phrase only (single trigger) and the
+vibrato scanner moves the whole sound. Put the rotary speaker after it.
+
+```go
+org := organ.New(organ.Jazz()).AddTo(p)
+leslie := rotary.New(rotary.DefaultConfig()).AddTo(p).In(org)
+org.Receive(psalm.Message{"drawbars": "888000000"}, 0)
+```
+
+It takes the messages of a poly synth (triggers with a duration, or noteOn and noteOff), and the
+sustain pedal.
+
+| Setting | Meaning |
+|---|---|
+| `Drawbars` | `[9]float64`, 0-8; `organ.Bars("888000000")` reads the way organists write it |
+| `Percussion` | `PercOff`, `PercSecond` (4'), `PercThird` (2 2/3'); with it on the 1' is silent |
+| `PercFast`, `PercSoft` | A short decay, 6 dB softer |
+| `Vibrato` | `VibratoOff`, `V1`-`V3`, `C1`-`C3` (chorus: mixed with the dry sound) |
+| `VibratoHz` | The scanner's speed (0 is 6.9 Hz) |
+| `Click` | 0-1, the key contacts |
+| `Drive` | 0-1, the preamp saturating |
+
+**Value inputs**: 1-9 the drawbars. **Messages**: `drawbars`, `drawbar1`-`drawbar9`,
+`percussion`, `percFast`, `percSoft`, `vibrato`, `vibratoHz`, `click`, `drive`, `level`,
+`sustain`.
+
+| Preset | Character |
+|---|---|
+| `jazz` | 888000000, third percussion fast |
+| `gospel` | 888800000, deep chorus |
+| `full` | Every drawbar out |
+| `rock` | 888000000 driven, chorus, more click |
+| `ballad` | 806004000, soft, chorus |
+| `flute` | 008400000, vibrato |
+| `reed` | 800000888, nasal |
+| `whistle` | 800000008 |
+
+## waveguide
+
+`synths/waveguide`
+
+Strings that are plucked or bowed: a wave travelling up and down a string, fed by a pluck or kept
+going by a bow, heard through the body of the instrument. The pluck is an extended Karplus-Strong
+string (in tune within a few cents over the whole range); the bow is the McIntyre, Schumacher and
+Woodhouse model after the STK: the bow sticks and slips, which keeps the string going as long as
+it moves.
+
+```go
+guitar := waveguide.NewPoly(waveguide.Guitar(), 8).AddTo(p)
+cello := waveguide.NewPoly(waveguide.Cello(), 4).AddTo(p)
+```
+
+| Setting | Model | Meaning |
+|---|---|---|
+| `Model` | | `Pluck` or `Bow` |
+| `Decay` | pluck | Seconds the string rings at 220 Hz; lower strings ring longer |
+| `Damping` | pluck | 0-1, how much faster the high partials die |
+| `Brightness` | pluck | 0-1, a soft finger to a hard pick; the velocity adds |
+| `PickPosition` | pluck | 0-0.5 from the bridge: thin near it, round in the middle (the partials with a node there are missing) |
+| `Release` | pluck | Seconds the string dies in once let go, 0 lets it ring (a harp) |
+| `Pressure` | bow | 0-1, airy to gritty |
+| `BowPosition` | bow | 0.02-0.5 from the bridge |
+| `BowAttack`, `BowRelease` | bow | Seconds |
+| `VibratoRate`, `VibratoDepth`, `VibratoDelay` | bow | Hz, semitones, seconds |
+| `Body`, `BodyMix` | | `GuitarBody`, `ViolinBody`, `CelloBody`, `HarpBody`, or `NoBody`; 0-1 |
+
+The bow's speed is its loudness: the note amplitude sets it (faster than the model allows, a
+string jumps to its octave, as a real one does). A bowed note's pitch is within about ten cents:
+the friction pulls it, as on a real string. **Value inputs**: 1 pressure, 2 vibrato depth.
+
+| Preset | Character |
+|---|---|
+| `guitar`, `steel`, `muted` | Nylon, steel with a pick, palm muted |
+| `harp` | Plucked in the middle, rings on |
+| `bass` | A fingered electric bass |
+| `pizzicato` | A violin plucked |
+| `violin`, `cello` | Bowed, vibrato coming in |
+| `slowStrings` | Swelling in and out |
+| `ponticello` | Bowed near the bridge, glassy |
+| `flautando` | Bowed lightly over the fingerboard |
+
+## modal
+
+`synths/modal`
+
+Struck things: bars, tubes, bells, tines, each ringing in its modes (partials with their own
+pitch ratios and decay times), struck by a mallet. The mallet is a force as long as it touches:
+a soft one touches long and wakes few high modes, a hard one is bright. Where it strikes mutes the
+modes with a node there.
+
+```go
+mallets := modal.NewPoly(modal.Marimba(), 8).AddTo(p)
+bell := modal.New(modal.Config{Modes: []modal.Mode{{1, 1, 1}, {2.76, 0.5, 0.6}}, Decay: 3, Level: 1})
+```
+
+| Setting | Meaning |
+|---|---|
+| `Modes` | `[]Mode{Ratio, Amp, Decay}`: pitch over the note, loudness, decay relative to `Decay` |
+| `Decay` | Seconds the lowest mode rings |
+| `HighDamping` | The higher modes die sooner: decay times (f0/f)^HighDamping |
+| `Hardness` | 0-1, the mallet; the velocity adds |
+| `Position` | 0-1, where it is struck |
+| `Release` | Seconds it dies in once let go (a damper), 0 rings on |
+| `Tremolo`, `TremoloDepth` | A vibraphone's motor |
+| `Beat` | Each mode splits in two this fraction apart: bells beat |
+| `Noise` | 0-1, the knock of the mallet |
+
+**Value inputs**: 1 hardness, 2 tremolo depth.
+
+| Preset | Character |
+|---|---|
+| `marimba`, `xylophone`, `vibraphone`, `glockenspiel` | The bars of the orchestra |
+| `tubularBells` | Chimes |
+| `churchBell` | Hum, prime, tierce, quint and nominal, beating |
+| `kalimba` | A thumb piano |
+| `singingBowl` | Long and beating |
+| `woodBlock` | A pitched knock |
+
+## drumsynth
+
+`synths/drumsynth`
+
+Drums from oscillators and noise, the way the classic drum machines make them: a kick is a sine
+falling in pitch, a snare two tuned heads and a burst of noise, a hihat six square waves at
+clashing pitches through a high filter. A kit is a set of sounds by name, played like the sample
+kit of `drums`: a step sequencer row plays a sound by name, `"speed"` changes its pitch, a note
+off chokes it; a keyboard plays them on the General MIDI keys.
+
+```go
+kit := drumsynth.NewPoly(drumsynth.Config{Kit: drumsynth.Kit909()}, 16).AddTo(p)
+seq.Row("kick", stepseq.Sound(kit, "kick"))
+```
+
+The kits `Kit808()` and `Kit909()` have `kick`, `snare`, `hat`, `open`, `tomLow`, `tomMid`,
+`tomHigh`, `clap`, `rim`, `cowbell` and `cymbal`; the hats choke each other. A `Sound` has a
+`Kind` (`Kick`, `Snare`, `Hat`, `Tom`, `Clap`, `Rim`, `Cowbell`, `Cymbal`), `Pitch`, `Decay`,
+`Sweep` and `SweepTime` (the pitch falling), `Tone` (the filter of its noise or metal), `Snap`
+(the attack: a kick's click, a snare's wires), `Drive`, `Level`, `Pan` and `Choke` (a group).
+Change one or add your own:
+
+```go
+kit := drumsynth.Kit808()
+kit.Sounds["kick"] = drumsynth.Sound{Kind: drumsynth.Kick, Pitch: 45, Decay: 2, Sweep: 14, SweepTime: 0.03, Level: 0.7}
+```
+
+The sounds of the kits peak around -3 dB (kick), -5 (snare), -6 (toms, clap) and -10 (hats, rim).
+
+## vocal
+
+`synths/vocal`
+
+Sung vowels: a band limited buzz like the vocal folds, shaped by the five formants of a bass,
+tenor, alto or soprano (after the formant table of Csound), with breath, vibrato and the small
+drift of a real voice. A choir is a voice sung by several singers at once, each a little out of
+tune and time, spread over the stereo field.
+
+```go
+choir := vocal.NewPoly(vocal.Choir(), 8).AddTo(p)
+choir.Receive(psalm.Message{"vowel": 4.0}, 0) // all sing "u", gliding there
+```
+
+| Setting | Meaning |
+|---|---|
+| `Range` | `Auto` (by the pitch of the note), `Bass`, `Tenor`, `Alto`, `Soprano` |
+| `Vowel` | 0-4: a e i o u, fractions morph |
+| `VowelGlide` | Seconds a change of vowel takes |
+| `Brightness` | 0-1, breathy to pressed; the velocity adds |
+| `Breath` | 0-1, the noise of the air |
+| `Attack`, `Release` | Seconds |
+| `VibratoRate`, `VibratoDepth`, `VibratoDelay` | Hz, semitones, seconds |
+| `Singers`, `Detune`, `Spread` | Voices per note, cents they spread over, 0-1 how wide |
+| `Steady` | The pitch held perfectly still |
+
+The first formant follows the pitch up when it is higher, as singers do. **Value inputs**: 1 vowel,
+2 vibrato depth.
+
+| Preset | Character |
+|---|---|
+| `solo` | One voice, natural vibrato |
+| `choir`, `aah`, `ooh` | Sections on "a" and "u" |
+| `breathy` | Close and airy |
+| `monks` | Low men's voices on "o", no vibrato |
+| `angels` | High voices, wide and airy |
+| `robot` | Steady and bright |
+
+## pd
+
+`synths/pd`
+
+Phase distortion after the Casio CZ: a cosine read at a bent speed. Bent a little it stays a sine;
+bent further it turns into a saw, a square, a pulse or a resonant sweep, and the DCW envelope bends
+it over the note the way a filter envelope opens a subtractive synth. Two lines of an oscillator,
+its DCW and its amp (DCA) envelope sound together, detuned or ring modulated. The bends never get
+steeper than a few samples: no aliasing high up.
+
+```go
+cz := pd.NewPoly(pd.ResoBass(), 4).AddTo(p)
+```
+
+A `Line` has `Waveform` (`Saw`, `Square`, `Pulse`, `SawPulse`, `Reso1`-`Reso3`), `Second` and
+`Alternate` (another waveform every other cycle), `Octave`, `Detune` (cents), `Level`, `DCW` (0-1,
+the distortion at the top of `DCWEnv`), `KeyFollow` (higher notes distorted less), `Velocity` and
+`DCAEnv`. The `Config` has `Line1`, `Line2`, `Ring`, `PitchSweep`/`PitchTime`, a vibrato and
+`Width` (the lines apart in stereo). **Value input** 1: the distortion of both lines.
+
+Presets: `brass`, `strings`, `ePiano`, `bass`, `resoBass`, `organ`, `bell` (ring modulated),
+`lead` (saw and pulse alternating), `sweep`, `clav`.
+
+## westcoast
+
+`synths/westcoast`
+
+A synth in the Buchla way: rich sounds made, not filtered out. A complex oscillator (a principal
+sine, frequency and amplitude modulated by a second oscillator) goes into a wave folder, then
+through a low pass gate: a filter and an amplifier opened together by a vactrol that lights up at
+once and fades slowly, darker as it closes. Struck short, the gate rings like a hand drum.
+
+```go
+wc := westcoast.NewPoly(westcoast.Bongo(), 8).AddTo(p)
+wc.ValueIn(lfo.New(true, 0.2, 0, 0.6, lfo.Sine).AddTo(p), 0, 1) // the fold breathing
+```
+
+| Setting | Meaning |
+|---|---|
+| `ModWave`, `ModRatio` | The modulator: `ModSine`, `ModTriangle`, `ModSaw`, `ModSquare`; its frequency over the note's |
+| `FM`, `AM` | The index of the frequency modulation; 0-1 amplitude modulation |
+| `Fold`, `Symmetry` | 0-1 how far the wave folds; -1 to 1 off center (even overtones) |
+| `Attack`, `Decay`, `Sustain` | The function generator (seconds); `Sustain` holds while the key is down |
+| `EnvToFold`, `EnvToFM` | What the function adds to the fold and the index |
+| `Gate` | `Combo` (filter and amplifier), `LowPass`, `VCA` |
+| `Resonance`, `Response`, `Color` | The gate: how it rings, how slowly the vactrol lets go, how bright it opens |
+
+**Value inputs**: 1 fold, 2 FM index. Presets: `bongo`, `pluck`, `marimba`, `bell`, `bass`,
+`drone`, `metal`, `wobble`.
+
+## supersaw
+
+`synths/supersaw`
+
+The supersaw of the Roland JP-8000: seven detuned sawtooths, the sound of trance pads and leads.
+The detune and the mix of the center saw against the others follow the curves Adam Szabo measured
+on the original; the saws are band limited, start at random phases, spread over the stereo field
+and go through a filter with its envelope.
+
+```go
+pad := supersaw.NewPoly(supersaw.TrancePad(), 8).AddTo(p)
+```
+
+| Setting | Meaning |
+|---|---|
+| `Saws` | 0 is 7 |
+| `Detune`, `Mix` | 0-1 each, as on the JP-8000 |
+| `Stereo` | 0-1, the saws left and right |
+| `Sub` | 0-1, a square an octave down |
+| `HighPass` | Takes out what lies below the note, as the original does |
+| `Cutoff`, `Resonance`, `FilterEnvAmount`, `KeyTrack`, `Velocity` | The filter (Hz, 0-1, octaves, 0-1, octaves) |
+| `FilterEnv`, `AmpEnv` | ADSR (ms) |
+| `Glide` | Seconds |
+
+**Value inputs**: 1 cutoff, 2 detune. Presets: `trancePad`, `lead`, `pluck`, `hoover`, `stab`,
+`unisonBass`.

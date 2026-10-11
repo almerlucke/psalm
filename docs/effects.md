@@ -12,6 +12,11 @@ against the dry signal, deepest at 0.5.
 chorus and flanger also glide their delay times), so they can be automated or driven by an LFO
 without zipper noise or clicks.
 
+Further down: [phaser](#phaser), [rotary](#rotary), [tremolo](#tremolo), [tape](#tape),
+[ringmod](#ringmod); [dynamics](#dynamics) (compressor with sidechain, gate and expander, transient
+shaper); [tone and color](#tone-and-color) (channel EQ, saturation, bit crusher, stereo widener);
+[following the level](#following-the-level) (envelope follower, auto-wah).
+
 ## Reverbs
 
 | Module | Character | Use it for |
@@ -192,6 +197,273 @@ echo = pingpong.New(pingpong.DefaultConfig()).AddTo(p).In(lead)
 
 The defaults are those of `DefaultConfig()`; a `Config` written out leaves out what isn't set (no
 tone filters, a ping pong).
+
+### phaser
+
+`modules/effects/phaser`: the sound through a chain of allpass filters whose frequency an LFO sweeps,
+mixed with itself: notches that move up and down (an electric piano, strings, a pad).
+
+```go
+ph := phaser.New(phaser.DefaultConfig()).AddTo(p).In(keys)
+ph = phaser.New(phaser.Config{Stages: 6, Sync: 4, Min: 200, Max: 3000, Feedback: 0.6, Mix: 0.5})
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Stages` | 4 | | Allpass stages: 4 (the classic), 6, 8, 12 (more notches) |
+| `Rate` | 0.4 | input 1, `rate` | Hz of the sweep |
+| `Sync` | 0 | `sync` | Beats of one sweep instead, following the tempo (used when above 0) |
+| `Min`, `Max` | 300, 2500 | `min`, `max` | Hz, the range of the sweep (exponential: even over the octaves) |
+| `Feedback` | 0.4 | input 2, `feedback` | -0.95 to 0.95, deeper and more resonant notches |
+| `Stereo` | 0.25 | `stereo` | How far apart the sweeps of left and right are (part of a cycle) |
+| `Mix` | 0.5 | input 3, `mix` | 0.5 the deepest notches; 1 only the shifted sound (a vibrato). A linear crossfade: the notches come from cancelling |
+
+### rotary
+
+`modules/effects/rotary`: a rotary speaker (a Leslie): a horn for the highs and a drum for the lows
+turn, the sound coming closer and going away (a Doppler vibrato and a rising and falling level),
+picked up by two microphones (stereo). Organ, electric piano, guitar.
+
+```go
+leslie := rotary.New(rotary.DefaultConfig()).AddTo(p).In(organ)
+ctl.Toggle("Fast", panel.Func(func(v float64) { leslie.SetFast(v > 0.5) })) // chorale / tremolo live
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Fast` | false | input 1, `fast` | Tremolo speed (horn 6.7, drum 5.8 turns a second), else chorale (0.83, 0.67). Switched, the horn gets there in about a second, the heavy drum in four to five |
+| `Crossover` | 800 | | Hz between the drum and the horn |
+| `Drive` | 3 | `drive` | dB into the tube amplifier before it (0 is clean) |
+| `Horn` | 0.5 | `horn` | The level of the horn against the drum |
+| `Spread` | 1 | `spread` | The stereo width of the microphones |
+| `Mix` | 1 | input 2, `mix` | 0 dry, 1 only the speaker |
+
+`Speeds()` returns the turns per second of the horn and the drum now.
+
+### tremolo
+
+`modules/effects/tremolo`: a tremolo (the level moves) or an auto-pan (the place moves). Synced to the
+tempo its phase follows the clock of the patch: it pulses on the beats, also when added while
+playing or after a restart.
+
+```go
+trem := tremolo.New(tremolo.Config{Sync: 0.25, Depth: 0.8, Shape: tremolo.Square}).AddTo(p).In(pad) // a 16ths chop
+pan := tremolo.New(tremolo.Config{Mode: tremolo.Pan, Sync: 2, Depth: 0.7}).AddTo(p).In(keys)
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Mode` | `Tremolo` | `mode` | `Tremolo` (the level) or `Pan` (left to right, +1 is right) |
+| `Shape` | `Sine` | `shape` | `Sine`, `Triangle`, `Square` (on and off, rounded: no clicks) |
+| `Rate` | 0 | input 1, `rate` | Hz |
+| `Sync` | 0.5 | `sync` | Beats of one cycle instead (0.25 is 16ths), on the beats of the clock |
+| `Depth` | 0.5 | input 2, `depth` | 0-1: down to silence at 1, or all the way to the sides |
+| `Stereo` | 0 | `stereo` | Tremolo: how far apart left and right are (0.5: they take turns) |
+
+### tape
+
+`modules/effects/tape`: a tape echo: every repeat a little darker and warmer (filtered and saturated on
+the way round), wavering with the wow and flutter of the tape. The time is in beats and follows the
+tempo. Feedback above 1 builds up into the singing self oscillation of a dub delay; the saturation
+keeps it in bounds.
+
+```go
+echo := tape.New(tape.DefaultConfig()).AddTo(p).In(lead)
+dub := tape.New(tape.Config{Time: 0.75, Feedback: 1.05, Wow: 0.5, HighCut: 2500, LowCut: 300, Mix: 0.4})
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Time` | 0.75 | input 1, `time` | Echo time in beats |
+| `TimeMs` | 0 | `timeMs` | In milliseconds instead (used when above 0) |
+| `Feedback` | 0.45 | input 2, `feedback` | 0-1.2; above 1 the echoes build up |
+| `Wow`, `Flutter` | 0.3, 0.2 | `wow`, `flutter` | 0-1, the slow wavering (up to 4 ms) and the fast trembling of the tape |
+| `Drive` | 3 dB (0) | `drive` | dB of saturation on the way round |
+| `HighCut`, `LowCut` | 4500, 150 | `highCut`, `lowCut` | Hz, the repeats get darker and thinner |
+| `Mix` | 0.25 | input 3, `mix` | 0 dry, 1 wet (equal power) |
+| `MaxSeconds` | 4 | | The longest echo time |
+
+### ringmod
+
+`modules/effects/ringmod`: a ring modulator (the sound times a sine: every frequency becomes its sum
+and its difference with the carrier, metallic and bell like) and a frequency shifter (every frequency
+moved by the same number of Hz, the harmonics stop lining up; a Hilbert transform keeps only the
+shifted side).
+
+```go
+bells := ringmod.New(ringmod.Config{Mode: ringmod.Ring, Freq: 440, Mix: 0.5}).AddTo(p).In(pad)
+wide := ringmod.New(ringmod.Config{Mode: ringmod.Shift, Freq: 3, Stereo: -6, Mix: 0.5}) // a slow, wide beating
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Mode` | `Ring` | `mode` | `Ring` or `Shift` |
+| `Freq` | 300 | input 1, `freq` | Hz of the carrier, or of the shift (negative shifts down) |
+| `Stereo` | 0 | `stereo` | Hz the right side differs |
+| `Mix` | 0.5 | input 2, `mix` | 0 dry, 1 only the modulated sound |
+
+## Dynamics
+
+### compressor
+
+`modules/effects/compressor`: above a threshold it turns the level down by a ratio, with a soft knee,
+attack and release (the detector follows the level, not every wave, so a fast attack doesn't
+distort a bass). Input 1 is a sidechain: when something is connected it drives the compression, so
+a kick ducks the bass or a pad. The mix blends in the dry sound (parallel compression).
+
+```go
+glue := compressor.New(compressor.DefaultConfig()).AddTo(p).In(drums)
+duck := compressor.New(compressor.Ducker(10, 180)).AddTo(p) // up to 10 dB, back over 180 ms
+duck.In(pad, 0, 0, kick, 0, 1)                                // the pad on 0, the kick on the sidechain
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Threshold` | -18 | input 1, `threshold` | dB above which it compresses |
+| `Ratio` | 3 | input 2, `ratio` | 4 is 4:1; 20 and up is a limiter |
+| `Knee` | 6 | `knee` | dB, the soft knee around the threshold (0 is hard) |
+| `Attack`, `Release` | 10, 150 | `attack`, `release` | ms |
+| `Makeup` | 0 | `makeup` | dB of gain after it; `AutoMakeup` gives half the reduction at 0 dB instead |
+| `Mix` | 1 | input 3, `mix` | 0 dry, 1 compressed (parallel compression in between) |
+| `SideCut` | 0 | `sideCut` | Hz, highpass on the detector: the low end doesn't pump it |
+
+`Reduction()` returns the most gain reduction (dB) since it was asked last, for a meter.
+
+### gate
+
+`modules/effects/gate`: below a threshold it turns the level down: all the way to the range (a gate)
+or by a ratio (a downward expander), with attack, hold and release. A sidechain on input 1 opens it
+(a pad gated by the drums).
+
+```go
+g := gate.New(gate.DefaultConfig()).AddTo(p).In(drums)
+x := gate.New(gate.Expander(-50)).AddTo(p).In(keys) // gentle 1:2 below -50 dB
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Threshold` | -45 | input 1, `threshold` | dB below which it turns down |
+| `Ratio` | 0 (a gate) | `ratio` | 2 is a 1:2 expander; 0 (or 100 and more) a gate |
+| `Range` | 80 | input 2, `range` | dB, the most it turns down |
+| `Attack`, `Hold`, `Release` | 1, 30, 120 | `attack`, `hold`, `release` | ms |
+| `SideCut` | 0 | `sideCut` | Hz, highpass on the detector |
+
+### transient
+
+`modules/effects/transient`: finds the start of every hit (a fast follower of the level running ahead
+of a slow one) and its decay (falling behind), and turns them up or down: snappier or softer drums,
+more or less ring, whatever the level.
+
+```go
+snap := transient.New(transient.Config{Attack: 8, Sustain: -6, Mix: 1}).AddTo(p).In(drums)
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Attack` | 6 | input 1, `attack` | dB the start of a hit is turned up (negative: down), -24 to 24 |
+| `Sustain` | -3 | input 2, `sustain` | dB the decay is turned up (negative: down) |
+| `Output` | 0 | `output` | dB after it |
+| `Mix` | 1 | `mix` | 0 dry, 1 shaped |
+
+## Tone and color
+
+### eq
+
+`modules/effects/eq`: a channel EQ: a low cut, a low shelf, two peaking bands, a high shelf and a high
+cut. Changes glide (a part every buffer), so it can be automated.
+
+```go
+cfg := eq.DefaultConfig() // flat: the bands at 100, 500, 2500 and 8000 Hz
+cfg.LowCut = 180                                      // the low end out of a pad
+cfg.Mid2 = eq.Band{Freq: 3000, Gain: 3, Q: 1.2}         // presence
+cfg.High = eq.Band{Freq: 10000, Gain: 2}                // air
+pad := eq.New(cfg).AddTo(p).In(padSynth)
+```
+
+Messages: `lowCut`, `highCut`, `output`, and per band (`low`, `mid1`, `mid2`, `high`) its `...Freq`,
+`...Gain` and `...Q` (`mid1Gain`, `highFreq`, ...). The cuts are 12 dB/octave, 0 is off; a band at 0 dB
+does nothing.
+
+### saturate
+
+`modules/effects/saturate`: saturation and distortion: the sound driven into a curve that rounds its
+peaks off. It runs four times oversampled (`blocks/oversample`), so the harmonics it makes don't fold
+back as aliasing; the dry sound in the mix is delayed to line up (`SignalLatency`, a few samples, the
+mixer aligns other strips to it).
+
+```go
+warm := saturate.New(saturate.DefaultConfig()).AddTo(p).In(bass)
+fuzz := saturate.New(saturate.Config{Shape: saturate.Hard, Drive: 24, Tone: 4000, Output: -12, Mix: 1})
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Shape` | `Soft` | `shape` | `Soft` (tape, odd harmonics), `Tube` (lopsided, even harmonics too), `Hard` (clipped, fuzz), `Fold` (folded back, buzzy, changing with the drive) |
+| `Drive` | 9 | input 1, `drive` | dB into the curve (0 just touches it, 24 is heavy) |
+| `Bias` | 0 | `bias` | -1 to 1, shifts the curve: more even harmonics |
+| `Tone` | 9000 | `tone` | Hz, a lowpass after it (0 is off) |
+| `Output` | -4 | `output` | dB after it |
+| `Mix` | 1 | input 2, `mix` | 0 dry, 1 saturated |
+
+### crusher
+
+`modules/effects/crusher`: a bit crusher: fewer bits (the steps of an old sampler, grainy noise) and a
+lower sample rate (held samples, metallic aliasing).
+
+```go
+lofi := crusher.New(crusher.DefaultConfig()).AddTo(p).In(drums) // 8 bits at 11 kHz
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Bits` | 8 | input 1, `bits` | 1 to 24 (fractions move between), 0 is off |
+| `Rate` | 11025 | input 2, `rate` | Hz it holds the sound at (0 is off) |
+| `Output` | 0 | `output` | dB after it |
+| `Mix` | 1 | input 3, `mix` | 0 dry, 1 crushed |
+
+### widener
+
+`modules/effects/widener`: the sound split into its middle (what both sides share) and its sides (what
+differs): more sides is wider, none is mono. The low end can be kept in the middle.
+
+```go
+wide := widener.New(widener.DefaultConfig()).AddTo(p).In(pad) // 1.4 wide, mono below 120 Hz
+```
+
+| Setting | Default | Input / message | Meaning |
+|---|---|---|---|
+| `Width` | 1.4 | input 1, `width` | 0 mono, 1 as it is, 2 twice as wide (at most 3) |
+| `MonoBelow` | 120 | `monoBelow` | Hz, below it the sound is kept in the middle (0 is off) |
+
+## Following the level
+
+`modules/effects/follower`
+
+**Follower** passes its sound on and sends its level as a value on every control tick, mapped to a
+range, for any setting to follow:
+
+```go
+f := follower.New(follower.Config{Attack: 5, Release: 200, Gain: 6, Min: 400, Max: 6000}).AddTo(p).In(drums)
+filter.ValueIn(f, 0, 1) // the filter opens as the drums get louder
+```
+
+**Wah** is an auto-wah: a resonant filter (bandpass, the quack, or lowpass) swept by the level of the
+sound, every note opening it as it is played:
+
+```go
+wah := follower.NewWah(follower.DefaultWah()).AddTo(p).In(clav)
+```
+
+| Wah setting | Default | Meaning |
+|---|---|---|
+| `Kind` | `BandPass` | `BandPass` or `LowPass` |
+| `Min`, `Max` | 350, 2200 | Hz, the sweep from quiet to loud (over the octaves) |
+| `Q` | 4 | Resonance |
+| `Gain` | 12 | dB of sensitivity (input 1, `gain`) |
+| `Attack`, `Release` | 4, 120 | ms |
+| `Down` | false | A louder note sweeps it down |
+| `Mix` | 1 | 0 dry, 1 wah (input 2, `mix`) |
+
 
 ## vocoder
 

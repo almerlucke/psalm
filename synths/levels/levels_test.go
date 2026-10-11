@@ -9,11 +9,18 @@ import (
 	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
+	"github.com/almerlucke/psalm/synths/modal"
+	"github.com/almerlucke/psalm/synths/organ"
+	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/subtractive"
+	"github.com/almerlucke/psalm/synths/supersaw"
+	"github.com/almerlucke/psalm/synths/vocal"
+	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
+	"github.com/almerlucke/psalm/synths/westcoast"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -120,5 +127,54 @@ func TestPiano(t *testing.T) {
 	for n, f := range piano.Presets {
 		fresh()
 		check(t, n, piano.NewPoly(f(), 4), note) // the whole instrument: voices, resonance, soundboard
+	}
+}
+
+func TestOrgan(t *testing.T) {
+	for n, f := range organ.Presets {
+		fresh()
+		check(t, n, organ.New(f()), note)
+	}
+}
+
+func TestWaveguide(t *testing.T) {
+	for n, f := range waveguide.Presets {
+		fresh()
+		check(t, n, waveguide.New(f()), note)
+	}
+}
+
+func TestModal(t *testing.T) {
+	for n, f := range modal.Presets {
+		fresh()
+		check(t, n, modal.New(f()), note)
+	}
+}
+
+func TestVocal(t *testing.T) {
+	for n, f := range vocal.Presets {
+		fresh()
+		check(t, n, vocal.New(f()), note)
+	}
+}
+
+func TestPD(t *testing.T) {
+	for n, f := range pd.Presets {
+		fresh()
+		check(t, n, pd.New(f()), note)
+	}
+}
+
+func TestWestcoast(t *testing.T) {
+	for n, f := range westcoast.Presets {
+		fresh()
+		check(t, n, westcoast.New(f()), note)
+	}
+}
+
+func TestSupersaw(t *testing.T) {
+	for n, f := range supersaw.Presets {
+		fresh()
+		check(t, n, supersaw.New(f()), note)
 	}
 }
