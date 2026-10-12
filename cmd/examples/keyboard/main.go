@@ -21,9 +21,10 @@
 //
 // A control panel runs alongside on a web page (http://localhost:8087, -addr to move it, empty to
 // leave it out): the sound (every synth and preset, previous and next, all notes off), the
-// transposition and the velocity curve, the volume and the hall, and meters. Press MIDI learn on
-// the page, tap a control and turn a knob on the keyboard: the knob moves it from then on (the
-// bindings are kept in keyboard-midi.json).
+// transposition and the velocity curve, the routes (where the mod wheel and the aftertouch go: the
+// synth's own, or a setting such as the cutoff, the fold or the vowel, and how much of its range),
+// the volume and the hall, and meters. Press MIDI learn on the page, tap a control and turn a knob
+// on the keyboard: the knob moves it from then on (the bindings are kept in keyboard-midi.json).
 //
 //	go run ./cmd/examples/keyboard -list                  the MIDI devices
 //	go run ./cmd/examples/keyboard                        the first keyboard, through portaudio
@@ -43,6 +44,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -119,6 +121,81 @@ func synthKeys(cfg keyboard.Config) keyboard.Config {
 func velocityKeys(cfg keyboard.Config) keyboard.Config {
 	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure = 0, expressive, true, "pitchBend", "pressure"
 	return cfg
+}
+
+// destination is a setting the mod wheel or the aftertouch can be sent to from the panel: its
+// message names (the synths that take it), its range
+type destination struct {
+	label    string
+	names    []string
+	min, max float64
+	exp      bool
+}
+
+// destinations are what the panel offers, the first the synth's own (the built in wheel and
+// aftertouch). A synth that doesn't take a setting doesn't hear it
+var destinations = []destination{
+	{"built in", nil, 0, 0, false},
+	{"cutoff (subtractive, wavetable, supersaw)", []string{"cutoff"}, 200, 12000, true},
+	{"resonance (subtractive, wavetable, supersaw, westcoast)", []string{"resonance"}, 0, 0.95, false},
+	{"filter envelope (subtractive, wavetable, supersaw)", []string{"filterEnvAmount"}, 0, 6, false},
+	{"vowel (vocal, subtractive formant)", []string{"vowel"}, 0, 4, false},
+	{"brightness (fm, dx)", []string{"modDepth", "modScale"}, 0.2, 2, false},
+	{"brightness (vocal, waveguide pluck)", []string{"brightness"}, 0, 1, false},
+	{"vibrato depth (fm, wavetable, pulsar, vocal, pd, waveguide)", []string{"vibratoDepth"}, 0, 1, false},
+	{"position (wavetable table, grains sample)", []string{"position"}, 0, 1, false},
+	{"detune (supersaw)", []string{"detune"}, 0, 1, false},
+	{"detune cents (wavetable, pd)", []string{"detune"}, 0, 50, false},
+	{"saw mix (supersaw)", []string{"mix"}, 0, 1, false},
+	{"distortion (pd)", []string{"dcw1", "dcw2"}, 0, 1, false},
+	{"fold (westcoast)", []string{"fold"}, 0, 1, false},
+	{"symmetry (westcoast)", []string{"symmetry"}, -1, 1, false},
+	{"fm index (westcoast)", []string{"fm"}, 0, 3, false},
+	{"formant (pulsar)", []string{"formant"}, 200, 4000, true},
+	{"grain density (grains)", []string{"density"}, 2, 80, true},
+	{"grain spray (grains)", []string{"spray"}, 0, 0.5, false},
+	{"breath (vocal)", []string{"breath"}, 0, 1, false},
+	{"bow pressure (waveguide)", []string{"bowPressure"}, 0.2, 0.9, false},
+	{"mallet hardness (modal)", []string{"hardness"}, 0, 1, false},
+	{"tremolo (modal)", []string{"tremoloDepth"}, 0, 1, false},
+	{"drive (organ)", []string{"drive"}, 0, 1, false},
+	{"drawbar 4' (organ)", []string{"drawbar4"}, 0, 8, false},
+	{"noise (subtractive)", []string{"noiseLevel"}, 0, 1, false},
+	{"pulse width (subtractive)", []string{"pulseWidth"}, 0.05, 0.95, false},
+}
+
+// at returns the setting a part of the way through the range (0-1)
+func (d destination) at(part float64) float64 {
+	if d.exp {
+		return d.min * math.Pow(d.max/d.min, part)
+	}
+	return d.min + (d.max-d.min)*part
+}
+
+// panelRoute is a route chosen on the panel: the destination of a source, and the part of its
+// range the controller moves through
+type panelRoute struct {
+	source    int
+	dest      int
+	low, high float64 // 0-1
+}
+
+// routes returns the keyboard routes of a panel route
+func (pr *panelRoute) routes() []keyboard.Route {
+	d := destinations[pr.dest]
+	var rs []keyboard.Route
+	for _, name := range d.names {
+		rs = append(rs, keyboard.Route{Name: name, Min: d.at(pr.low), Max: d.at(pr.high), Exp: d.exp})
+	}
+	return rs
+}
+
+// short writes a number for the terminal: whole above 100, three digits below
+func short(v float64) string {
+	if math.Abs(v) >= 100 {
+		return strconv.Itoa(int(math.Round(v)))
+	}
+	return strconv.FormatFloat(v, 'g', 3, 64)
 }
 
 // merged reads several inputs as one, the events in order
@@ -261,7 +338,26 @@ func main() {
 	// the keyboard plays the selected preset. Bank select chooses the synth the next program
 	// change switches to (as MIDI has it: keyboards send it along with their program changes), the
 	// program change its preset (here, on the audio thread)
-	kb := keyboard.New(merged{input, commands}, in.keys(cfg), synthOf(in))
+	// the routes: the -route flags, and the ones chosen on the panel (a source routed on the panel
+	// replaces its flags; "built in" goes back to them)
+	flagRoutes := cfg.Routes
+	cfg.Routes = nil
+	panelRoutes := []*panelRoute{{source: midi.CCModWheel, high: 1}, {source: keyboard.RoutePressure, high: 1}}
+	keysFor := func(in *instrument) keyboard.Config {
+		c := in.keys(cfg)
+		c.Routes = maps.Clone(flagRoutes)
+		if c.Routes == nil {
+			c.Routes = map[int][]keyboard.Route{}
+		}
+		for _, pr := range panelRoutes {
+			if pr.dest > 0 {
+				c.Routes[pr.source] = pr.routes()
+			}
+		}
+		return c
+	}
+	kb := keyboard.New(merged{input, commands}, keysFor(in), synthOf(in))
+	reroute := func() { kb.SetConfig(keysFor(instruments[current])) } // on the audio thread
 
 	// every sound (a synth and a preset), in order, for the panel
 	type sound struct{ synth, preset int }
@@ -293,7 +389,7 @@ func main() {
 		}
 		current = synth
 		in.selected.Store(int64(preset))
-		kb.SetConfig(in.keys(cfg))
+		kb.SetConfig(keysFor(in))
 		kb.SetTargets(synthOf(in))
 		playing.Store(int64(current))
 		if soundSelect != nil {
@@ -343,7 +439,7 @@ func main() {
 		ctl.Section("Keys")
 		ctl.Fader("Transpose", -24, 24, panel.Linear, panel.Func(func(v float64) {
 			cfg.Transpose = int(v)
-			kb.SetConfig(instruments[current].keys(cfg))
+			reroute() // the keys with the routes
 		}), panel.Default(float64(*transpose)), panel.Step(1), panel.Unit("st"))
 		curves := []keyboard.Curve{keyboard.Soft, keyboard.Linear, keyboard.Hard}
 		curveNames := []string{"soft", "linear", "hard"}
@@ -353,8 +449,40 @@ func main() {
 		}
 		ctl.Select("Velocity curve", curveNames, func(i int) {
 			cfg.Curve = curves[i]
-			kb.SetConfig(instruments[current].keys(cfg))
+			reroute() // the keys with the routes
 		}, panel.Default(float64(slices.Index(curves, cfg.Curve))))
+
+		// the routes: the mod wheel and the aftertouch sent to a setting of the synth, the part of
+		// its range they move through
+		ctl.Section("Routes")
+		names := make([]string, len(destinations))
+		for i, d := range destinations {
+			names[i] = d.label
+		}
+		for _, pr := range panelRoutes {
+			label := "Wheel"
+			if pr.source == keyboard.RoutePressure {
+				label = "Aftertouch"
+			}
+			last := label + ": built in"
+			changed := func() { // the route chosen, in the terminal too (once it changes)
+				reroute()
+				now := label + ": built in"
+				if pr.dest > 0 {
+					d := destinations[pr.dest]
+					now = fmt.Sprintf("%s: %s, %s to %s", label, d.label, short(d.at(pr.low)), short(d.at(pr.high)))
+				}
+				if now != last {
+					log.Print(now)
+					last = now
+				}
+			}
+			ctl.Select(label+" to", names, func(i int) { pr.dest = i; changed() })
+			ctl.Knob(label+" from", 0, 100, panel.Linear, panel.Func(func(v float64) { pr.low = v / 100; changed() }),
+				panel.Default(0), panel.Unit("%"), panel.Step(1), panel.Label("from"))
+			ctl.Knob(label+" up to", 0, 100, panel.Linear, panel.Func(func(v float64) { pr.high = v / 100; changed() }),
+				panel.Default(100), panel.Unit("%"), panel.Step(1), panel.Label("up to"))
+		}
 
 		ctl.Section("Mix")
 		ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(mix.Master(), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03))
