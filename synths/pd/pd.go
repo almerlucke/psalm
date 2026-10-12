@@ -12,6 +12,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -78,7 +79,8 @@ type Voice struct {
 	lines     [2]lineState
 	t         int
 	waitSamps int
-	dc        [2]float64 // the DC blockers of the channels
+	dc        [2]float64            // the DC blockers of the channels
+	expr      expression.Expression // the pitch bend; the mod wheel distorts more (the DCW of both lines)
 	dcIn      [2]float64
 }
 
@@ -113,6 +115,7 @@ func (v *Voice) line(i int) *Line {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
@@ -272,7 +275,8 @@ func (v *Voice) Synthesize() {
 	channels := out.Channels
 	stereo := len(channels) > 1
 	for i := v.waitSamps; i < n; i++ {
-		semis := 0.0
+		v.expr.Tick(sr)
+		semis := v.expr.Semitones()
 		if cfg.PitchSweep != 0 {
 			semis += cfg.PitchSweep * math.Exp(-float64(v.t)/pitchTime*3)
 		}
@@ -301,6 +305,9 @@ func (v *Voice) Synthesize() {
 				w = l.Second
 			}
 			d := s.amount * dcw
+			if wheel := v.expr.Wheel(); wheel != 0 {
+				d = math.Min(d+0.6*wheel, 1)
+			}
 			if sweep != 0 {
 				d = math.Max(0, math.Min(d+sweep, 1))
 			}

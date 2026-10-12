@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 )
 
 // Percussion is the harmonic the percussion adds to the first key of a phrase
@@ -149,7 +150,8 @@ type Organ struct {
 	delay     []float64
 	dpos      int
 	lfoPhase  float64
-	silent    int // samples it has been silent: it rests once the scanner's delay is empty
+	silent    int                   // samples it has been silent: it rests once the scanner's delay is empty
+	expr      expression.Expression // the pitch bend (all the wheels); the mod wheel brings in the scanner vibrato
 }
 
 // New returns an organ
@@ -239,6 +241,7 @@ func (o *Organ) ReceiveMessage(msg psalm.Message) {
 	} else if ok && command != "voice" {
 		return
 	}
+	o.expr.Receive(msg)
 	msg.IfStrVal("drawbars", func(s string) { o.cfg.Drawbars = Bars(s) })
 	for i := range 9 {
 		msg.IfFltVal("drawbar"+strconv.Itoa(i+1), func(f float64) { o.cfg.Drawbars[i] = f })
@@ -392,6 +395,10 @@ func (o *Organ) Synthesize() {
 		depth = [...]float64{0, 0.00045, 0.0009, 0.00135}[(int(v)-1)%3+1] * sr
 		chorus = v >= C1
 	}
+	// the mod wheel brings in the vibrato, up to V3, whatever the scanner is set to
+	if wheel := o.expr.Wheel() * 0.00135 * sr; wheel > depth {
+		depth, chorus = wheel, false
+	}
 	hz := cfg.VibratoHz
 	if hz <= 0 {
 		hz = 6.9
@@ -413,10 +420,12 @@ func (o *Organ) Synthesize() {
 			o.apply(event{pitch: o.timers[t].pitch})
 			o.timers = slices.Delete(o.timers, t, t+1)
 		}
+		o.expr.Tick(sr)
+		bend := o.expr.Ratio()
 		for w := range numWheels {
-			o.phase[w] += o.inc[w]
+			o.phase[w] += o.inc[w] * bend
 			if o.phase[w] >= 1 {
-				o.phase[w]--
+				o.phase[w] -= math.Floor(o.phase[w])
 			}
 		}
 		for b := range 9 {

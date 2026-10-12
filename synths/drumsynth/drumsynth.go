@@ -11,6 +11,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -102,6 +103,7 @@ type Voice struct {
 	gainR     float64
 	waitSamps int
 	active    bool
+	expr      expression.Expression // the pitch bend (the sounds ringing); the mod wheel makes new hits ring longer
 }
 
 // New returns a voice; voices of New don't choke each other, NewPoly's do
@@ -127,6 +129,7 @@ func newVoice(cfg Config, sh *shared) *Voice {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
 }
 
@@ -191,7 +194,8 @@ func (v *Voice) hit(amplitude float64, msg psalm.Message, tick psalm.CtrlTick) {
 	v.t = 0
 	v.env = 1
 	v.clickEnv = 1
-	v.envCoef = fall(snd.Decay, sr)
+	v.expr.Settle()
+	v.envCoef = fall(snd.Decay*(1+2*v.expr.Wheel()), sr) // the wheel: up to three times as long
 	v.bodyEnv = 1
 	v.bodyCoef = fall(snd.Decay*0.5, sr) // the drum heads of a snare die before its wires
 	v.choke, v.chokeStep = 1, 0
@@ -285,7 +289,8 @@ func (v *Voice) Synthesize() {
 		level *= snd.Level
 	}
 	gain := level * v.amp
-	pitch := v.pitch()
+	v.expr.Settle()
+	pitch := v.pitch() * v.expr.Ratio()
 	snap := math.Max(0, math.Min(snd.Snap, 1))
 	drive := 1 + math.Max(0, snd.Drive)*6
 	sweepTime := math.Max(0.001, snd.SweepTime) * sr

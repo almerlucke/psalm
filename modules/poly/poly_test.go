@@ -165,3 +165,119 @@ func TestPolyVoiceStealing(t *testing.T) {
 
 	p.Synthesize()
 }
+
+// monoVoice records what a voice is told: how often it starts, the pitch it is at, let go or not
+type recVoice struct {
+	*psalm.Module
+	starts int
+	pitch  float64
+	held   bool
+}
+
+func newRecVoice() *recVoice {
+	v := &recVoice{Module: psalm.NewModule(nil, []int{psalm.Stereo})}
+	v.SetSelf(v)
+	return v
+}
+
+func (v *recVoice) ReceiveMessage(msg psalm.Message) {
+	msg.IfFltVal("pitch", func(f float64) { v.pitch = f })
+}
+func (v *recVoice) NoteOn(_ float64, msg psalm.Message, _ psalm.CtrlTick, _ psalm.Config) {
+	v.starts++
+	v.held = true
+	v.ReceiveMessage(msg)
+}
+func (v *recVoice) Note(_ float64, _ float64, msg psalm.Message, _ psalm.CtrlTick, _ psalm.Config) {
+	v.starts++
+	v.ReceiveMessage(msg)
+}
+func (v *recVoice) NoteOff()       { v.held = false }
+func (v *recVoice) Clear()         {}
+func (v *recVoice) IsActive() bool { return v.held }
+func (v *recVoice) Synthesize()    {}
+
+func on(p *Poly[*recVoice], id string, pitch float64) {
+	p.ReceiveMessage(psalm.Message{"command": "trigger", "tick": psalm.CtrlTick{}, "noteOn": id, "amplitude": 1.0,
+		"message": psalm.Message{"pitch": pitch}})
+}
+
+func off(p *Poly[*recVoice], id string) {
+	p.ReceiveMessage(psalm.Message{"command": "trigger", "tick": psalm.CtrlTick{}, "noteOff": id})
+}
+
+func TestMonoLegato(t *testing.T) {
+	voices := []*recVoice{newRecVoice(), newRecVoice(), newRecVoice()}
+	p := New(psalm.Stereo, voices)
+	p.ReceiveMessage(psalm.Message{"mono": 1.0, "legato": 1.0})
+	on(p, "a", 60)
+	on(p, "b", 64) // held over a: slides, no new start
+	v := p.monoVoice.voice
+	if v.starts != 1 || v.pitch != 64 || len(p.activePool) != 1 {
+		t.Fatalf("legato: %d starts, pitch %g, %d voices", v.starts, v.pitch, len(p.activePool))
+	}
+	on(p, "c", 67)
+	off(p, "c") // back to b, still held
+	if v.pitch != 64 || !v.held {
+		t.Errorf("let go of the top note: pitch %g, held %v, want back to 64", v.pitch, v.held)
+	}
+	off(p, "a") // not the sounding one: nothing changes
+	if v.pitch != 64 || !v.held {
+		t.Errorf("let go of a note under it: pitch %g", v.pitch)
+	}
+	off(p, "b")
+	if v.held {
+		t.Errorf("all let go, the voice still holds")
+	}
+	// a new note after all were let go starts the voice again
+	on(p, "d", 62)
+	if v.starts != 2 {
+		t.Errorf("a new phrase: %d starts, want 2", v.starts)
+	}
+}
+
+func TestMonoRetrigger(t *testing.T) {
+	voices := []*recVoice{newRecVoice(), newRecVoice()}
+	p := New(psalm.Stereo, voices).SetMono(true, false)
+	on(p, "a", 60)
+	on(p, "b", 64) // not legato: starts again, on the same voice
+	v := p.monoVoice.voice
+	if v.starts != 2 || v.pitch != 64 || voices[0].starts+voices[1].starts != 2 {
+		t.Errorf("mono: %d starts on the voice, pitch %g", v.starts, v.pitch)
+	}
+	off(p, "b") // the held note starts again
+	if v.starts != 3 || v.pitch != 60 {
+		t.Errorf("back to the held note: %d starts, pitch %g", v.starts, v.pitch)
+	}
+	// polyphonic again
+	p.SetMono(false, false)
+	on(p, "x", 60)
+	on(p, "y", 64)
+	if len(p.activePool) != 2 {
+		t.Errorf("poly again: %d voices", len(p.activePool))
+	}
+}
+
+func TestMonoDurations(t *testing.T) {
+	voices := []*recVoice{newRecVoice()}
+	p := New(psalm.Stereo, voices).SetMono(true, true)
+	sr := p.Config().SampleRate
+	n := float64(p.Config().BufferSize)
+	trigger := func(pitch, seconds float64) {
+		p.ReceiveMessage(psalm.Message{"command": "trigger", "tick": psalm.CtrlTick{}, "duration": seconds, "amplitude": 1.0,
+			"message": psalm.Message{"pitch": pitch}})
+	}
+	trigger(60, 3*n/sr) // three buffers
+	p.Synthesize()
+	trigger(62, 3*n/sr) // overlapping: slides
+	v := voices[0]
+	if v.starts != 1 || v.pitch != 62 {
+		t.Errorf("overlapping notes of a duration: %d starts, pitch %g", v.starts, v.pitch)
+	}
+	for range 4 {
+		p.Synthesize()
+	}
+	if v.held {
+		t.Errorf("the notes of a duration never let go")
+	}
+}

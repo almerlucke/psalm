@@ -68,6 +68,8 @@ type Trigger int
 const (
 	OnAttack  Trigger = iota // when the key goes down
 	OnRelease                // when the key goes up (the damper of a piano, the release of a string)
+	OnFirst                  // when the key goes down and no other key is held (the start of a phrase)
+	OnLegato                 // when the key goes down while another is held (a slur, a legato transition)
 )
 
 // OffMode says how a region choked by another (OffBy) stops
@@ -155,6 +157,10 @@ type Region struct {
 	LFOs                                []LFO    // vibrato, tremolo
 	EQ                                  []EQBand // peaking filters
 	Width                               float64  // a stereo sound's width in percent: 100 as it is, 0 mono, -100 swapped
+	BendUp, BendDown                    float64  // cents the pitch bend moves it all the way up, down (SFZ: 200, -200)
+	// Polyphony is how many notes of its group (of the region itself without one) sound at once,
+	// NotePolyphony how many of the same key: past it the oldest let go, quickly (0 is no limit)
+	Polyphony, NotePolyphony int
 }
 
 // LFOWave is the shape of an LFO
@@ -260,7 +266,7 @@ func NewRegion(sound Sound) Region {
 		HiRand:   1,
 		Env:      Envelope{Sustain: 1, Release: 0.05},
 		SwLoKey:  -1, SwHiKey: -1, SwLast: -1, SwDefault: -1,
-		Width: 100,
+		Width: 100, BendUp: 200, BendDown: -200,
 	}
 }
 

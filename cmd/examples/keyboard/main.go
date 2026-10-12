@@ -10,7 +10,9 @@
 // The notes play with the velocity curve chosen (-curve). The piano takes the velocity itself and
 // has its pedals (sustain with half pedaling, sostenuto, soft); fm, dx, waveguide, modal, westcoast
 // and drumsynth take the velocity too, the organ doesn't feel it (as a real one), the other synths
-// play it as the amplitude, and the sustain pedal holds their notes. Every MIDI event is printed
+// play it as the amplitude, and the sustain pedal holds their notes. The pitch bend bends every
+// synth but the piano (two semitones), the mod wheel does something of its own on each: opens the
+// filter, brightens, brings in a vibrato, moves the vowel or the table. Every MIDI event is printed
 // with -monitor.
 //
 // A control panel runs alongside on a web page (http://localhost:8087, -addr to move it, empty to
@@ -23,6 +25,7 @@
 //	go run ./cmd/examples/keyboard                        the first keyboard, through portaudio
 //	go run ./cmd/examples/keyboard -device /dev/snd/midiC1D0 -preset felt -curve soft
 //	go run ./cmd/examples/keyboard -synth subtractive -preset brass
+//	go run ./cmd/examples/keyboard -synth supersaw -preset glideLead -mono   one note at a time, sliding
 //	go run ./cmd/examples/keyboard -jack                  JACK audio and a JACK MIDI port (sample accurate)
 //	go run ./cmd/examples/keyboard -demo                  no keyboard: a phrase played as MIDI
 package main
@@ -94,16 +97,20 @@ func pianoKeys(cfg keyboard.Config) keyboard.Config {
 	return cfg
 }
 
-// most synths play the velocity as the amplitude, the sustain pedal holds their notes
+// expressive are the hands on the synths: the pitch bend, and the mod wheel (controller 1)
+var expressive = map[int]string{midi.CCModWheel: "modWheel"}
+
+// most synths play the velocity as the amplitude, the sustain pedal holds their notes, they bend
+// and take the mod wheel
 func synthKeys(cfg keyboard.Config) keyboard.Config {
-	cfg.Dynamics, cfg.Controls, cfg.HoldNotes = 1, map[int]string{}, true
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend = 1, expressive, true, "pitchBend"
 	return cfg
 }
 
 // fm, dx and the physical models take the velocity themselves (it brightens them, or plays the
 // mallet or the string harder), the sustain pedal holds their notes
 func velocityKeys(cfg keyboard.Config) keyboard.Config {
-	cfg.Dynamics, cfg.Controls, cfg.HoldNotes = 0, map[int]string{}, true
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend = 0, expressive, true, "pitchBend"
 	return cfg
 }
 
@@ -130,6 +137,7 @@ func main() {
 	channel := flag.Int("channel", 0, "the MIDI channel (1-16), 0 is all")
 	transpose := flag.Int("transpose", 0, "semitones")
 	monitor := flag.Bool("monitor", true, "print every MIDI event")
+	mono := flag.Bool("mono", false, "play the synths mono legato: one note at a time, sliding between them where the synth has a glide")
 	buffer := flag.Int("buffer", 256, "the buffer size (the latency) with portaudio")
 	addr := flag.String("addr", "localhost:8087", "the address of the control panel page (empty: no panel)")
 	bindingsFile := flag.String("bindings", "keyboard-midi.json", "the file the MIDI learn bindings of the panel are kept in")
@@ -198,6 +206,13 @@ func main() {
 	defer p.Close()
 
 	instruments := newInstruments(p)
+	if *mono {
+		for _, in := range instruments {
+			for _, synth := range in.synths {
+				synth.Receive(psalm.Message{"mono": 1.0, "legato": 1.0}, 0) // the poly synths take it, the organ and the piano don't
+			}
+		}
+	}
 	mix := mixInstruments(p, instruments)
 	p.Out(mix.Master())
 

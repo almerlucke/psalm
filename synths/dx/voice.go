@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -35,6 +36,8 @@ type Voice struct {
 	lfoPhase float64
 	lfoSH    float64
 	lfoTime  float64
+
+	expr expression.Expression // the pitch bend; the mod wheel brings in a vibrato (as on a DX7)
 
 	modScale    float64 // brightness, value input 1
 	curModScale float64 // glides to modScale over a buffer
@@ -99,6 +102,7 @@ func (v *Voice) Patch() Patch {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0.0, math.Min(f, 1.0)) })
 	msg.IfFltVal("modScale", func(f float64) { v.modScale = f })
 	msg.IfFltVal("pitch", func(f float64) { v.note = f })
@@ -291,8 +295,9 @@ func (v *Voice) Synthesize() {
 			v.lfoSH = v.Rand().Float64()*2.0 - 1.0
 		}
 
-		// pitch from the pitch envelope and LFO pitch modulation
-		semis := pitchLevelToSemitones(v.pitchEnv.next()) + lfo*pmDepth
+		// pitch from the pitch envelope and LFO pitch modulation, the bend and the wheel's vibrato
+		v.expr.Tick(sr)
+		semis := pitchLevelToSemitones(v.pitchEnv.next()) + lfo*pmDepth + v.expr.Semitones() + v.expr.Vibrato(sr, 5.5, 0.4)
 		freq := baseFreq
 		if semis != 0.0 {
 			freq *= math.Exp2(semis / 12.0)

@@ -5,6 +5,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 	"github.com/almerlucke/sndfile"
 )
@@ -144,6 +145,7 @@ type Voice struct {
 	ampEnv    *adsr.ADSR
 	grains    []grain
 	pitch     float64
+	expr      expression.Expression // the pitch bend (new grains); the mod wheel sprays them wider
 	velocity  float64
 	position  float64 // frames, moves with the scan
 	countdown float64 // samples until the next grain
@@ -174,6 +176,7 @@ func (v *Voice) SetSample(sample sndfile.SoundFiler[float32]) {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	cfg := &v.cfg
 	msg.IfStrVal("sound", func(name string) {
 		if s, ok := cfg.SoundBank[name]; ok {
@@ -309,7 +312,7 @@ func (v *Voice) spawn(sr float64) {
 		return
 	}
 
-	semis := v.pitch - cfg.RootNote
+	semis := v.pitch - cfg.RootNote + v.expr.Semitones()
 	if cfg.PitchSpread != 0 {
 		semis += cfg.PitchSpread * (v.Rand().Float64()*2.0 - 1.0)
 	}
@@ -318,7 +321,7 @@ func (v *Voice) spawn(sr float64) {
 	}
 	speed := math.Exp2(semis/12.0) * s.SampleRate() / sr
 
-	pos := v.position + cfg.Spray*(v.Rand().Float64()*2.0-1.0)*s.SampleRate()
+	pos := v.position + (cfg.Spray+0.3*v.expr.Wheel())*(v.Rand().Float64()*2.0-1.0)*s.SampleRate()
 	pos -= math.Floor(pos/frames) * frames // wrap into the sample
 
 	if v.Rand().Float64() < cfg.Reverse {
@@ -351,6 +354,7 @@ func (v *Voice) Synthesize() {
 		v.grains = v.grains[:0]
 		return
 	}
+	v.expr.Settle() // the grains take the bend and the wheel when they start
 
 	var (
 		cfg     = &v.cfg

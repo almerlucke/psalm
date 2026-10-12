@@ -12,6 +12,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/modules/poly"
@@ -99,6 +100,7 @@ type Voice struct {
 	ampEnv    *adsr.ADSR
 	count     int
 	lfoPhase  float64
+	expr      expression.Expression // the pitch bend; the mod wheel opens the filter
 	waitSamps int
 	rng       uint64
 }
@@ -166,6 +168,7 @@ func (v *Voice) random() float64 {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfFltVal("frequency", func(f float64) { v.setFrequency(f) })
 	msg.IfFltVal("pitch", func(p float64) { v.setFrequency(440 * math.Exp2((p-69)/12)) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
@@ -279,8 +282,9 @@ func (v *Voice) Synthesize() {
 	channels := out.Channels
 	stereo := len(channels) > 1
 	for i := v.waitSamps; i < n; i++ {
+		v.expr.Tick(sr)
 		v.glideFreq += (v.freq - v.glideFreq) * glide
-		f := v.glideFreq
+		f := v.glideFreq * v.expr.Ratio()
 		if lfoOn {
 			if v.count == 0 {
 				lfo = math.Sin(2 * math.Pi * v.lfoPhase)
@@ -318,7 +322,7 @@ func (v *Voice) Synthesize() {
 		}
 		fenv := v.filterEnv.Generate()
 		if v.count == 0 {
-			cutoff := cfg.Cutoff * math.Pow(f/261.63, keyTrack) * math.Exp2(cfg.FilterEnvAmount*fenv+vel+cfg.LFOCutoff*lfo)
+			cutoff := cfg.Cutoff * math.Pow(f/261.63, keyTrack) * math.Exp2(cfg.FilterEnvAmount*fenv+vel+cfg.LFOCutoff*lfo+3*v.expr.Wheel())
 			cutoff = math.Max(20, math.Min(cutoff, sr*0.45))
 			for c := range v.filters {
 				v.filters[c].SetFrequencyQ(cutoff, q)

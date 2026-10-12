@@ -1,6 +1,8 @@
 package poly
 
 import (
+	"fmt"
+
 	"github.com/almerlucke/psalm"
 )
 
@@ -25,6 +27,27 @@ type Poly[T Voice] struct {
 	fadeOut      psalm.Channels
 	hasFadeOut   bool
 	triggerCount int64
+
+	// mono: one voice, the notes held in a stack (the last one sounds)
+	mono      bool
+	legato    bool
+	monoVoice *voiceInfo[T]
+	held      []heldNote
+	timers    []monoTimer
+	durations int64 // names the notes of a duration, as notes held
+}
+
+// heldNote is a note held down in mono: its name, its note message and amplitude
+type heldNote struct {
+	id  string
+	msg psalm.Message
+	amp float64
+}
+
+// monoTimer lets go of a note of a duration in mono, after its samples
+type monoTimer struct {
+	id      string
+	samples int
 }
 
 func New[T Voice](numChannels int, voices []T) *Poly[T] {
@@ -47,6 +70,86 @@ func New[T Voice](numChannels int, voices []T) *Poly[T] {
 	return poly
 }
 
+// SetMono plays one note at a time on one voice: a new note takes over from the one held (and when
+// it is let go the one still held comes back), legato changes the pitch of the sounding note
+// without starting it again, so a synth with a glide slides between them; otherwise every note
+// starts the voice again (from the pitch it was at). Off, the synth is polyphonic again. Also by
+// the messages "mono" and "legato" (above 0.5 is on)
+func (p *Poly[T]) SetMono(mono, legato bool) *Poly[T] {
+	if p.mono && !mono {
+		p.AllNotesOff()
+	}
+	p.mono, p.legato = mono, legato
+	if p.monoVoice == nil && len(p.freePool)+len(p.activePool) > 0 {
+		if len(p.activePool) > 0 {
+			p.monoVoice = p.activePool[0]
+		} else {
+			p.monoVoice = p.freePool[0]
+		}
+	}
+	return p
+}
+
+// Mono returns whether it plays one note at a time, and legato
+func (p *Poly[T]) Mono() (mono, legato bool) { return p.mono, p.legato }
+
+// activate puts a voice in the active pool (from the free one)
+func (p *Poly[T]) activate(vi *voiceInfo[T]) {
+	for i, f := range p.freePool {
+		if f == vi {
+			p.freePool = append(p.freePool[:i], p.freePool[i+1:]...)
+			p.activePool = append(p.activePool, vi)
+			return
+		}
+	}
+}
+
+// monoOn plays a note in mono: the voice starts, or (legato, a note still held) slides to it
+func (p *Poly[T]) monoOn(id string, msg psalm.Message, amp float64, tick psalm.CtrlTick) {
+	vi := p.monoVoice
+	v := vi.voice
+	slide := p.legato && len(p.held) > 0 && v.IsActive()
+	p.held = append(p.held, heldNote{id: id, msg: msg, amp: amp})
+	if slide {
+		v.ReceiveMessage(msg)
+		return
+	}
+	if !v.IsActive() {
+		v.Clear()
+	}
+	p.activate(vi)
+	v.NoteOn(amp, msg, tick, p.Config())
+}
+
+// monoOff lets go of a note in mono: the note held before it comes back, or the voice lets go
+func (p *Poly[T]) monoOff(id string, tick psalm.CtrlTick) {
+	i := -1
+	for k, h := range p.held {
+		if h.id == id {
+			i = k
+		}
+	}
+	if i < 0 {
+		return
+	}
+	sounding := i == len(p.held)-1
+	p.held = append(p.held[:i], p.held[i+1:]...)
+	if !sounding {
+		return
+	}
+	v := p.monoVoice.voice
+	if len(p.held) == 0 {
+		v.NoteOff()
+		return
+	}
+	back := p.held[len(p.held)-1]
+	if p.legato && v.IsActive() {
+		v.ReceiveMessage(back.msg)
+		return
+	}
+	v.NoteOn(back.amp, back.msg, tick, p.Config())
+}
+
 func (p *Poly[T]) noteOff(identifier string) {
 	for _, v := range p.activePool {
 		if v.voice.ID() == identifier {
@@ -58,6 +161,7 @@ func (p *Poly[T]) noteOff(identifier string) {
 }
 
 func (p *Poly[T]) AllNotesOff() {
+	p.held, p.timers = p.held[:0], p.timers[:0]
 	for _, v := range p.activePool {
 		v.voice.NoteOff()
 		v.voice.SetID("")
@@ -114,7 +218,32 @@ func (p *Poly[T]) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, i
 // piano
 func (p *Poly[T]) ReceiveMessage(msg psalm.Message) {
 	command, ok := msg.StrVal("command")
+	if !ok {
+		mono, legato := p.mono, p.legato
+		_, m := msg["mono"]
+		_, l := msg["legato"]
+		msg.IfFltVal("mono", func(f float64) { mono = f > 0.5 })
+		msg.IfFltVal("legato", func(f float64) { legato = f > 0.5 })
+		if m || l {
+			p.SetMono(mono, legato)
+		}
+	}
 	switch {
+	case p.mono && command == "trigger":
+		tick := msg.MustTickVal("tick")
+		if id, ok := msg.StrVal("noteOff"); ok {
+			p.monoOff(id, tick)
+		} else if id, ok := msg.StrVal("noteOn"); ok {
+			p.monoOn(id, msg.MustMsg("message"), msg.MustFltVal("amplitude"), tick)
+		} else {
+			// a note of a duration: held, and let go after it
+			p.durations++
+			id := fmt.Sprintf("duration#%d", p.durations)
+			samples := int(msg.MustFltVal("duration")*p.Config().SampleRate) + tick.SampleOffset
+			p.timers = append(p.timers, monoTimer{id: id, samples: samples})
+			p.monoOn(id, msg.MustMsg("message"), msg.MustFltVal("amplitude"), tick)
+		}
+		p.triggerCount++
 	case !ok || command == "voice":
 		p.CallVoices(func(v T) {
 			v.ReceiveMessage(msg)
@@ -178,6 +307,19 @@ func (p *Poly[T]) CallVoices(f func(T)) {
 
 func (p *Poly[T]) Synthesize() {
 	out := p.Output(0).Channels
+	// mono: the notes of a duration let go when their time is up
+	if len(p.timers) > 0 {
+		n := p.Config().BufferSize
+		for i := 0; i < len(p.timers); {
+			if p.timers[i].samples -= n; p.timers[i].samples <= 0 {
+				id := p.timers[i].id
+				p.timers = append(p.timers[:i], p.timers[i+1:]...)
+				p.monoOff(id, psalm.CtrlTick{})
+				continue
+			}
+			i++
+		}
+	}
 
 	if p.hasFadeOut {
 		// Copy fade out buffer to output

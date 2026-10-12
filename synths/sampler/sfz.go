@@ -19,14 +19,22 @@ type Loader func(path string) (Sound, error)
 
 // LoadFile loads a sound file as it is (wav, aiff, flac, ogg: what libsndfile reads)
 func LoadFile(path string) (Sound, error) {
-	return sndfile.NewSoundFile[float32](path)
+	snd, err := sndfile.NewSoundFile[float32](path)
+	if err != nil {
+		return nil, err
+	}
+	return withLoop(snd, path), nil
 }
 
 // MipMaps returns a loader that also keeps band limited copies of every sound, for playing them
 // up to depth times as fast without aliasing (costs depth times the memory)
 func MipMaps(depth int) Loader {
 	return func(path string) (Sound, error) {
-		return sndfile.NewMipMapSoundFile[float32](path, depth)
+		snd, err := sndfile.NewMipMapSoundFile[float32](path, depth)
+		if err != nil {
+			return nil, err
+		}
+		return withLoop(snd, path), nil
 	}
 }
 
@@ -250,6 +258,7 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 		p.sounds[path] = snd
 	}
 	r = NewRegion(snd)
+	loopSet := map[string]bool{} // the loop opcodes the region sets itself (a WAV's own loop fills the rest)
 	r.Name = name
 
 	keyShift := 0
@@ -320,6 +329,7 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 				return r, false, nil // end=-1: a region that doesn't play
 			}
 		case "loop_mode", "loopmode":
+			loopSet["mode"] = true
 			switch v {
 			case "no_loop":
 				r.Loop = NoLoop
@@ -333,8 +343,10 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 				errs = append(errs, op+"="+v)
 			}
 		case "loop_start", "loopstart":
+			loopSet["start"] = true
 			r.LoopStart = frames(op, v)
 		case "loop_end", "loopend":
+			loopSet["end"] = true
 			r.LoopEnd = frames(op, v)
 		case "loop_crossfade":
 			r.LoopCrossfade = num(op, v)
@@ -344,7 +356,11 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 				r.Trigger = OnAttack
 			case "release":
 				r.Trigger = OnRelease
-			default: // first, legato, release_key
+			case "first":
+				r.Trigger = OnFirst
+			case "legato":
+				r.Trigger = OnLegato
+			default: // release_key
 				p.inst.Unsupported[op+"="+v]++
 				return r, false, nil
 			}
@@ -423,6 +439,14 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 			r.DelayRandom = num(op, v)
 		case "delay":
 			r.Delay = num(op, v)
+		case "bend_up":
+			r.BendUp = num(op, v)
+		case "bend_down":
+			r.BendDown = num(op, v)
+		case "polyphony":
+			r.Polyphony = int(num(op, v))
+		case "note_polyphony":
+			r.NotePolyphony = int(num(op, v))
 		case "width":
 			r.Width = num(op, v)
 		case "ampeg_vel2delay":
@@ -474,6 +498,20 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 	}
 	if len(errs) > 0 {
 		return r, false, fmt.Errorf("sampler: %s: bad %s", name, strings.Join(errs, ", "))
+	}
+	// a sound with a loop of its own (a WAV's smpl chunk) loops there, unless the region says otherwise
+	if l, ok := snd.(Looper); ok {
+		if start, end, has := l.Loop(); has {
+			if !loopSet["mode"] {
+				r.Loop = LoopContinuous
+			}
+			if !loopSet["start"] {
+				r.LoopStart = start
+			}
+			if !loopSet["end"] {
+				r.LoopEnd = end
+			}
+		}
 	}
 	if r.SeqLength > 0 && r.SeqPosition == 0 {
 		r.SeqPosition = 1

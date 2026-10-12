@@ -12,6 +12,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -62,6 +63,7 @@ type Config struct {
 	Resonance float64 // 0-1: the gate rings when struck
 	Response  float64 // seconds the vactrol takes to let go (0 is 0.15)
 	Color     float64 // 0-1: how bright it opens (0 is 0.8)
+	KeyTrack  float64 // 0-1: how much it opens brighter for higher notes (0 is 0.6, negative is none)
 
 	// an LFO, a sine from the start of every note: Hz, or beats a cycle (LFOSync, follows the
 	// tempo); it moves the fold (0-1, up and down) and the FM index
@@ -92,7 +94,8 @@ type Voice struct {
 	vactrol   float64
 	lpg       *svf.SVF
 	count     int
-	t         int // samples since the note started
+	t         int                   // samples since the note started
+	expr      expression.Expression // the pitch bend; the mod wheel folds the wave further
 	released  bool
 	noteOff   int
 	waitSamps int
@@ -111,6 +114,7 @@ func New(cfg Config) *Voice {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
@@ -231,6 +235,12 @@ func (v *Voice) Synthesize() {
 		color = 0.8
 	}
 	vel := 0.5 + 0.5*v.velocity
+	// the gate follows the key: higher notes open brighter, so they don't come out dull
+	track := cfg.KeyTrack
+	if track == 0 {
+		track = 0.6
+	}
+	keyFactor := math.Pow(v.freq/220, math.Max(0, track))
 	// the vactrol: it lights up in a few milliseconds and lets go slowly, slower still as it dims
 	rise := 1 - math.Exp(-1/(0.003*sr))
 	q := 0.5 + 8*math.Max(0, math.Min(cfg.Resonance, 1))
@@ -275,18 +285,20 @@ func (v *Voice) Synthesize() {
 		}
 
 		// the complex oscillator
-		v.modPhase += v.freq * ratio / sr
+		v.expr.Tick(sr)
+		freq := v.freq * v.expr.Ratio()
+		v.modPhase += freq * ratio / sr
 		v.modPhase -= math.Floor(v.modPhase)
 		mod := v.modulator(v.modPhase)
 		index := cfg.FM + cfg.EnvToFM*v.env + cfg.LFOFM*lfo
-		v.phase += v.freq / sr
+		v.phase += freq / sr
 		v.phase -= math.Floor(v.phase)
 		s := math.Sin(2*math.Pi*v.phase + index*mod)
 		if cfg.AM > 0 {
 			s *= 1 - cfg.AM*0.5*(1-mod)
 		}
 		// the folder
-		f := math.Max(0, math.Min(cfg.Fold+cfg.EnvToFold*v.env+cfg.LFOFold*lfo, 1))
+		f := math.Max(0, math.Min(cfg.Fold+cfg.EnvToFold*v.env+cfg.LFOFold*lfo+0.6*v.expr.Wheel(), 1))
 		if f > 0 || cfg.Symmetry != 0 {
 			s = fold(s, 1+f*7, cfg.Symmetry*f)
 		}
@@ -294,7 +306,7 @@ func (v *Voice) Synthesize() {
 		vc := v.vactrol
 		if cfg.Gate != VCA {
 			if v.count == 0 {
-				cutoff := 30 * math.Exp2(vc*color*9.5)
+				cutoff := 30 * math.Exp2(vc*color*9.5) * keyFactor
 				v.lpg.SetFrequencyQ(math.Min(cutoff, sr*0.45), q*(0.3+0.7*vc))
 			}
 			v.count = (v.count + 1) % 4

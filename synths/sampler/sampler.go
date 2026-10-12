@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -34,6 +35,7 @@ type shared struct {
 	voices []*Voice
 	cc     [128]float64 // the controllers, 0-127
 	sw     int          // the last keyswitch pressed (-1 none)
+	starts int64        // counts the regions started: the oldest let go first
 }
 
 // ccGain returns the gain the controllers give a region now: its fades by controller and its
@@ -66,10 +68,14 @@ type Voice struct {
 	pitch     float64
 	velocity  float64
 	amp       float64
-	held      int  // samples since the note started, for the decay of release regions
-	noteOff   int  // samples until the note of Note ends, 0 when none
-	released  bool // the key is up
-	sustained bool // the key is up, the sustain pedal holds the note
+	held      int                   // samples since the note started, for the decay of release regions
+	noteOff   int                   // samples until the note of Note ends, 0 when none
+	released  bool                  // the key is up
+	sustained bool                  // the key is up, the sustain pedal holds the note
+	expr      expression.Expression // the pitch bend (the regions' bend_up and bend_down); the mod wheel is controller 1
+	bendFrom  float64               // the bend at the start of the buffer
+	down      bool                  // the key is down (the pedal aside): for trigger=first and legato
+	others    int                   // the other keys down when the note started
 	waitSamps int
 }
 
@@ -89,6 +95,8 @@ type layer struct {
 	filterMod svf.Mode
 	active    bool
 	cc        float64 // the gain of the controllers, gliding to theirs over a buffer
+	key       int     // the key it plays
+	started   int64   // when it started: the oldest let go first
 	envSet    Envelope
 	wait      int     // samples before it starts (Delay, DelayRandom)
 	stepBase  float64 // the step without the vibrato
@@ -228,6 +236,9 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	})
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
+	// the pitch bend, and the mod wheel as controller 1 (what SFZ instruments listen to)
+	v.expr.Receive(msg)
+	msg.IfFltVal("modWheel", func(f float64) { v.shared.cc[1] = math.Max(0, math.Min(f, 1)) * 127 })
 	// the sustain pedal, 0 up to 1 down: its controller
 	if inst := v.cfg.Instrument; inst != nil {
 		msg.IfFltVal("sustain", func(f float64) {
@@ -271,6 +282,14 @@ func (v *Voice) note(duration float64, amplitude float64, message psalm.Message,
 	v.amp = amplitude
 	v.held = 0
 	v.released, v.sustained = false, false
+	// the other keys down decide the regions of trigger=first and legato
+	v.others = 0
+	for _, o := range v.shared.voices {
+		if o != v && o.down {
+			v.others++
+		}
+	}
+	v.down = true
 	v.noteOff = 0
 	if duration > 0 {
 		v.noteOff = max(1, int(duration*v.Config().SampleRate))
@@ -298,7 +317,7 @@ func (v *Voice) start(trigger Trigger) {
 	matched := playing[:0]
 	for i := range inst.Regions {
 		r := &inst.Regions[i]
-		if r.Trigger != trigger || !r.plays(key, vel) || (r.SwLast >= 0 && r.SwLast != sh.sw) {
+		if !triggers(r.Trigger, trigger, v.others) || !r.plays(key, vel) || (r.SwLast >= 0 && r.SwLast != sh.sw) {
 			continue
 		}
 		if fadeAt(r, key, vel) == 0 {
@@ -327,6 +346,18 @@ func (v *Voice) start(trigger Trigger) {
 	}
 }
 
+// triggers says whether a region of a trigger plays at a moment (the key going down or up, with
+// others held or not)
+func triggers(region, moment Trigger, others int) bool {
+	switch region {
+	case OnFirst:
+		return moment == OnAttack && others == 0
+	case OnLegato:
+		return moment == OnAttack && others > 0
+	}
+	return region == moment
+}
+
 // fadeAt returns the gain of a region's crossfades by velocity and key for a note
 func fadeAt(r *Region, key, vel int) float64 {
 	g := 1.0
@@ -339,6 +370,40 @@ func fadeAt(r *Region, key, vel int) float64 {
 		}
 	}
 	return g
+}
+
+// polyGroup returns the polyphony group of a region: its group, or the region itself without one
+func polyGroup(r *Region, index int) int {
+	if r.Group != 0 {
+		return r.Group
+	}
+	return -1 - index
+}
+
+// limit lets go of the oldest sounding regions of a region's group (of one key, or of any key with
+// key -1) until fewer than limit sound, so the region starting makes limit
+func (sh *shared) limit(r *Region, index, key, limit int) {
+	g := polyGroup(r, index)
+	for {
+		var oldest *layer
+		count := 0
+		for _, o := range sh.voices {
+			for i := range o.layers {
+				l := &o.layers[i]
+				if !l.active || l.env.stage >= stageRelease || polyGroup(l.r, l.index) != g || (key >= 0 && l.key != key) {
+					continue
+				}
+				count++
+				if oldest == nil || l.started < oldest.started {
+					oldest = l
+				}
+			}
+		}
+		if count < limit || oldest == nil {
+			return
+		}
+		oldest.env.releaseIn(0.03)
+	}
 }
 
 // choke stops the regions that a region of a group starting turns off
@@ -360,6 +425,13 @@ func (sh *shared) choke(group int) {
 
 // play starts a region in a free layer (the quietest one when all are playing)
 func (v *Voice) play(r *Region, index int) {
+	// past its polyphony, the oldest of its group (or of its key) let go
+	if r.Polyphony > 0 {
+		v.shared.limit(r, index, -1, r.Polyphony)
+	}
+	if r.NotePolyphony > 0 {
+		v.shared.limit(r, index, v.key(), r.NotePolyphony)
+	}
 	var l *layer
 	for i := range v.layers {
 		if !v.layers[i].active {
@@ -385,7 +457,9 @@ func (v *Voice) play(r *Region, index int) {
 	if r.PitchRandom != 0 {
 		semis += spread(r.PitchRandom) / 100
 	}
-	*l = layer{r: r, index: index, filters: l.filters, lfos: l.lfos[:0], active: true, pos: float64(r.Offset)}
+	*l = layer{r: r, index: index, filters: l.filters, lfos: l.lfos[:0], active: true, pos: float64(r.Offset),
+		key: v.key(), started: v.shared.starts}
+	v.shared.starts++
 	l.step = math.Exp2(semis/12) * r.Sound.SampleRate() / sr
 	l.stepBase = l.step
 	// the deepest vibrato plays faster: the band limited copy for its top
@@ -478,6 +552,7 @@ func depthFor(step float64) int {
 
 // NoteOff lets go of the note, or keeps it sounding while the sustain pedal is down
 func (v *Voice) NoteOff() {
+	v.down = false
 	if v.released {
 		return
 	}
@@ -508,7 +583,7 @@ func (v *Voice) release() {
 	v.noteOff = 0
 	for i := range v.layers {
 		l := &v.layers[i]
-		if !l.active || l.r.Trigger != OnAttack {
+		if !l.active || l.r.Trigger == OnRelease {
 			continue
 		}
 		switch l.r.Loop {
@@ -524,7 +599,7 @@ func (v *Voice) release() {
 }
 
 func (v *Voice) Clear() {
-	v.sustained = false
+	v.sustained, v.down = false, false
 	for i := range v.layers {
 		v.layers[i].active = false
 	}
@@ -545,6 +620,9 @@ func (v *Voice) Synthesize() {
 	out.Clear()
 	channels := out.Channels
 	n := v.Config().BufferSize
+	v.expr.Settle()
+	bendTo := v.expr.Bend()
+	defer func() { v.bendFrom = bendTo }()
 	for i := range v.layers {
 		if l := &v.layers[i]; l.active && l.r.EnvDynamic {
 			// the envelope follows the controllers
@@ -555,7 +633,7 @@ func (v *Voice) Synthesize() {
 			}
 		}
 		if l := &v.layers[i]; l.active {
-			l.render(channels, v.waitSamps, n, v.released, v.shared.ccGain(l.r))
+			l.render(channels, v.waitSamps, n, v.released, v.shared.ccGain(l.r), v.bendFrom, bendTo)
 		}
 	}
 	// the note of Note ends in this buffer
@@ -571,7 +649,7 @@ func (v *Voice) Synthesize() {
 }
 
 // render adds the samples from..to of a layer to the channels
-func (l *layer) render(channels psalm.Channels, from, to int, released bool, cc float64) {
+func (l *layer) render(channels psalm.Channels, from, to int, released bool, cc, bendFrom, bendTo float64) {
 	r := l.r
 	// the controllers' gain glides to where they are now over the buffer: a wheel moved never clicks
 	ccInc := (cc - l.cc) / float64(max(1, to-from))
@@ -596,14 +674,23 @@ func (l *layer) render(channels psalm.Channels, from, to int, released bool, cc 
 			l.cc += ccInc
 			continue
 		}
-		// the LFOs: the vibrato sets the speed, the tremolo the level
+		// the LFOs and the bend: the vibrato and the bend set the speed, the tremolo the level
 		lfoGain := 1.0
-		if len(l.lfos) > 0 {
+		bend := bendFrom
+		if bendTo != bendFrom { // the bend glides over the buffer
+			bend += (bendTo - bendFrom) * float64(i-from) / float64(max(1, to-from))
+		}
+		if len(l.lfos) > 0 || bend != 0 {
 			cents, db := 0.0, 0.0
 			for k := range l.lfos {
 				y := l.lfos[k].value()
 				cents += y * l.lfos[k].set.Pitch
 				db += y * l.lfos[k].set.Volume
+			}
+			if bend > 0 {
+				cents += bend * r.BendUp
+			} else if bend < 0 {
+				cents -= bend * r.BendDown
 			}
 			l.step = l.stepBase
 			if cents != 0 {

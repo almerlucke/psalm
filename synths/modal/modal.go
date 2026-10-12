@@ -10,6 +10,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -51,6 +52,7 @@ type resonator struct {
 	c, s   float64 // the rotation per sample, with the decay
 	gain   float64 // per unit of force
 	fast   float64 // the decay per sample once let go
+	r, w   float64 // the decay and the angle per sample, unbent
 }
 
 // Voice is one struck note
@@ -73,6 +75,8 @@ type Voice struct {
 	waitSamps int
 	active    bool
 	quiet     int
+	expr      expression.Expression // the pitch bend (all the modes); the mod wheel brings in a tremolo
+	bentTo    float64               // the bend the modes are turned for now
 }
 
 // New returns a voice
@@ -87,6 +91,7 @@ func New(cfg Config) *Voice {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
@@ -153,6 +158,7 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 		if !v.active {
 			m.re, m.im = 0, 0
 		}
+		m.r, m.w = r, w
 		m.c, m.s = r*math.Cos(w), r*math.Sin(w)
 		m.gain = amp
 		m.fast = math.Pow(10, -3/(math.Min(t60, release)*sr)) / r
@@ -187,6 +193,7 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 	}
 	v.pulsePos = 0
 	v.knock = cfg.Noise * (0.3 + 0.7*v.velocity)
+	v.bentTo = 0 // the modes are set unbent: bend them in the next buffer
 	v.tremPhase = 0
 	v.active = true
 	v.quiet = 0
@@ -226,8 +233,26 @@ func (v *Voice) Synthesize() {
 	gain := level * v.amp * (0.3 + 0.7*v.velocity)
 	damp := v.released && cfg.Release > 0
 	knockCoef := math.Exp(-1 / (0.002 * sr))
-	tremInc := cfg.Tremolo / sr
+	// the bend turns every mode (once a buffer, the modes ring on smoothly)
+	v.expr.Settle()
+	if bend := v.expr.Ratio(); bend != v.bentTo || v.bentTo == 0 {
+		for k := range v.n {
+			m := &v.modes[k]
+			w := math.Min(m.w*bend, math.Pi*0.96)
+			m.c, m.s = m.r*math.Cos(w), m.r*math.Sin(w)
+		}
+		v.bentTo = bend
+	}
+	// the tremolo: the motor's, or the wheel's
+	tremolo := cfg.Tremolo
 	depth := math.Max(0, math.Min(cfg.TremoloDepth, 1))
+	if wheel := 0.6 * v.expr.Wheel(); wheel > depth {
+		depth = wheel
+		if tremolo <= 0 {
+			tremolo = 5.5
+		}
+	}
+	tremInc := tremolo / sr
 	loud := 0.0
 	channels := out.Channels
 	for i := v.waitSamps; i < n; i++ {
@@ -254,7 +279,7 @@ func (v *Voice) Synthesize() {
 			s += v.knockLP * v.knock * 0.3
 			v.knock *= knockCoef
 		}
-		if cfg.Tremolo > 0 && depth > 0 {
+		if tremolo > 0 && depth > 0 {
 			s *= 1 - depth*0.5*(1-math.Cos(2*math.Pi*v.tremPhase))
 			v.tremPhase += tremInc
 			if v.tremPhase >= 1 {

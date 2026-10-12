@@ -355,6 +355,9 @@ func TestPresets(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			lo, hi := math.Inf(1), 0.0
 			for _, table := range tables {
+				// the unison voices start at random phases: seeded, the peaks measure the same every run
+				psalm.Seed(1)
+				psalm.SetCurrentEnv(psalm.NewEnv(psalm.CurrentStackConfig()))
 				v := New(preset(table))
 				v.Note(noteLength(name), 0.5, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, v.Config())
 				peak := 0.0

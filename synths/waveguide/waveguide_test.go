@@ -157,11 +157,11 @@ func TestBrightness(t *testing.T) {
 
 func TestBowSustainsInTune(t *testing.T) {
 	for _, name := range []string{"violin", "cello", "slowStrings", "flautando", "ponticello", "eBow", "ghostBow", "scrape"} {
-		for _, p := range []float64{43, 55, 67, 74} {
+		for _, p := range []float64{36, 43, 55, 67, 74, 79, 86, 91} {
 			cfg := dry(Presets[name]())
 			cfg.VibratoDepth = 0
 			v, x := play(cfg, p, 2)
-			if c := cents(pitchOf(x[int(1.2*sr()):]), hz(p)); math.Abs(c) > 15 {
+			if c := cents(pitchOf(x[int(1.2*sr()):]), hz(p)); math.Abs(c) > 6 {
 				t.Errorf("%s %g: %.1f cents out", name, p, c)
 			}
 			// it holds: as loud at the end as at 1 s

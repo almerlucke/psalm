@@ -5,6 +5,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/formant"
 	"github.com/almerlucke/psalm/blocks/filters/ladder"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
@@ -127,6 +128,7 @@ type Voice struct {
 	res       float64 // smoothed resonance, ramps towards cfg.Resonance over a buffer
 	vowel     float64 // smoothed vowel, ramps towards cfg.Vowel over a buffer
 	waitSamps int
+	expr      expression.Expression // the pitch bend; the mod wheel opens the filter
 }
 
 func New(cfg Config) *Voice {
@@ -187,6 +189,7 @@ func (v *Voice) SetPulseWidth(pw float64) {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfIntVal("osc1Waveform", func(wf int) {
 		v.cfg.Osc1Waveform = blosc.Waveform(wf)
 		v.osc1.SetWaveform(v.cfg.Osc1Waveform)
@@ -338,6 +341,7 @@ func (v *Voice) Synthesize() {
 	}
 
 	for i := v.waitSamps; i < bufferSize; i++ {
+		v.expr.Tick(sr)
 		// Modulation sources
 		fenv := v.filterEnv.Generate()
 
@@ -352,7 +356,7 @@ func (v *Voice) Synthesize() {
 		// Pitch: glide, LFO vibrato and filter envelope pitch sweep
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
 		freq := v.glideFreq
-		if semis := cfg.LFO1.Pitch*l1 + cfg.LFO2.Pitch*l2 + cfg.FilterEnvToPitch*fenv; semis != 0.0 {
+		if semis := cfg.LFO1.Pitch*l1 + cfg.LFO2.Pitch*l2 + cfg.FilterEnvToPitch*fenv + v.expr.Semitones(); semis != 0.0 {
 			freq *= math.Pow(2.0, semis/12.0)
 		}
 
@@ -406,7 +410,7 @@ func (v *Voice) Synthesize() {
 		v.res += resInc
 		v.vowel += vowelInc
 		if v.formCount == 0 {
-			mod := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2
+			mod := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2 + 2*v.expr.Wheel()
 			v.setFilter(v.cutoff*keyTrackMult*math.Exp2(mod), mod)
 		}
 		v.formCount = (v.formCount + 1) % filterUpdate

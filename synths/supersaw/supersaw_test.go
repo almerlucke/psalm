@@ -163,3 +163,58 @@ func TestNotes(t *testing.T) {
 		}
 	}
 }
+
+func TestMonoGlides(t *testing.T) {
+	// a poly of four voices played mono legato: the second note slides from the first (seeded: the
+	// saws start at random phases)
+	psalm.Seed(1)
+	psalm.SetCurrentEnv(psalm.NewEnv(psalm.CurrentStackConfig()))
+	p := NewPoly(GlideLead(), 4).SetMono(true, true)
+	trig := func(id string, pitch float64) {
+		p.ReceiveMessage(psalm.Message{"command": "trigger", "tick": psalm.CtrlTick{}, "noteOn": id, "amplitude": 1.0,
+			"message": psalm.Message{"pitch": pitch}})
+	}
+	render := func(seconds float64) []float64 {
+		var x []float64
+		for range int(seconds * sr() / float64(p.Config().BufferSize)) {
+			p.Synthesize()
+			for _, s := range p.Output(0).Channels[0] {
+				x = append(x, float64(s))
+			}
+		}
+		return x
+	}
+	trig("a", 57)
+	render(0.5)
+	trig("b", 69)
+	x := render(1)
+	// the glide takes about 0.25 s: a quarter second in it is between the notes, after a second on the new one
+	mid := strongest(x[int(0.2*sr()):int(0.3*sr())])
+	late := strongest(x[int(0.8*sr()):])
+	if mid < 250 || mid > 420 {
+		t.Errorf("a quarter second into the glide at %.0f Hz, want between 220 and 440", mid)
+	}
+	if math.Abs(late-440) > 12 { // the detuned saws spread the energy a little around it
+		t.Errorf("after the glide at %.0f Hz, want 440", late)
+	}
+	active := 0
+	p.CallVoices(func(v *Voice) {
+		if v.IsActive() {
+			active++
+		}
+	})
+	if active != 1 {
+		t.Errorf("mono: %d voices sound", active)
+	}
+}
+
+// strongest returns the frequency between 150 and 500 Hz with the most energy
+func strongest(x []float64) float64 {
+	best, bestF := 0.0, 0.0
+	for f := 150.0; f <= 500; f += 2 {
+		if a := amplitude(x, f); a > best {
+			best, bestF = a, f
+		}
+	}
+	return bestF
+}

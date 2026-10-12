@@ -1,9 +1,38 @@
 # Synths
 
-Synths: [poly](#poly) (voice allocation), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
+Synths: [pitch bend and mod wheel](#pitch-bend-and-mod-wheel), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
 
 Presets of all synths are calibrated to the same loudness: a note at amplitude 1 plays at -12 LUFS
 (or peaks at -1 dBFS for percussive sounds), see [conventions](conventions.md#levels).
+
+## Pitch bend and mod wheel
+
+Every synth but the piano (as a real one) takes the hands of a player while it sounds: the
+messages `pitchBend` (-1 to 1, over `bendRange` semitones, 2 by default), and `modWheel` (0 to 1),
+which does something of its own on each. They glide to where they are moved in a few
+milliseconds, so moving them never zips or clicks, and reach every voice of a poly synth (a
+message without a command). A keyboard sends them with `keyboard.Config{PitchBend: "pitchBend",
+Controls: map[int]string{midi.CCModWheel: "modWheel"}}`.
+
+| Synth | The mod wheel |
+|---|---|
+| subtractive | opens the filter, two octaves |
+| fm | brightens (more modulation); a vibrato on patches without modulators |
+| dx | a vibrato (as on a DX7) |
+| wavetable | moves through the table, opens the filter |
+| pulsar | lifts the formant |
+| grains | sprays the grains wider (the bend reaches new grains) |
+| sampler | controller 1, as the instrument says (crossfades, `gain_cc1`); the bend follows `bend_up`, `bend_down` |
+| organ | the scanner vibrato, up to V3 |
+| waveguide | a vibrato (a plucked string bends while it rings) |
+| modal | a tremolo |
+| drumsynth | longer decays (new hits); the bend moves the sounds ringing |
+| vocal | opens the vowel |
+| pd | more distortion |
+| westcoast | folds further |
+| supersaw | opens the filter, three octaves |
+
+The code of it is `blocks/expression`, for synths of your own.
 
 ## poly
 
@@ -39,6 +68,17 @@ type Voice interface {
 an LFO connected to input 1 of a subtractive poly synth modulates the cutoff of every voice.
 
 `AllNotesOff()` releases all held notes, `CallVoices(func(v))` runs a function on every voice.
+
+**Mono**: `SetMono(true, legato)` (or the message `{"mono": 1, "legato": 1}`) plays one note at a
+time on one voice. A new note takes over from the one held, and when it is let go the note still
+held comes back. Legato changes the pitch of the sounding note without starting it again, so a
+synth with a glide (subtractive, supersaw) slides between the notes; without legato every note
+starts the voice again, from the pitch it was at. Notes of a duration (from a score) that overlap
+slide as well. `SetMono(false, false)` makes it polyphonic again.
+
+```go
+lead := supersaw.NewPoly(supersaw.GlideLead(), 4).SetMono(true, true).AddTo(p)
+```
 
 ## subtractive
 
@@ -887,7 +927,7 @@ tracking, a short release):
 | `Loop` | `loop_mode` | `NoLoop`, `OneShot` (ignores note offs), `LoopContinuous`, `LoopSustain` (loops while held, then plays on) |
 | `LoopStart`, `LoopEnd` | `loop_start`, `loop_end` | Frames of the loop |
 | `LoopCrossfade` | `loop_crossfade` | Seconds the end of the loop fades into its start |
-| `Trigger` | `trigger` | `OnAttack`, or `OnRelease`: plays when the key goes up |
+| `Trigger` | `trigger` | `OnAttack`; `OnRelease` plays when the key goes up; `OnFirst` only when no other key is held, `OnLegato` only when one is (slurred transitions) |
 | `RtDecay` | `rt_decay` | dB per second a release region is softer the longer the key was down |
 | `Group`, `OffBy`, `OffMode` | `group`, `off_by`, `off_mode` | Choke groups: a region of group `OffBy` stops this one |
 | `SeqLength`, `SeqPosition` | `seq_length`, `seq_position` | Round robin |
@@ -905,6 +945,8 @@ tracking, a short release):
 | `LFOs` | `pitchlfo_*`, `amplfo_*`, `lfoN_freq`, `_wave`, `_delay`, `_fade`, `_pitch`, `_volume` | Vibrato (cents) and tremolo (dB), with a delay and a fade in |
 | `EQ` | `eq1_*` ... `eq3_*` (`freq`, `bw`, `gain`) | Peaking filters, bandwidth in octaves |
 | `Width` | `width` | A stereo sound's width in percent: 100 as it is, 0 mono |
+| `Polyphony`, `NotePolyphony` | `polyphony`, `note_polyphony` | How many notes of its group (or of one key) sound at once: past it the oldest let go, quickly |
+| `BendUp`, `BendDown` | `bend_up`, `bend_down` | Cents a full pitch bend moves it (200, -200) |
 
 Controllers reach the sampler as messages, `"cc1"` (the mod wheel) to `"cc127"`, 0-1: give a
 keyboard `Controls: map[int]string{1: "cc1"}`. `Instrument.Switches()` lists the keyswitches.
@@ -916,7 +958,7 @@ unless `sustain_lo` says otherwise.
 
 The SFZ loader knows `<control>` (`default_path`, `note_offset`, `octave_offset`, `set_ccN`), `<global>`,
 `<master>`, `<group>`, `<region>`, `#define` and `#include`. Opcodes it doesn't know are counted
-in `Instrument.Unsupported`. Sounds load with libsndfile: wav, aiff, flac, ogg.
+in `Instrument.Unsupported`. Sounds load with libsndfile: wav, aiff, flac, ogg. A WAV with a loop of its own (its smpl chunk) loops there, unless the region sets `loop_mode`, `loop_start` or `loop_end` itself.
 
 Notes take `pitch` (or `frequency`) and `velocity` (0-1). The levels are those of the recordings.
 
@@ -1012,8 +1054,8 @@ cello := waveguide.NewPoly(waveguide.Cello(), 4).AddTo(p)
 | `Body`, `BodyMix` | | `GuitarBody`, `ViolinBody`, `CelloBody`, `HarpBody`, or `NoBody`; 0-1 |
 
 The bow's speed is its loudness: the note amplitude sets it (faster than the model allows, a
-string jumps to its octave, as a real one does). A bowed note's pitch is within about ten cents:
-the friction pulls it, as on a real string. **Value inputs**: 1 pressure, 2 vibrato depth.
+string jumps to its octave, as a real one does). Bowed notes are in tune within a few cents from C2 to C7 (the
+friction's pull is measured and corrected). **Value inputs**: 1 pressure, 2 vibrato depth.
 
 | Preset | Character |
 |---|---|
@@ -1197,6 +1239,7 @@ wc.ValueIn(lfo.New(true, 0.2, 0, 0.6, lfo.Sine).AddTo(p), 0, 1) // the fold brea
 | `EnvToFold`, `EnvToFM` | What the function adds to the fold and the index |
 | `Gate` | `Combo` (filter and amplifier), `LowPass`, `VCA` |
 | `Resonance`, `Response`, `Color` | The gate: how it rings, how slowly the vactrol lets go, how bright it opens |
+| `KeyTrack` | 0-1: how much the gate opens brighter for higher notes (0 is 0.6, negative none), so high notes don't come out dull |
 | `LFORate`, `LFOSync`, `LFOFold`, `LFOFM` | An LFO (Hz, or beats a cycle) on the fold and the FM index |
 
 **Value inputs**: 1 fold, 2 FM index. Presets: `gong`, `waterDrop` (a pinged drop), `growl` (a bass
@@ -1230,5 +1273,5 @@ pad := supersaw.NewPoly(supersaw.TrancePad(), 8).AddTo(p)
 
 **Value inputs**: 1 cutoff, 2 detune. Presets: `hypersaw` (sixteen saws, a wall of sound), `wobbleBass`
 (the filter in eighth notes), `breathing` (the detune swelling), `swarm` (a four second rise),
-`glideLead` (sliding, best with one voice), `trancePad`, `lead`, `pluck`, `hoover`, `stab`,
+`glideLead` (sliding: play it mono legato), `trancePad`, `lead`, `pluck`, `hoover`, `stab`,
 `unisonBass`.

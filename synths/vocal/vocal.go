@@ -11,6 +11,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/modules/poly"
@@ -146,7 +147,8 @@ type Voice struct {
 	active    bool
 	rangeNow  Range
 	update    int
-	stepTo    float64 // the vowel a step of VowelSteps aims for
+	stepTo    float64               // the vowel a step of VowelSteps aims for
+	expr      expression.Expression // the pitch bend; the mod wheel opens the vowel (up to two steps)
 }
 
 // randSource is a small fast random generator
@@ -180,6 +182,7 @@ func New(cfg Config) *Voice {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfFltVal("frequency", func(f float64) {
 		if f > 0 {
 			v.pitch = 69 + 12*math.Log2(f/440)
@@ -353,7 +356,9 @@ func (v *Voice) Synthesize() {
 	moving := vowelInc > 0 && cfg.VowelDepth != 0
 	for i := v.waitSamps; i < n; i++ {
 		// the vowel glides; the formants follow every 32 samples
-		target := cfg.Vowel
+		v.expr.Tick(sr)
+		bend := v.expr.Ratio()
+		target := cfg.Vowel + 2*v.expr.Wheel()
 		if moving {
 			ph := vowelInc * float64(v.t)
 			if cfg.VowelSteps {
@@ -392,7 +397,7 @@ func (v *Voice) Synthesize() {
 			}
 			s.drift += (s.driftTo - s.drift) * driftCoef
 			semis := vib*math.Sin(2*math.Pi*s.vibPh) + s.drift
-			s.osc.SetFrequency(f0*s.detune*(1+semis*0.05776), sr) // 2^(x/12) for small x
+			s.osc.SetFrequency(f0*bend*s.detune*(1+semis*0.05776), sr) // 2^(x/12) for small x
 			x := s.osc.Tick(0, false, 0)
 			if stereo {
 				src[0] += x * s.gainL

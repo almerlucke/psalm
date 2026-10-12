@@ -7,6 +7,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -68,6 +69,7 @@ type Voice struct {
 	isCarrier  [NumOperators]bool
 	modTargets [NumOperators][]int // modulators per target operator
 	frequency  float64
+	expr       expression.Expression // the pitch bend; the mod wheel brightens (more modulation), or brings in a vibrato when no operator modulates
 	glideFreq  float64
 	velocity   float64
 	vibPhase   float64
@@ -137,6 +139,7 @@ func (v *Voice) SetPitch(pitch float64) {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfIntVal("algorithm", v.setAlgorithm)
 	msg.IfFltVal("feedback", func(f float64) { v.cfg.Feedback = f })
 	msg.IfFltVal("modDepth", func(f float64) { v.cfg.ModDepth = f })
@@ -304,11 +307,24 @@ func (v *Voice) Synthesize() {
 	}
 
 	carrierScale := level / float64(len(alg.Carriers))
+	hasMod := false // whether any operator modulates another (the wheel brightens), or all are carriers
+	for op := range v.modTargets {
+		if len(v.modTargets[op]) > 0 {
+			hasMod = true
+		}
+	}
 
 	for i := v.waitSamps; i < bufSize; i++ {
-		// pitch with glide and vibrato
+		// pitch with glide and vibrato, and the bend
+		v.expr.Tick(sr)
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
 		freq := v.glideFreq
+		bright := 1 + 1.5*v.expr.Wheel()
+		if hasMod {
+			freq *= v.expr.Ratio()
+		} else {
+			freq *= v.expr.VibratoRatio(sr, 5.5, 0.35) // nothing to brighten: the wheel brings in a vibrato
+		}
 		if cfg.VibratoDepth != 0.0 && cfg.VibratoRate > 0.0 {
 			freq *= math.Pow(2.0, cfg.VibratoDepth*v.vibFade*sine.Cycle(v.vibPhase)/12.0)
 			v.vibPhase += cfg.VibratoRate / sr
@@ -328,6 +344,7 @@ func (v *Voice) Synthesize() {
 			for _, m := range v.modTargets[op] {
 				pm += v.out[m]
 			}
+			pm *= bright
 			if op == NumOperators-1 && v.curFeedback > 0.0 {
 				// averaging the last two outputs keeps strong feedback from oscillating
 				pm += (v.fb[0] + v.fb[1]) * 0.5 * v.curFeedback

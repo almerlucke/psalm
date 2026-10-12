@@ -14,6 +14,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -117,6 +118,10 @@ type Voice struct {
 
 	body []*svf.SVF
 	rng  uint32
+
+	expr    expression.Expression // the pitch bend; the mod wheel brings in a vibrato
+	period  float64               // samples of the pluck's period, unbent
+	tunedTo float64               // the ratio the pluck's loop is tuned for now
 }
 
 // delay is a delay line read with a linear interpolation
@@ -170,6 +175,7 @@ func New(cfg Config) *Voice {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
@@ -237,15 +243,13 @@ func (v *Voice) pluck() {
 	f := v.freq
 	v.s = 0.05 + 0.45*math.Max(0, math.Min(cfg.Damping, 1))
 	// the loop: whole samples, the allpass for the fraction (0.5-1.5) and the filter's half sample
-	d := sr/f - v.s
-	n := int(math.Floor(d - 0.5))
-	frac := d - float64(n)
+	v.period = sr / f
+	n := int(math.Floor(v.period - v.s - 0.5))
 	if v.n != n {
 		clear(v.line)
 		v.prev, v.apX, v.apY = 0, 0, 0
 	}
-	v.n = n
-	v.ap = (1 - frac) / (1 + frac)
+	v.tune(1)
 	// the gain per loop that rings Decay seconds at 220 Hz (longer below, shorter above), over what
 	// the loop filter takes at the fundamental
 	t60 := math.Max(0.01, cfg.Decay) * math.Sqrt(220/f)
@@ -298,6 +302,18 @@ func (v *Voice) pluck() {
 	v.exPos = 0
 }
 
+// tune sets the pluck's loop for its pitch moved by a ratio (the bend, the vibrato): the whole
+// samples of the line, and the allpass for the fraction
+func (v *Voice) tune(ratio float64) {
+	d := v.period/ratio - v.s
+	n := int(math.Floor(d - 0.5))
+	n = max(1, min(n, len(v.line)-2))
+	frac := d - float64(n)
+	v.n = n
+	v.ap = (1 - frac) / (1 + frac)
+	v.tunedTo = ratio
+}
+
 // bowNote sets the two lines of the bow
 func (v *Voice) bowNote() {
 	sr := v.Config().SampleRate
@@ -307,6 +323,11 @@ func (v *Voice) bowNote() {
 	w := 2 * math.Pi * v.freq / sr
 	p := bowPole(sr)
 	v.baseDelay = sr/v.freq - 2 - math.Atan(p*math.Sin(w)/(1-p*math.Cos(w)))/w - bowTune
+	// high up, the short lines' interpolation and the bow make the loop play sharp, measured: about
+	// a sixth of a sample once the period is under 45 samples, easing in from 70
+	if period := sr / v.freq; period < 70 {
+		v.baseDelay += 0.17 * math.Min(1, (70-period)/25)
+	}
 	v.bridge.len = math.Max(v.baseDelay*pos, minBridge)
 	v.neck.len = v.baseDelay * (1 - pos)
 	if !v.active {
@@ -407,11 +428,18 @@ func (v *Voice) Synthesize() {
 	vibInc := cfg.VibratoRate / sr
 	filterPole := bowPole(sr)
 
+	size := len(v.line)
 	for i := v.waitSamps; i < n; i++ {
 		var s float64
+		v.expr.Tick(sr)
+		bend := v.expr.VibratoRatio(sr, 5.5, 0.3)
 		if cfg.Model == Pluck {
-			// the loop: the line, the allpass for the fraction, the loss filter
-			x := v.line[v.pos]
+			if bend != v.tunedTo {
+				v.tune(bend)
+			}
+			// the loop: the line (read the loop's length back), the allpass for the fraction, the
+			// loss filter
+			x := v.line[(v.pos-v.n+size)%size]
 			y := v.ap*x + v.apX - v.ap*v.apY
 			v.apX, v.apY = x, y
 			f := (1-v.s)*y + v.s*v.prev
@@ -423,7 +451,7 @@ func (v *Voice) Synthesize() {
 			}
 			v.line[v.pos] = in
 			v.pos++
-			if v.pos >= v.n {
+			if v.pos >= size {
 				v.pos = 0
 			}
 			s = in
@@ -447,7 +475,7 @@ func (v *Voice) Synthesize() {
 			if cfg.VibratoDepth != 0 {
 				ratio = math.Exp2(-cfg.VibratoDepth * math.Sin(2*math.Pi*v.vibPhase) / 12)
 			}
-			v.neck.len = v.baseDelay*ratio - v.bridge.len
+			v.neck.len = v.baseDelay*ratio/bend - v.bridge.len
 			nut := -v.neck.out
 			v.bowFilt = (1-filterPole)*v.bridge.out*0.95 + filterPole*v.bowFilt
 			bridge := -v.bowFilt

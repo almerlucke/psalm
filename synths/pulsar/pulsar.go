@@ -6,6 +6,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -75,7 +76,8 @@ type Voice struct {
 	ampEnv     *adsr.ADSR
 	formantEnv *adsr.ADSR
 
-	frequency float64 // target
+	frequency float64               // target
+	expr      expression.Expression // the pitch bend; the mod wheel lifts the formant
 	glideFreq float64
 	phase     float64 // position in the current period, 0-1
 	period    float64 // period length relative to the pitch (jitter)
@@ -132,6 +134,7 @@ func (v *Voice) SetPitch(pitch float64) {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	cfg := &v.cfg
 	msg.IfFltVal("formant", func(f float64) { cfg.Formant = f })
 	msg.IfFltVal("formant2", func(f float64) { cfg.Formant2 = f })
@@ -341,9 +344,10 @@ func (v *Voice) Synthesize() {
 		amp := v.ampEnv.Generate()
 		fenv := v.formantEnv.Generate()
 
-		// pitch with glide and vibrato
+		// pitch with glide and vibrato, and the bend
+		v.expr.Tick(sr)
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
-		freq := v.glideFreq
+		freq := v.glideFreq * v.expr.Ratio()
 		if cfg.VibratoDepth != 0 && cfg.VibratoRate > 0 {
 			freq *= math.Exp2(cfg.VibratoDepth * sine.Cycle(v.vibPhase) / 12.0)
 			v.vibPhase += cfg.VibratoRate / sr
@@ -360,7 +364,7 @@ func (v *Voice) Synthesize() {
 		// next pulse
 		if v.phase >= v.period {
 			v.phase -= v.period
-			v.startPulse(cfg.FormantEnvAmount*fenv+formantLFO, freq)
+			v.startPulse(cfg.FormantEnvAmount*fenv+formantLFO+1.5*v.expr.Wheel(), freq)
 		}
 
 		x := 0.0

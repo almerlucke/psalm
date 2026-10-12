@@ -6,6 +6,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -100,7 +101,8 @@ type Voice struct {
 	positionEnv *adsr.ADSR
 	filters     [2]*svf.SVF
 
-	frequency float64 // target
+	frequency float64               // target
+	expr      expression.Expression // the pitch bend; the mod wheel moves through the table and opens the filter
 	glideFreq float64
 	phases    [MaxUnison]float64
 	subPhase  float64
@@ -152,6 +154,7 @@ func (v *Voice) SetPitch(pitch float64) {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg)
 	cfg := &v.cfg
 	if t, ok := msg["table"].(*Table); ok {
 		cfg.Table = t
@@ -313,9 +316,10 @@ func (v *Voice) Synthesize() {
 		fenv := v.filterEnv.Generate()
 		penv := v.positionEnv.Generate()
 
-		// pitch with glide and vibrato
+		// pitch with glide and vibrato, and the bend
+		v.expr.Tick(sr)
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
-		freq := v.glideFreq
+		freq := v.glideFreq * v.expr.Ratio()
 		if cfg.VibratoDepth != 0 && cfg.VibratoRate > 0 {
 			freq *= math.Exp2(cfg.VibratoDepth * sine.Cycle(v.vibPhase) / 12.0)
 			v.vibPhase += cfg.VibratoRate / sr
@@ -324,7 +328,7 @@ func (v *Voice) Synthesize() {
 
 		// position: the smoothed setting plus envelope and LFO
 		v.position += (cfg.Position - v.position) * posCoef
-		pos := v.position + cfg.PositionEnvAmount*penv
+		pos := v.position + cfg.PositionEnvAmount*penv + 0.6*v.expr.Wheel()
 		if cfg.PositionLFODepth != 0 && cfg.PositionLFORate > 0 {
 			pos += cfg.PositionLFODepth * sine.Cycle(v.lfoPhase)
 			v.lfoPhase += cfg.PositionLFORate / sr
@@ -359,7 +363,7 @@ func (v *Voice) Synthesize() {
 			v.cutoff += cutoffInc
 			v.res += resInc
 			if v.count == 0 {
-				fc := v.cutoff * keyTrack * math.Exp2(cfg.FilterEnvAmount*fenv)
+				fc := v.cutoff * keyTrack * math.Exp2(cfg.FilterEnvAmount*fenv+1.5*v.expr.Wheel())
 				for _, f := range v.filters {
 					f.Set(fc, v.res)
 				}

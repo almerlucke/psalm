@@ -21,7 +21,7 @@ var Presets = map[string]func() Config{
 
 // Bongo is the gate struck with its resonance up: a short sine that rings and dies like a hand drum
 func Bongo() Config {
-	return Config{Decay: 0.02, Gate: Combo, Resonance: 0.75, Response: 0.12, Color: 0.6, Level: 9}
+	return Config{Decay: 0.02, Gate: Combo, Resonance: 0.75, Response: 0.12, Color: 0.6, KeyTrack: 1, Level: 9}
 }
 
 // Pluck is a folded sine struck short: bright at the start, rounding off as the gate closes

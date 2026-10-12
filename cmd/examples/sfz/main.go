@@ -118,7 +118,7 @@ func main() {
 			controls[cc] = fmt.Sprintf("cc%d", cc)
 		}
 	}
-	kb := keyboard.New(input, keyboard.Config{Transpose: *transpose, Controls: controls, HoldNotes: inst.NoSustain}, synth)
+	kb := keyboard.New(input, keyboard.Config{Transpose: *transpose, Controls: controls, HoldNotes: inst.NoSustain, PitchBend: "pitchBend"}, synth)
 	switches, _ := inst.Switches()
 	if len(switches) > 0 {
 		kb.OnEvent(func(e midi.Event, _ psalm.CtrlTick) {

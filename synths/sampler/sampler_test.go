@@ -882,3 +882,114 @@ func TestLoadSFZPedalAndDynamic(t *testing.T) {
 		t.Errorf("pedal %d from %g, dynamic %v, unsupported %v", inst.SustainCC, inst.SustainLo, inst.Regions[0].EnvDynamic, inst.Unsupported)
 	}
 }
+
+func TestPolyphony(t *testing.T) {
+	// note_polyphony 1: striking a key again lets the old note of it go
+	r := NewRegion(NewSound(sr, constant(0.3, 3)))
+	r.VelTrack, r.NotePolyphony = 0, 1
+	vs := group(Config{Instrument: MustInstrument(r)}, 4)
+	vs[0].NoteOn(1, psalm.Message{"pitch": 60.0}, psalm.CtrlTick{}, vs[0].Config())
+	run(vs[0], 2)
+	vs[1].NoteOn(1, psalm.Message{"pitch": 60.0}, psalm.CtrlTick{}, vs[1].Config())
+	vs[2].NoteOn(1, psalm.Message{"pitch": 62.0}, psalm.CtrlTick{}, vs[2].Config())
+	run(vs[0], buffers(0.1))
+	if vs[0].IsActive() {
+		t.Errorf("note_polyphony 1: the first note of the key plays on")
+	}
+	run(vs[2], 1)
+	if !vs[2].IsActive() {
+		t.Errorf("note_polyphony 1: another key stopped")
+	}
+	// polyphony 2 over the group: the third note lets the oldest go
+	g := NewRegion(NewSound(sr, constant(0.3, 3)))
+	g.VelTrack, g.Group, g.Polyphony = 0, 3, 2
+	vs = group(Config{Instrument: MustInstrument(g)}, 4)
+	for i, p := range []float64{60, 62, 64} {
+		vs[i].NoteOn(1, psalm.Message{"pitch": p}, psalm.CtrlTick{}, vs[i].Config())
+		run(vs[i], 1)
+	}
+	run(vs[0], buffers(0.1))
+	if vs[0].IsActive() || !vs[1].IsActive() {
+		t.Errorf("polyphony 2: the oldest (%v) should stop, the second (%v) play", vs[0].IsActive(), vs[1].IsActive())
+	}
+}
+
+func TestFirstAndLegato(t *testing.T) {
+	first := NewRegion(NewSound(sr, constant(0.1, 1)))
+	legato := NewRegion(NewSound(sr, constant(0.4, 1)))
+	first.VelTrack, legato.VelTrack = 0, 0
+	first.Trigger, legato.Trigger = OnFirst, OnLegato
+	vs := group(Config{Instrument: MustInstrument(first, legato)}, 3)
+	// the first key of a phrase plays the first region, a key while it is held the legato one
+	if got := level(vs[0], psalm.Message{"pitch": 60.0}); math.Abs(got-0.1) > 1e-6 {
+		t.Errorf("alone: %g, want the first region", got)
+	}
+	if got := level(vs[1], psalm.Message{"pitch": 62.0}); math.Abs(got-0.4) > 1e-6 {
+		t.Errorf("over a held key: %g, want the legato region", got)
+	}
+	vs[0].NoteOff()
+	vs[1].NoteOff()
+	if got := level(vs[2], psalm.Message{"pitch": 64.0}); math.Abs(got-0.1) > 1e-6 {
+		t.Errorf("after letting go: %g, want the first region again", got)
+	}
+}
+
+// writeLoopedWAV writes a mono 16 bit WAV with a smpl chunk holding one loop
+func writeLoopedWAV(t *testing.T, path string, samples []float32, start, end uint32) {
+	t.Helper()
+	writeWAV(t, path, samples)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	smpl := make([]byte, 8+36+24)
+	copy(smpl, "smpl")
+	binary.LittleEndian.PutUint32(smpl[4:], 36+24)
+	binary.LittleEndian.PutUint32(smpl[8+28:], 1) // one loop
+	binary.LittleEndian.PutUint32(smpl[8+36+8:], start)
+	binary.LittleEndian.PutUint32(smpl[8+36+12:], end)
+	data = append(data, smpl...)
+	binary.LittleEndian.PutUint32(data[4:], uint32(len(data)-8))
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWAVLoopsAndBend(t *testing.T) {
+	dir := t.TempDir()
+	writeLoopedWAV(t, filepath.Join(dir, "loop.wav"), sine(441, 0.5), 4410, 8819)
+	writeWAV(t, filepath.Join(dir, "plain.wav"), sine(441, 0.5))
+	sfz := `<region> sample=loop.wav key=60 bend_up=1200 bend_down=-100
+<region> sample=loop.wav key=62 loop_mode=no_loop
+<region> sample=plain.wav key=64
+`
+	if err := os.WriteFile(filepath.Join(dir, "l.sfz"), []byte(sfz), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inst, err := LoadSFZ(filepath.Join(dir, "l.sfz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := inst.Regions
+	if r[0].Loop != LoopContinuous || r[0].LoopStart != 4410 || r[0].LoopEnd != 8819 {
+		t.Errorf("the WAV's loop: %v %d-%d", r[0].Loop, r[0].LoopStart, r[0].LoopEnd)
+	}
+	if r[1].Loop != NoLoop || r[2].Loop != NoLoop {
+		t.Errorf("no_loop set, or no loop in the file: %v %v", r[1].Loop, r[2].Loop)
+	}
+	if r[0].BendUp != 1200 || r[0].BendDown != -100 || r[2].BendUp != 200 {
+		t.Errorf("bend up %g down %g, the default %g", r[0].BendUp, r[0].BendDown, r[2].BendUp)
+	}
+	// the looped one sounds on past its end; bent all the way up an octave
+	v := New(Config{Instrument: inst})
+	x := play(v, psalm.Message{"pitch": 60.0}, buffers(1))
+	if p := peak(x[int(0.8*sr):]); p < 0.5 {
+		t.Errorf("the WAV's loop: silent after the sound (%g)", p)
+	}
+	v.ReceiveMessage(psalm.Message{"pitchBend": 1.0})
+	run(v, 2)
+	x = run(v, buffers(0.3))
+	if f := frequency(x[1000:]); math.Abs(f-882) > 6 {
+		t.Errorf("bent up by bend_up 1200: %.0f Hz, want 882", f)
+	}
+}
