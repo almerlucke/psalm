@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -59,34 +60,57 @@ func Devices() ([]DeviceInfo, error) {
 }
 
 // OpenDevice opens a raw MIDI device for reading (and writing, when allowed). An empty path opens
-// the first device that is not virtual (a "Virtual" card), or the first device
+// the first device that is not virtual (a "Virtual" card); when there are only virtual ones it
+// fails rather than read a port nothing plays into (give their path to use one). A device another
+// program holds fails at once instead of waiting for it
 func OpenDevice(path string) (*Device, error) {
 	if path == "" {
 		infos, err := Devices()
 		if err != nil {
 			return nil, err
 		}
-		if len(infos) == 0 {
-			return nil, errors.New("midi: no devices")
-		}
-		path = infos[0].Path
+		var virtual []string
 		for _, i := range infos {
 			if !strings.Contains(strings.ToLower(i.Name), "virtual") {
 				path = i.Path
 				break
 			}
+			virtual = append(virtual, i.Path)
+		}
+		if path == "" {
+			if len(virtual) > 0 {
+				return nil, fmt.Errorf("midi: no keyboard connected, only virtual ports (%s)", strings.Join(virtual, ", "))
+			}
+			return nil, errors.New("midi: no keyboard connected")
 		}
 	}
-	f, err := os.OpenFile(path, os.O_RDWR, 0)
+	f, err := openRaw(path)
 	if err != nil {
-		f, err = os.Open(path)
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
 	}
 	d := &Device{Queue: NewQueue(), file: f, path: path, closed: make(chan struct{})}
 	go d.read()
 	return d, nil
+}
+
+// openRaw opens a raw MIDI device, for reading and writing or else for reading. It opens without
+// blocking (a busy device fails instead of waiting until it is free), then reads blocking
+func openRaw(path string) (*os.File, error) {
+	fd, err := syscall.Open(path, syscall.O_RDWR|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		fd, err = syscall.Open(path, syscall.O_RDONLY|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
+	}
+	if errors.Is(err, syscall.EBUSY) {
+		return nil, fmt.Errorf("midi: %s is in use by another program", path)
+	}
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	if err := syscall.SetNonblock(fd, false); err != nil {
+		syscall.Close(fd)
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), path), nil
 }
 
 // Path returns the path of the device

@@ -14,6 +14,7 @@ package sampler
 import (
 	"fmt"
 	"math"
+	"slices"
 )
 
 // Sound is the audio of a region: deinterleaved channels, with optional band limited copies for
@@ -130,6 +131,66 @@ type Region struct {
 	Resonance   float64    // dB the filter peaks at its cutoff, 0 is none
 	Filter      FilterType // the kind of filter
 	FilVelTrack float64    // cents the cutoff rises at full velocity
+
+	// Keyswitches: the keys SwLoKey to SwHiKey choose an articulation instead of playing. The region
+	// plays only while the last of them pressed is SwLast (-1: whichever), SwDefault (-1 none) is
+	// the one chosen before any is pressed, SwLabel its name
+	SwLoKey, SwHiKey int
+	SwLast           int
+	SwDefault        int
+	SwLabel          string
+
+	Fades  []Fade   // crossfades by velocity, key or a controller
+	CCGain []CCGain // dB a controller adds at its top (gain_ccN)
+	CCEnv  []CCEnv  // seconds (sustain: 0-1) a controller adds to the envelope at its top
+}
+
+// Source is what a crossfade follows: the velocity, the key, or a controller (0-127)
+type Source int
+
+const (
+	FromVelocity Source = -1
+	FromKey      Source = -2
+)
+
+// Fade fades a region in (from Lo to Hi) or out (Out) over a source: the velocity (1-127), the key
+// or a controller's value (0-127). Fades by velocity and key are set when the note starts, by a
+// controller they follow it while the note sounds (the mod wheel blending the dynamic layers)
+type Fade struct {
+	From   Source
+	Lo, Hi float64
+	Out    bool
+	Linear bool // the gain follows the source in a straight line (SFZ xf_*curve=gain), not as power
+}
+
+// gain returns the gain of the fade at a value
+func (f Fade) gain(v float64) float64 {
+	t := 1.0
+	switch {
+	case v <= f.Lo:
+		t = 0
+	case v < f.Hi:
+		t = (v - f.Lo) / (f.Hi - f.Lo)
+	}
+	if f.Out {
+		t = 1 - t
+	}
+	if !f.Linear {
+		t = math.Sqrt(t)
+	}
+	return t
+}
+
+// CCGain is the dB a controller adds at its top, in proportion below
+type CCGain struct {
+	CC int
+	DB float64
+}
+
+// CCEnv is what a controller adds to the envelope at its top, in proportion below, when a note starts
+type CCEnv struct {
+	CC  int
+	Env Envelope
 }
 
 // FilterType is the filter of a region
@@ -155,6 +216,7 @@ func NewRegion(sound Sound) Region {
 		VelTrack: 1,
 		HiRand:   1,
 		Env:      Envelope{Sustain: 1, Release: 0.05},
+		SwLoKey:  -1, SwHiKey: -1, SwLast: -1, SwDefault: -1,
 	}
 }
 
@@ -177,6 +239,46 @@ type Instrument struct {
 	// Unsupported lists the SFZ opcodes the file uses that the sampler doesn't know (they are left
 	// out), with how often
 	Unsupported map[string]int
+	// CC are the values (0-127) the controllers start at (SFZ set_ccN), the others start at 0
+	CC map[int]float64
+}
+
+// Switch is a keyswitch: its key and its name
+type Switch struct {
+	Key   int
+	Label string
+}
+
+// Switches returns the keyswitches of the instrument (the articulations), lowest key first, and
+// the one chosen at the start (-1 none)
+func (inst *Instrument) Switches() ([]Switch, int) {
+	seen := map[int]string{}
+	def := -1
+	for i := range inst.Regions {
+		r := &inst.Regions[i]
+		if r.SwLast >= 0 && (seen[r.SwLast] == "" || r.SwLabel != "") {
+			seen[r.SwLast] = r.SwLabel
+		}
+		if def < 0 && r.SwDefault >= 0 {
+			def = r.SwDefault
+		}
+	}
+	var out []Switch
+	for k, l := range seen {
+		out = append(out, Switch{k, l})
+	}
+	slices.SortFunc(out, func(a, b Switch) int { return a.Key - b.Key })
+	return out, def
+}
+
+// isSwitch says whether a key is a keyswitch
+func (inst *Instrument) isSwitch(key int) bool {
+	for i := range inst.Regions {
+		if r := &inst.Regions[i]; r.SwLoKey >= 0 && key >= r.SwLoKey && key <= r.SwHiKey {
+			return true
+		}
+	}
+	return false
 }
 
 // NewInstrument checks the regions and returns them as an instrument

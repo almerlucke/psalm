@@ -2,9 +2,11 @@ package sampler
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -66,6 +68,19 @@ func ParseSFZ(text string, dir string, load Loader) (*Instrument, error) {
 	}
 	if len(p.inst.Regions) == 0 {
 		return nil, fmt.Errorf("sampler: the instrument has no regions")
+	}
+	// the controllers' starting values
+	for op, v := range p.control {
+		if n, ok := strings.CutPrefix(op, "set_cc"); ok {
+			cc, err1 := strconv.Atoi(n)
+			val, err2 := strconv.ParseFloat(v, 64)
+			if err1 == nil && err2 == nil {
+				if p.inst.CC == nil {
+					p.inst.CC = map[int]float64{}
+				}
+				p.inst.CC[cc] = math.Max(0, math.Min(val, 127))
+			}
+		}
 	}
 	return p.inst, nil
 }
@@ -260,6 +275,9 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 	}
 	frames := func(op, v string) int64 { return int64(num(op, v)) }
 
+	fades := map[fadeSource]*Fade{}
+	curves := map[string]bool{} // linear ("gain") curves: vel, key, cc
+
 	// key sets the range and the root, the opcodes after it can change them
 	if v, ok := ops["key"]; ok {
 		k := key("key", v)
@@ -374,10 +392,40 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 			default:
 				p.inst.Unsupported[op+"="+v]++
 			}
+		case "sw_lokey":
+			r.SwLoKey = key(op, v)
+		case "sw_hikey":
+			r.SwHiKey = key(op, v)
+		case "sw_last":
+			r.SwLast = key(op, v)
+		case "sw_default":
+			r.SwDefault = key(op, v)
+		case "sw_label":
+			r.SwLabel = v
+		case "xf_velcurve", "xf_keycurve", "xf_cccurve":
+			curves[strings.TrimSuffix(strings.TrimPrefix(op, "xf_"), "curve")] = v == "gain"
 		default:
-			p.inst.Unsupported[op]++
+			if !controlled(&r, op, v, num, fades) {
+				p.inst.Unsupported[op]++
+			}
 		}
 	}
+	// the crossfades: a fade in or out of each source that has one (SFZ's defaults fill the rest)
+	for src, f := range fades {
+		kind := "cc"
+		switch src.from {
+		case FromVelocity:
+			kind = "vel"
+		case FromKey:
+			kind = "key"
+		}
+		f.Linear = curves[kind]
+		if src.from == FromKey {
+			f.Lo, f.Hi = f.Lo+float64(keyShift), f.Hi+float64(keyShift)
+		}
+		r.Fades = append(r.Fades, *f)
+	}
+	slices.SortFunc(r.Fades, func(a, b Fade) int { return int(a.From) - int(b.From) })
 	if len(errs) > 0 {
 		return r, false, fmt.Errorf("sampler: %s: bad %s", name, strings.Join(errs, ", "))
 	}
@@ -385,6 +433,86 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 		r.SeqPosition = 1
 	}
 	return r, true, nil
+}
+
+// fadeSource is a crossfade of a region being read: its source, in or out
+type fadeSource struct {
+	from Source
+	out  bool
+}
+
+var (
+	xfOpcode    = regexp.MustCompile(`^xf(in|out)_(lo|hi)(vel|key|cc(\d+))$`)
+	ccGainOp    = regexp.MustCompile(`^(?:gain_cc|gain_oncc|volume_oncc)(\d+)$`)
+	ccEnvOpcode = regexp.MustCompile(`^ampeg_(delay|attack|hold|decay|sustain|release)(?:cc|_oncc)(\d+)$`)
+)
+
+// controlled reads the opcodes of crossfades and controllers; false when op is none of them
+func controlled(r *Region, op, v string, num func(op, v string) float64, fades map[fadeSource]*Fade) bool {
+	if m := xfOpcode.FindStringSubmatch(op); m != nil {
+		src := fadeSource{out: m[1] == "out"}
+		switch {
+		case m[3] == "vel":
+			src.from = FromVelocity
+		case m[3] == "key":
+			src.from = FromKey
+		default:
+			cc, _ := strconv.Atoi(m[4])
+			src.from = Source(cc)
+		}
+		f := fades[src]
+		if f == nil {
+			// SFZ: a fade in is 0 to 0 (no fade) and a fade out 127 to 127 until set
+			f = &Fade{From: src.from, Out: src.out}
+			if src.out {
+				f.Lo, f.Hi = 127, 127
+			}
+			fades[src] = f
+		}
+		var val float64
+		if src.from == FromKey {
+			k, err := parseKey(v)
+			if err != nil {
+				return false
+			}
+			val = float64(k)
+		} else {
+			val = num(op, v)
+		}
+		if m[2] == "lo" {
+			f.Lo = val
+		} else {
+			f.Hi = val
+		}
+		return true
+	}
+	if m := ccGainOp.FindStringSubmatch(op); m != nil {
+		cc, _ := strconv.Atoi(m[1])
+		r.CCGain = append(r.CCGain, CCGain{CC: cc, DB: num(op, v)})
+		return true
+	}
+	if m := ccEnvOpcode.FindStringSubmatch(op); m != nil {
+		cc, _ := strconv.Atoi(m[2])
+		var e Envelope
+		f := num(op, v)
+		switch m[1] {
+		case "delay":
+			e.Delay = f
+		case "attack":
+			e.Attack = f
+		case "hold":
+			e.Hold = f
+		case "decay":
+			e.Decay = f
+		case "sustain":
+			e.Sustain = f / 100
+		case "release":
+			e.Release = f
+		}
+		r.CCEnv = append(r.CCEnv, CCEnv{CC: cc, Env: e})
+		return true
+	}
+	return false
 }
 
 // parseKey reads a key as a number or a note name (c4 is 60, c#4 and db4 61)

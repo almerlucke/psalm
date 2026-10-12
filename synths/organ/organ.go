@@ -149,6 +149,7 @@ type Organ struct {
 	delay     []float64
 	dpos      int
 	lfoPhase  float64
+	silent    int // samples it has been silent: it rests once the scanner's delay is empty
 }
 
 // New returns an organ
@@ -334,6 +335,24 @@ func (o *Organ) Synthesize() {
 	n := o.Config().BufferSize
 	sr := o.Config().SampleRate
 	cfg := &o.cfg
+
+	// no key sounding, nothing left in the scanner: the wheels turn on, nothing else to do
+	if len(o.keys) == 0 && len(o.events) == 0 && len(o.timers) == 0 && o.click.env <= 1e-5 && o.silent > len(o.delay) {
+		for w := range numWheels {
+			o.phase[w] += o.inc[w] * float64(n)
+			o.phase[w] -= math.Floor(o.phase[w])
+		}
+		o.bars = o.barGains()
+		for _, ch := range out {
+			clear(ch)
+		}
+		return
+	}
+	if len(o.keys) == 0 && o.click.env <= 1e-5 {
+		o.silent += n
+	} else {
+		o.silent = 0
+	}
 
 	// the drawbars glide to their settings over the buffer
 	target := o.barGains()

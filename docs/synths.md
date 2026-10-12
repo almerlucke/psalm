@@ -894,12 +894,32 @@ tracking, a short release):
 | `LoRand`, `HiRand` | `lorand`, `hirand` | Random choice per note |
 | `Env` | `ampeg_delay`, `_attack`, `_hold`, `_decay`, `_sustain`, `_release` | The amp envelope (seconds, sustain 0-1) |
 | `Cutoff`, `Resonance`, `Filter`, `FilVelTrack` | `cutoff`, `resonance`, `fil_type`, `fil_veltrack` | A filter per region |
+| `SwLoKey`, `SwHiKey`, `SwLast`, `SwDefault`, `SwLabel` | `sw_lokey`, `sw_hikey`, `sw_last`, `sw_default`, `sw_label` | Keyswitches: the keys `SwLoKey`-`SwHiKey` choose the articulation instead of playing; the region plays while the last one pressed is `SwLast` |
+| `Fades` | `xfin_lovel` ... `xfout_hikey`, `xfin_loccN` ... `xfout_hiccN`, `xf_velcurve`, `xf_keycurve`, `xf_cccurve` | Crossfades by velocity, key or a controller (power or `Linear`); the ones by a controller follow it while the note sounds |
+| `CCGain` | `gain_ccN`, `volume_onccN` | dB a controller adds at its top |
+| `CCEnv` | `ampeg_attackccN` (and `delay`, `hold`, `decay`, `sustain`, `release`) | What a controller adds to the envelope when a note starts |
 
-The SFZ loader knows `<control>` (`default_path`, `note_offset`, `octave_offset`), `<global>`,
+Controllers reach the sampler as messages, `"cc1"` (the mod wheel) to `"cc127"`, 0-1: give a
+keyboard `Controls: map[int]string{1: "cc1"}`. `Instrument.Switches()` lists the keyswitches.
+
+The SFZ loader knows `<control>` (`default_path`, `note_offset`, `octave_offset`, `set_ccN`), `<global>`,
 `<master>`, `<group>`, `<region>`, `#define` and `#include`. Opcodes it doesn't know are counted
 in `Instrument.Unsupported`. Sounds load with libsndfile: wav, aiff, flac, ogg.
 
 Notes take `pitch` (or `frequency`) and `velocity` (0-1). The levels are those of the recordings.
+
+The sounds an SFZ file names are found from its folder (and its `default_path`). When they live
+elsewhere, give a loader that finds them: `LoadSFZWith` hands it every path as the file has it.
+
+```go
+inst, err := sampler.LoadSFZWith("scripts/piano.sfz", func(path string) (sampler.Sound, error) {
+	rel, _ := filepath.Rel("scripts", path)                // samples/C4.wav
+	return sampler.LoadFile(filepath.Join("/data/piano", rel)) // /data/piano/samples/C4.wav
+})
+```
+
+`cmd/examples/sfz` plays an SFZ instrument from a MIDI keyboard, with `-sounds` and `-rename` for
+sounds kept elsewhere.
 
 ## organ
 

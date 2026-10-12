@@ -500,3 +500,135 @@ func TestBadRegions(t *testing.T) {
 		}
 	}
 }
+
+// level plays a note on a voice and returns its level once it settled
+func level(v *Voice, msg psalm.Message) float64 {
+	x := play(v, msg, 4)
+	return x[len(x)-1]
+}
+
+func TestKeyswitches(t *testing.T) {
+	art := func(value float32, sw int, label string) Region {
+		r := NewRegion(NewSound(sr, constant(value, 1))).Keys(48, 96, 60)
+		r.VelTrack, r.KeyTrack = 0, 0
+		r.SwLoKey, r.SwHiKey, r.SwLast, r.SwDefault, r.SwLabel = 36, 37, sw, 36, label
+		return r
+	}
+	inst := MustInstrument(art(0.1, 36, "sustain"), art(0.3, 37, "pizzicato"))
+	if sw, def := inst.Switches(); len(sw) != 2 || sw[1] != (Switch{37, "pizzicato"}) || def != 36 {
+		t.Errorf("the switches: %v, default %d", sw, def)
+	}
+	vs := group(Config{Instrument: inst}, 2)
+	if got := level(vs[0], psalm.Message{"pitch": 60.0}); math.Abs(got-0.1) > 1e-6 {
+		t.Errorf("by default the first articulation: %g", got)
+	}
+	// the keyswitch itself is silent, and the next notes play the other articulation
+	if got := level(vs[1], psalm.Message{"pitch": 37.0}); got != 0 {
+		t.Errorf("a keyswitch sounds: %g", got)
+	}
+	if got := level(vs[0], psalm.Message{"pitch": 60.0}); math.Abs(got-0.3) > 1e-6 {
+		t.Errorf("after the keyswitch: %g, want the second articulation", got)
+	}
+}
+
+func TestVelocityAndKeyFades(t *testing.T) {
+	soft := NewRegion(NewSound(sr, constant(1, 1)))
+	soft.VelTrack = 0
+	soft.Fades = []Fade{{From: FromVelocity, Lo: 40, Hi: 80, Out: true}}
+	loud := soft
+	loud.Fades = []Fade{{From: FromVelocity, Lo: 40, Hi: 80}}
+	v := voice(soft, loud)
+	// halfway the fade the two meet at equal power: sqrt(0.5) each
+	if got := level(v, psalm.Message{"pitch": 60.0, "velocity": 60.0 / 127}); math.Abs(got-2*math.Sqrt(0.5)) > 0.02 {
+		t.Errorf("halfway the velocity fade: %g, want %g", got, 2*math.Sqrt(0.5))
+	}
+	if got := level(v, psalm.Message{"pitch": 60.0, "velocity": 0.2}); math.Abs(got-1) > 1e-6 {
+		t.Errorf("below the fade: %g, want the soft layer alone", got)
+	}
+	// a linear fade by key
+	r := soft
+	r.Fades = []Fade{{From: FromKey, Lo: 60, Hi: 70, Linear: true}}
+	if got := level(voice(r), psalm.Message{"pitch": 65.0}); math.Abs(got-0.5) > 1e-6 {
+		t.Errorf("halfway a linear key fade: %g", got)
+	}
+}
+
+func TestModWheel(t *testing.T) {
+	// two dynamic layers blended by the mod wheel while the note sounds
+	piano := NewRegion(NewSound(sr, constant(0.2, 2)))
+	piano.VelTrack = 0
+	piano.Fades = []Fade{{From: 1, Lo: 0, Hi: 127, Out: true, Linear: true}}
+	forte := NewRegion(NewSound(sr, constant(0.6, 2)))
+	forte.VelTrack = 0
+	forte.Fades = []Fade{{From: 1, Lo: 0, Hi: 127, Linear: true}}
+	inst := MustInstrument(piano, forte)
+	inst.CC = map[int]float64{1: 0}
+	v := New(Config{Instrument: inst})
+	if got := level(v, psalm.Message{"pitch": 60.0}); math.Abs(got-0.2) > 1e-6 {
+		t.Errorf("the wheel down: %g, want the soft layer", got)
+	}
+	v.ReceiveMessage(psalm.Message{"cc1": 1.0})
+	x := run(v, 2)
+	if got := x[len(x)-1]; math.Abs(got-0.6) > 1e-6 {
+		t.Errorf("the wheel up: %g, want the loud layer", got)
+	}
+	// it glides there: no jump between two samples
+	for i := 1; i < len(x); i++ {
+		if math.Abs(x[i]-x[i-1]) > 0.01 {
+			t.Fatalf("the wheel jumps at sample %d: %g to %g", i, x[i-1], x[i])
+		}
+	}
+	// a controller's gain, and its time added to the attack
+	r := NewRegion(NewSound(sr, constant(1, 2)))
+	r.VelTrack = 0
+	r.CCGain = []CCGain{{CC: 1, DB: -12}}
+	r.CCEnv = []CCEnv{{CC: 1, Env: Envelope{Attack: 0.5}}}
+	inst = MustInstrument(r)
+	inst.CC = map[int]float64{1: 127}
+	v = New(Config{Instrument: inst})
+	x = play(v, psalm.Message{"pitch": 60.0}, buffers(1))
+	if got := x[int(0.25*sr)]; math.Abs(got-0.5*math.Pow(10, -12.0/20)) > 0.01 {
+		t.Errorf("halfway the attack the wheel lengthened, 12 dB down: %g", got)
+	}
+}
+
+func TestLoadSFZControls(t *testing.T) {
+	dir := t.TempDir()
+	writeWAV(t, filepath.Join(dir, "a.wav"), constant(0.5, 0.2))
+	sfz := `<control> set_cc1=64
+<group> sw_lokey=c2 sw_hikey=d2 sw_default=c2 sw_last=c#2 sw_label=Tremolo
+xfin_locc1=32 xfin_hicc1=127 xf_cccurve=gain gain_cc1=-15 ampeg_attackcc1=0.5
+xfout_lovel=40 xfout_hivel=80 xfin_lokey=c4 xfin_hikey=c5
+<region> sample=a.wav
+`
+	if err := os.WriteFile(filepath.Join(dir, "c.sfz"), []byte(sfz), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inst, err := LoadSFZ(filepath.Join(dir, "c.sfz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := inst.Regions[0]
+	if inst.CC[1] != 64 || r.SwLoKey != 36 || r.SwHiKey != 38 || r.SwDefault != 36 || r.SwLast != 37 || r.SwLabel != "Tremolo" {
+		t.Errorf("keyswitches and controllers: cc %v, %d-%d default %d last %d %q", inst.CC, r.SwLoKey, r.SwHiKey, r.SwDefault, r.SwLast, r.SwLabel)
+	}
+	want := []Fade{
+		{From: FromKey, Lo: 60, Hi: 72},
+		{From: FromVelocity, Lo: 40, Hi: 80, Out: true},
+		{From: 1, Lo: 32, Hi: 127, Linear: true},
+	}
+	if len(r.Fades) != len(want) {
+		t.Fatalf("fades %+v", r.Fades)
+	}
+	for i := range want {
+		if r.Fades[i] != want[i] {
+			t.Errorf("fade %d: %+v, want %+v", i, r.Fades[i], want[i])
+		}
+	}
+	if len(r.CCGain) != 1 || r.CCGain[0] != (CCGain{1, -15}) || len(r.CCEnv) != 1 || r.CCEnv[0].Env.Attack != 0.5 {
+		t.Errorf("controller gain %+v, envelope %+v", r.CCGain, r.CCEnv)
+	}
+	if len(inst.Unsupported) != 0 {
+		t.Errorf("unsupported: %v", inst.Unsupported)
+	}
+}

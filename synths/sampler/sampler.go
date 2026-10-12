@@ -3,6 +3,8 @@ package sampler
 import (
 	"math"
 	"math/rand/v2"
+	"strconv"
+	"strings"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
@@ -30,6 +32,28 @@ type shared struct {
 	turns  []int // per region: how often its notes played
 	rng    *rand.Rand
 	voices []*Voice
+	cc     [128]float64 // the controllers, 0-127
+	sw     int          // the last keyswitch pressed (-1 none)
+}
+
+// ccGain returns the gain the controllers give a region now: its fades by controller and its
+// controller gains
+func (sh *shared) ccGain(r *Region) float64 {
+	g, db := 1.0, 0.0
+	for _, f := range r.Fades {
+		if f.From >= 0 && int(f.From) < len(sh.cc) {
+			g *= f.gain(sh.cc[f.From])
+		}
+	}
+	for _, c := range r.CCGain {
+		if c.CC >= 0 && c.CC < len(sh.cc) {
+			db += c.DB * sh.cc[c.CC] / 127
+		}
+	}
+	if db != 0 {
+		g *= math.Pow(10, db/20)
+	}
+	return g
 }
 
 // Voice plays one note of a sampler: its regions, and the release regions when the key goes up.
@@ -63,6 +87,8 @@ type layer struct {
 	filterOn  bool
 	filterMod svf.Mode
 	active    bool
+	cc        float64 // the gain of the controllers, gliding to theirs over a buffer
+	envSet    Envelope
 }
 
 // New returns a voice. Voices made one by one don't share round robin turns or choke groups; use
@@ -92,9 +118,15 @@ func newVoice(cfg Config, sh *shared) *Voice {
 		v.layers[i].filters = [2]*svf.SVF{svf.New(1000, 0, sr), svf.New(1000, 0, sr)}
 	}
 	if sh == nil {
-		sh = &shared{rng: v.Rand()}
-		if cfg.Instrument != nil {
-			sh.turns = make([]int, len(cfg.Instrument.Regions))
+		sh = &shared{rng: v.Rand(), sw: -1}
+		if inst := cfg.Instrument; inst != nil {
+			sh.turns = make([]int, len(inst.Regions))
+			for cc, val := range inst.CC {
+				if cc >= 0 && cc < len(sh.cc) {
+					sh.cc[cc] = val
+				}
+			}
+			_, sh.sw = inst.Switches()
 		}
 	}
 	v.shared = sh
@@ -112,6 +144,14 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	})
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
+	// controllers: "cc1" (the mod wheel) to "cc127", 0-1
+	for key := range msg {
+		if n, ok := strings.CutPrefix(key, "cc"); ok {
+			if cc, err := strconv.Atoi(n); err == nil && cc >= 0 && cc < len(v.shared.cc) {
+				msg.IfFltVal(key, func(f float64) { v.shared.cc[cc] = math.Max(0, math.Min(f, 1)) * 127 })
+			}
+		}
+	}
 }
 
 func (v *Voice) Receive(value any, _ int) {
@@ -154,13 +194,19 @@ func (v *Voice) start(trigger Trigger) {
 	}
 	sh := v.shared
 	key, vel := v.key(), v.vel()
+	if trigger == OnAttack && inst.isSwitch(key) {
+		sh.sw = key // a keyswitch: the articulation from now on
+	}
 	random := sh.rng.Float64()
 	var playing [16]int
 	matched := playing[:0]
 	for i := range inst.Regions {
 		r := &inst.Regions[i]
-		if r.Trigger != trigger || !r.plays(key, vel) {
+		if r.Trigger != trigger || !r.plays(key, vel) || (r.SwLast >= 0 && r.SwLast != sh.sw) {
 			continue
+		}
+		if fadeAt(r, key, vel) == 0 {
+			continue // faded out at this velocity or key
 		}
 		if r.SeqLength > 0 {
 			turn := sh.turns[i]
@@ -183,6 +229,20 @@ func (v *Voice) start(trigger Trigger) {
 	for _, i := range matched {
 		v.play(&inst.Regions[i], i)
 	}
+}
+
+// fadeAt returns the gain of a region's crossfades by velocity and key for a note
+func fadeAt(r *Region, key, vel int) float64 {
+	g := 1.0
+	for _, f := range r.Fades {
+		switch f.From {
+		case FromVelocity:
+			g *= f.gain(float64(vel))
+		case FromKey:
+			g *= f.gain(float64(key))
+		}
+	}
+	return g
 }
 
 // choke stops the regions that a region of a group starting turns off
@@ -230,7 +290,8 @@ func (v *Voice) play(r *Region, index int) {
 
 	// the loudness: the velocity, squared, as much as the region follows it
 	vel := v.velocity
-	gain := v.amp * v.cfg.Level * r.Amp * math.Pow(10, r.Volume/20) * (1 - r.VelTrack + r.VelTrack*vel*vel)
+	gain := v.amp * v.cfg.Level * r.Amp * math.Pow(10, r.Volume/20) * (1 - r.VelTrack + r.VelTrack*vel*vel) *
+		fadeAt(r, v.key(), v.vel())
 	if r.Trigger == OnRelease && r.RtDecay > 0 {
 		gain *= math.Pow(10, -r.RtDecay*float64(v.held)/sr/20)
 	}
@@ -251,7 +312,24 @@ func (v *Voice) play(r *Region, index int) {
 		l.filterOn = true
 		l.filterMod = map[FilterType]svf.Mode{LowPass: svf.LowPass, HighPass: svf.HighPass, BandPass: svf.BandPass}[r.Filter]
 	}
-	l.env.start(&r.Env, sr)
+	// the envelope, with what the controllers add to it
+	l.envSet = r.Env
+	for _, c := range r.CCEnv {
+		if c.CC >= 0 && c.CC < len(v.shared.cc) {
+			k := v.shared.cc[c.CC] / 127
+			e := &l.envSet
+			e.Delay += c.Env.Delay * k
+			e.Attack += c.Env.Attack * k
+			e.Hold += c.Env.Hold * k
+			e.Decay += c.Env.Decay * k
+			e.Sustain += c.Env.Sustain * k
+			e.Release += c.Env.Release * k
+		}
+	}
+	l.envSet.Delay, l.envSet.Attack, l.envSet.Hold = max(0, l.envSet.Delay), max(0, l.envSet.Attack), max(0, l.envSet.Hold)
+	l.envSet.Decay, l.envSet.Release = max(0, l.envSet.Decay), max(0.001, l.envSet.Release)
+	l.cc = v.shared.ccGain(r)
+	l.env.start(&l.envSet, sr)
 }
 
 // depthFor returns the band limited copy of a sound for playing it step times as fast: copy d is
@@ -306,7 +384,7 @@ func (v *Voice) Synthesize() {
 	n := v.Config().BufferSize
 	for i := range v.layers {
 		if l := &v.layers[i]; l.active {
-			l.render(channels, v.waitSamps, n, v.released)
+			l.render(channels, v.waitSamps, n, v.released, v.shared.ccGain(l.r))
 		}
 	}
 	// the note of Note ends in this buffer
@@ -322,8 +400,11 @@ func (v *Voice) Synthesize() {
 }
 
 // render adds the samples from..to of a layer to the channels
-func (l *layer) render(channels psalm.Channels, from, to int, released bool) {
+func (l *layer) render(channels psalm.Channels, from, to int, released bool, cc float64) {
 	r := l.r
+	// the controllers' gain glides to where they are now over the buffer: a wheel moved never clicks
+	ccInc := (cc - l.cc) / float64(max(1, to-from))
+	defer func() { l.cc = cc }()
 	snd := r.Sound
 	left := snd.Buffer(0, l.depth)
 	right := left
@@ -376,7 +457,8 @@ func (l *layer) render(channels psalm.Channels, from, to int, released bool) {
 				}
 			}
 		}
-		e := l.env.next()
+		e := l.env.next() * l.cc
+		l.cc += ccInc
 		if l.filterOn {
 			xl = l.filters[0].Process(xl, l.filterMod)
 			if snd.NumChannels() > 1 {
