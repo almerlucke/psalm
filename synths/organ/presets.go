@@ -10,6 +10,12 @@ var Presets = map[string]func() Config{
 	"flute":   Flute,
 	"reed":    Reed,
 	"whistle": Whistle,
+
+	"screamer":  Screamer,
+	"warble":    Warble,
+	"chime":     Chime,
+	"growlBass": GrowlBass,
+	"seasick":   Seasick,
 }
 
 func preset(bars string, f func(*Config)) Config {
@@ -64,4 +70,30 @@ func Reed() Config {
 // 1' away)
 func Whistle() Config {
 	return preset("800000008", func(c *Config) { c.Vibrato, c.Level = V1, 1.75 })
+}
+
+// Screamer is every drawbar out into a preamp driven to its limit, all the click, the deep chorus:
+// the organ of a heavy rock band
+func Screamer() Config {
+	return preset("888888888", func(c *Config) { c.Vibrato, c.Drive, c.Click, c.Level = C3, 1, 1, 2.29 })
+}
+
+// Warble runs the scanner at 15 Hz, deep: the vibrato turns into a fluttering, alien warble
+func Warble() Config {
+	return preset("806040302", func(c *Config) { c.Vibrato, c.VibratoHz, c.Click, c.Level = V3, 15, 0.2, 2.6 })
+}
+
+// Chime is only the high drawbars with the third percussion, fast: a glassy, bell like stab
+func Chime() Config {
+	return preset("000088880", func(c *Config) { c.Percussion, c.PercFast, c.Click, c.Level = PercThird, true, 0.3, 1.28 })
+}
+
+// GrowlBass is the sixteen and eight foot, driven, all click and no vibrato: a growling bass organ
+func GrowlBass() Config {
+	return preset("880000000", func(c *Config) { c.Drive, c.Click, c.Level = 0.8, 1, 2.86 })
+}
+
+// Seasick turns the scanner down to 1.5 Hz, deep: everything sways out of tune and back
+func Seasick() Config {
+	return preset("808000888", func(c *Config) { c.Vibrato, c.VibratoHz, c.Click, c.Level = V3, 1.5, 0.1, 1.13 })
 }

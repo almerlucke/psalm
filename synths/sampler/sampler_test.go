@@ -798,3 +798,87 @@ eq1_gain=3 eq2_freq=1200 eq2_bw=2 eq2_gain=-4 eq3_freq=8000
 		t.Errorf("unsupported: %v", inst.Unsupported)
 	}
 }
+
+func TestSustainPedal(t *testing.T) {
+	r := NewRegion(NewSound(sr, constant(0.5, 3)))
+	r.VelTrack, r.Env.Release = 0, 0.01
+	rel := NewRegion(NewSound(sr, constant(0.2, 0.5)))
+	rel.VelTrack, rel.Trigger = 0, OnRelease
+	inst := MustInstrument(r, rel)
+	inst.SustainLo = 64
+	vs := group(Config{Instrument: inst}, 2)
+	v := vs[0]
+	play(v, psalm.Message{"pitch": 60.0}, 2)
+	// half way is not down (64 and up is), all the way is
+	v.ReceiveMessage(psalm.Message{"sustain": 0.4})
+	if v.pedalDown() {
+		t.Errorf("the pedal at 0.4 (51) is down with sustain_lo 64")
+	}
+	v.ReceiveMessage(psalm.Message{"cc64": 1.0})
+	v.NoteOff()
+	x := run(v, buffers(0.2))
+	if got := x[len(x)-1]; math.Abs(got-0.5) > 1e-6 {
+		t.Errorf("let go with the pedal down: %g, want it held at 0.5", got)
+	}
+	// the pedal up: the note lets go, its release region plays
+	v.ReceiveMessage(psalm.Message{"cc64": 0.0})
+	x = run(v, buffers(0.1))
+	if got := x[len(x)-1]; math.Abs(got-0.2) > 1e-3 {
+		t.Errorf("after the pedal came up: %g, want the release region (0.2)", got)
+	}
+	// without a pedal of its own the instrument ignores it
+	inst.NoSustain = true
+	v = New(Config{Instrument: inst})
+	v.ReceiveMessage(psalm.Message{"sustain": 1.0})
+	play(v, psalm.Message{"pitch": 60.0}, 2)
+	v.NoteOff()
+	if !v.released {
+		t.Errorf("NoSustain: the pedal still holds the note")
+	}
+}
+
+func TestDynamicEnvelope(t *testing.T) {
+	// the mod wheel lengthens the attack: with ampeg_dynamic, moving it mid attack slows what is left
+	mk := func(dynamic bool) *Voice {
+		r := NewRegion(NewSound(sr, constant(1, 6)))
+		r.VelTrack, r.Env.Attack, r.EnvDynamic = 0, 0.2, dynamic
+		r.CCEnv = []CCEnv{{CC: 1, Env: Envelope{Attack: 1.8, Sustain: -0.5}}}
+		return New(Config{Instrument: MustInstrument(r)})
+	}
+	at := func(dynamic bool) (mid, end float64) {
+		v := mk(dynamic)
+		play(v, psalm.Message{"pitch": 60.0}, buffers(0.1)) // 0.1 s: halfway the attack of 0.2 s
+		v.ReceiveMessage(psalm.Message{"cc1": 1.0})         // now 2 s, the sustain half
+		x := run(v, buffers(0.5))
+		y := run(v, buffers(3))
+		return x[len(x)-1], y[len(y)-1]
+	}
+	still, stillEnd := at(false)
+	moved, movedEnd := at(true)
+	if still < 0.99 || stillEnd < 0.99 {
+		t.Errorf("not dynamic: the wheel changes the playing note (%g, %g)", still, stillEnd)
+	}
+	// dynamic: the half left of the attack now takes half of 2 s
+	if moved > 0.85 || moved < 0.6 {
+		t.Errorf("dynamic: 0.5 s after the wheel moved %g, want about 0.75", moved)
+	}
+	if math.Abs(movedEnd-0.5) > 0.01 {
+		t.Errorf("dynamic: the sustain %g, want 0.5", movedEnd)
+	}
+}
+
+func TestLoadSFZPedalAndDynamic(t *testing.T) {
+	dir := t.TempDir()
+	writeWAV(t, filepath.Join(dir, "a.wav"), constant(0.5, 0.2))
+	sfz := "<group> sustain_lo=63 sustain_cc=66 ampeg_dynamic=1 ampeg_attackcc1=0.5\n<region> sample=a.wav\n"
+	if err := os.WriteFile(filepath.Join(dir, "p.sfz"), []byte(sfz), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inst, err := LoadSFZ(filepath.Join(dir, "p.sfz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.SustainLo != 63 || inst.SustainCC != 66 || !inst.Regions[0].EnvDynamic || len(inst.Unsupported) != 0 {
+		t.Errorf("pedal %d from %g, dynamic %v, unsupported %v", inst.SustainCC, inst.SustainLo, inst.Regions[0].EnvDynamic, inst.Unsupported)
+	}
+}

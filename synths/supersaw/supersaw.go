@@ -36,7 +36,14 @@ type Config struct {
 	AmpEnv          adsr.Setting
 
 	Glide float64 // seconds from the previous note of the voice
-	Level float64 // output level (0 is treated as 1)
+
+	// an LFO, a sine from the start of every note: Hz, or beats a cycle (LFOSync, follows the
+	// tempo); it moves the cutoff (octaves up and down) and the detune (added, 0-1)
+	LFORate   float64
+	LFOSync   float64
+	LFOCutoff float64
+	LFODetune float64
+	Level     float64 // output level (0 is treated as 1)
 }
 
 // DefaultConfig is a trance pad
@@ -91,6 +98,7 @@ type Voice struct {
 	filterEnv *adsr.ADSR
 	ampEnv    *adsr.ADSR
 	count     int
+	lfoPhase  float64
 	waitSamps int
 	rng       uint64
 }
@@ -217,6 +225,7 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration, amplitude float64, message
 		}
 	}
 	v.waitSamps = tick.SampleOffset
+	v.lfoPhase = 0
 	v.filterEnv.TriggerFull(duration*1000, 1, &v.cfg.FilterEnv, mode)
 	v.ampEnv.TriggerFull(duration*1000, amplitude, &v.cfg.AmpEnv, mode)
 }
@@ -250,6 +259,12 @@ func (v *Voice) Synthesize() {
 		level = 1
 	}
 	detune := detuneCurve(cfg.Detune)
+	lfoInc := cfg.LFORate / sr
+	if cfg.LFOSync > 0 {
+		lfoInc = v.BPM() / 60 / cfg.LFOSync / sr
+	}
+	lfoOn := lfoInc > 0 && (cfg.LFOCutoff != 0 || cfg.LFODetune != 0)
+	lfo := 0.0
 	center, side := mixLevels(cfg.Mix)
 	// the level of the sum: the saws add up as noise does (they are not in phase), but every so
 	// often they line up: room for that
@@ -266,6 +281,16 @@ func (v *Voice) Synthesize() {
 	for i := v.waitSamps; i < n; i++ {
 		v.glideFreq += (v.freq - v.glideFreq) * glide
 		f := v.glideFreq
+		if lfoOn {
+			if v.count == 0 {
+				lfo = math.Sin(2 * math.Pi * v.lfoPhase)
+				if cfg.LFODetune != 0 {
+					detune = detuneCurve(math.Max(0, math.Min(cfg.Detune+cfg.LFODetune*(lfo+1)/2, 1)))
+				}
+			}
+			v.lfoPhase += lfoInc
+			v.lfoPhase -= math.Floor(v.lfoPhase)
+		}
 		var y [2]float64
 		for k := range v.n {
 			s := &v.saws[k]
@@ -293,7 +318,7 @@ func (v *Voice) Synthesize() {
 		}
 		fenv := v.filterEnv.Generate()
 		if v.count == 0 {
-			cutoff := cfg.Cutoff * math.Pow(f/261.63, keyTrack) * math.Exp2(cfg.FilterEnvAmount*fenv+vel)
+			cutoff := cfg.Cutoff * math.Pow(f/261.63, keyTrack) * math.Exp2(cfg.FilterEnvAmount*fenv+vel+cfg.LFOCutoff*lfo)
 			cutoff = math.Max(20, math.Min(cutoff, sr*0.45))
 			for c := range v.filters {
 				v.filters[c].SetFrequencyQ(cutoff, q)

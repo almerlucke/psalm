@@ -13,6 +13,12 @@ var Presets = map[string]func() Config{
 	"slowStrings": SlowStrings,
 	"ponticello":  Ponticello,
 	"flautando":   Flautando,
+
+	"glassHarp": GlassHarp,
+	"wire":      Wire,
+	"eBow":      EBow,
+	"ghostBow":  GhostBow,
+	"scrape":    Scrape,
 }
 
 func plucked(decay, damping, brightness, pick, release float64, body Body, mix, level float64) Config {
@@ -57,3 +63,20 @@ func Ponticello() Config { return bowed(0.6, 0.08, 0.1, 0.2, 0, 0, 0, ViolinBody
 
 // Flautando is bowed lightly over the fingerboard: soft and airy, like a flute
 func Flautando() Config { return bowed(0.25, 0.4, 0.15, 0.2, 5, 0.08, 0.3, ViolinBody, 0.5, 1.2) }
+
+// GlassHarp is a string with no losses to speak of, plucked near its end: it shimmers for many
+// seconds, its overtones dying no faster than the note
+func GlassHarp() Config { return plucked(14, 0, 0.9, 0.06, 0, HarpBody, 0.2, 1.12) }
+
+// Wire is a bright steel wire picked right at its end, no body: thin, jangling, metallic
+func Wire() Config { return plucked(6, 0.02, 1, 0.015, 0.4, NoBody, 0, 0.915) }
+
+// EBow is a string kept singing by a steady bow near its end, swelling in, no vibrato, no body: the
+// endless sustain of an electric guitar under an EBow
+func EBow() Config { return bowed(0.5, 0.1, 0.8, 0.4, 0, 0, 0, NoBody, 0, 0.618) }
+
+// GhostBow is a cello bowed so lightly the note floats, swelling in, a slow wide vibrato
+func GhostBow() Config { return bowed(0.18, 0.35, 1.2, 1.5, 3, 0.35, 0.2, CelloBody, 0.5, 1.79) }
+
+// Scrape is a bow pressed hard close to the bridge: gritty, metallic, on the edge of breaking
+func Scrape() Config { return bowed(0.95, 0.1, 0.05, 0.1, 0, 0, 0, NoBody, 0, 0.556) }

@@ -156,7 +156,7 @@ func TestBrightness(t *testing.T) {
 }
 
 func TestBowSustainsInTune(t *testing.T) {
-	for _, name := range []string{"violin", "cello", "slowStrings", "flautando", "ponticello"} {
+	for _, name := range []string{"violin", "cello", "slowStrings", "flautando", "ponticello", "eBow", "ghostBow", "scrape"} {
 		for _, p := range []float64{43, 55, 67, 74} {
 			cfg := dry(Presets[name]())
 			cfg.VibratoDepth = 0
@@ -230,6 +230,40 @@ func TestNotes(t *testing.T) {
 		}
 		if p < 0.01 || p > 4 || math.IsNaN(p) {
 			t.Errorf("%s peaks at %g", name, p)
+		}
+	}
+}
+
+func TestBowReleaseHasNoRing(t *testing.T) {
+	// let go, a bowed string fades: it doesn't swell again, nor ring on after the bow as if plucked
+	for _, name := range []string{"violin", "cello", "slowStrings", "ponticello", "flautando", "eBow", "ghostBow", "scrape"} {
+		for _, p := range []float64{43, 55, 67, 79} {
+			v := New(Presets[name]())
+			v.NoteOn(1, psalm.Message{"pitch": p}, psalm.CtrlTick{}, v.Config())
+			run(v, 1)
+			v.NoteOff()
+			x := run(v, 1.5)
+			top := math.Inf(-1)
+			win := int(0.02 * sr())
+			lowest := math.Inf(1)
+			for i := 0; i+win <= len(x); i += win {
+				pk := 0.0
+				for _, s := range x[i : i+win] {
+					pk = math.Max(pk, math.Abs(s))
+				}
+				level := 20 * math.Log10(pk+1e-12)
+				if math.IsInf(top, -1) {
+					top = level
+				}
+				if level < top-60 {
+					break // inaudible below the note
+				}
+				if level > lowest+1 {
+					t.Errorf("%s %g: %.0f ms after the release it swells from %.1f to %.1f dB", name, p, float64(i)/sr()*1000, lowest, level)
+					break
+				}
+				lowest = math.Min(lowest, level)
+			}
 		}
 	}
 }

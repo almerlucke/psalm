@@ -407,6 +407,14 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 			r.SwLabel = v
 		case "group_label", "region_label", "master_label", "global_label":
 			// names for an editor, nothing to play
+		case "ampeg_dynamic":
+			r.EnvDynamic = num(op, v) != 0
+		case "sustain_cc": // the pedal is the instrument's: the regions all have the same
+			p.inst.SustainCC = int(num(op, v))
+		case "sustain_lo":
+			p.inst.SustainLo = num(op, v)
+		case "sustain_sw":
+			p.inst.NoSustain = v == "off"
 		case "amp_random":
 			r.AmpRandom = num(op, v)
 		case "pitch_random":

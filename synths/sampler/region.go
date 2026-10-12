@@ -143,6 +143,9 @@ type Region struct {
 	Fades  []Fade   // crossfades by velocity, key or a controller
 	CCGain []CCGain // dB a controller adds at its top (gain_ccN)
 	CCEnv  []CCEnv  // seconds (sustain: 0-1) a controller adds to the envelope at its top
+	// EnvDynamic makes the envelope follow the controllers while the note sounds (SFZ
+	// ampeg_dynamic), instead of taking them when it starts
+	EnvDynamic bool
 
 	// Every note a little different: up to half these louder or softer (dB), sharper or flatter
 	// (cents), and up to DelayRandom seconds later
@@ -282,6 +285,23 @@ type Instrument struct {
 	Unsupported map[string]int
 	// CC are the values (0-127) the controllers start at (SFZ set_ccN), the others start at 0
 	CC map[int]float64
+	// The sustain pedal: the controller it is (0 is 64), the value from which it is down (0 is 1,
+	// as SFZ has it: only 0 is up), or none at all (NoSustain: the keyboard holds the notes)
+	SustainCC int
+	SustainLo float64
+	NoSustain bool
+}
+
+// pedal returns the controller of the sustain pedal and the value from which it is down
+func (inst *Instrument) pedal() (int, float64) {
+	cc, lo := inst.SustainCC, inst.SustainLo
+	if cc <= 0 || cc > 127 {
+		cc = 64
+	}
+	if lo <= 0 {
+		lo = 1
+	}
+	return cc, lo
 }
 
 // Switch is a keyswitch: its key and its name

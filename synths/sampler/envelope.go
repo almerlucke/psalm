@@ -23,6 +23,7 @@ type envelope struct {
 	inc     float64 // the attack per sample
 	coef    float64 // the decay or release per sample
 	sustain float64
+	fast    bool // releasing faster than its own release (a choke): its times no longer change it
 }
 
 // -60 dB over a time: the decay and release
@@ -81,6 +82,12 @@ func (e *envelope) next() float64 {
 	case stageDone:
 		return 0
 	case stageSustain:
+		if e.level != e.sustain { // the sustain changed (ampeg_dynamic): glide there, about 5 ms
+			e.level += (e.sustain - e.level) * 0.005
+			if math.Abs(e.level-e.sustain) < 1e-6 {
+				e.level = e.sustain
+			}
+		}
 		return e.level
 	case stageAttack:
 		e.level += e.inc
@@ -121,4 +128,51 @@ func (e *envelope) releaseIn(seconds float64) {
 	e.stage = stageRelease
 	e.count = max(1, e.samples(seconds))
 	e.coef = math.Exp(math.Log(1e-4) / float64(e.count))
+	e.fast = seconds < e.set.Release
+}
+
+// retime changes the times and the sustain of the envelope while it runs (from old to the
+// settings it points at now): the stage it is in keeps its place and goes on at the new pace
+func (e *envelope) retime(old Envelope) {
+	cur := e.set
+	e.sustain = math.Max(0, math.Min(cur.Sustain, 1))
+	// what is left of a stage, at the new time
+	scale := func(oldTime, newTime float64) int {
+		if oldTime <= 0 {
+			return e.samples(newTime)
+		}
+		return int(float64(e.count) * newTime / oldTime)
+	}
+	switch e.stage {
+	case stageDelay:
+		if e.count = scale(old.Delay, cur.Delay); e.count <= 0 {
+			e.enter(stageAttack)
+		}
+	case stageAttack:
+		// the attack rises in a straight line: the rest of the rise at the new speed
+		if n := e.samples(cur.Attack * (1 - e.level)); n > 0 {
+			e.count, e.inc = n, (1-e.level)/float64(n)
+		} else {
+			e.level = 1
+			e.enter(stageHold)
+		}
+	case stageHold:
+		if e.count = scale(old.Hold, cur.Hold); e.count <= 0 {
+			e.enter(stageDecay)
+		}
+	case stageDecay:
+		if n := e.samples(cur.Decay); n > 0 {
+			e.coef = math.Exp(fall60 / float64(n))
+			e.count = max(1, scale(old.Decay, cur.Decay))
+		} else {
+			e.level = e.sustain
+			e.enter(stageSustain)
+		}
+	case stageSustain: // next glides to the new level
+	case stageRelease:
+		if !e.fast {
+			e.count = max(1, scale(old.Release, cur.Release))
+			e.coef = math.Exp(math.Log(1e-4) / float64(max(1, e.samples(cur.Release))))
+		}
+	}
 }

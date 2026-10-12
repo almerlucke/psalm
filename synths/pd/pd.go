@@ -55,7 +55,12 @@ type Config struct {
 	VibratoDepth float64 // semitones
 	VibratoDelay float64 // seconds
 	Width        float64 // 0-1: line 1 to the left, line 2 to the right
-	Level        float64 // output level (0 is treated as 1)
+	// an LFO on the distortion of both lines (the CZ's wah), a sine from the start of every note:
+	// Hz, or beats a cycle (SweepSync, follows the tempo); SweepDepth is added to the DCW, up and down
+	SweepRate  float64
+	SweepSync  float64
+	SweepDepth float64
+	Level      float64 // output level (0 is treated as 1)
 }
 
 // DefaultConfig is a brass sound
@@ -253,6 +258,10 @@ func (v *Voice) Synthesize() {
 	l1L, l1R := pan(-width)
 	l2L, l2R := pan(width)
 	vibDelay := int(cfg.VibratoDelay * sr)
+	sweepInc := cfg.SweepRate / sr
+	if cfg.SweepSync > 0 {
+		sweepInc = v.BPM() / 60 / cfg.SweepSync / sr
+	}
 	pitchTime := math.Max(0.001, cfg.PitchTime) * sr
 	dcCoef := 1 - 2*math.Pi*10/sr
 	var ratio [2]float64
@@ -274,6 +283,10 @@ func (v *Voice) Synthesize() {
 		if semis != 0 {
 			f *= math.Exp2(semis / 12)
 		}
+		sweep := 0.0
+		if cfg.SweepDepth != 0 && sweepInc > 0 {
+			sweep = cfg.SweepDepth * math.Sin(2*math.Pi*sweepInc*float64(v.t))
+		}
 		var y [2]float64
 		for k := range v.lines {
 			l, s := v.line(k), &v.lines[k]
@@ -287,7 +300,11 @@ func (v *Voice) Synthesize() {
 			if l.Alternate && s.odd {
 				w = l.Second
 			}
-			y[k] = shape(w, s.phase, s.amount*dcw, inc) * dca * l.Level
+			d := s.amount * dcw
+			if sweep != 0 {
+				d = math.Max(0, math.Min(d+sweep, 1))
+			}
+			y[k] = shape(w, s.phase, d, inc) * dca * l.Level
 			s.phase += inc
 			if s.phase >= 1 {
 				s.phase -= math.Floor(s.phase)

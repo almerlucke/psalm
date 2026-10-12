@@ -63,6 +63,13 @@ type Config struct {
 	Response  float64 // seconds the vactrol takes to let go (0 is 0.15)
 	Color     float64 // 0-1: how bright it opens (0 is 0.8)
 
+	// an LFO, a sine from the start of every note: Hz, or beats a cycle (LFOSync, follows the
+	// tempo); it moves the fold (0-1, up and down) and the FM index
+	LFORate float64
+	LFOSync float64
+	LFOFold float64
+	LFOFM   float64
+
 	Level float64 // output level (0 is treated as 1)
 }
 
@@ -85,6 +92,7 @@ type Voice struct {
 	vactrol   float64
 	lpg       *svf.SVF
 	count     int
+	t         int // samples since the note started
 	released  bool
 	noteOff   int
 	waitSamps int
@@ -155,6 +163,7 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 		v.phase, v.modPhase = 0, 0
 	}
 	v.count = 0
+	v.t = 0
 	v.active = true
 }
 
@@ -225,8 +234,17 @@ func (v *Voice) Synthesize() {
 	// the vactrol: it lights up in a few milliseconds and lets go slowly, slower still as it dims
 	rise := 1 - math.Exp(-1/(0.003*sr))
 	q := 0.5 + 8*math.Max(0, math.Min(cfg.Resonance, 1))
+	lfoInc := cfg.LFORate / sr
+	if cfg.LFOSync > 0 {
+		lfoInc = v.BPM() / 60 / cfg.LFOSync / sr
+	}
 	channels := out.Channels
 	for i := v.waitSamps; i < n; i++ {
+		lfo := 0.0
+		if lfoInc > 0 && (cfg.LFOFold != 0 || cfg.LFOFM != 0) {
+			lfo = math.Sin(2 * math.Pi * lfoInc * float64(v.t))
+		}
+		v.t++
 		// the function generator
 		switch v.stage {
 		case 0:
@@ -260,7 +278,7 @@ func (v *Voice) Synthesize() {
 		v.modPhase += v.freq * ratio / sr
 		v.modPhase -= math.Floor(v.modPhase)
 		mod := v.modulator(v.modPhase)
-		index := cfg.FM + cfg.EnvToFM*v.env
+		index := cfg.FM + cfg.EnvToFM*v.env + cfg.LFOFM*lfo
 		v.phase += v.freq / sr
 		v.phase -= math.Floor(v.phase)
 		s := math.Sin(2*math.Pi*v.phase + index*mod)
@@ -268,7 +286,7 @@ func (v *Voice) Synthesize() {
 			s *= 1 - cfg.AM*0.5*(1-mod)
 		}
 		// the folder
-		f := math.Max(0, math.Min(cfg.Fold+cfg.EnvToFold*v.env, 1))
+		f := math.Max(0, math.Min(cfg.Fold+cfg.EnvToFold*v.env+cfg.LFOFold*lfo, 1))
 		if f > 0 || cfg.Symmetry != 0 {
 			s = fold(s, 1+f*7, cfg.Symmetry*f)
 		}

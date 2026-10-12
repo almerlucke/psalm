@@ -44,7 +44,14 @@ type Config struct {
 	Detune       float64 // cents the singers spread over
 	Spread       float64 // 0-1: how far they stand apart, left to right
 	Steady       bool    // the pitch held perfectly still (a voice wanders a few cents)
-	Level        float64 // output level (0 is treated as 1)
+	// the vowel moving by itself, from the start of every note: VowelRate Hz, or VowelSync beats a
+	// cycle (follows the tempo), VowelDepth steps up and down around Vowel. VowelSteps makes it
+	// jump to a new vowel at random every cycle (gliding there in VowelGlide): talking, babbling
+	VowelRate  float64
+	VowelSync  float64
+	VowelDepth float64
+	VowelSteps bool
+	Level      float64 // output level (0 is treated as 1)
 }
 
 // DefaultConfig is a solo voice
@@ -139,6 +146,7 @@ type Voice struct {
 	active    bool
 	rangeNow  Range
 	update    int
+	stepTo    float64 // the vowel a step of VowelSteps aims for
 }
 
 // randSource is a small fast random generator
@@ -338,9 +346,26 @@ func (v *Voice) Synthesize() {
 	channels := out.Channels
 	stereo := len(channels) > 1
 	f0 := 440 * math.Exp2((v.pitch-69)/12)
+	vowelInc := cfg.VowelRate / sr
+	if cfg.VowelSync > 0 {
+		vowelInc = v.BPM() / 60 / cfg.VowelSync / sr
+	}
+	moving := vowelInc > 0 && cfg.VowelDepth != 0
 	for i := v.waitSamps; i < n; i++ {
 		// the vowel glides; the formants follow every 32 samples
-		v.vowel += (cfg.Vowel - v.vowel) * glide
+		target := cfg.Vowel
+		if moving {
+			ph := vowelInc * float64(v.t)
+			if cfg.VowelSteps {
+				if v.t == 0 || math.Floor(ph) != math.Floor(ph-vowelInc) {
+					v.stepTo = (v.rng.float()*2 - 1) * cfg.VowelDepth // a new vowel every cycle
+				}
+				target += v.stepTo
+			} else {
+				target += cfg.VowelDepth * math.Sin(2*math.Pi*ph)
+			}
+		}
+		v.vowel += (target - v.vowel) * glide
 		if v.update == 0 {
 			v.setFormants(f0)
 		}

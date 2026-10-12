@@ -318,8 +318,9 @@ func (v *Voice) bowNote() {
 	}
 	v.vibWait = int(v.cfg.VibratoDelay * sr)
 	// the bow speed is the loudness: faster than this the string jumps to its octave
-	// resting on the string, the bow stops it in a quarter second: per period, over the two lines
-	v.bowDamp = math.Pow(10, -3/(v.freq*0.25)/2)
+	// slowing down, the bow takes the string's energy with it: as it stops, the string dies in
+	// 60 ms (per period, over the two lines), it doesn't ring on as if plucked
+	v.bowDamp = math.Pow(10, -3/(v.freq*bowStop)/2)
 	v.bowSpeed = 0.03 + 0.1*math.Min(v.amp, 1)*(0.5+0.5*v.velocity)
 }
 
@@ -454,10 +455,17 @@ func (v *Voice) Synthesize() {
 			push := 0.0
 			if v.bowEnv > 0 {
 				push = dv * bowTable(dv, slope)
+				if v.released {
+					push *= v.bowEnv * v.bowEnv // lifting, the bow lets go of the string as it slows
+				}
 			}
-			if v.released && v.bowEnv == 0 {
-				bridge *= v.bowDamp
-				nut *= v.bowDamp
+			if v.released {
+				// the damping grows as the bow comes to a stop
+				still := 1 - v.bowEnv
+				still *= still
+				d := 1 - (1-v.bowDamp)*still*still
+				bridge *= d
+				nut *= d
 			}
 			v.neck.tick(bridge + push)
 			v.bridge.tick(nut + push)
@@ -499,6 +507,9 @@ func (v *Voice) Synthesize() {
 		v.quiet = 0
 	}
 }
+
+// bowStop is the seconds a string dies in once the bow has stopped
+const bowStop = 0.06
 
 // bowTable is the friction of the bow: it holds the string (1) while their speeds are close and lets
 // it slip as they differ, the sooner the lighter the bow

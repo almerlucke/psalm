@@ -69,6 +69,7 @@ type Voice struct {
 	held      int  // samples since the note started, for the decay of release regions
 	noteOff   int  // samples until the note of Note ends, 0 when none
 	released  bool // the key is up
+	sustained bool // the key is up, the sustain pedal holds the note
 	waitSamps int
 }
 
@@ -227,6 +228,18 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	})
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
+	// the sustain pedal, 0 up to 1 down: its controller
+	if inst := v.cfg.Instrument; inst != nil {
+		msg.IfFltVal("sustain", func(f float64) {
+			cc, _ := inst.pedal()
+			v.shared.cc[cc] = math.Max(0, math.Min(f, 1)) * 127
+		})
+	}
+	defer func() {
+		if v.sustained && !v.pedalDown() {
+			v.release() // the pedal came up
+		}
+	}()
 	// controllers: "cc1" (the mod wheel) to "cc127", 0-1
 	for key := range msg {
 		if n, ok := strings.CutPrefix(key, "cc"); ok {
@@ -257,7 +270,7 @@ func (v *Voice) note(duration float64, amplitude float64, message psalm.Message,
 	v.waitSamps = tick.SampleOffset
 	v.amp = amplitude
 	v.held = 0
-	v.released = false
+	v.released, v.sustained = false, false
 	v.noteOff = 0
 	if duration > 0 {
 		v.noteOff = max(1, int(duration*v.Config().SampleRate))
@@ -428,29 +441,33 @@ func (v *Voice) play(r *Region, index int) {
 		l.filterMod = map[FilterType]svf.Mode{LowPass: svf.LowPass, HighPass: svf.HighPass, BandPass: svf.BandPass}[r.Filter]
 	}
 	// the envelope, with what the velocity and the controllers add to it
-	l.envSet = r.Env
-	l.envSet.Delay += r.VelEnv.Delay * vel
-	l.envSet.Attack += r.VelEnv.Attack * vel
-	l.envSet.Hold += r.VelEnv.Hold * vel
-	l.envSet.Decay += r.VelEnv.Decay * vel
-	l.envSet.Sustain += r.VelEnv.Sustain * vel
-	l.envSet.Release += r.VelEnv.Release * vel
-	for _, c := range r.CCEnv {
-		if c.CC >= 0 && c.CC < len(v.shared.cc) {
-			k := v.shared.cc[c.CC] / 127
-			e := &l.envSet
-			e.Delay += c.Env.Delay * k
-			e.Attack += c.Env.Attack * k
-			e.Hold += c.Env.Hold * k
-			e.Decay += c.Env.Decay * k
-			e.Sustain += c.Env.Sustain * k
-			e.Release += c.Env.Release * k
-		}
-	}
-	l.envSet.Delay, l.envSet.Attack, l.envSet.Hold = max(0, l.envSet.Delay), max(0, l.envSet.Attack), max(0, l.envSet.Hold)
-	l.envSet.Decay, l.envSet.Release = max(0, l.envSet.Decay), max(0.001, l.envSet.Release)
+	l.envSet = v.envFor(r)
 	l.cc = v.shared.ccGain(r)
 	l.env.start(&l.envSet, sr)
+}
+
+// envFor returns the envelope of a region for the note: its own, with what the velocity and the
+// controllers (as they are now) add to it
+func (v *Voice) envFor(r *Region) Envelope {
+	e := r.Env
+	vel := v.velocity
+	add := func(d Envelope, k float64) {
+		e.Delay += d.Delay * k
+		e.Attack += d.Attack * k
+		e.Hold += d.Hold * k
+		e.Decay += d.Decay * k
+		e.Sustain += d.Sustain * k
+		e.Release += d.Release * k
+	}
+	add(r.VelEnv, vel)
+	for _, c := range r.CCEnv {
+		if c.CC >= 0 && c.CC < len(v.shared.cc) {
+			add(c.Env, v.shared.cc[c.CC]/127)
+		}
+	}
+	e.Delay, e.Attack, e.Hold = max(0, e.Delay), max(0, e.Attack), max(0, e.Hold)
+	e.Decay, e.Release = max(0, e.Decay), max(0.001, e.Release)
+	return e
 }
 
 // depthFor returns the band limited copy of a sound for playing it step times as fast: copy d is
@@ -459,7 +476,31 @@ func depthFor(step float64) int {
 	return max(0, int(math.Ceil(step-1e-4))-1)
 }
 
+// NoteOff lets go of the note, or keeps it sounding while the sustain pedal is down
 func (v *Voice) NoteOff() {
+	if v.released {
+		return
+	}
+	if v.pedalDown() {
+		v.sustained = true
+		return
+	}
+	v.release()
+}
+
+// pedalDown says whether the instrument's sustain pedal is down
+func (v *Voice) pedalDown() bool {
+	inst := v.cfg.Instrument
+	if inst == nil || inst.NoSustain {
+		return false
+	}
+	cc, lo := inst.pedal()
+	return v.shared.cc[cc] >= lo
+}
+
+// release lets go of the note: the regions fade out with their release, the release regions play
+func (v *Voice) release() {
+	v.sustained = false
 	if v.released {
 		return
 	}
@@ -483,6 +524,7 @@ func (v *Voice) NoteOff() {
 }
 
 func (v *Voice) Clear() {
+	v.sustained = false
 	for i := range v.layers {
 		v.layers[i].active = false
 	}
@@ -504,6 +546,14 @@ func (v *Voice) Synthesize() {
 	channels := out.Channels
 	n := v.Config().BufferSize
 	for i := range v.layers {
+		if l := &v.layers[i]; l.active && l.r.EnvDynamic {
+			// the envelope follows the controllers
+			if e := v.envFor(l.r); e != l.envSet {
+				old := l.envSet
+				l.envSet = e
+				l.env.retime(old)
+			}
+		}
 		if l := &v.layers[i]; l.active {
 			l.render(channels, v.waitSamps, n, v.released, v.shared.ccGain(l.r))
 		}

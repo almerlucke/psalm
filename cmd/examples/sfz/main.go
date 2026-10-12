@@ -5,10 +5,11 @@
 // from there. At the start it prints what it loaded: the regions, the keys they cover, the opcodes
 // the sampler doesn't know (those are left out).
 //
-// The keyboard plays the velocity into the instrument (its regions choose by it, and play louder),
-// the sustain pedal holds the notes. Its controllers go to the instrument as they are: the mod
-// wheel (controller 1) blends the dynamic layers of instruments that crossfade on it, or changes
-// their attack and volume. Instruments with keyswitches list their articulations at the start;
+// The keyboard plays the velocity into the instrument (its regions choose by it, and play louder).
+// Its controllers go to the instrument as they are: the mod wheel (controller 1) blends the
+// dynamic layers of instruments that crossfade on it, or changes their attack and volume; the
+// sustain pedal holds the notes as the instrument says (its sustain_lo is where it is down; with
+// sustain_sw=off the keyboard holds them). Instruments with keyswitches list their articulations at the start;
 // pressing a keyswitch key prints the one chosen. Without a keyboard, -demo plays a phrase.
 //
 //	go run ./cmd/examples/sfz -sfz ~/Downloads/Timpani/Timpani.sfz
@@ -109,15 +110,15 @@ func main() {
 	}
 
 	synth := sampler.NewPoly(sampler.DefaultConfig(inst), *voices).AddTo(p)
-	// the instrument takes the velocity itself, the keyboard holds the notes for the sustain pedal
-	// every controller as itself ("cc1" the mod wheel), the sustain pedal holds the notes instead
+	// the instrument takes the velocity itself, and every controller as itself ("cc1" the mod wheel, "cc64" the sustain pedal); without a pedal of
+	// its own the keyboard holds the notes
 	controls := map[int]string{}
 	for cc := range 120 {
-		if cc != midi.CCSustain {
+		if cc != midi.CCSustain || !inst.NoSustain {
 			controls[cc] = fmt.Sprintf("cc%d", cc)
 		}
 	}
-	kb := keyboard.New(input, keyboard.Config{Transpose: *transpose, Controls: controls, HoldNotes: true}, synth)
+	kb := keyboard.New(input, keyboard.Config{Transpose: *transpose, Controls: controls, HoldNotes: inst.NoSustain}, synth)
 	switches, _ := inst.Switches()
 	if len(switches) > 0 {
 		kb.OnEvent(func(e midi.Event, _ psalm.CtrlTick) {

@@ -11,6 +11,13 @@ var Presets = map[string]func() Config{
 	"kalimba":      Kalimba,
 	"singingBowl":  SingingBowl,
 	"woodBlock":    WoodBlock,
+
+	"alienBell":  AlienBell,
+	"gamelan":    Gamelan,
+	"crystal":    Crystal,
+	"steelPan":   SteelPan,
+	"metalPlate": MetalPlate,
+	"spaceTine":  SpaceTine,
 }
 
 // Marimba is a rosewood bar tuned to the fundamental, its fourth and tenth partials, over a
@@ -136,5 +143,60 @@ func WoodBlock() Config {
 		Position:    0.3,
 		Noise:       0.4,
 		Level:       0.84,
+	}
+}
+
+// AlienBell rings at ratios no bell has, each mode a beating pair: a bell from somewhere else
+func AlienBell() Config {
+	return Config{
+		Modes: []Mode{{1, 1, 1}, {1.37, 0.7, 0.9}, {2.13, 0.6, 0.8}, {2.91, 0.5, 0.7}, {4.07, 0.35, 0.5},
+			{5.33, 0.25, 0.4}, {7.11, 0.15, 0.3}},
+		Decay: 6, HighDamping: 0.2, Hardness: 0.85, Position: 0.37, Beat: 0.006, Noise: 0.1, Level: 0.439,
+	}
+}
+
+// Gamelan is a bronze metallophone; its pairs beat a few times a second, the shimmer (ombak) of a
+// gamelan tuned in pairs
+func Gamelan() Config {
+	return Config{
+		Modes: []Mode{{1, 1, 1}, {2.39, 0.45, 0.6}, {4.37, 0.25, 0.4}, {6.85, 0.12, 0.3}},
+		Decay: 4.5, HighDamping: 0.3, Hardness: 0.75, Position: 0.3, Beat: 0.012, Noise: 0.15, Level: 0.832,
+	}
+}
+
+// Crystal is a glassy cluster of high, long modes, struck hard, shimmering with a gentle tremolo
+func Crystal() Config {
+	return Config{
+		Modes: []Mode{{1, 1, 1}, {2.02, 0.7, 1}, {3.03, 0.5, 0.9}, {4.21, 0.4, 0.8}, {5.43, 0.3, 0.7},
+			{6.82, 0.25, 0.6}, {8.37, 0.15, 0.5}},
+		Decay: 7, HighDamping: 0.05, Hardness: 1, Position: 0.13, Tremolo: 6.5, TremoloDepth: 0.2, Beat: 0.002,
+		Level: 0.53,
+	}
+}
+
+// SteelPan rings in tuned harmonics like a steel drum's note area, a little out of tune with itself
+func SteelPan() Config {
+	return Config{
+		Modes: []Mode{{1, 1, 1}, {2, 0.65, 0.8}, {3, 0.35, 0.6}, {4.03, 0.15, 0.4}},
+		Decay: 2, HighDamping: 0.3, Hardness: 0.55, Position: 0.21, Beat: 0.003, Noise: 0.2, Level: 0.755,
+	}
+}
+
+// MetalPlate is a sheet of steel: a dozen dense modes, a hard hit, a long industrial ring
+func MetalPlate() Config {
+	return Config{
+		Modes: []Mode{{1, 1, 1}, {1.59, 0.9, 1}, {2.14, 0.8, 0.9}, {2.30, 0.8, 0.9}, {2.65, 0.7, 0.8},
+			{2.92, 0.6, 0.8}, {3.16, 0.6, 0.7}, {3.50, 0.5, 0.7}, {3.60, 0.5, 0.6}, {4.06, 0.4, 0.6},
+			{4.15, 0.4, 0.5}, {4.58, 0.3, 0.5}},
+		Decay: 5, HighDamping: 0.2, Hardness: 0.95, Position: 0.29, Noise: 0.4, Level: 0.218,
+	}
+}
+
+// SpaceTine is a thumb piano's tine ringing for ages, wobbling in a fast tremolo
+func SpaceTine() Config {
+	return Config{
+		Modes: []Mode{{1, 1, 1}, {6.27, 0.3, 0.4}, {17.55, 0.1, 0.2}},
+		Decay: 9, HighDamping: 0.2, Hardness: 0.7, Position: 0.1, Tremolo: 11, TremoloDepth: 0.5, Noise: 0.2,
+		Level: 1.66,
 	}
 }

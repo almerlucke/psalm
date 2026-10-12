@@ -898,6 +898,7 @@ tracking, a short release):
 | `Fades` | `xfin_lovel` ... `xfout_hikey`, `xfin_loccN` ... `xfout_hiccN`, `xf_velcurve`, `xf_keycurve`, `xf_cccurve` | Crossfades by velocity, key or a controller (power or `Linear`); the ones by a controller follow it while the note sounds |
 | `CCGain` | `gain_ccN`, `volume_onccN` | dB a controller adds at its top |
 | `CCEnv` | `ampeg_attackccN` (and `delay`, `hold`, `decay`, `sustain`, `release`) | What a controller adds to the envelope when a note starts |
+| `EnvDynamic` | `ampeg_dynamic` | The envelope follows the controllers while the note sounds: a stage under way goes on at the new pace |
 | `AmpRandom`, `PitchRandom`, `DelayRandom` | `amp_random`, `pitch_random`, `delay_random` | Every note a little different: dB and cents spread around the level and the pitch, seconds later |
 | `Delay` | `delay` | Seconds the region starts after the note |
 | `VelEnv` | `ampeg_vel2delay` ... `ampeg_vel2release` | Added to the envelope at full velocity |
@@ -907,6 +908,11 @@ tracking, a short release):
 
 Controllers reach the sampler as messages, `"cc1"` (the mod wheel) to `"cc127"`, 0-1: give a
 keyboard `Controls: map[int]string{1: "cc1"}`. `Instrument.Switches()` lists the keyswitches.
+
+The instrument has a sustain pedal of its own (`sustain_cc`, `sustain_lo`, `sustain_sw`;
+`Instrument.SustainCC`, `SustainLo`, `NoSustain`): notes let go while it is down ring on, their
+release regions play when it comes up. It takes `"cc64"` or `"sustain"` (0-1); only 0 is up
+unless `sustain_lo` says otherwise.
 
 The SFZ loader knows `<control>` (`default_path`, `note_offset`, `octave_offset`, `set_ccN`), `<global>`,
 `<master>`, `<group>`, `<region>`, `#define` and `#include`. Opcodes it doesn't know are counted
@@ -970,6 +976,11 @@ sustain pedal.
 | `flute` | 008400000, vibrato |
 | `reed` | 800000888, nasal |
 | `whistle` | 800000008 |
+| `screamer` | Every drawbar into a preamp driven to its limit, all the click, deep chorus |
+| `warble` | The scanner at 15 Hz: a fluttering, alien warble |
+| `chime` | Only the high drawbars with the fast third percussion: a glassy stab |
+| `growlBass` | 16' and 8' driven, all click: a growling bass organ |
+| `seasick` | The scanner at 1.5 Hz, deep: everything sways out of tune and back |
 
 ## waveguide
 
@@ -1014,6 +1025,11 @@ the friction pulls it, as on a real string. **Value inputs**: 1 pressure, 2 vibr
 | `slowStrings` | Swelling in and out |
 | `ponticello` | Bowed near the bridge, glassy |
 | `flautando` | Bowed lightly over the fingerboard |
+| `glassHarp` | A string without losses: shimmers for many seconds |
+| `wire` | A steel wire picked at its very end: thin, jangling, metallic |
+| `eBow` | A string kept singing by a steady bow: endless sustain |
+| `ghostBow` | Bowed so lightly the note floats, a slow wide vibrato |
+| `scrape` | Pressed hard near the bridge: gritty, metallic, on the edge |
 
 ## modal
 
@@ -1051,6 +1067,12 @@ bell := modal.New(modal.Config{Modes: []modal.Mode{{1, 1, 1}, {2.76, 0.5, 0.6}},
 | `kalimba` | A thumb piano |
 | `singingBowl` | Long and beating |
 | `woodBlock` | A pitched knock |
+| `alienBell` | Ratios no bell has, each mode beating |
+| `gamelan` | A bronze metallophone shimmering in tuned pairs (ombak) |
+| `crystal` | A glassy cluster of long high modes with a gentle tremolo |
+| `steelPan` | Tuned harmonics, a little out of tune with themselves |
+| `metalPlate` | A dozen dense modes: a long, industrial ring |
+| `spaceTine` | A tine ringing for ages in a fast tremolo |
 
 ## drumsynth
 
@@ -1067,7 +1089,7 @@ kit := drumsynth.NewPoly(drumsynth.Config{Kit: drumsynth.Kit909()}, 16).AddTo(p)
 seq.Row("kick", stepseq.Sound(kit, "kick"))
 ```
 
-The kits `Kit808()` and `Kit909()` have `kick`, `snare`, `hat`, `open`, `tomLow`, `tomMid`,
+The kits `Kit808()`, `Kit909()`, `KitElectro()` (zapping kicks and toms, tight hats), `KitTrap()` (a long driven 808 boom, a big clap) and `KitIndustrial()` (everything distorted, metal for hats) have `kick`, `snare`, `hat`, `open`, `tomLow`, `tomMid`,
 `tomHigh`, `clap`, `rim`, `cowbell` and `cymbal`; the hats choke each other. A `Sound` has a
 `Kind` (`Kick`, `Snare`, `Hat`, `Tom`, `Clap`, `Rim`, `Cowbell`, `Cymbal`), `Pitch`, `Decay`,
 `Sweep` and `SweepTime` (the pitch falling), `Tone` (the filter of its noise or metal), `Snap`
@@ -1099,6 +1121,7 @@ choir.Receive(psalm.Message{"vowel": 4.0}, 0) // all sing "u", gliding there
 |---|---|
 | `Range` | `Auto` (by the pitch of the note), `Bass`, `Tenor`, `Alto`, `Soprano` |
 | `Vowel` | 0-4: a e i o u, fractions morph |
+| `VowelRate`, `VowelSync`, `VowelDepth`, `VowelSteps` | The vowel moving by itself: Hz or beats a cycle, steps up and down; `VowelSteps` jumps to a new vowel every cycle (talking) |
 | `VowelGlide` | Seconds a change of vowel takes |
 | `Brightness` | 0-1, breathy to pressed; the velocity adds |
 | `Breath` | 0-1, the noise of the air |
@@ -1118,6 +1141,12 @@ The first formant follows the pitch up when it is higher, as singers do. **Value
 | `monks` | Low men's voices on "o", no vibrato |
 | `angels` | High voices, wide and airy |
 | `robot` | Steady and bright |
+| `talkbox` | A new vowel every sixteenth note, with the tempo: talking in rhythm |
+| `wahChoir` | A choir sweeping from "a" to "u" and back |
+| `throatDrone` | Sixteen low voices far apart in pitch: a huge drone |
+| `whisper` | All air, no tone |
+| `alien` | A soprano's throat on every note, a fast wide vibrato |
+| `babble` | A crowd of twelve, each jumping between vowels |
 
 ## pd
 
@@ -1137,9 +1166,12 @@ A `Line` has `Waveform` (`Saw`, `Square`, `Pulse`, `SawPulse`, `Reso1`-`Reso3`),
 `Alternate` (another waveform every other cycle), `Octave`, `Detune` (cents), `Level`, `DCW` (0-1,
 the distortion at the top of `DCWEnv`), `KeyFollow` (higher notes distorted less), `Velocity` and
 `DCAEnv`. The `Config` has `Line1`, `Line2`, `Ring`, `PitchSweep`/`PitchTime`, a vibrato and
-`Width` (the lines apart in stereo). **Value input** 1: the distortion of both lines.
+`Width` (the lines apart in stereo), and `SweepRate` or `SweepSync` (beats) with `SweepDepth`: an LFO
+on the distortion of both lines, the CZ's wah. **Value input** 1: the distortion of both lines.
 
-Presets: `brass`, `strings`, `ePiano`, `bass`, `resoBass`, `organ`, `bell` (ring modulated),
+Presets: `wahBass` (the resonance swept in quarter notes), `digiChoir` (the CZ's glassy choir), `zap`
+(a laser), `glassPad`, `resoArp` (snapping resonance for arpeggios), `metalDrone` (ring modulated
+saws a tritone apart), `brass`, `strings`, `ePiano`, `bass`, `resoBass`, `organ`, `bell` (ring modulated),
 `lead` (saw and pulse alternating), `sweep`, `clav`.
 
 ## westcoast
@@ -1165,8 +1197,10 @@ wc.ValueIn(lfo.New(true, 0.2, 0, 0.6, lfo.Sine).AddTo(p), 0, 1) // the fold brea
 | `EnvToFold`, `EnvToFM` | What the function adds to the fold and the index |
 | `Gate` | `Combo` (filter and amplifier), `LowPass`, `VCA` |
 | `Resonance`, `Response`, `Color` | The gate: how it rings, how slowly the vactrol lets go, how bright it opens |
+| `LFORate`, `LFOSync`, `LFOFold`, `LFOFM` | An LFO (Hz, or beats a cycle) on the fold and the FM index |
 
-**Value inputs**: 1 fold, 2 FM index. Presets: `bongo`, `pluck`, `marimba`, `bell`, `bass`,
+**Value inputs**: 1 fold, 2 FM index. Presets: `gong`, `waterDrop` (a pinged drop), `growl` (a bass
+folded in eighth notes), `foldSweep`, `laserPing`, `livingDrone`, `bongo`, `pluck`, `marimba`, `bell`, `bass`,
 `drone`, `metal`, `wobble`.
 
 ## supersaw
@@ -1192,6 +1226,9 @@ pad := supersaw.NewPoly(supersaw.TrancePad(), 8).AddTo(p)
 | `Cutoff`, `Resonance`, `FilterEnvAmount`, `KeyTrack`, `Velocity` | The filter (Hz, 0-1, octaves, 0-1, octaves) |
 | `FilterEnv`, `AmpEnv` | ADSR (ms) |
 | `Glide` | Seconds |
+| `LFORate`, `LFOSync`, `LFOCutoff`, `LFODetune` | An LFO (Hz, or beats a cycle) on the cutoff (octaves) and the detune |
 
-**Value inputs**: 1 cutoff, 2 detune. Presets: `trancePad`, `lead`, `pluck`, `hoover`, `stab`,
+**Value inputs**: 1 cutoff, 2 detune. Presets: `hypersaw` (sixteen saws, a wall of sound), `wobbleBass`
+(the filter in eighth notes), `breathing` (the detune swelling), `swarm` (a four second rise),
+`glideLead` (sliding, best with one voice), `trancePad`, `lead`, `pluck`, `hoover`, `stab`,
 `unisonBass`.

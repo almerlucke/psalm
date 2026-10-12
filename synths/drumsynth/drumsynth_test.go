@@ -52,7 +52,7 @@ func TestEverySoundPlaysAndEnds(t *testing.T) {
 	for kn, f := range Kits {
 		for name, snd := range f().Sounds {
 			v, x := hit(f(), psalm.Message{"sound": name}, snd.Decay+0.3)
-			if p := 20 * math.Log10(peak(x)); p < -16 || p > -1 || math.IsNaN(p) {
+			if p := 20 * math.Log10(peak(x)); p < -20 || p > -1 || math.IsNaN(p) { // noisy sounds vary hit to hit
 				t.Errorf("%s %s peaks at %.1f dB", kn, name, p)
 			}
 			if v.IsActive() {

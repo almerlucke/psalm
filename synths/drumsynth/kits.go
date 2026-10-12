@@ -4,6 +4,10 @@ package drumsynth
 var Kits = map[string]func() Kit{
 	"808": Kit808,
 	"909": Kit909,
+
+	"electro":    KitElectro,
+	"trap":       KitTrap,
+	"industrial": KitIndustrial,
 }
 
 // Kit808 is the boom of the TR-808: a long, deep kick, the metallic hats, the cowbell
@@ -37,5 +41,58 @@ func Kit909() Kit {
 		"rim":     {Kind: Rim, Pitch: 1800, Decay: 0.04, Snap: 0.5, Level: 0.22, Pan: -0.1},
 		"cowbell": {Kind: Cowbell, Pitch: 560, Decay: 0.3, Level: 0.17, Pan: 0.1},
 		"cymbal":  {Kind: Cymbal, Pitch: 1.2, Decay: 1.5, Tone: 0.6, Snap: 0.6, Level: 0.23, Pan: -0.2},
+	}}
+}
+
+// KitElectro is electro funk: kicks and toms that zap down from high up, a crisp snare, tight high hats
+func KitElectro() Kit {
+	return Kit{Sounds: map[string]Sound{
+		"kick":    {Kind: Kick, Pitch: 55, Decay: 0.45, Sweep: 30, SweepTime: 0.04, Snap: 0.3, Drive: 0.3, Level: 0.71},
+		"snare":   {Kind: Snare, Pitch: 220, Decay: 0.18, Sweep: 12, SweepTime: 0.02, Tone: 0.9, Snap: 0.9, Level: 0.27},
+		"hat":     {Kind: Hat, Pitch: 1.6, Decay: 0.04, Tone: 1, Snap: 0.2, Level: 0.34, Pan: 0.25, Choke: 1},
+		"open":    {Kind: Hat, Pitch: 1.6, Decay: 0.25, Tone: 1, Snap: 0.2, Level: 0.32, Pan: 0.25, Choke: 1},
+		"tomLow":  {Kind: Tom, Pitch: 150, Decay: 0.35, Sweep: 24, SweepTime: 0.08, Snap: 0.2, Level: 0.38, Pan: -0.4},
+		"tomMid":  {Kind: Tom, Pitch: 220, Decay: 0.3, Sweep: 24, SweepTime: 0.07, Snap: 0.2, Level: 0.48, Pan: 0},
+		"tomHigh": {Kind: Tom, Pitch: 330, Decay: 0.25, Sweep: 24, SweepTime: 0.06, Snap: 0.2, Level: 0.38, Pan: 0.4},
+		"clap":    {Kind: Clap, Decay: 0.2, Tone: 0.8, Snap: 0.8, Level: 0.17},
+		"rim":     {Kind: Rim, Pitch: 2400, Decay: 0.03, Snap: 0.4, Level: 0.21, Pan: -0.2},
+		"cowbell": {Kind: Cowbell, Pitch: 800, Decay: 0.2, Level: 0.15, Pan: 0.15},
+		"cymbal":  {Kind: Cymbal, Pitch: 1.5, Decay: 1, Tone: 0.9, Snap: 0.4, Level: 0.26, Pan: -0.25},
+	}}
+}
+
+// KitTrap is the trap kit: a long, driven 808 boom to play bass lines on, tight hats for rolls, a
+// big clap
+func KitTrap() Kit {
+	return Kit{Sounds: map[string]Sound{
+		"kick":    {Kind: Kick, Pitch: 43, Decay: 2.5, Sweep: 7, SweepTime: 0.03, Snap: 0.2, Drive: 0.6, Level: 0.71},
+		"snare":   {Kind: Snare, Pitch: 190, Decay: 0.22, Sweep: 4, SweepTime: 0.015, Tone: 0.6, Snap: 0.8, Drive: 0.3, Level: 0.56},
+		"hat":     {Kind: Hat, Pitch: 1.3, Decay: 0.035, Tone: 0.9, Snap: 0.5, Level: 0.42, Pan: 0.2, Choke: 1},
+		"open":    {Kind: Hat, Pitch: 1.3, Decay: 0.3, Tone: 0.9, Snap: 0.5, Level: 0.37, Pan: 0.2, Choke: 1},
+		"tomLow":  {Kind: Tom, Pitch: 70, Decay: 1, Sweep: 3, SweepTime: 0.05, Snap: 0.1, Drive: 0.3, Level: 0.42, Pan: -0.3},
+		"tomMid":  {Kind: Tom, Pitch: 95, Decay: 0.9, Sweep: 3, SweepTime: 0.05, Snap: 0.1, Drive: 0.3, Level: 0.50},
+		"tomHigh": {Kind: Tom, Pitch: 120, Decay: 0.8, Sweep: 3, SweepTime: 0.05, Snap: 0.1, Drive: 0.3, Level: 0.42, Pan: 0.3},
+		"clap":    {Kind: Clap, Decay: 0.45, Tone: 0.55, Snap: 0.9, Level: 0.16},
+		"rim":     {Kind: Rim, Pitch: 1700, Decay: 0.04, Snap: 0.4, Level: 0.23, Pan: -0.1},
+		"cowbell": {Kind: Cowbell, Pitch: 587, Decay: 0.3, Level: 0.16, Pan: 0.1},
+		"cymbal":  {Kind: Cymbal, Decay: 1.8, Tone: 0.5, Snap: 0.4, Level: 0.28, Pan: -0.2},
+	}}
+}
+
+// KitIndustrial is everything driven into distortion: a kick that tears down from up high, a
+// snare like a hammer on sheet metal, low clanging metal for hats and cymbal
+func KitIndustrial() Kit {
+	return Kit{Sounds: map[string]Sound{
+		"kick":    {Kind: Kick, Pitch: 40, Decay: 0.6, Sweep: 36, SweepTime: 0.02, Snap: 1, Drive: 1, Level: 0.71},
+		"snare":   {Kind: Snare, Pitch: 150, Decay: 0.4, Sweep: 24, SweepTime: 0.015, Tone: 1, Snap: 1, Drive: 1, Level: 0.56},
+		"hat":     {Kind: Hat, Pitch: 0.7, Decay: 0.07, Tone: 0.3, Snap: 0.8, Drive: 0.8, Level: 0.26, Pan: 0.3, Choke: 1},
+		"open":    {Kind: Hat, Pitch: 0.7, Decay: 0.6, Tone: 0.3, Snap: 0.8, Drive: 0.8, Level: 0.26, Pan: 0.3, Choke: 1},
+		"tomLow":  {Kind: Tom, Pitch: 80, Decay: 0.5, Sweep: 12, SweepTime: 0.03, Snap: 0.8, Drive: 1, Level: 0.42, Pan: -0.3},
+		"tomMid":  {Kind: Tom, Pitch: 115, Decay: 0.45, Sweep: 12, SweepTime: 0.03, Snap: 0.8, Drive: 1, Level: 0.50},
+		"tomHigh": {Kind: Tom, Pitch: 160, Decay: 0.4, Sweep: 12, SweepTime: 0.03, Snap: 0.8, Drive: 1, Level: 0.42, Pan: 0.3},
+		"clap":    {Kind: Clap, Decay: 0.6, Tone: 0.2, Snap: 1, Drive: 1, Level: 0.50},
+		"rim":     {Kind: Rim, Pitch: 900, Decay: 0.08, Snap: 1, Drive: 1, Level: 0.28, Pan: -0.2},
+		"cowbell": {Kind: Cowbell, Pitch: 320, Decay: 0.6, Drive: 1, Level: 0.22, Pan: 0.2},
+		"cymbal":  {Kind: Cymbal, Pitch: 0.6, Decay: 3, Tone: 0.2, Snap: 1, Drive: 0.7, Level: 0.21, Pan: -0.3},
 	}}
 }
