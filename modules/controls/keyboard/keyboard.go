@@ -65,6 +65,10 @@ type Config struct {
 
 	// FollowClock sets the tempo of the patch from a MIDI clock
 	FollowClock bool
+
+	// Hits plays notes as hits, to their end whenever they are let go (drums: the note offs of a
+	// drum track would choke them): a note on is a note of no duration, a note off sends nothing
+	Hits bool
 }
 
 // Keyboard plays synths (any receiver of trigger messages: a poly synth, the piano) from a MIDI
@@ -287,6 +291,16 @@ func (k *Keyboard) noteOn(ch, note, velocity int, tick psalm.CtrlTick) {
 	}
 	v := k.Velocity(velocity)
 	d := math.Max(0, math.Min(k.cfg.Dynamics, 1))
+	if k.cfg.Hits {
+		k.send(psalm.Message{
+			"command":   "trigger",
+			"duration":  0.0,
+			"tick":      tick,
+			"amplitude": 1 - d + d*v,
+			"message":   psalm.Message{"pitch": float64(note + k.cfg.Transpose), "velocity": v},
+		})
+		return
+	}
 	k.held[ch][note], k.sounding[ch][note] = true, true
 	k.send(psalm.Message{
 		"command":   "trigger",

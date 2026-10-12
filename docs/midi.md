@@ -9,6 +9,10 @@ code. It has two parts:
   with a velocity curve, the pedals, controllers, pitch bend and pressure. It follows a MIDI clock
   and passes every event to your own handlers.
 
+MIDI files play the same way. A `midi.Player` is an input that plays a file in time, so a
+keyboard reading it plays synths from the file as it would from a keyboard (see
+[MIDI files](#midi-files)).
+
 ```go
 d, err := midi.OpenDevice("") // the first keyboard
 if err != nil {
@@ -75,6 +79,8 @@ right sample.
 | `engine.MidiIn(name)` | A JACK MIDI input port on the JACK engine (`audio/jack`). Register it before `Start`. JACK gives every event its exact frame, so timing is sample accurate. |
 | `midi.NewQueue()` | Push messages from anywhere: another goroutine, the network, or generated input. `PushOffset` places a message at a frame of the next buffer. |
 | `midi.Inputs{a, b}` | Several inputs merged into one, in order of offset. |
+| `midi.NewPlayer(file)` | A MIDI file, played in time (see [MIDI files](#midi-files)). |
+| `midi.Tee(input, n)` | One input shared by `n` readers, such as a keyboard for every channel of a file. Each reader gets every event. |
 
 A device or a queue stamps each message with the time it arrives, and plays it a constant latency
 later, at the frame that latency puts it on. The timing of the playing is kept: a quick run of
@@ -111,6 +117,7 @@ messages, such as a poly synth or the piano.
 | `PitchBend`, `Pressure` | The message names for pitch bend (-1 to 1) and channel pressure (0-1), sent to every voice. Empty sends none. |
 | `Routes` | Sends controllers to any setting of a synth, scaled to its range (see below). A routed controller is sent as its routes instead of by `Controls` (`PitchBend`, `Pressure`). |
 | `FollowClock` | Sets the tempo of the patch from a MIDI clock, averaged over the last beat. `Tempo()` reads it. |
+| `Hits` | Plays notes as hits that play to their end: a note on becomes a note of no duration, and a note off sends nothing. Use this for drums played from a file or a pad, whose short note offs would otherwise choke the drumsynth. |
 
 **Routes** send a controller to any setting the synth takes by message, scaled to that setting's
 range: the mod wheel sweeping a cutoff from 300 to 8000 Hz, a slider moving the vowel, the
@@ -159,6 +166,50 @@ buffer it falls in, because the synths release a note immediately.
 The keyboard also takes messages to change its settings: `channel`, `transpose`, `curve`,
 `fixedVelocity` and `dynamics`.
 
+## MIDI files
+
+`midi.ReadFile(path)` reads a Standard MIDI File (`.mid`, or `.rmi`). It handles format 0 and 1,
+ticks per quarter note or SMPTE time, running status, tempo changes, meta events and system
+exclusive. It takes files as they come: a track cut short ends where the file does, and other
+chunks are skipped. `ParseFile` reads from bytes, and `Write` and `WriteFile` write a file back.
+Build one in code with `Track.Add(tick, msg)` and `Track.AddMeta(tick, midi.MetaTempo,
+midi.TempoData(96))`.
+
+| File | |
+|---|---|
+| `Format`, `Division` | The format (0 one track, 1 tracks played together) and the ticks per quarter note (`FPS` and `TicksPerFrame` for SMPTE time). |
+| `Tracks` | The tracks. Each `Track` has `Events` in order of tick, and `Name()`. An event holds a `Message` (a channel or system exclusive message) or a meta event (`Meta`, `Data`; `Tempo()`, `TimeSignature()`, `Text()`). |
+| `Seconds(tick)`, `Duration()` | Time in seconds, following the tempo changes. |
+| `Channels()`, `Programs(ch)` | The channels that play, and the programs each one plays (from its program changes) in order. `midi.ProgramName(p)` gives the General MIDI name. |
+
+`midi.NewPlayer(file)` plays a file as an input. Each message lands on the exact frame its time
+falls on, following the tempo map. A file of many channels plays a synth for each channel: give
+every channel a keyboard with its `Channel` set, all reading one player through `midi.Tee`.
+
+```go
+f, err := midi.ReadFile("song.mid")
+if err != nil {
+	log.Fatal(err)
+}
+player := midi.NewPlayer(f)
+ins := midi.Tee(player, 2)
+grand := piano.NewPoly(piano.GrandPreset(), 32).AddTo(p)
+drums := drumsynth.NewPoly(drumsynth.Config{Kit: drumsynth.Kit909()}, 16).AddTo(p)
+keyboard.New(ins[0], keyboard.Config{Channel: 1}, grand).AddTo(p)
+keyboard.New(ins[1], keyboard.Config{Channel: 10, Hits: true}, drums).AddTo(p)
+player.Play()
+```
+
+| Player | |
+|---|---|
+| `Play()`, `Stop()`, `Playing()` | Play from where it is (from the start once at the end). Stop where it is; the notes sounding are released and the sustain pedal comes up. |
+| `Seek(seconds)`, `Position()`, `Duration()` | Jump to a time. Every channel is then set as the file has it there: the controllers are reset, then the bank, the program, the controllers, the bend and the pressure are sent as they last were. A note started before that point doesn't sound. |
+| `SetLoop(bool)` | Start over at the end. |
+| `SetSpeed(x)` | 1 plays at the file's tempo, 0.5 at half of it (0.05 to 8). |
+| `MuteChannel(ch, bool)`, `MuteTrack(i, bool)` | Mute the notes of a channel or a track. Its controllers still go through, so it plays correctly when unmuted. |
+
+All of these can be called from any goroutine, while it plays.
+
 ## Example
 
 `cmd/examples/keyboard` plays the synths live from a MIDI keyboard, in the Musikverein: the piano,
@@ -187,3 +238,15 @@ transposition, the velocity curve, the volume and the hall, and meters. A switch
 or the terminal moves the panel along. Press MIDI learn on the page, tap a control and turn a knob
 on the keyboard: from then on the knob moves it; the bindings are kept in `keyboard-midi.json`
 (`-bindings`). See [panel](controls.md#panel).
+
+`cmd/examples/midifile` plays a MIDI file on the synths. Every channel gets a synth chosen by the
+General MIDI program it plays, and channel 10 plays the drumsynth:
+
+```
+go run ./cmd/examples/midifile song.mid
+go run ./cmd/examples/midifile -list song.mid           # the tracks, the channels and their synths
+go run ./cmd/examples/midifile -synth 1=supersaw/lead -kit 909 -loop song.mid
+go run ./cmd/examples/midifile -render song.wav song.mid
+```
+
+See [examples](examples.md).

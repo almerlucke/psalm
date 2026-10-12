@@ -58,6 +58,9 @@ var GeneralMIDI = map[int]string{
 	35: "kick", 36: "kick", 37: "rim", 38: "snare", 39: "clap", 40: "snare",
 	41: "tomLow", 43: "tomLow", 45: "tomMid", 47: "tomMid", 48: "tomHigh", 50: "tomHigh",
 	42: "hat", 44: "hat", 46: "open", 49: "cymbal", 51: "cymbal", 57: "cymbal", 56: "cowbell",
+	52: "cymbal", 53: "cymbal", 55: "cymbal", 59: "cymbal", // china, ride bell, splash, ride 2
+	54: "hat", 69: "hat", 70: "hat", // tambourine, cabasa, maracas
+	75: "rim", 76: "rim", 77: "rim", // claves, wood blocks
 }
 
 // Config is a drum synth playing a kit

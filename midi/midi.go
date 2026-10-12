@@ -1,6 +1,7 @@
 // Package midi reads MIDI: the messages (every kind, the channel messages, system exclusive and the
-// system common and real time messages), a parser for a MIDI byte stream and inputs that hand the
-// events of an audio buffer to the patch, each at the frame it falls on. The keyboard module
+// system common and real time messages), a parser for a MIDI byte stream, MIDI files (read and
+// written) and inputs that hand the events of an audio buffer to the patch, each at the frame it
+// falls on: a device, a queue, a player of a MIDI file. The keyboard module
 // (modules/controls/keyboard) plays synths from an input.
 package midi
 
