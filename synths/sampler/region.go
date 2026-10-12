@@ -143,6 +143,46 @@ type Region struct {
 	Fades  []Fade   // crossfades by velocity, key or a controller
 	CCGain []CCGain // dB a controller adds at its top (gain_ccN)
 	CCEnv  []CCEnv  // seconds (sustain: 0-1) a controller adds to the envelope at its top
+
+	// Every note a little different: up to half these louder or softer (dB), sharper or flatter
+	// (cents), and up to DelayRandom seconds later
+	AmpRandom, PitchRandom, DelayRandom float64
+	Delay                               float64  // seconds the region starts after the note
+	VelEnv                              Envelope // added to the envelope at full velocity (seconds; sustain 0-1)
+	LFOs                                []LFO    // vibrato, tremolo
+	EQ                                  []EQBand // peaking filters
+	Width                               float64  // a stereo sound's width in percent: 100 as it is, 0 mono, -100 swapped
+}
+
+// LFOWave is the shape of an LFO
+type LFOWave int
+
+const (
+	LFOTriangle LFOWave = iota
+	LFOSine
+	LFOPulse75 // high three quarters of the cycle
+	LFOSquare
+	LFOPulse25
+	LFOPulse12
+	LFOSawUp
+	LFOSawDown
+)
+
+// LFO is a slow oscillator moving the pitch (vibrato) or the level (tremolo) of a region
+type LFO struct {
+	Freq   float64 // Hz
+	Wave   LFOWave
+	Delay  float64 // seconds before it starts
+	Fade   float64 // seconds it takes to grow to its depth after the delay
+	Pitch  float64 // cents up and down
+	Volume float64 // dB up and down
+}
+
+// EQBand is a peaking filter: a gain around a frequency, over a bandwidth in octaves
+type EQBand struct {
+	Freq      float64
+	Bandwidth float64
+	Gain      float64 // dB
 }
 
 // Source is what a crossfade follows: the velocity, the key, or a controller (0-127)
@@ -217,6 +257,7 @@ func NewRegion(sound Sound) Region {
 		HiRand:   1,
 		Env:      Envelope{Sustain: 1, Release: 0.05},
 		SwLoKey:  -1, SwHiKey: -1, SwLast: -1, SwDefault: -1,
+		Width: 100,
 	}
 }
 

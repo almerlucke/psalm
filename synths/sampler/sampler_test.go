@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -627,6 +628,171 @@ xfout_lovel=40 xfout_hivel=80 xfin_lokey=c4 xfin_hikey=c5
 	}
 	if len(r.CCGain) != 1 || r.CCGain[0] != (CCGain{1, -15}) || len(r.CCEnv) != 1 || r.CCEnv[0].Env.Attack != 0.5 {
 		t.Errorf("controller gain %+v, envelope %+v", r.CCGain, r.CCEnv)
+	}
+	if len(inst.Unsupported) != 0 {
+		t.Errorf("unsupported: %v", inst.Unsupported)
+	}
+}
+
+func TestRandomAndDelay(t *testing.T) {
+	r := NewRegion(NewSound(sr, constant(0.5, 1)))
+	r.VelTrack, r.AmpRandom = 0, 6
+	v := voice(r)
+	lo, hi := math.Inf(1), 0.0
+	for range 100 {
+		got := level(v, psalm.Message{"pitch": 60.0})
+		lo, hi = math.Min(lo, got), math.Max(hi, got)
+	}
+	// 6 dB of spread around the level: 3 dB louder at most, 3 softer
+	if d := 20 * math.Log10(hi/lo); d < 4.5 || d > 6.01 || hi > 0.5*math.Pow(10, 3.01/20) || lo < 0.5*math.Pow(10, -3.01/20) {
+		t.Errorf("amp_random 6: from %g to %g (%.1f dB)", lo, hi, d)
+	}
+	// the pitch: up to 50 cents either way
+	p := NewRegion(NewSound(sr, sine(440, 1))).Keys(0, 127, 69)
+	p.PitchRandom = 100
+	v = voice(p)
+	flo, fhi := math.Inf(1), 0.0
+	for range 30 {
+		f := preciseFrequency(play(v, psalm.Message{"pitch": 69.0}, buffers(0.3))[:int(0.25*sr)])
+		flo, fhi = math.Min(flo, f), math.Max(fhi, f)
+	}
+	if c := 1200 * math.Log2(fhi/flo); c < 50 || c > 101 {
+		t.Errorf("pitch_random 100: the notes spread %.0f cents", c)
+	}
+	// a delay, and a random one on top
+	d := NewRegion(NewSound(sr, constant(1, 1)))
+	d.Delay, d.DelayRandom = 0.01, 0.01
+	v = voice(d)
+	for range 10 {
+		x := play(v, psalm.Message{"pitch": 60.0}, buffers(0.05))
+		first := slices.IndexFunc(x, func(s float64) bool { return s != 0 })
+		if at := float64(first) / sr; at < 0.0099 || at > 0.0201 {
+			t.Errorf("a delay of 0.01 and up to 0.01 at random starts at %.4f s", at)
+		}
+	}
+}
+
+func TestVelocityEnvelope(t *testing.T) {
+	r := NewRegion(NewSound(sr, constant(1, 1)))
+	r.VelTrack = 0
+	r.Env.Attack, r.VelEnv.Attack = 0.01, 0.2 // harder: slower
+	v := voice(r)
+	at := func(vel float64) float64 {
+		return play(v, psalm.Message{"pitch": 60.0, "velocity": vel}, buffers(0.3))[int(0.05*sr)]
+	}
+	if soft, hard := at(0.1), at(1); soft < 0.99 || hard > 0.3 {
+		t.Errorf("50 ms in: a soft note %g (attack 0.03 s), a hard one %g (0.21 s)", soft, hard)
+	}
+}
+
+func TestLFOs(t *testing.T) {
+	// vibrato: 50 cents up and down at 5 Hz
+	r := NewRegion(NewSound(sr, sine(440, 2))).Keys(0, 127, 69)
+	r.LFOs = []LFO{{Freq: 5, Wave: LFOSine, Pitch: 50}}
+	x := play(voice(r), psalm.Message{"pitch": 69.0}, buffers(1.5))
+	lo, hi := math.Inf(1), 0.0
+	for at := 0.1; at < 1.3; at += 0.01 {
+		f := preciseFrequency(x[int(at*sr) : int(at*sr)+int(0.02*sr)])
+		lo, hi = math.Min(lo, f), math.Max(hi, f)
+	}
+	if c := 1200 * math.Log2(hi/lo); c < 70 || c > 130 {
+		t.Errorf("a vibrato of 50 cents swings %.0f cents", c)
+	}
+	// tremolo: 6 dB up and down, after a delay and a fade
+	r = NewRegion(NewSound(sr, constant(0.5, 2)))
+	r.VelTrack = 0
+	r.LFOs = []LFO{{Freq: 4, Wave: LFOSquare, Volume: 6, Delay: 0.2, Fade: 0.1}}
+	x = play(voice(r), psalm.Message{"pitch": 60.0}, buffers(1.2))
+	if p := peakIn(x[:int(0.19*sr)]); math.Abs(p-0.5) > 1e-6 {
+		t.Errorf("before the tremolo's delay: %g", p)
+	}
+	if p := peakIn(x[int(0.4*sr):]); math.Abs(p-0.5*math.Pow(10, 6.0/20)) > 0.01 {
+		t.Errorf("the tremolo at its depth peaks at %g", p)
+	}
+}
+
+func peakIn(x []float64) float64 { return peak(x) }
+
+// preciseFrequency measures between the first and the last upward zero crossing, interpolated
+func preciseFrequency(x []float64) float64 {
+	first, last, n := -1.0, 0.0, 0
+	for i := 1; i < len(x); i++ {
+		if x[i-1] < 0 && x[i] >= 0 {
+			at := float64(i-1) + x[i-1]/(x[i-1]-x[i])
+			if first < 0 {
+				first = at
+			} else {
+				last = at
+				n++
+			}
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return float64(n) * sr / (last - first)
+}
+
+func TestEQAndWidth(t *testing.T) {
+	r := NewRegion(NewSound(sr, sine(1000, 1))).Keys(0, 127, 60)
+	r.VelTrack = 0
+	plain := peakIn(play(voice(r), psalm.Message{"pitch": 60.0}, buffers(0.5))[int(0.2*sr):])
+	r.EQ = []EQBand{{Freq: 1000, Bandwidth: 1, Gain: 6}}
+	boosted := peakIn(play(voice(r), psalm.Message{"pitch": 60.0}, buffers(0.5))[int(0.2*sr):])
+	if d := 20 * math.Log10(boosted/plain); math.Abs(d-6) > 0.2 {
+		t.Errorf("an EQ band of 6 dB at the tone: %.2f dB", d)
+	}
+	r.EQ = []EQBand{{Freq: 8000, Bandwidth: 0.5, Gain: 12}}
+	if far := peakIn(play(voice(r), psalm.Message{"pitch": 60.0}, buffers(0.5))[int(0.2*sr):]); math.Abs(20*math.Log10(far/plain)) > 0.5 {
+		t.Errorf("an EQ band 3 octaves away changes the tone %.2f dB", 20*math.Log10(far/plain))
+	}
+	// a stereo sound made mono
+	s := NewRegion(NewSound(sr, constant(0.4, 1), constant(0, 1)))
+	s.VelTrack, s.Width = 0, 0
+	v := voice(s)
+	v.NoteOn(1, psalm.Message{"pitch": 60.0}, psalm.CtrlTick{}, v.Config())
+	v.Synthesize()
+	out := v.Output(0).Channels
+	if l, rr := out[0][100], out[1][100]; math.Abs(float64(l)-0.2) > 1e-6 || l != rr {
+		t.Errorf("width 0: %g %g, want 0.2 both", l, rr)
+	}
+}
+
+func TestLoadSFZModulation(t *testing.T) {
+	dir := t.TempDir()
+	writeWAV(t, filepath.Join(dir, "a.wav"), constant(0.5, 0.2))
+	sfz := `<region> sample=a.wav amp_random=1.5 pitch_random=12 delay_random=0.012 delay=0.05 width=50
+ampeg_vel2attack=-0.18 ampeg_vel2release=0.4 ampeg_vel2sustain=-20
+pitchlfo_freq=5.5 pitchlfo_depth=15 pitchlfo_delay=0.4 pitchlfo_fade=0.3
+amplfo_freq=4 amplfo_depth=1.2
+lfo01_freq=6 lfo01_wave=1 lfo01_volume=-2 lfo01_fade=1
+eq1_gain=3 eq2_freq=1200 eq2_bw=2 eq2_gain=-4 eq3_freq=8000
+`
+	if err := os.WriteFile(filepath.Join(dir, "m.sfz"), []byte(sfz), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inst, err := LoadSFZ(filepath.Join(dir, "m.sfz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := inst.Regions[0]
+	if r.AmpRandom != 1.5 || r.PitchRandom != 12 || r.DelayRandom != 0.012 || r.Delay != 0.05 || r.Width != 50 {
+		t.Errorf("random %g %g %g, delay %g, width %g", r.AmpRandom, r.PitchRandom, r.DelayRandom, r.Delay, r.Width)
+	}
+	if r.VelEnv.Attack != -0.18 || r.VelEnv.Release != 0.4 || r.VelEnv.Sustain != -0.2 {
+		t.Errorf("the velocity envelope %+v", r.VelEnv)
+	}
+	wantLFOs := []LFO{
+		{Freq: 6, Wave: LFOSine, Fade: 1, Volume: -2},
+		{Freq: 4, Wave: LFOSine, Volume: 1.2},
+		{Freq: 5.5, Wave: LFOSine, Delay: 0.4, Fade: 0.3, Pitch: 15},
+	}
+	if !slices.Equal(r.LFOs, wantLFOs) {
+		t.Errorf("LFOs %+v, want %+v", r.LFOs, wantLFOs)
+	}
+	wantEQ := []EQBand{{50, 1, 3}, {1200, 2, -4}} // the third has no gain
+	if !slices.Equal(r.EQ, wantEQ) {
+		t.Errorf("EQ %+v, want %+v", r.EQ, wantEQ)
 	}
 	if len(inst.Unsupported) != 0 {
 		t.Errorf("unsupported: %v", inst.Unsupported)

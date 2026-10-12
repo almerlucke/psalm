@@ -2,6 +2,7 @@ package sampler
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -276,6 +277,8 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 	frames := func(op, v string) int64 { return int64(num(op, v)) }
 
 	fades := map[fadeSource]*Fade{}
+	lfos := map[string]*LFO{} // "pitch", "amp" (SFZ 1) and "01", "02"... (SFZ 2)
+	eqs := map[int]*EQBand{}
 	curves := map[string]bool{} // linear ("gain") curves: vel, key, cc
 
 	// key sets the range and the root, the opcodes after it can change them
@@ -402,10 +405,34 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 			r.SwDefault = key(op, v)
 		case "sw_label":
 			r.SwLabel = v
+		case "group_label", "region_label", "master_label", "global_label":
+			// names for an editor, nothing to play
+		case "amp_random":
+			r.AmpRandom = num(op, v)
+		case "pitch_random":
+			r.PitchRandom = num(op, v)
+		case "delay_random":
+			r.DelayRandom = num(op, v)
+		case "delay":
+			r.Delay = num(op, v)
+		case "width":
+			r.Width = num(op, v)
+		case "ampeg_vel2delay":
+			r.VelEnv.Delay = num(op, v)
+		case "ampeg_vel2attack":
+			r.VelEnv.Attack = num(op, v)
+		case "ampeg_vel2hold":
+			r.VelEnv.Hold = num(op, v)
+		case "ampeg_vel2decay":
+			r.VelEnv.Decay = num(op, v)
+		case "ampeg_vel2sustain":
+			r.VelEnv.Sustain = num(op, v) / 100
+		case "ampeg_vel2release":
+			r.VelEnv.Release = num(op, v)
 		case "xf_velcurve", "xf_keycurve", "xf_cccurve":
 			curves[strings.TrimSuffix(strings.TrimPrefix(op, "xf_"), "curve")] = v == "gain"
 		default:
-			if !controlled(&r, op, v, num, fades) {
+			if !controlled(&r, op, v, num, fades) && !modulated(op, v, num, lfos, eqs) {
 				p.inst.Unsupported[op]++
 			}
 		}
@@ -426,6 +453,17 @@ func (p *sfzParser) build(ops opcodes) (r Region, ok bool, err error) {
 		r.Fades = append(r.Fades, *f)
 	}
 	slices.SortFunc(r.Fades, func(a, b Fade) int { return int(a.From) - int(b.From) })
+	// the LFOs and EQ bands, in order
+	for _, name := range slices.Sorted(maps.Keys(lfos)) {
+		if f := lfos[name]; f.Freq > 0 && (f.Pitch != 0 || f.Volume != 0) {
+			r.LFOs = append(r.LFOs, *f)
+		}
+	}
+	for _, n := range slices.Sorted(maps.Keys(eqs)) {
+		if b := eqs[n]; b.Gain != 0 {
+			r.EQ = append(r.EQ, *b)
+		}
+	}
 	if len(errs) > 0 {
 		return r, false, fmt.Errorf("sampler: %s: bad %s", name, strings.Join(errs, ", "))
 	}
@@ -510,6 +548,77 @@ func controlled(r *Region, op, v string, num func(op, v string) float64, fades m
 			e.Release = f
 		}
 		r.CCEnv = append(r.CCEnv, CCEnv{CC: cc, Env: e})
+		return true
+	}
+	return false
+}
+
+var (
+	lfoOpcode = regexp.MustCompile(`^(pitch|amp)lfo_(freq|depth|delay|fade)$`)
+	lfoNOp    = regexp.MustCompile(`^lfo(\d+)_(freq|wave|delay|fade|pitch|volume)$`)
+	eqOpcode  = regexp.MustCompile(`^eq([1-3])_(freq|bw|gain)$`)
+)
+
+// modulated reads the opcodes of LFOs and EQ bands; false when op is none of them
+func modulated(op, v string, num func(op, v string) float64, lfos map[string]*LFO, eqs map[int]*EQBand) bool {
+	lfo := func(name string) *LFO {
+		if lfos[name] == nil {
+			lfos[name] = &LFO{Wave: LFOSine}
+		}
+		return lfos[name]
+	}
+	if m := lfoOpcode.FindStringSubmatch(op); m != nil {
+		f, val := lfo(m[1]), num(op, v)
+		switch m[2] {
+		case "freq":
+			f.Freq = val
+		case "delay":
+			f.Delay = val
+		case "fade":
+			f.Fade = val
+		case "depth":
+			if m[1] == "pitch" {
+				f.Pitch = val // cents
+			} else {
+				f.Volume = val // dB
+			}
+		}
+		return true
+	}
+	if m := lfoNOp.FindStringSubmatch(op); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		f, val := lfo(fmt.Sprintf("%02d", n)), num(op, v)
+		switch m[2] {
+		case "freq":
+			f.Freq = val
+		case "wave":
+			f.Wave = LFOWave(val)
+		case "delay":
+			f.Delay = val
+		case "fade":
+			f.Fade = val
+		case "pitch":
+			f.Pitch = val
+		case "volume":
+			f.Volume = val
+		}
+		return true
+	}
+	if m := eqOpcode.FindStringSubmatch(op); m != nil {
+		n, _ := strconv.Atoi(m[1])
+		if eqs[n] == nil {
+			// SFZ's defaults: 50, 500 and 5000 Hz, an octave wide
+			eqs[n] = &EQBand{Freq: []float64{50, 500, 5000}[n-1], Bandwidth: 1}
+		}
+		val := num(op, v)
+		switch m[2] {
+		case "freq":
+			eqs[n].Freq = val
+		case "bw":
+			eqs[n].Bandwidth = val
+		case "gain":
+			eqs[n].Gain = val
+		}
 		return true
 	}
 	return false

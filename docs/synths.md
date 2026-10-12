@@ -898,6 +898,12 @@ tracking, a short release):
 | `Fades` | `xfin_lovel` ... `xfout_hikey`, `xfin_loccN` ... `xfout_hiccN`, `xf_velcurve`, `xf_keycurve`, `xf_cccurve` | Crossfades by velocity, key or a controller (power or `Linear`); the ones by a controller follow it while the note sounds |
 | `CCGain` | `gain_ccN`, `volume_onccN` | dB a controller adds at its top |
 | `CCEnv` | `ampeg_attackccN` (and `delay`, `hold`, `decay`, `sustain`, `release`) | What a controller adds to the envelope when a note starts |
+| `AmpRandom`, `PitchRandom`, `DelayRandom` | `amp_random`, `pitch_random`, `delay_random` | Every note a little different: dB and cents spread around the level and the pitch, seconds later |
+| `Delay` | `delay` | Seconds the region starts after the note |
+| `VelEnv` | `ampeg_vel2delay` ... `ampeg_vel2release` | Added to the envelope at full velocity |
+| `LFOs` | `pitchlfo_*`, `amplfo_*`, `lfoN_freq`, `_wave`, `_delay`, `_fade`, `_pitch`, `_volume` | Vibrato (cents) and tremolo (dB), with a delay and a fade in |
+| `EQ` | `eq1_*` ... `eq3_*` (`freq`, `bw`, `gain`) | Peaking filters, bandwidth in octaves |
+| `Width` | `width` | A stereo sound's width in percent: 100 as it is, 0 mono |
 
 Controllers reach the sampler as messages, `"cc1"` (the mod wheel) to `"cc127"`, 0-1: give a
 keyboard `Controls: map[int]string{1: "cc1"}`. `Instrument.Switches()` lists the keyswitches.
