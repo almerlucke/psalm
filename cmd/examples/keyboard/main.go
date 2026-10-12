@@ -12,7 +12,11 @@
 // and drumsynth take the velocity too, the organ doesn't feel it (as a real one), the other synths
 // play it as the amplitude, and the sustain pedal holds their notes. The pitch bend bends every
 // synth but the piano (two semitones), the mod wheel does something of its own on each: opens the
-// filter, brightens, brings in a vibrato, moves the vowel or the table. Every MIDI event is printed
+// filter, brightens, brings in a vibrato, moves the vowel or the table; pressing harder on a held
+// key (aftertouch) does the same. -route sends a controller (or the bend, or the aftertouch) to
+// any setting of the synth instead, scaled to its range: -route 1:cutoff:300:8000:exp makes the
+// mod wheel sweep the cutoff (the settings each synth takes are listed under Messages in
+// docs/synths.md). Every MIDI event is printed
 // with -monitor.
 //
 // A control panel runs alongside on a web page (http://localhost:8087, -addr to move it, empty to
@@ -26,6 +30,8 @@
 //	go run ./cmd/examples/keyboard -device /dev/snd/midiC1D0 -preset felt -curve soft
 //	go run ./cmd/examples/keyboard -synth subtractive -preset brass
 //	go run ./cmd/examples/keyboard -synth supersaw -preset glideLead -mono   one note at a time, sliding
+//	go run ./cmd/examples/keyboard -synth westcoast -route 1:fold:0:1 -route pressure:fm:0:3
+//	                                                      the wheel on the fold, the aftertouch on the FM index
 //	go run ./cmd/examples/keyboard -jack                  JACK audio and a JACK MIDI port (sample accurate)
 //	go run ./cmd/examples/keyboard -demo                  no keyboard: a phrase played as MIDI
 package main
@@ -97,20 +103,21 @@ func pianoKeys(cfg keyboard.Config) keyboard.Config {
 	return cfg
 }
 
-// expressive are the hands on the synths: the pitch bend, and the mod wheel (controller 1)
+// expressive are the hands on the synths: the pitch bend, the mod wheel (controller 1), and the
+// aftertouch (pressing harder on a held key: it adds to the wheel)
 var expressive = map[int]string{midi.CCModWheel: "modWheel"}
 
 // most synths play the velocity as the amplitude, the sustain pedal holds their notes, they bend
 // and take the mod wheel
 func synthKeys(cfg keyboard.Config) keyboard.Config {
-	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend = 1, expressive, true, "pitchBend"
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure = 1, expressive, true, "pitchBend", "pressure"
 	return cfg
 }
 
 // fm, dx and the physical models take the velocity themselves (it brightens them, or plays the
 // mallet or the string harder), the sustain pedal holds their notes
 func velocityKeys(cfg keyboard.Config) keyboard.Config {
-	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend = 0, expressive, true, "pitchBend"
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure = 0, expressive, true, "pitchBend", "pressure"
 	return cfg
 }
 
@@ -137,6 +144,14 @@ func main() {
 	channel := flag.Int("channel", 0, "the MIDI channel (1-16), 0 is all")
 	transpose := flag.Int("transpose", 0, "semitones")
 	monitor := flag.Bool("monitor", true, "print every MIDI event")
+	var routes []string
+	flag.Func("route", "send a controller to any setting of the synths, scaled: source:name:min:max[:exp|:int], the source a controller (1 the mod wheel), bend or pressure (\"1:cutoff:300:8000:exp\"); repeatable", func(text string) error {
+		if _, _, err := keyboard.ParseRoute(text); err != nil {
+			return err
+		}
+		routes = append(routes, text)
+		return nil
+	})
 	mono := flag.Bool("mono", false, "play the synths mono legato: one note at a time, sliding between them where the synth has a glide")
 	buffer := flag.Int("buffer", 256, "the buffer size (the latency) with portaudio")
 	addr := flag.String("addr", "localhost:8087", "the address of the control panel page (empty: no panel)")
@@ -156,6 +171,13 @@ func main() {
 	}
 
 	cfg := keyboard.Config{Channel: *channel, Transpose: *transpose}
+	for _, text := range routes { // the routes of a source together
+		source, r, _ := keyboard.ParseRoute(text)
+		if cfg.Routes == nil {
+			cfg.Routes = map[int][]keyboard.Route{}
+		}
+		cfg.Routes[source] = append(cfg.Routes[source], r)
+	}
 	switch *curve {
 	case "soft":
 		cfg.Curve = keyboard.Soft

@@ -48,3 +48,23 @@ func TestBendAndWheel(t *testing.T) {
 		t.Errorf("the vibrato swings %g to %g, want ±0.5", lo, hi)
 	}
 }
+
+func TestPressure(t *testing.T) {
+	var e Expression
+	e.Receive(psalm.Message{"modWheel": 0.3, "pressure": 0.5})
+	e.Settle()
+	if w := e.Wheel(); math.Abs(w-0.8) > 1e-9 || e.Pressure() != 0.5 {
+		t.Errorf("the wheel 0.3 with pressure 0.5: %g", w)
+	}
+	e.Receive(psalm.Message{"pressure": 1.0})
+	e.Settle()
+	if w := e.Wheel(); w != 1 {
+		t.Errorf("more than all the way: %g", w)
+	}
+	// let go of the key's pressure: it glides back
+	e.Receive(psalm.Message{"pressure": 0.0})
+	e.Tick(44100)
+	if w := e.Wheel(); w < 0.9 {
+		t.Errorf("a sample after letting go: %g, it should glide", w)
+	}
+}

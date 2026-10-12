@@ -1,18 +1,20 @@
 # Synths
 
-Synths: [pitch bend and mod wheel](#pitch-bend-and-mod-wheel), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
+Synths: [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
 
 Presets of all synths are calibrated to the same loudness: a note at amplitude 1 plays at -12 LUFS
 (or peaks at -1 dBFS for percussive sounds), see [conventions](conventions.md#levels).
 
-## Pitch bend and mod wheel
+## Pitch bend, mod wheel and aftertouch
 
 Every synth but the piano (as a real one) takes the hands of a player while it sounds: the
 messages `pitchBend` (-1 to 1, over `bendRange` semitones, 2 by default), and `modWheel` (0 to 1),
-which does something of its own on each. They glide to where they are moved in a few
-milliseconds, so moving them never zips or clicks, and reach every voice of a poly synth (a
-message without a command). A keyboard sends them with `keyboard.Config{PitchBend: "pitchBend",
-Controls: map[int]string{midi.CCModWheel: "modWheel"}}`.
+which does something of its own on each, and `pressure` (0 to 1): the aftertouch, pressing harder
+on a held key, which adds to the wheel (the sampler leaves it to its instrument). They glide to
+where they are moved in a few milliseconds, so moving them never zips or clicks, and reach every
+voice of a poly synth (a message without a command). A keyboard sends them with
+`keyboard.Config{PitchBend: "pitchBend", Pressure: "pressure", Controls:
+map[int]string{midi.CCModWheel: "modWheel"}}`.
 
 | Synth | The mod wheel |
 |---|---|
@@ -432,6 +434,8 @@ when operator frequencies coincide, the hardware removes it in its output stage)
 
 `TestSysExBanks` plays every voice of every bank in `assets/dx7` (if present) and checks for NaN,
 clipping, DC offset and voices that never finish.
+
+**Messages**: `pitch`, `frequency`, `velocity`, `modScale` (brightness), and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
 
 ## grains
 
@@ -867,6 +871,8 @@ A struck string peaks high above its loudness, so the
 presets are calibrated to a -1 dB peak at velocity 0.8 (about -14 LUFS); played harder they go
 over, leave headroom or use the mixer's limiter.
 
+**Messages**: `pitch`, `frequency`, `velocity`, `level`, the pedals `sustain`, `sostenuto`, `soft`, and the voicing: `hardness`, `strikePosition`, `velocitySens`, `variation`, `body`, `bark`, `treble`, `soundboard`, `resonance`, `stiffness`, `stretch`, `decay`, `damping`, `damperTime`, `unison`, `strings`, `mechanics`, `position`, `width`.
+
 ## drums
 
 `synths/drums`
@@ -975,6 +981,8 @@ inst, err := sampler.LoadSFZWith("scripts/piano.sfz", func(path string) (sampler
 `cmd/examples/sfz` plays an SFZ instrument from a MIDI keyboard, with `-sounds` and `-rename` for
 sounds kept elsewhere.
 
+**Messages**: `pitch`, `frequency`, `velocity`, `level`, `sustain` (the pedal), `cc1` to `cc127` (0-1), `modWheel` (controller 1), and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+
 ## organ
 
 `synths/organ`
@@ -1073,6 +1081,8 @@ friction's pull is measured and corrected). **Value inputs**: 1 pressure, 2 vibr
 | `ghostBow` | Bowed so lightly the note floats, a slow wide vibrato |
 | `scrape` | Pressed hard near the bridge: gritty, metallic, on the edge |
 
+**Messages**: `pitch`, `frequency`, `velocity`, `level`, `decay`, `damping`, `brightness`, `pickPosition`, `release`, `bowPressure`, `bowPosition`, `vibratoRate`, `vibratoDepth`, `bodyMix`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+
 ## modal
 
 `synths/modal`
@@ -1116,6 +1126,8 @@ bell := modal.New(modal.Config{Modes: []modal.Mode{{1, 1, 1}, {2.76, 0.5, 0.6}},
 | `metalPlate` | A dozen dense modes: a long, industrial ring |
 | `spaceTine` | A tine ringing for ages in a fast tremolo |
 
+**Messages**: `pitch`, `frequency`, `velocity`, `level`, `decay`, `highDamping`, `hardness`, `position`, `release`, `tremolo`, `tremoloDepth`, `noise`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+
 ## drumsynth
 
 `synths/drumsynth`
@@ -1144,6 +1156,8 @@ kit.Sounds["kick"] = drumsynth.Sound{Kind: drumsynth.Kick, Pitch: 45, Decay: 2, 
 ```
 
 The sounds of the kits peak around -3 dB (kick), -5 (snare), -6 (toms, clap) and -10 (hats, rim).
+
+**Messages**: `sound` (a name of the kit) or `pitch` (a key), `speed`, `velocity`, `level`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
 
 ## vocal
 
@@ -1190,6 +1204,8 @@ The first formant follows the pitch up when it is higher, as singers do. **Value
 | `alien` | A soprano's throat on every note, a fast wide vibrato |
 | `babble` | A crowd of twelve, each jumping between vowels |
 
+**Messages**: `pitch`, `frequency`, `velocity`, `level`, `vowel`, `vowelGlide`, `brightness`, `breath`, `range`, `vibratoRate`, `vibratoDepth`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+
 ## pd
 
 `synths/pd`
@@ -1215,6 +1231,8 @@ Presets: `wahBass` (the resonance swept in quarter notes), `digiChoir` (the CZ's
 (a laser), `glassPad`, `resoArp` (snapping resonance for arpeggios), `metalDrone` (ring modulated
 saws a tritone apart), `brass`, `strings`, `ePiano`, `bass`, `resoBass`, `organ`, `bell` (ring modulated),
 `lead` (saw and pulse alternating), `sweep`, `clav`.
+
+**Messages**: `pitch`, `frequency`, `velocity`, `level`, `dcw1`, `dcw2`, `waveform1`, `waveform2`, `detune`, `vibratoDepth`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
 
 ## westcoast
 
@@ -1246,6 +1264,8 @@ wc.ValueIn(lfo.New(true, 0.2, 0, 0.6, lfo.Sine).AddTo(p), 0, 1) // the fold brea
 folded in eighth notes), `foldSweep`, `laserPing`, `livingDrone`, `bongo`, `pluck`, `marimba`, `bell`, `bass`,
 `drone`, `metal`, `wobble`.
 
+**Messages**: `pitch`, `frequency`, `velocity`, `level`, `fold`, `symmetry`, `fm`, `am`, `modRatio`, `decay`, `resonance`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+
 ## supersaw
 
 `synths/supersaw`
@@ -1275,3 +1295,5 @@ pad := supersaw.NewPoly(supersaw.TrancePad(), 8).AddTo(p)
 (the filter in eighth notes), `breathing` (the detune swelling), `swarm` (a four second rise),
 `glideLead` (sliding: play it mono legato), `trancePad`, `lead`, `pluck`, `hoover`, `stab`,
 `unisonBass`.
+
+**Messages**: `pitch`, `frequency`, `velocity`, `level`, `detune`, `mix`, `stereo`, `saws`, `sub`, `cutoff`, `resonance`, `filterEnvAmount`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).

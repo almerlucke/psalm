@@ -175,13 +175,21 @@ func TestPitchBend(t *testing.T) {
 	}
 }
 
-func TestModWheel(t *testing.T) {
+func TestModWheel(t *testing.T) { testWheel(t, "modWheel") }
+
+// TestPressure: the aftertouch does what the wheel does (the sampler leaves it to its instrument)
+func TestPressure(t *testing.T) { testWheel(t, "pressure") }
+
+func testWheel(t *testing.T, control string) {
 	for _, e := range expressives(t) {
+		if control == "pressure" && e.name == "sampler" {
+			continue
+		}
 		// two voices alike (the same seed), one with the wheel up
 		render := func(wheel float64) []float64 {
 			fresh()
 			v := e.make()
-			v.ReceiveMessage(psalm.Message{"modWheel": wheel})
+			v.ReceiveMessage(psalm.Message{control: wheel})
 			v.Note(10, 1, e.note, psalm.CtrlTick{}, v.Config())
 			return left(v, 0.8)
 		}
@@ -196,7 +204,7 @@ func TestModWheel(t *testing.T) {
 			continue
 		}
 		if r := math.Sqrt(diff / all); r < 0.1 {
-			t.Errorf("%s: the wheel up changes the sound only %.1f%%", e.name, 100*r)
+			t.Errorf("%s: %s up changes the sound only %.1f%%", e.name, control, 100*r)
 		}
 		// and at rest it changes nothing: the same seed renders the same
 		again := render(0)

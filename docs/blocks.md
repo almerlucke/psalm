@@ -122,3 +122,50 @@ about 3e-7 (-130 dB) and about 2.5 times faster than `math.Sin`. `sine.Cycle(pha
 phase in cycles (1 is a full turn), `sine.Sin(x)` and `sine.Cos(x)` radians. The FM and DX
 operators, the oscillators, LFOs, windows and pulsar pulses use it; use it where a sine is computed
 every sample, keep `math.Sin` for coefficients and tables.
+
+## expression
+
+`blocks/expression`
+
+What a player's hands do to a sound while it plays: the pitch bend, the mod wheel and the
+aftertouch. Every synth but the piano keeps one per voice (see
+[synths](synths.md#pitch-bend-mod-wheel-and-aftertouch)); use it in a synth of your own:
+
+```go
+type Voice struct {
+	// ...
+	expr expression.Expression
+}
+
+func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.expr.Receive(msg) // "pitchBend" -1 to 1, "bendRange" semitones, "modWheel" and "pressure" 0 to 1
+	// ...
+}
+
+// every sample:
+v.expr.Tick(sr)
+freq := v.freq * v.expr.Ratio()              // the bend
+cutoff := v.cutoff * math.Exp2(2*v.expr.Wheel()) // the wheel (and the aftertouch) open the filter
+```
+
+| API | Meaning |
+|---|---|
+| `Receive(msg)` | Takes `pitchBend`, `bendRange`, `modWheel` and `pressure` from a message |
+| `Tick(sr)` | Glides a sample towards where they were moved (a few milliseconds: they never zip or click) |
+| `Settle()` | Puts them there at once (for a voice that reads them once a buffer) |
+| `Ratio()`, `Semitones()`, `Bend()` | The bend now: as a frequency ratio, in semitones, -1 to 1 |
+| `Wheel()` | The mod wheel with the aftertouch added, 0 to 1 |
+| `Pressure()` | The aftertouch alone |
+| `Vibrato(sr, rate, depth)`, `VibratoRatio(...)` | A vibrato the wheel brings in: semitones, or the ratio with the bend |
+| `Range` | Semitones of a full bend (0 is `DefaultRange`, 2) |
+
+## oversample
+
+`blocks/oversample`
+
+Runs a function at a higher sample rate, for processing that makes overtones (saturation, folding)
+without them folding back as aliasing: `oversample.New(factor, oversample.TapsPerPhase)`, then
+`Process(x, func(x float64) float64)` per sample. The up and down sampling filters are a
+Blackman windowed sinc (with `TapsPerPhase` the band up to 16 kHz stays within half a dB); `Latency()` is the delay they add in samples
+(delay a dry signal by it to mix it back in), `Reset()` clears them. The saturator uses it.
+

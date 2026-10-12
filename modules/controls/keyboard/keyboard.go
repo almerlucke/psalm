@@ -48,6 +48,12 @@ type Config struct {
 	// DefaultControls, an empty map sends none
 	Controls map[int]string
 
+	// Routes send controllers (and the bend, RouteBend, and the aftertouch, RoutePressure) to any
+	// settings, scaled to their ranges: {1: {{Name: "cutoff", Min: 300, Max: 8000, Exp: true}}}
+	// sweeps the cutoff with the mod wheel. A routed controller is sent as its routes, not by
+	// Controls (nor PitchBend, Pressure)
+	Routes map[int][]Route
+
 	// HoldNotes makes the keyboard keep the notes released while the sustain pedal is down (for a
 	// synth without a sustain pedal of its own) instead of sending the pedal
 	HoldNotes bool
@@ -149,9 +155,34 @@ func (k *Keyboard) Settings() Config { return k.cfg }
 // SetConfig changes the settings
 func (k *Keyboard) SetConfig(cfg Config) { k.cfg = cfg }
 
-// ReceiveMessage changes the settings: "channel", "transpose", "curve", "fixedVelocity" and
-// "dynamics"
+// SetRoutes sets the routes of a source (a controller, RouteBend or RoutePressure); none removes
+// them, the source goes back to Controls (PitchBend, Pressure)
+func (k *Keyboard) SetRoutes(source int, routes ...Route) *Keyboard {
+	if len(routes) == 0 {
+		delete(k.cfg.Routes, source)
+		return k
+	}
+	if k.cfg.Routes == nil {
+		k.cfg.Routes = map[int][]Route{}
+	}
+	k.cfg.Routes[source] = routes
+	return k
+}
+
+// ReceiveMessage changes the settings: "channel", "transpose", "curve", "fixedVelocity",
+// "dynamics", and "route" (a route as text, see ParseRoute: it replaces the routes of its source)
+// and "unroute" (a source: "1", "bend", "pressure")
 func (k *Keyboard) ReceiveMessage(msg psalm.Message) {
+	msg.IfStrVal("route", func(text string) {
+		if source, r, err := ParseRoute(text); err == nil {
+			k.SetRoutes(source, r)
+		}
+	})
+	msg.IfStrVal("unroute", func(text string) {
+		if source, _, err := ParseRoute(text + ":x:0:1"); err == nil {
+			k.SetRoutes(source)
+		}
+	})
 	msg.IfIntVal("channel", func(v int) { k.cfg.Channel = v })
 	msg.IfIntVal("transpose", func(v int) { k.cfg.Transpose = v })
 	msg.IfFltVal("curve", func(v float64) { k.cfg.Curve = Curve(v) })
@@ -227,10 +258,16 @@ func (k *Keyboard) handle(e midi.Event, tick psalm.CtrlTick) {
 			f(m.Program(), tick)
 		}
 	case midi.PitchBend:
+		if k.routed(RouteBend, (m.BendAmount()+1)/2) {
+			break
+		}
 		if k.cfg.PitchBend != "" {
 			k.send(psalm.Message{k.cfg.PitchBend: m.BendAmount()})
 		}
 	case midi.ChannelPressure:
+		if k.routed(RoutePressure, float64(m.Pressure())/127) {
+			break
+		}
 		if k.cfg.Pressure != "" {
 			k.send(psalm.Message{k.cfg.Pressure: float64(m.Pressure()) / 127})
 		}
@@ -305,9 +342,21 @@ func (k *Keyboard) control(ch, controller, value int, tick psalm.CtrlTick) {
 		k.pedal[ch] = false
 		return
 	case midi.CCResetAll:
-		// the controllers back to rest: the pedals up, no bend, no pressure
+		// the controllers back to rest: the pedals up, no bend, no pressure, the routes at rest
 		for c := range k.controls() {
 			k.control(ch, c, 0, tick)
+		}
+		for c := range k.cfg.Routes {
+			switch c {
+			case RouteBend:
+				k.routed(c, 0.5)
+			case RoutePressure:
+				k.routed(c, 0)
+			default:
+				if _, ok := k.controls()[c]; !ok {
+					k.control(ch, c, 0, tick)
+				}
+			}
 		}
 		if _, ok := k.controls()[midi.CCSustain]; !ok && k.cfg.HoldNotes {
 			k.control(ch, midi.CCSustain, 0, tick)
@@ -330,6 +379,9 @@ func (k *Keyboard) control(ch, controller, value int, tick psalm.CtrlTick) {
 			}
 		}
 		k.pedal[ch] = down
+		return
+	}
+	if k.routed(controller, v) {
 		return
 	}
 	if name, ok := k.controls()[controller]; ok {

@@ -109,12 +109,34 @@ messages, such as a poly synth or the piano.
 | `Controls` | Maps controllers to messages for every voice, as `{name: value}` with the value 0-1. Nil means `DefaultControls`: 64 to `sustain`, 66 to `sostenuto` and 67 to `soft`, the piano's pedals. Because sustain is sent as a continuous value, half pedaling works. An empty map sends nothing. |
 | `HoldNotes` | The keyboard holds released notes itself while the sustain pedal is down, instead of sending the pedal. Use this for synths without a sustain pedal of their own. |
 | `PitchBend`, `Pressure` | The message names for pitch bend (-1 to 1) and channel pressure (0-1), sent to every voice. Empty sends none. |
+| `Routes` | Sends controllers to any setting of a synth, scaled to its range (see below). A routed controller is sent as its routes instead of by `Controls` (`PitchBend`, `Pressure`). |
 | `FollowClock` | Sets the tempo of the patch from a MIDI clock, averaged over the last beat. `Tempo()` reads it. |
+
+**Routes** send a controller to any setting the synth takes by message, scaled to that setting's
+range: the mod wheel sweeping a cutoff from 300 to 8000 Hz, a slider moving the vowel, the
+aftertouch folding a wave. One controller can move several settings. The keys `RouteBend` and
+`RoutePressure` route the pitch bend (its middle the middle of the range) and the aftertouch.
+
+```go
+kb := keyboard.New(input, keyboard.Config{Routes: map[int][]keyboard.Route{
+	midi.CCModWheel: {{Name: "cutoff", Min: 300, Max: 8000, Exp: true}, {Name: "resonance", Min: 0.1, Max: 0.6}},
+	keyboard.RoutePressure: {{Name: "fold", Min: 0, Max: 1}},
+}}, synth)
+kb.SetRoutes(74, keyboard.Route{Name: "vowel", Min: 0, Max: 4}) // or later, or by message
+```
+
+A route sets the setting (the wheel at half sets the middle of the range) where the synth's own
+`modWheel` adds on top of the preset. `Exp` goes exponentially (frequencies, times), `Int` in whole
+numbers (a waveform, a mode), and `Max` under `Min` turns it round. As text, for a flag or a
+message: `keyboard.ParseRoute("1:cutoff:300:8000:exp")` (the source a controller, `bend` or
+`pressure`); the messages `{"route": "1:cutoff:300:8000:exp"}` and `{"unroute": "1"}` change the
+routes of a keyboard while it plays. The settings each synth takes are listed under **Messages** in
+[synths](synths.md); `cmd/examples/keyboard -route ...` tries them.
 
 The keyboard always handles these messages:
 
 - All notes off (123) and all sound off (120) release the notes of their channel.
-- Reset all controllers (121) puts the mapped controls, the bend and the pressure back to rest.
+- Reset all controllers (121) puts the mapped controls, the routes, the bend and the pressure back to rest.
 - A system reset releases everything.
 
 `AllNotesOff(tick)` and `SetTargets(...)` let you switch instruments while playing.

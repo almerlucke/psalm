@@ -155,3 +155,85 @@ func TestClock(t *testing.T) {
 		t.Fatalf("tempo %v (clock %v)", bpm, k.Tempo())
 	}
 }
+
+func TestRoutes(t *testing.T) {
+	cfg := Config{
+		Controls:  map[int]string{midi.CCModWheel: "modWheel", 2: "breath"},
+		PitchBend: "pitchBend",
+		Routes: map[int][]Route{
+			midi.CCModWheel: {{Name: "cutoff", Min: 300, Max: 8000, Exp: true}, {Name: "resonance", Min: 0.1, Max: 0.6}},
+			RoutePressure:   {{Name: "fold", Min: 0, Max: 1}},
+			RouteBend:       {{Name: "vowel", Min: 0, Max: 4}},
+			3:               {{Name: "waveform", Min: 0, Max: 3, Int: true}},
+		},
+	}
+	p, q, _, rec := setup(cfg)
+	q.PushOffset(midi.ControlChangeMsg(1, midi.CCModWheel, 127), 0)
+	q.PushOffset(midi.ControlChangeMsg(1, midi.CCModWheel, 0), 1)
+	q.PushOffset(midi.ChannelPressureMsg(1, 127), 2)
+	q.PushOffset(midi.PitchBendMsg(1, 8192), 3) // the middle
+	q.PushOffset(midi.ControlChangeMsg(1, 3, 80), 4)
+	q.PushOffset(midi.ControlChangeMsg(1, 2, 127), 5) // not routed: sent by Controls
+	run(p)
+	if len(rec.msgs) != 6 {
+		t.Fatalf("got %v", rec.msgs)
+	}
+	m := rec.msgs
+	if math.Abs(m[0].MustFltVal("cutoff")-8000) > 1e-6 || math.Abs(m[0].MustFltVal("resonance")-0.6) > 1e-9 {
+		t.Errorf("the wheel up: %v", m[0])
+	}
+	if _, sent := m[0]["modWheel"]; sent {
+		t.Errorf("a routed wheel is still sent as modWheel: %v", m[0])
+	}
+	if math.Abs(m[1].MustFltVal("cutoff")-300) > 1e-6 {
+		t.Errorf("the wheel down: %v", m[1])
+	}
+	if m[2].MustFltVal("fold") != 1 || math.Abs(m[3].MustFltVal("vowel")-2) > 0.01 {
+		t.Errorf("the aftertouch %v, the bend in the middle %v", m[2], m[3])
+	}
+	if w := m[4].MustFltVal("waveform"); w != 2 { // 80/127 of 3 is 1.9: a whole number
+		t.Errorf("a whole number route: %v", w)
+	}
+	if m[5].MustFltVal("breath") != 1 {
+		t.Errorf("an unrouted controller: %v", m[5])
+	}
+	// halfway the exponential range is the geometric middle
+	r := cfg.Routes[midi.CCModWheel][0]
+	if v := r.Value(0.5); math.Abs(v-math.Sqrt(300*8000)) > 1e-6 {
+		t.Errorf("halfway exponentially: %g", v)
+	}
+}
+
+func TestParseRoute(t *testing.T) {
+	for text, want := range map[string]struct {
+		source int
+		route  Route
+	}{
+		"1:cutoff:300:8000:exp": {1, Route{Name: "cutoff", Min: 300, Max: 8000, Exp: true}},
+		"bend:vowel:0:4":        {RouteBend, Route{Name: "vowel", Min: 0, Max: 4}},
+		"pressure:fold:0:1":     {RoutePressure, Route{Name: "fold", Min: 0, Max: 1}},
+		"74:waveform:0:3:int":   {74, Route{Name: "waveform", Min: 0, Max: 3, Int: true}},
+		"1:detune:1:0":          {1, Route{Name: "detune", Min: 1, Max: 0}},
+	} {
+		source, r, err := ParseRoute(text)
+		if err != nil || source != want.source || r != want.route {
+			t.Errorf("%s: %d %+v %v", text, source, r, err)
+		}
+	}
+	for _, bad := range []string{"1:cutoff:300", "200:x:0:1", "wheel:x:0:1", "1::0:1", "1:x:a:1", "1:x:0:1:log", "1:x:0:8000:exp"} {
+		if _, _, err := ParseRoute(bad); err == nil {
+			t.Errorf("%s parses", bad)
+		}
+	}
+	// routed by message, and unrouted
+	p, q, k, rec := setup(Config{Controls: map[int]string{1: "modWheel"}})
+	k.ReceiveMessage(psalm.Message{"route": "1:cutoff:100:200"})
+	q.PushOffset(midi.ControlChangeMsg(1, 1, 127), 0)
+	run(p)
+	k.ReceiveMessage(psalm.Message{"unroute": "1"})
+	q.PushOffset(midi.ControlChangeMsg(1, 1, 127), 0)
+	run(p)
+	if len(rec.msgs) != 2 || rec.msgs[0].MustFltVal("cutoff") != 200 || rec.msgs[1].MustFltVal("modWheel") != 1 {
+		t.Errorf("by message: %v", rec.msgs)
+	}
+}

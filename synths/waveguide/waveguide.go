@@ -184,7 +184,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("brightness", func(f float64) { v.cfg.Brightness = f })
 	msg.IfFltVal("pickPosition", func(f float64) { v.cfg.PickPosition = f })
 	msg.IfFltVal("release", func(f float64) { v.cfg.Release = f })
-	msg.IfFltVal("pressure", func(f float64) { v.cfg.Pressure = f })
+	msg.IfFltVal("bowPressure", func(f float64) { v.cfg.Pressure = f })
 	msg.IfFltVal("bowPosition", func(f float64) { v.cfg.BowPosition = f })
 	msg.IfFltVal("vibratoRate", func(f float64) { v.cfg.VibratoRate = f })
 	msg.IfFltVal("vibratoDepth", func(f float64) { v.cfg.VibratoDepth = f })
