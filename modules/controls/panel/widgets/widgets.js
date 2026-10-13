@@ -117,6 +117,7 @@ psalm.register("keys", (p, api) => {
 		const el = keyAt(e);
 		if (!el) return;
 		e.preventDefault();
+		box.setPointerCapture(e.pointerId); // its letting go comes here, wherever it happens
 		on(e.pointerId, Number(el.dataset.note), velocityOn(el, e));
 	});
 	box.addEventListener("pointermove", e => { // sliding over the keys plays them (a glissando)
@@ -124,8 +125,17 @@ psalm.register("keys", (p, api) => {
 		const el = keyAt(e);
 		if (el && Number(el.dataset.note) !== held.get(e.pointerId)) on(e.pointerId, Number(el.dataset.note), velocityOn(el, e));
 	});
-	for (const t of ["pointerup", "pointercancel", "pointerleave"]) box.addEventListener(t, e => off(e.pointerId));
+	for (const t of ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"]) box.addEventListener(t, e => off(e.pointerId));
 	window.addEventListener("pointerup", e => off(e.pointerId));
+	// the page scrolling moves the keys from under the pointer without telling it: the notes the
+	// mouse or a finger holds let go (the computer's keys hold on)
+	const letGoPointers = () => { for (const who of [...held.keys()]) if (typeof who === "number") off(who); };
+	window.addEventListener("wheel", letGoPointers, {passive: true});
+	window.addEventListener("scroll", letGoPointers, {passive: true, capture: true});
+	// leaving the page (another window, another tab) lets go of every note
+	const letGoAll = () => { for (const who of [...held.keys()]) off(who); };
+	window.addEventListener("blur", letGoAll);
+	document.addEventListener("visibilitychange", () => { if (document.hidden) letGoAll(); });
 
 	// the computer's keys: A W S E D ... (Z and X move an octave down and up)
 	let octave = Math.max(0, Math.round((60 - from) / 12)) * 12;
@@ -144,7 +154,6 @@ psalm.register("keys", (p, api) => {
 			on("key:" + k, n, 0.75);
 		});
 		window.addEventListener("keyup", e => off("key:" + e.key.toLowerCase()));
-		window.addEventListener("blur", () => { for (const who of [...held.keys()]) off(who); });
 		box.title = "the computer's keys play it too: A W S E D F T G Y H U J K (Z and X: an octave down, up)";
 	}
 	window.addEventListener("pagehide", () => { for (const who of [...held.keys()]) off(who); });

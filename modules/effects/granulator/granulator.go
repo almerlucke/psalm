@@ -95,6 +95,9 @@ func New(cfg Config) *Granulator {
 	return g
 }
 
+// Settings returns the settings
+func (g *Granulator) Settings() Config { return g.cfg }
+
 // SetFreeze freezes or unfreezes the buffer
 func (g *Granulator) SetFreeze(freeze bool) {
 	g.cfg.Freeze = freeze

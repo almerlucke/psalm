@@ -42,3 +42,4 @@
 .dx-detail { display: none; flex-direction: column; gap: 6px; padding: 6px 0 10px 58px; border-bottom: 1px solid var(--line); }
 .dx-detail.open { display: flex; }
 .dx-voice { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+.dx input.dx-name-in { font: inherit; font-size: 12px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 4px 6px; width: 110px; }

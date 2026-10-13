@@ -1,0 +1,15 @@
+.editor { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; max-width: calc(100vw - 64px); }
+.editor .ed-group { border: 1px solid var(--line); border-radius: calc(var(--radius) * 2 / 3); padding: 8px 10px 10px; }
+.editor .ed-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; text-align: left; }
+.editor .ed-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.editor .ed-controls .control { min-width: 56px; }
+.editor .knob { width: 44px; height: 44px; }
+.editor select { max-width: 130px; min-height: 36px; padding: 6px 8px; }
+.editor button { min-height: 36px; padding: 6px 10px; }
+.editor .ed-env-knobs { display: flex; flex-direction: column; gap: 4px; }
+.editor .ed-envelope canvas.envelope { width: 240px; height: 110px; }
+.editor .ed-presets { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.editor .ed-presets select { max-width: 200px; min-height: 32px; padding: 4px 8px; }
+.editor .ed-presets input { font: inherit; font-size: 13px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: calc(var(--radius) * 2 / 3); padding: 6px 8px; width: 130px; }
+.editor .ed-presets button { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.editor .ed-presets .ed-note { font-size: 12px; color: var(--meter-high); }

@@ -8,6 +8,13 @@ powers add and the loudness stays the same at every mix (0.5 is as loud as dry, 
 crossfade dips 3 dB). The flanger keeps a linear crossfade: its sound is the delayed copy cancelling
 against the dry signal, deepest at 0.5.
 
+**Described.** Every effect describes its settings: `<effect>.Describe(fx.Settings())` (`params`:
+each message key, its range, unit and where it is), for the editor of the panel
+(`modules/controls/panel/editor`). Gain, pan, freeverb and pitchshift take the module itself
+(`gain.Describe(g)`), the auto-wah is `follower.DescribeWah`. Settings no message changes (a
+compressor's auto makeup, the flanger's shape, a granulator's buffer length, the vocoder's bands)
+aren't described.
+
 **Smooth changes.** Mixes, feedback, levels and widths glide to a new value in about 30 ms (the
 chorus and flanger also glide their delay times), so they can be automated or driven by an LFO
 without zipper noise or clicks.

@@ -714,6 +714,44 @@ widgets.Scope(ctl, "Out", mix.Master())
 
 `cmd/examples/widgets` has them all, on nine synths to switch between.
 
+**Editors of every synth and effect** (`modules/controls/panel/editor`): every synth and effect
+describes its settings (`params`: the message keys it takes, their ranges, units, groups and where
+they are now, and its envelopes): `subtractive.Describe(cfg)`, `chorus.Describe(ch.Settings())`.
+`editor.Add` draws them as cards by group: a knob for every value, a switch, a choice, and the
+envelopes to drag (the widgets' envelope; knobs for one with fewer stages). Every setting is a value
+of the panel named `"<name> <key>"`: presets keep them, MIDI learn binds them (learn mode, tap a
+knob), code sets them (`ed.Setting("cutoff").Set(2000)`). `ed.Load(set)` moves them all to another
+description: a preset.
+
+```go
+lead := subtractive.NewPoly(subtractive.LeadPreset(), 12).AddTo(p)
+ed := editor.Add(ctl, "Lead", lead, subtractive.Describe(subtractive.LeadPreset()))
+ctl.Select("preset", names, func(i int) { ed.Load(subtractive.Describe(subtractive.Presets[names[i]]())) })
+ch := chorus.New(chorus.DefaultConfig()).AddTo(p)
+editor.Add(ctl, "Chorus", ch, chorus.Describe(ch.Settings()))
+```
+
+**Presets of a synth.** Above the controls the editor has its presets: `ed.Factory(names, describe)`
+gives it the synth's own (choosing one moves every control to it), `ed.Keep(dir)` keeps yours in a
+folder, a JSON file each (the settings by message key): type a name and Save, pick one of yours to
+load it back, Delete it. From code: `ed.Presets().Save(name)`, `Load(name, mine)`, `Delete(name)`,
+`Mine()`. The DX editor keeps patches of its own the same way (`Keep`; an algorithm of your own is
+kept with them), and `editor.NewStore` gives a plugin of your own the same store.
+
+```go
+ed := editor.Add(ctl, "Lead", lead, subtractive.Describe(subtractive.LeadPreset()))
+ed.Factory(slices.Sorted(maps.Keys(subtractive.Presets)), func(n string) params.Set {
+	return subtractive.Describe(subtractive.Presets[n]())
+})
+ed.Keep("presets/subtractive")
+```
+
+The settings start where the description has them and are sent there when the patch starts;
+`panel.NoDefault()` keeps the synth's own until one moves. `params/paramstest` checks a description:
+every key a message the module takes, every value landing where it says. `cmd/examples/editors` has
+them all: every synth with its presets, every effect, the one chosen of each on its own page
+(mounted).
+
 **The DX editor** (`modules/controls/panel/dxeditor`) edits the six operator FM synth on the page,
 as a DX7 with a screen: the algorithm as a diagram (click through the 32, or "my own": the carriers
 by clicking the operators, the modulations a higher operator makes into a lower one in a grid, the

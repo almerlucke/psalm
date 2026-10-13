@@ -41,6 +41,9 @@ func (p *Pan) SetPan(pan float64) {
 	p.target = clamp(pan)
 }
 
+// Pan returns the pan position it is set to, -1 (left) to 1 (right)
+func (p *Pan) Pan() float64 { return p.target }
+
 func (p *Pan) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		p.ReceiveMessage(msg)

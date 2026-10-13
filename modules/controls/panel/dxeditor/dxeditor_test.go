@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
@@ -88,5 +89,53 @@ func TestEditor(t *testing.T) {
 	}
 	if e.Setting("op1Coarse").Value() != float64(other.Ops[0].Coarse) || e.patchName() != "WOOD" {
 		t.Errorf("the controls didn't follow the patch loaded")
+	}
+}
+
+func TestPatchesOfYourOwn(t *testing.T) {
+	p := psalm.New(nil)
+	start := dx.Presets["bellPad"]()
+	synth := dx.NewPoly(start, 2, 2)
+	synth.AddTo(p)
+	ctl := panel.New(p, "Test")
+	e := Add(ctl, "DX", synth, start)
+	if err := e.Keep(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(ctl.Handler())
+	defer srv.Close()
+	var ts int64
+	tick := func() {
+		for range 2 {
+			ts += int64(synth.Config().BufferSize)
+			ctl.CtrlTick(psalm.CtrlTick{SampleTimestamp: ts})
+		}
+	}
+	msg := func(body string) {
+		res, err := http.Post(srv.URL+"/api/message", "application/json", strings.NewReader(`{"name": "DX", "data": {"presets": `+body+`}}`))
+		if err != nil || res.StatusCode != 200 {
+			t.Fatal(err)
+		}
+		tick()
+	}
+	tick()
+	e.Setting("op3Coarse").Set(9)
+	e.Set(20)
+	e.Setting("custom").Set(1) // an algorithm of my own, kept too
+	tick()
+	msg(`{"save": "mine"}`)
+	for i := 0; len(e.Presets().Mine()) == 0 && i < 200; i++ {
+		time.Sleep(5 * time.Millisecond)
+	}
+	e.Setting("op3Coarse").Set(1)
+	e.Set(3)
+	e.Setting("custom").Set(0)
+	tick()
+	msg(`{"load": "mine", "mine": true}`)
+	tick()
+	var v dx.Patch
+	synth.CallVoices(func(x *dx.Voice) { v = x.Patch() })
+	if v.Ops[2].Coarse != 9 || v.Algorithm != 19 || v.Routing == nil || e.patchName() != "mine" {
+		t.Errorf("loaded back: coarse %d, algorithm %d, routing %v, name %q", v.Ops[2].Coarse, v.Algorithm+1, v.Routing != nil, e.patchName())
 	}
 }

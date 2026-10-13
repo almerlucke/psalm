@@ -3,7 +3,8 @@
 // carriers), every operator (frequency, level, detune, velocity, rate scaling, its envelope and
 // keyboard scaling), the LFO and the pitch envelope, and a bank to load from: the built in patches
 // and every SysEx bank in assets/dx7 (or the ones given). Play it on the page's keyboard (or the
-// computer's keys: A W S E D ...) or a MIDI keyboard. Open http://localhost:8087.
+// computer's keys: A W S E D ...) or a MIDI keyboard. Save patches of your own by name (kept in
+// dx-presets, -presets to move them). Open http://localhost:8087.
 //
 //	go run ./cmd/examples/dxedit
 //	go run ./cmd/examples/dxedit -device /dev/snd/midiC3D0 path/to/bank.syx
@@ -33,6 +34,7 @@ func main() {
 	addr := flag.String("addr", "localhost:8087", "the address of the page")
 	device := flag.String("device", "", "a raw MIDI device to play it from too (empty: the first keyboard, if there is one)")
 	theme := flag.String("theme", "default", "the theme of the page")
+	mine := flag.String("presets", "dx-presets", "the folder the patches you save are kept in")
 	flag.Parse()
 
 	// the bank: the built in patches, then every voice of the SysEx banks
@@ -86,7 +88,10 @@ func main() {
 	}
 	ctl.SetTheme(t)
 	ctl.Section("DX")
-	dxeditor.Add(ctl, "DX", synth, bank[0], dxeditor.Bank(bank))
+	ed := dxeditor.Add(ctl, "DX", synth, bank[0], dxeditor.Bank(bank))
+	if err := ed.Keep(*mine); err != nil { // patches of your own
+		log.Fatal(err)
+	}
 	ctl.Section("Play")
 	widgets.Keys(ctl, "Keys", widgets.Play(synth), widgets.From(36), widgets.Octaves(4))
 	widgets.XY(ctl, "Hands", widgets.Axis{Name: "wheel", Max: 1, To: panel.Message(synth, "modWheel")},

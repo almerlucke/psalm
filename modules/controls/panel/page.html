@@ -708,6 +708,12 @@ const api = {
 	register(kind, builder) { builders[kind] = builder; },
 	send, press: name => post("api/press", {name}), message: (name, data) => post("api/message", {name, data}),
 	post, labelled, drag, position, valueAt, format, clamp01, css,
+	// a control of a kind the page (or a plugin) draws, for a value of a plugin's own (a part): its
+	// widget, to put in the plugin's element and give the values ({el, show})
+	control: (kind, p) => (builders[kind] || missing)(p, api),
+	has: kind => !!builders[kind],
+	// MIDI learn on a widget of a value (a part): a tap in learn mode arms it
+	bindable: (w, p) => bindable(w, p),
 };
 window.psalm = api;
 
@@ -838,7 +844,9 @@ async function build() {
 			w.el.dataset.kind = p.kind; w.el.dataset.name = p.name;
 			w.show(p.value);
 			for (const part of p.parts || []) { // values the control draws: their changes reach it by name
-				widgets[part.name] = {param: part, el: document.createElement("div"), show: v => w.part && w.part(part.name, v)};
+				const own = w.partWidgets && w.partWidgets[part.name]; // a widget of its own (MIDI learn shows on it)
+				widgets[part.name] = own ? Object.assign(own, {param: part})
+					: {param: part, el: document.createElement("div"), show: v => w.part && w.part(part.name, v)};
 				widgets[part.name].show(part.value);
 			}
 			if (p.state !== undefined && w.update) w.update(p.state);

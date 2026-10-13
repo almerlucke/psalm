@@ -125,6 +125,9 @@ func New(ir [][]float64, cfg Config) *Convolver {
 	return c
 }
 
+// Settings returns the settings
+func (c *Convolver) Settings() Config { return c.cfg }
+
 // trimmedLength returns how much of a response is heard: up to where the energy left is trimDB
 // below all of it (the loudest channel decides)
 func trimmedLength(ir [][]float64) int {

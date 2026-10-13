@@ -11,16 +11,18 @@ import (
 // when changed)
 type PitchShift struct {
 	*psalm.Module
-	shifters [2]*pitchshift.PitchShift
-	mix      float64
-	smooth   mix.Smoother
+	shifters  [2]*pitchshift.PitchShift
+	mix       float64
+	semitones float64
+	smooth    mix.Smoother
 }
 
 // New creates a pitch shifter, window is the grain size in milliseconds (around 30-100)
 func New(semitones float64, windowMs float64, m float64) *PitchShift {
 	p := &PitchShift{
-		Module: psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo}),
-		mix:    m,
+		Module:    psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo}),
+		mix:       m,
+		semitones: semitones,
 	}
 
 	sr := p.Config().SampleRate
@@ -35,10 +37,17 @@ func New(semitones float64, windowMs float64, m float64) *PitchShift {
 }
 
 func (p *PitchShift) SetSemitones(semitones float64) {
+	p.semitones = semitones
 	for _, s := range p.shifters {
 		s.SetSemitones(semitones)
 	}
 }
+
+// Semitones returns the shift
+func (p *PitchShift) Semitones() float64 { return p.semitones }
+
+// Mix returns the dry/wet balance
+func (p *PitchShift) Mix() float64 { return p.mix }
 
 func (p *PitchShift) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {

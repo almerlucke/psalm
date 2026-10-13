@@ -15,10 +15,12 @@ package dxeditor
 
 import (
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"sync"
 
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/panel/editor"
 	"github.com/almerlucke/psalm/modules/poly"
 	"github.com/almerlucke/psalm/synths/dx"
 )
@@ -45,6 +47,7 @@ type Editor struct {
 	parts        map[string]*panel.Param // by setting name ("op3Coarse", "custom", "mod42")
 	mu           sync.Mutex
 	name         string // of the patch loaded last
+	store        *editor.Store
 }
 
 func (e *Editor) patchName() string {
@@ -85,7 +88,8 @@ type data struct {
 
 // state is what it gets as it changes
 type state struct {
-	Name string `json:"name"`
+	Name    string `json:"name"`
+	Presets any    `json:"presets"` // yours (editor.Store)
 }
 
 // Add adds an editor of a dx synth playing a patch (the patch the editor starts from) to a panel
@@ -109,9 +113,45 @@ func Add(ctl *panel.Panel, name string, synth *poly.Poly[*dx.Voice], patch dx.Pa
 			e.dirty = true
 		})
 	}
+	// presets of your own: every setting of the patch (and an algorithm of your own), by name
+	e.store = editor.NewStore(func() map[string]float64 {
+		v := map[string]float64{"algorithm": e.Value()}
+		for key, c := range e.parts {
+			if key != "program" {
+				v[key] = c.Value()
+			}
+		}
+		return v
+	}, func(settings map[string]float64) {
+		for key, v := range settings {
+			if key == "algorithm" {
+				e.Set(v)
+			} else if c := e.parts[key]; c != nil && key != "program" {
+				c.Set(v)
+			}
+		}
+	})
 	e.Param = ctl.Custom(Kind, name, set("algorithm"), panel.Range(1, 32, panel.Linear), panel.Step(1),
 		panel.Default(float64(patch.Algorithm+1)), panel.Data(d),
-		panel.OnBuffer(e.apply), panel.Live(func() any { return state{Name: e.patchName()} }))
+		panel.OnBuffer(e.apply), panel.Live(func() any { return state{Name: e.patchName(), Presets: e.store.State()} }),
+		panel.OnMessage(func(raw json.RawMessage) {
+			var m struct {
+				Presets json.RawMessage `json:"presets"`
+			}
+			if json.Unmarshal(raw, &m) != nil || m.Presets == nil {
+				return
+			}
+			var load struct {
+				Load *string `json:"load"`
+				Mine bool    `json:"mine"`
+			}
+			if json.Unmarshal(m.Presets, &load) == nil && load.Load != nil && load.Mine {
+				e.mu.Lock()
+				e.name = *load.Load
+				e.mu.Unlock()
+			}
+			e.store.Message(m.Presets)
+		}))
 	part := func(key string, max float64, def float64, to panel.Target) {
 		e.parts[key] = e.Part(fmt.Sprintf("%s %s", name, key), 0, max, panel.Linear, to, panel.Step(1), panel.Default(def))
 	}
@@ -229,6 +269,13 @@ func (e *Editor) Load(p dx.Patch) {
 		e.parts["fbTo"].Set(float64(r.Feedback[1]))
 	}
 }
+
+// Keep keeps patches of your own in a folder (made when it isn't there): the page saves the
+// settings under a name, loads them back, deletes them
+func (e *Editor) Keep(dir string) error { return e.store.Keep(dir) }
+
+// Presets returns the patches of your own, to save, load and delete them from code
+func (e *Editor) Presets() *editor.Store { return e.store }
 
 // Setting returns the control of a setting ("op3Coarse", "feedback", "custom", "mod42", "carrier1",
 // "fbFrom", "program"), nil for none

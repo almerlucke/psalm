@@ -103,6 +103,9 @@ func New(cfg Config) *Shimmer {
 	return s
 }
 
+// Settings returns the settings (with those of the reverb tank)
+func (s *Shimmer) Settings() Config { return s.cfg }
+
 func (s *Shimmer) SetSemitones(semitones float64) {
 	s.cfg.Semitones = semitones
 	for _, sh := range s.shifters {
@@ -141,6 +144,13 @@ func (s *Shimmer) ReceiveMessage(msg psalm.Message) {
 		}
 	}
 	s.reverb.ReceiveMessage(tank)
+	// keep the settings of the tank, so Settings tells them
+	rev := &s.cfg.Reverb
+	for key, f := range map[string]*float64{"size": &rev.Size, "decay": &rev.Decay, "damping": &rev.Damping,
+		"preDelay": &rev.PreDelay, "diffusion": &rev.Diffusion, "modDepth": &rev.ModDepth, "modRate": &rev.ModRate,
+		"width": &rev.Width} {
+		tank.IfFltVal(key, func(v float64) { *f = v })
+	}
 }
 
 func (s *Shimmer) Synthesize() {

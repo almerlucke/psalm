@@ -182,6 +182,9 @@ func New(cfg Config) *FDNReverb {
 	return r
 }
 
+// Settings returns the settings
+func (r *FDNReverb) Settings() Config { return r.cfg }
+
 // update recalculates delay lengths, damping filters and modulation from the config
 func (r *FDNReverb) update() {
 	cfg := &r.cfg

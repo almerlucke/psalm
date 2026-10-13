@@ -217,6 +217,9 @@ func (v *Vocoder) updateEnvelopeCoefs() {
 	v.relCoef = coef(v.cfg.Release)
 }
 
+// Settings returns the settings
+func (v *Vocoder) Settings() Config { return v.cfg }
+
 func (v *Vocoder) SetFormantShift(shift float64) {
 	if shift <= 0.0 {
 		return

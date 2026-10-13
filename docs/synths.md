@@ -2,6 +2,12 @@
 
 Synths: [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
 
+Every synth describes its settings: `<synth>.Describe(cfg)` (`params`: each message key it takes,
+its range, unit and group, where it is in the config, and its envelopes), so an editor on the panel
+(`modules/controls/panel/editor`) can draw its controls, a sequencer pick what to step, a randomiser
+what to move. The drumsynth's sounds and the sampler's regions are set per sound, not by message:
+they describe only their level.
+
 Presets of all synths are calibrated to the same loudness: a note at amplitude 1 plays at -12 LUFS
 (or peaks at -1 dBFS for percussive sounds), see [conventions](conventions.md#levels).
 

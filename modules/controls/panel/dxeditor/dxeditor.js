@@ -112,6 +112,37 @@ psalm.register("dx7", (p, api) => {
 	const fb = el("div", "dx-row");
 	fb.append(labelled("feedback from", num("fbFrom", v => "op " + v)), labelled("into", num("fbTo", v => "op " + v)));
 	routing.append(grid, fb, el("div", "dx-hint", "click an operator in the diagram to make it a carrier (heard) or not"));
+	// patches of your own: saved under a name, loaded back, deleted
+	const mineRow = el("div", "dx-row dx-mine");
+	const mineSel = el("select", "dx-bank");
+	const mineName = el("input", "dx-name-in"); mineName.placeholder = "name"; mineName.maxLength = 64;
+	const mineSave = el("button", "dx-flag", "save"), mineDel = el("button", "dx-flag", "delete");
+	mineSave.title = "save the patch as it is under the name"; mineDel.title = "delete this patch of yours";
+	const mineNote = el("span", "dx-hint");
+	mineRow.append(el("span", "dx-label", "mine"), mineSel, mineName, mineSave, mineDel, mineNote);
+	head.append(mineRow);
+	let mine = {mine: [], keeps: false, current: ""}, mineShown = "";
+	const showMine = () => {
+		mineRow.hidden = !mine.keeps;
+		const key = JSON.stringify(mine.mine || []);
+		if (key !== mineShown) {
+			mineShown = key;
+			mineSel.innerHTML = "";
+			const none = el("option", "", "your patches…"); none.value = ""; mineSel.append(none);
+			for (const n of mine.mine || []) { const o = el("option", "", n); o.value = n; mineSel.append(o); }
+		}
+		const isMine = (mine.mine || []).includes(mine.current);
+		mineSel.value = isMine ? mine.current : "";
+		mineDel.disabled = !isMine;
+		if (isMine && document.activeElement !== mineName) mineName.value = mine.current;
+		mineNote.textContent = mine.note || "";
+	};
+	mineSel.addEventListener("change", () => { if (mineSel.value) api.message(p.name, {presets: {load: mineSel.value, mine: true}}); });
+	const saveMine = () => { const n = mineName.value.trim(); if (n) api.message(p.name, {presets: {save: n}}); };
+	mineSave.addEventListener("click", saveMine);
+	mineName.addEventListener("keydown", ev => { if (ev.key === "Enter") saveMine(); });
+	mineDel.addEventListener("click", () => { if (mineSel.value && confirm(`Delete "${mineSel.value}"?`)) api.message(p.name, {presets: {delete: mineSel.value}}); });
+	showMine();
 	top.append(svg, head, routing);
 	root.append(top);
 
@@ -304,7 +335,11 @@ psalm.register("dx7", (p, api) => {
 		el: api.labelled(p, root),
 		show(v) { vals.algorithm = v; render("algorithm"); },
 		part(name, v) { const k = name.slice(p.name.length + 1); vals[k] = v; render(k); },
-		update(st) { if (st && st.name !== undefined) name.textContent = st.name; },
+		update(st) {
+			if (!st) return;
+			if (st.name !== undefined) name.textContent = st.name;
+			if (st.presets) { mine = st.presets; showMine(); }
+		},
 		restyle() { drawAlgorithm(); drawEnvelopes(); },
 	};
 });

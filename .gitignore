@@ -39,6 +39,8 @@ go.work.sum
 drummachine-presets/
 panel-presets/
 keyboard-presets/
+editors-presets/
+dx-presets/
 drum-presets/
 transport-presets/
 setlist-presets/
