@@ -60,9 +60,10 @@ func (e *Event) state() bool { return e.Which != Message || e.State }
 // A restart (or the clock going back) dispatches the events from the start again
 type Dispatch struct {
 	*psalm.Module
-	events []*Event
-	done   []*Event
-	last   int64 // the tick of the last control tick, 0 for none yet
+	events  []*Event
+	done    []*Event
+	last    int64 // the tick of the last control tick
+	started bool  // it had a control tick
 }
 
 func New(events ...*Event) *Dispatch {
@@ -89,7 +90,7 @@ func (d *Dispatch) AddEvents(events ...*Event) *Dispatch {
 func (d *Dispatch) Restart() {
 	d.events = append(d.done, d.events...)
 	d.done = d.done[:0:0]
-	d.last = 0
+	d.last, d.started = 0, false
 }
 
 // catchUp passes the events before a tick that were missed: the latest state of every module is
@@ -143,15 +144,15 @@ func (d *Dispatch) catchUp(before int64) {
 func (d *Dispatch) CtrlTick(tick psalm.CtrlTick) {
 	now := tick.TickTimestamp
 	switch {
-	case d.last > 0 && now == d.last:
+	case d.started && now == d.last:
 		return // a tick it had
-	case d.last > 0 && now < d.last: // the clock went back: from the start
+	case d.started && now < d.last: // the clock went back: from the start
 		d.Restart()
 		d.catchUp(now)
-	case d.last == 0 && now > 1, d.last > 0 && now > d.last+1: // started late, or ticks missed
+	case !d.started && now > 0, d.started && now > d.last+1: // started late, or ticks missed
 		d.catchUp(now)
 	}
-	d.last = now
+	d.last, d.started = now, true
 
 	for len(d.events) > 0 {
 		event := d.events[0]

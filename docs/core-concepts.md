@@ -178,8 +178,8 @@ Psalm advances control time in ticks (`PPQ` ticks per quarter note). Every modul
 
 | Field | Meaning |
 |---|---|
-| `SampleTimestamp` | Absolute sample time |
-| `TickTimestamp` | Absolute tick count |
+| `SampleTimestamp` | The sample the tick falls on, from 0 at the start (or a restart) |
+| `TickTimestamp` | The tick, from 0 at the start (or a restart): the first tick of a song is 0 |
 | `SampleOffset` | Position of the tick inside the current buffer, used for sample accurate note starts |
 
 Timers use ticks to schedule events, and pass the tick along in their messages so synths can

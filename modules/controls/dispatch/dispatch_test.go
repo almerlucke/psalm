@@ -58,7 +58,7 @@ func span(from, to int64) []int64 {
 
 func TestEveryTick(t *testing.T) {
 	d, tg, tick := setup()
-	run(d, tick, span(1, 30)...)
+	run(d, tick, span(0, 30)...)
 	want := []string{"5 muted true", "10 map[note:60]", "12 map[cutoff:500 resonance:0.2]", "15 muted false",
 		"18 map[cutoff:900]", "20 map[note:64]", "25 muted true"}
 	if !slices.Equal(tg.log, want) {
@@ -68,7 +68,7 @@ func TestEveryTick(t *testing.T) {
 
 func TestMissedTicks(t *testing.T) {
 	d, tg, tick := setup()
-	run(d, tick, span(1, 6)...)
+	run(d, tick, span(0, 6)...)
 	tg.log = nil
 	run(d, tick, span(22, 30)...) // ticks 7 to 21 missed
 	// the latest mute state and the settings merged come at once, the notes in between don't
@@ -89,10 +89,10 @@ func TestStartedLate(t *testing.T) {
 
 func TestClockGoesBack(t *testing.T) {
 	d, tg, tick := setup()
-	run(d, tick, span(1, 12)...)
+	run(d, tick, span(0, 12)...)
 	tg.log = nil
 	run(d, tick, 12) // the same tick: nothing
-	run(d, tick, span(1, 10)...)
+	run(d, tick, span(0, 10)...)
 	want := []string{"5 muted true", "10 map[note:60]"}
 	if !slices.Equal(tg.log, want) {
 		t.Fatalf("the clock going back should dispatch from the start again:\n%v", tg.log)

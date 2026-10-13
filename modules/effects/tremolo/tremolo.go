@@ -46,7 +46,8 @@ type Trem struct {
 	*psalm.Module
 	cfg      Config
 	phase    float64 // of the cycle, 0-1, at the start of the next buffer
-	anchor   int64   // the tick of the first control tick of this buffer, 0 for none
+	anchor   int64   // the tick of the first control tick of this buffer
+	anchored bool    // a control tick came in this buffer
 	anchorAt int     // its sample in the buffer
 }
 
@@ -91,8 +92,8 @@ func (t *Trem) ReceiveMessage(msg psalm.Message) {
 
 // CtrlTick keeps the first control tick of a buffer: synced, the phase comes from the clock
 func (t *Trem) CtrlTick(tick psalm.CtrlTick) {
-	if t.anchor == 0 {
-		t.anchor, t.anchorAt = tick.TickTimestamp, tick.SampleOffset
+	if !t.anchored {
+		t.anchor, t.anchorAt, t.anchored = tick.TickTimestamp, tick.SampleOffset, true
 	}
 }
 
@@ -118,13 +119,13 @@ func (t *Trem) Synthesize() {
 	)
 	if cfg.Sync > 0 {
 		inc = t.BPM() / 60 / cfg.Sync / sr
-		if t.anchor > 0 { // the phase at the start of the buffer, from the clock
-			beat := float64(t.anchor-1) / float64(t.Config().PPQ)
+		if t.anchored { // the phase at the start of the buffer, from the clock
+			beat := float64(t.anchor) / float64(t.Config().PPQ)
 			t.phase = beat/cfg.Sync - float64(t.anchorAt)*inc
 			t.phase -= math.Floor(t.phase)
 		}
 	}
-	t.anchor = 0
+	t.anchored = false
 	depth := clamp(cfg.Depth, 0, 1)
 	for i := range out[0] {
 		l, r := float64(in[0][i]), float64(in[len(in)-1][i])

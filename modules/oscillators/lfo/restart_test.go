@@ -24,7 +24,7 @@ func TestRestart(t *testing.T) {
 	rec.SetSelf(rec)
 	rec.ValueIn(l)
 	tick := int64(0)
-	ctrl := func() { tick++; l.CtrlTick(psalm.CtrlTick{TickTimestamp: tick}) }
+	ctrl := func() { l.CtrlTick(psalm.CtrlTick{TickTimestamp: tick}); tick++ }
 	for range 300 {
 		ctrl()
 	}
@@ -55,7 +55,7 @@ func TestFollowsTheClock(t *testing.T) {
 		return rec.got
 	}
 	var all []int64
-	for k := int64(1); k <= 50; k++ {
+	for k := int64(0); k < 50; k++ {
 		all = append(all, k)
 	}
 	every := run(all...)

@@ -333,7 +333,7 @@ func (s *Sequencer) ticksPerStep() float64 { return float64(s.Config().PPQ) / s.
 // CtrlTick plays the hits due, and works out the hits of the step after the one starting (so a
 // step nudged early is there in time)
 func (s *Sequencer) CtrlTick(tick psalm.CtrlTick) {
-	t := float64(tick.TickTimestamp - 1)
+	t := float64(tick.TickTimestamp)
 	tps := s.ticksPerStep()
 	k := int64(math.Floor(t / tps))
 	for s.scheduled <= k+1 {

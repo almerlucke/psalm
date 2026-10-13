@@ -19,13 +19,13 @@ func runStream(f *Form, sc StreamScore, beats float64) []psalm.Message {
 	s := f.Stream(p, rec, "test", sc)
 	ppq := int64(psalm.PPQ())
 	for t := int64(0); t < int64(beats*float64(ppq)); t++ {
-		s.CtrlTick(psalm.CtrlTick{TickTimestamp: t + 1})
+		s.CtrlTick(psalm.CtrlTick{TickTimestamp: t})
 	}
 	return rec.triggers
 }
 
 func beatAt(m psalm.Message) float64 {
-	return float64(m["tick"].(psalm.CtrlTick).TickTimestamp-1) / float64(psalm.PPQ())
+	return float64(m["tick"].(psalm.CtrlTick).TickTimestamp) / float64(psalm.PPQ())
 }
 
 func pitch(m psalm.Message) any { return m["message"].(psalm.Message)["pitch"] }
@@ -133,7 +133,7 @@ func TestSendParams(t *testing.T) {
 	rec := &recorder{Module: psalm.NewControl()}
 	a.SendParams(rec)
 	for t := int64(0); t < int64(8*psalm.PPQ()); t++ {
-		a.CtrlTick(psalm.CtrlTick{TickTimestamp: t + 1})
+		a.CtrlTick(psalm.CtrlTick{TickTimestamp: t})
 	}
 	if len(rec.triggers) != 2 || rec.triggers[0]["mix"] != 0.2 || rec.triggers[1]["freeze"] != 1.0 {
 		t.Fatalf("expected the parameters of both sections, got %v", rec.triggers)
@@ -184,7 +184,7 @@ func TestStreamMessagesAndValues(t *testing.T) {
 	for _, m := range p.Modules() {
 		if sm, ok := m.(*Streamer); ok {
 			for tk := int64(0); tk < int64(4*psalm.PPQ()); tk++ {
-				sm.CtrlTick(psalm.CtrlTick{TickTimestamp: tk + 1})
+				sm.CtrlTick(psalm.CtrlTick{TickTimestamp: tk})
 			}
 		}
 	}
@@ -220,7 +220,7 @@ func TestPlay(t *testing.T) {
 	a.Play(plain, "verse", "chorus").Play(strip, "chorus")
 	a.OnSection(func(pos Position) { plainMuted = append(plainMuted, plain.Muted()) })
 	for tk := int64(0); tk < int64(12*psalm.PPQ()); tk++ {
-		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tk + 1})
+		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tk})
 	}
 	if want := []bool{true, false, false}; !slices.Equal(plainMuted, want) {
 		t.Fatalf("plain module muted per section %v, want %v", plainMuted, want)

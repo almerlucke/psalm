@@ -50,16 +50,17 @@ func tableForWaveForm(wf WaveForm, cwt lookup.Table) lookup.Table {
 
 type LFO struct {
 	*psalm.Module
-	phasor *phasor.Phasor
-	linear *linear.Linear
-	shaper *series.Series
-	ipol   *interp.Interpolator
-	sh     *shape.Shape
-	r      *rand.Rand
-	wf     WaveForm
-	wt     lookup.Table
-	kr     bool
-	last   int64 // the tick of the last control tick (control rate), 0 for none yet
+	phasor  *phasor.Phasor
+	linear  *linear.Linear
+	shaper  *series.Series
+	ipol    *interp.Interpolator
+	sh      *shape.Shape
+	r       *rand.Rand
+	wf      WaveForm
+	wt      lookup.Table
+	kr      bool
+	last    int64 // the tick of the last control tick (control rate)
+	started bool  // it had a control tick
 }
 
 func New(kr bool, fc float64, minVal float64, maxVal float64, wf WaveForm, wts ...lookup.Table) *LFO {
@@ -168,7 +169,7 @@ func (lfo *LFO) ReceiveMessage(msg psalm.Message) {
 // Restart starts the LFO again at its starting phase (psalm.Restarter, from Psalm.Restart)
 func (lfo *LFO) Restart() {
 	lfo.phasor.Reset()
-	lfo.last = 0
+	lfo.last, lfo.started = 0, false
 }
 
 // advance moves the LFO on by ticks it didn't play (at control rate)
@@ -187,17 +188,17 @@ func (lfo *LFO) CtrlTick(tick psalm.CtrlTick) {
 	// where it would be from the start, a clock going back (a restart) starts it again
 	now := tick.TickTimestamp
 	switch {
-	case lfo.last > 0 && now == lfo.last:
+	case lfo.started && now == lfo.last:
 		return
-	case lfo.last > 0 && now < lfo.last:
+	case lfo.started && now < lfo.last:
 		lfo.Restart()
-		lfo.advance(now - 1)
-	case lfo.last == 0:
-		lfo.advance(now - 1)
+		lfo.advance(now)
+	case !lfo.started:
+		lfo.advance(now)
 	default:
 		lfo.advance(now - lfo.last - 1)
 	}
-	lfo.last = now
+	lfo.last, lfo.started = now, true
 
 	v := lfo.shaper.Shape(lfo.phasor.Generate())
 	r := lfo.sh.Generate()[0]

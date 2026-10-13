@@ -223,7 +223,7 @@ func (pn *Panel) Meter(name string, m psalm.Modular) *Param {
 func (pn *Panel) CtrlTick(tick psalm.CtrlTick) {
 	cfg := pn.Config()
 	dt := pn.Env().TickDuration()
-	buffer := (tick.SampleTimestamp - 1) / int64(max(1, cfg.BufferSize))
+	buffer := tick.SampleTimestamp / int64(max(1, cfg.BufferSize))
 	newBuffer := buffer != pn.buffer
 	pn.buffer = buffer
 

@@ -56,7 +56,7 @@ func newRig(t *testing.T, cfg Config, rows ...string) *rig {
 func (r *rig) run(steps float64) {
 	end := r.tick + int64(steps*r.tps)
 	for ; r.tick < end; r.tick++ {
-		r.seq.CtrlTick(psalm.CtrlTick{TickTimestamp: r.tick + 1})
+		r.seq.CtrlTick(psalm.CtrlTick{TickTimestamp: r.tick})
 	}
 }
 
@@ -218,7 +218,7 @@ func TestMuteSoloChoke(t *testing.T) {
 	steps := func(n int) {
 		end := tick + int64(float64(n)*float64(psalm.PPQ())/4)
 		for ; tick < end; tick++ {
-			seq.CtrlTick(psalm.CtrlTick{TickTimestamp: tick + 1})
+			seq.CtrlTick(psalm.CtrlTick{TickTimestamp: tick})
 		}
 	}
 	steps(16)

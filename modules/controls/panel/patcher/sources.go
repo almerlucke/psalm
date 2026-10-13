@@ -49,7 +49,7 @@ func (l *LFO) Receive(v any, _ int) {
 // CtrlTick moves the wave a buffer on, at the start of every buffer
 func (l *LFO) CtrlTick(tick psalm.CtrlTick) {
 	cfg := l.Config()
-	buffer := (tick.SampleTimestamp - 1) / int64(max(1, cfg.BufferSize))
+	buffer := tick.SampleTimestamp / int64(max(1, cfg.BufferSize))
 	if buffer == l.buffer {
 		return
 	}
@@ -127,7 +127,7 @@ func (r *Random) Receive(v any, _ int) {
 
 func (r *Random) CtrlTick(tick psalm.CtrlTick) {
 	cfg := r.Config()
-	buffer := (tick.SampleTimestamp - 1) / int64(max(1, cfg.BufferSize))
+	buffer := tick.SampleTimestamp / int64(max(1, cfg.BufferSize))
 	if buffer == r.buffer {
 		return
 	}

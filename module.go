@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// CtrlTick is a control tick of a patch's clock. Its timestamps count from 0 since the patch
+// started (or restarted): the sample it falls on and the tick; SampleOffset is its sample in the
+// buffer
 type CtrlTick struct {
 	SampleTimestamp int64
 	TickTimestamp   int64

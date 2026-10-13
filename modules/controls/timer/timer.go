@@ -19,7 +19,8 @@ type Timer struct {
 	bang     bool
 	rest     bool
 	ticksGen genny.Generator[float64]
-	last     int64 // the tick (TickTimestamp) of the last control tick, 0 for none yet
+	last     int64 // the tick (TickTimestamp) of the last control tick
+	started  bool  // it had a control tick
 	fromNow  bool  // starts at its first tick, not aligned to the clock
 }
 
@@ -63,7 +64,7 @@ func (t *Timer) setNextDuration(send bool) {
 // Restart starts the timer again from the start of its durations (psalm.Restarter, from
 // Psalm.Restart): the first duration starts with the next tick, as when the patch started
 func (t *Timer) Restart() {
-	t.counter, t.bang, t.last = 0, false, 0
+	t.counter, t.bang, t.last, t.started = 0, false, 0, false
 	t.ticksGen.Reset()
 	t.setNextDuration(true)
 }
@@ -96,17 +97,17 @@ func (t *Timer) skip(n int64) {
 // clock going back (a restart) starts it again; false for a tick it had already
 func (t *Timer) follow(now int64) bool {
 	switch {
-	case t.last > 0 && now == t.last:
+	case t.started && now == t.last:
 		return false
-	case t.last > 0 && now < t.last: // the clock went back
+	case t.started && now < t.last: // the clock went back
 		t.Restart()
-		t.skip(now - 1)
-	case t.last == 0 && !t.fromNow: // the first tick: where it would be had it run from the start
-		t.skip(now - 1)
-	case t.last > 0:
+		t.skip(now)
+	case !t.started && !t.fromNow: // the first tick: where it would be had it run from the start
+		t.skip(now)
+	case t.started:
 		t.skip(now - t.last - 1) // the ticks it missed
 	}
-	t.last = now
+	t.last, t.started = now, true
 	return true
 }
 

@@ -1069,7 +1069,7 @@ func (e *engine) init() *engine {
 }
 
 func (e *engine) CtrlTick(tick psalm.CtrlTick) {
-	buffer := (tick.SampleTimestamp - 1) / int64(max(1, e.Config().BufferSize))
+	buffer := tick.SampleTimestamp / int64(max(1, e.Config().BufferSize))
 	if buffer == e.buffer {
 		return
 	}

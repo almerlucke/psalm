@@ -120,7 +120,7 @@ func number(v any, otherwise float64) float64 {
 }
 
 func (s *Streamer) CtrlTick(tick psalm.CtrlTick) {
-	t := tick.TickTimestamp - 1
+	t := tick.TickTimestamp
 	ppq := s.Config().PPQ
 	pos := s.form.Transport().At(t, ppq)
 	if pos.Ended {

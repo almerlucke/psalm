@@ -29,8 +29,8 @@ func TestPlayerDrivesKeyboards(t *testing.T) {
 	for range int(2*sr)/p.Config().BufferSize + 1 {
 		run(p)
 	}
-	// the frame a message plays on (the sample timestamps of psalm count from 1)
-	at := func(m psalm.Message) int64 { return m.MustTickVal("tick").SampleTimestamp - 1 }
+	// the frame a message plays on
+	at := func(m psalm.Message) int64 { return m.MustTickVal("tick").SampleTimestamp }
 	if len(keys.msgs) < 2 || keys.msgs[0]["noteOn"] != "midi-1-60" || keys.msgs[1]["noteOff"] != "midi-1-60" {
 		t.Fatalf("channel 1 got %v", keys.msgs)
 	}

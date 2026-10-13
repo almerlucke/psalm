@@ -95,7 +95,7 @@ func TestRestart(t *testing.T) {
 	if top.restarts != 1 || inner.restarts != 1 {
 		t.Fatalf("every module keeping time should restart, in patches within too: %d %d", top.restarts, inner.restarts)
 	}
-	if len(top.ticks) == 0 || top.ticks[0] != 1 || len(top.ticks) != len(inner.ticks) {
+	if len(top.ticks) == 0 || top.ticks[0] != 0 || len(top.ticks) != len(inner.ticks) {
 		t.Fatalf("the clock should start again at the first tick: %v", top.ticks[:min(3, len(top.ticks))])
 	}
 }

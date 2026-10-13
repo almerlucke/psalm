@@ -305,7 +305,7 @@ func (a *Arrangement) Restart() {
 func (a *Arrangement) Transport() *Transport { return a.form.Transport() }
 
 func (a *Arrangement) CtrlTick(tick psalm.CtrlTick) {
-	t := tick.TickTimestamp - 1
+	t := tick.TickTimestamp
 	pos := a.form.Transport().At(t, a.Config().PPQ)
 
 	if pos.Bar != a.bar {

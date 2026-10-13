@@ -91,13 +91,13 @@ func (r *recorder) Receive(value any, _ int) {
 
 // run drives a sequencer for ticks
 func run(s *Sequencer, ticks int) {
-	for t := 1; t <= ticks; t++ {
-		s.CtrlTick(psalm.CtrlTick{TickTimestamp: int64(t), SampleOffset: t % 7})
+	for t := range ticks {
+		s.CtrlTick(psalm.CtrlTick{TickTimestamp: int64(t), SampleOffset: t%7 + 1}) // an offset not 0: it is passed on
 	}
 }
 
 func tickOf(msg psalm.Message) int64 {
-	return msg["tick"].(psalm.CtrlTick).TickTimestamp - 1
+	return msg["tick"].(psalm.CtrlTick).TickTimestamp
 }
 
 func TestSequencer(t *testing.T) {
@@ -155,7 +155,7 @@ func TestSequencerLoopsAndGain(t *testing.T) {
 	rec.ValueIn(seq)
 	run(seq, int(4*ppq))
 	seq.SetGain(0.5)
-	seq.CtrlTick(psalm.CtrlTick{TickTimestamp: 4*ppq + 1}) // the next loop starts
+	seq.CtrlTick(psalm.CtrlTick{TickTimestamp: 4 * ppq}) // the next loop starts
 
 	if len(rec.got) != 3 {
 		t.Fatalf("expected two notes and the first note of the next loop, got %d", len(rec.got))

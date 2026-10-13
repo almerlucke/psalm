@@ -270,7 +270,7 @@ func (s *Sequencer) build() {
 }
 
 func (s *Sequencer) CtrlTick(tick psalm.CtrlTick) {
-	t := tick.TickTimestamp - 1
+	t := tick.TickTimestamp
 	if s.clock != nil {
 		c, ok := s.clock(t)
 		if !ok {

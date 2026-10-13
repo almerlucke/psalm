@@ -105,7 +105,7 @@ func TestArrangement(t *testing.T) {
 	a.OnBar(func(pos Position) { bars++ })
 
 	for tick = 0; tick < 2*32*ppq; tick++ { // the song twice
-		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tick + 1})
+		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tick})
 	}
 
 	if got := strings.Join(sections, " "); got != "Intro Verse Outro Intro Verse Outro" {
@@ -198,7 +198,7 @@ func TestTempo(t *testing.T) {
 	for loop := range 3 {
 		for tick := int64(0); tick < 32*ppq; tick++ {
 			t0 := int64(loop)*32*ppq + tick
-			a.CtrlTick(psalm.CtrlTick{TickTimestamp: t0 + 1})
+			a.CtrlTick(psalm.CtrlTick{TickTimestamp: t0})
 			if loop == 0 {
 				bpmAt[tick] = psalm.BPM()
 			}
@@ -312,7 +312,7 @@ func TestSections(t *testing.T) {
 	a.AutomateFunc(Sections{"Verse": Const(1)}, func(v float64) { got = append(got, v) })
 	ppq := int64(psalm.PPQ())
 	for tick := int64(0); tick < 32*ppq; tick++ {
-		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tick + 1})
+		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tick})
 	}
 	if fmt.Sprint(got) != "[0 1 0]" {
 		t.Fatalf("expected 0 1 0 through the song, got %v", got)
@@ -384,7 +384,7 @@ func TestAt(t *testing.T) {
 	var tick int64
 	a.At("Verse", 2, func() { ticks = append(ticks, tick) })
 	for tick = 0; tick < 2*32*ppq; tick++ {
-		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tick + 1})
+		a.CtrlTick(psalm.CtrlTick{TickTimestamp: tick})
 	}
 	verseBar2 := (2 + 2) * 4 * ppq // the intro is 2 bars
 	if len(ticks) != 2 || ticks[0] != verseBar2 || ticks[1] != 32*ppq+verseBar2 {

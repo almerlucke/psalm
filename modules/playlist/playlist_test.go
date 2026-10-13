@@ -126,7 +126,7 @@ func TestInOrder(t *testing.T) {
 	}
 	// every song has its own clock, from 0 and at its tempo: B at 60 is half as many ticks
 	a, b := r.tones["A"], r.tones["B"]
-	if a.ticks[0] != 1 || b.ticks[0] != 1 {
+	if a.ticks[0] != 0 || b.ticks[0] != 0 {
 		t.Fatalf("every song should count its ticks from the start: %d %d", a.ticks[0], b.ticks[0])
 	}
 	if na, nb := len(a.ticks), len(b.ticks); math.Abs(float64(na)/float64(nb)-2) > 0.05 {
@@ -187,7 +187,7 @@ func TestLoopAndRestart(t *testing.T) {
 	r.p.Restart()
 	a.ticks = nil
 	ls := r.levels(30)
-	if len(a.ticks) == 0 || a.ticks[0] != 1 {
+	if len(a.ticks) == 0 || a.ticks[0] != 0 {
 		t.Fatal("a restart should play the first song from its start")
 	}
 	if i, p := r.pl.Playing(); i != 0 || p > 0.35 || r.pl.CueState().Queued != -1 {
@@ -199,7 +199,7 @@ func TestLoopAndRestart(t *testing.T) {
 	r.p.Restart() // A playing: from its start, in place
 	a.ticks = nil
 	r.levels(1)
-	if i, p := r.pl.Playing(); i != 0 || p > 0.02 || a.ticks[0] != 1 {
+	if i, p := r.pl.Playing(); i != 0 || p > 0.02 || a.ticks[0] != 0 {
 		t.Fatal("a restart in the first song should start it again")
 	}
 }
@@ -248,7 +248,7 @@ func TestLiveBuildsAhead(t *testing.T) {
 	if got := names(ls); len(got) < 3 || !slices.Equal(got[:3], []string{"A", "B", "C"}) {
 		t.Fatalf("live the songs should be built ahead and play in order: %v", got)
 	}
-	if b := r.tones["B"]; b.ticks[0] != 1 {
+	if b := r.tones["B"]; b.ticks[0] != 0 {
 		t.Fatal("a song built ahead should start at its first tick")
 	}
 

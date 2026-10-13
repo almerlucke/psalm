@@ -72,6 +72,7 @@ func TestPageKeys(t *testing.T) {
 	paneltest.Eventually(t, "the page scrolling under it to let go", sounding(0))
 	tb.Mouse("mouseReleased", x, y, nil)
 	tb.Eval(`window.scrollTo(0, 0)`)
+	tb.WaitFor(`window.scrollY === 0`, "the page back at the top") // before a key's place is taken
 
 	x, y = key(55)
 	tb.Mouse("mousePressed", x, y, nil)

@@ -182,7 +182,7 @@ func (p *Psalm) ClockHeld() bool { return p.held.Load() }
 func (p *Psalm) Ticks() int64 { return p.tickTimestamp }
 
 // SamplesUntil returns the samples from the start of the next buffer until the tick at a position
-// (counted from 0, as modules see it: TickTimestamp - 1) comes, at the current tempo. Read it on the
+// (counted from 0, as modules see it in TickTimestamp) comes, at the current tempo. Read it on the
 // audio thread
 func (p *Psalm) SamplesUntil(position int64) float64 {
 	spt := p.SamplesPerTick()
@@ -389,9 +389,9 @@ func (p *Psalm) Run() {
 		for p.sampleCnt >= p.SamplesPerTick() { // read every time: a tick can change the tempo (a tempo lane)
 			p.sampleCnt -= p.SamplesPerTick()
 			p.tickTimestamp++
-			p.Patch.CtrlTick(CtrlTick{
-				SampleTimestamp: p.sampleTimestamp,
-				TickTimestamp:   p.tickTimestamp,
+			p.Patch.CtrlTick(CtrlTick{ // counted from 0: the counts less the one just counted
+				SampleTimestamp: p.sampleTimestamp - 1,
+				TickTimestamp:   p.tickTimestamp - 1,
 				SampleOffset:    n,
 			})
 		}

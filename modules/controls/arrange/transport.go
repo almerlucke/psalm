@@ -183,8 +183,8 @@ func (t *Transport) Order() []Section {
 	return order
 }
 
-// At returns the position of the song at a tick of the patch (the TickTimestamp of a control tick,
-// less one), moving the clock on to it. Every module following the form asks every tick, the first
+// At returns the position of the song at a tick of the patch (the TickTimestamp of a control tick),
+// moving the clock on to it. Every module following the form asks every tick, the first
 // one to ask moves the clock, the others get the same position
 func (t *Transport) At(tick int64, ppq int) Position {
 	t.mu.Lock()

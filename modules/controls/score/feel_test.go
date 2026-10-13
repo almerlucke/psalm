@@ -16,7 +16,7 @@ func triggers(s *Sequencer, loops int) [][]psalm.Message {
 	for l := range loops {
 		rec.got = nil
 		for t := int64(0); t < n; t++ {
-			s.CtrlTick(psalm.CtrlTick{TickTimestamp: int64(l)*n + t + 1})
+			s.CtrlTick(psalm.CtrlTick{TickTimestamp: int64(l)*n + t})
 		}
 		out = append(out, rec.got)
 	}
@@ -166,9 +166,9 @@ func TestSetFeelDoesntReplay(t *testing.T) {
 	s := NewSequencer(Notes(1, 60, 62), Config{Loop: true})
 	rec := newRecorder()
 	rec.ValueIn(s)
-	s.CtrlTick(psalm.CtrlTick{TickTimestamp: 1}) // plays the first note
+	s.CtrlTick(psalm.CtrlTick{TickTimestamp: 0}) // plays the first note
 	s.SetFeel(Feel{Swing: 0.66})                 // during the same tick
-	for t := int64(2); t <= int64(psalm.PPQ())*2; t++ {
+	for t := int64(1); t < int64(psalm.PPQ())*2; t++ {
 		s.CtrlTick(psalm.CtrlTick{TickTimestamp: t})
 	}
 	if len(rec.got) != 2 {

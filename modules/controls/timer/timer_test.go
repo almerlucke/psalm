@@ -29,23 +29,23 @@ func TestRestart(t *testing.T) {
 	rec.ValueIn(tm)
 	run := func(n int) {
 		for range n {
-			rec.tick++
 			tm.CtrlTick(psalm.CtrlTick{TickTimestamp: rec.tick})
+			rec.tick++
 		}
 	}
-	run(10) // bangs at 1, 5 (4 later), 13 not yet
-	if len(rec.at) != 2 || rec.at[1] != 5 {
+	run(10) // bangs at 0, 4 (4 later), 12 not yet
+	if len(rec.at) != 2 || rec.at[1] != 4 {
 		t.Fatalf("bangs at the durations: %v", rec.at)
 	}
 	tm.Restart() // as Psalm.Restart does: the clock goes back to the start too
 	rec.at, rec.tick = nil, 0
 	run(14)
-	if len(rec.at) != 3 || rec.at[0] != 1 || rec.at[1] != 5 || rec.at[2] != 13 {
+	if len(rec.at) != 3 || rec.at[0] != 0 || rec.at[1] != 4 || rec.at[2] != 12 {
 		t.Fatalf("after a restart the durations should start again from the first: %v", rec.at)
 	}
 }
 
-// a timer runs from a pattern of 4, 8 and 2 ticks: bangs at 1, 5, 13, 15, 19, 27, 29, ...
+// a timer runs from a pattern of 4, 8 and 2 ticks: bangs at 0, 4, 12, 14, 18, 26, 28, ...
 func bangsOf(t *testing.T, fromNow bool, ticks ...int64) []int64 {
 	t.Helper()
 	tm := New(sequence.NewLoop(4.0, 8.0, 2.0))
@@ -72,33 +72,33 @@ func span(from, to int64) []int64 {
 
 func TestFollowsTheClock(t *testing.T) {
 	psalm.New(nil)
-	all := bangsOf(t, false, span(1, 30)...)
-	if !slices.Equal(all, []int64{1, 5, 13, 15, 19, 27, 29}) {
+	all := bangsOf(t, false, span(0, 29)...)
+	if !slices.Equal(all, []int64{0, 4, 12, 14, 18, 26, 28}) {
 		t.Fatalf("every tick: %v", all)
 	}
-	// it misses the ticks 6 to 16: it goes on where it would have been, nothing banged in between
-	gap := bangsOf(t, false, append(span(1, 5), span(17, 30)...)...)
-	if !slices.Equal(gap, []int64{1, 5, 19, 27, 29}) {
+	// it misses the ticks 5 to 15: it goes on where it would have been, nothing banged in between
+	gap := bangsOf(t, false, append(span(0, 4), span(16, 29)...)...)
+	if !slices.Equal(gap, []int64{0, 4, 18, 26, 28}) {
 		t.Fatalf("after missing ticks it should be in its place: %v", gap)
 	}
 	// a gap that ends right before a bang: the bang comes on the tick after the gap
-	gap = bangsOf(t, false, append(span(1, 5), span(13, 16)...)...)
-	if !slices.Equal(gap, []int64{1, 5, 13, 15}) {
+	gap = bangsOf(t, false, append(span(0, 4), span(12, 15)...)...)
+	if !slices.Equal(gap, []int64{0, 4, 12, 14}) {
 		t.Fatalf("a bang due on the first tick after a gap: %v", gap)
 	}
-	// added while playing: its first tick is 10, it is where it would be from the start
-	late := bangsOf(t, false, span(10, 30)...)
-	if !slices.Equal(late, []int64{13, 15, 19, 27, 29}) {
+	// added while playing: its first tick is 9, it is where it would be from the start
+	late := bangsOf(t, false, span(9, 29)...)
+	if !slices.Equal(late, []int64{12, 14, 18, 26, 28}) {
 		t.Fatalf("a timer added later should line up with the clock: %v", late)
 	}
 	// FromNow: its first duration starts at its first tick
-	now := bangsOf(t, true, span(10, 30)...)
-	if !slices.Equal(now, []int64{10, 14, 22, 24, 28}) {
+	now := bangsOf(t, true, span(9, 29)...)
+	if !slices.Equal(now, []int64{9, 13, 21, 23, 27}) {
 		t.Fatalf("FromNow should start at its first tick: %v", now)
 	}
 	// the same tick twice does nothing; the clock going back starts it again
-	back := bangsOf(t, false, 1, 2, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5)
-	if !slices.Equal(back, []int64{1, 5, 1, 5}) {
+	back := bangsOf(t, false, 0, 1, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4)
+	if !slices.Equal(back, []int64{0, 4, 0, 4}) {
 		t.Fatalf("a clock going back should start it again: %v", back)
 	}
 }

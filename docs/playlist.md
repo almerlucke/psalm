@@ -138,7 +138,7 @@ plays three short songs this way, with the tiles on a panel.
 
 The songs are made with `p.NewSub()`: a `psalm.Psalm` playing within another one. It has the
 sample rate and buffer size of the patch around it, and a clock and an environment of its own
-(tempo, PPQ, random streams). It ticks its own modules when it runs, from tick 1, whatever time
+(tempo, PPQ, random streams). It ticks its own modules when it runs, from tick 0, whatever time
 the patch around it is at; the control ticks of the patch around it don't reach them. Its `Do`
 goes to the patch around it (the audio thread there), `Restart` restarts only it, and
 `HoldClock(true)` makes its clock stand still while its sound goes on.
