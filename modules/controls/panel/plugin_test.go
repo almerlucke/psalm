@@ -123,27 +123,27 @@ func TestPagePlugin(t *testing.T) {
 		Files: fstest.MapFS{"ring.svg": {Data: []byte("<svg/>")}}})
 	dial := pn.Custom("dial", "Dial", nil, Data([]int{1, 2}), OnMessage(func(json.RawMessage) { messages.Add(1) }))
 	pn.Custom("nobody", "Orphan", nil) // no plugin draws it
-	tb := b.open(t, serve(t, pn), built)
-	tb.waitFor(`document.querySelector(".dial")`, "the plugin's control")
-	if w := tb.eval(`document.querySelector(".dial").getBoundingClientRect().width`); w != 33.0 {
+	tb := b.Open(t, serve(t, pn), built)
+	tb.WaitFor(`document.querySelector(".dial")`, "the plugin's control")
+	if w := tb.Eval(`document.querySelector(".dial").getBoundingClientRect().width`); w != 33.0 {
 		t.Errorf("the plugin's styles: width %v", w)
 	}
-	if d := tb.eval(`document.querySelector(".dial").dataset.data`); d != "[1,2]" {
+	if d := tb.Eval(`document.querySelector(".dial").dataset.data`); d != "[1,2]" {
 		t.Errorf("the data: %v", d)
 	}
-	if k := tb.eval(`document.querySelector(".dial").closest("[data-kind]").dataset.kind`); k != "dial" {
+	if k := tb.Eval(`document.querySelector(".dial").closest("[data-kind]").dataset.kind`); k != "dial" {
 		t.Errorf("data-kind %v", k)
 	}
-	tb.waitFor(`document.querySelector(".missing")`, "a control no plugin draws")
+	tb.WaitFor(`document.querySelector(".missing")`, "a control no plugin draws")
 	_ = dial.Push(map[string]int{"n": 7})
-	tb.waitFor(`document.querySelector(".dial").dataset.state === '{"n":7}'`, "the state pushed")
+	tb.WaitFor(`document.querySelector(".dial").dataset.state === '{"n":7}'`, "the state pushed")
 	dial.Set(0.25)
-	tb.waitFor(`document.querySelector(".dial").dataset.value === "0.25"`, "the value set from code")
-	tb.eval(`psalm.send("Dial", 0.75)`)
+	tb.WaitFor(`document.querySelector(".dial").dataset.value === "0.25"`, "the value set from code")
+	tb.Eval(`psalm.send("Dial", 0.75)`)
 	eventually(t, "the value sent from the page", func() bool { return dial.Value() == 0.75 })
-	tb.eval(`psalm.message("Dial", {hi: 1})`)
+	tb.Eval(`psalm.message("Dial", {hi: 1})`)
 	eventually(t, "the message", func() bool { tk.tick(1); return messages.Load() == 1 })
-	if s := tb.eval(`fetch("plugins/dials/ring.svg").then(r => r.text())`); s != "<svg/>" {
+	if s := tb.Eval(`fetch("plugins/dials/ring.svg").then(r => r.text())`); s != "<svg/>" {
 		t.Errorf("a file of the plugin: %v", s)
 	}
 }
@@ -154,17 +154,17 @@ func TestPageTheme(t *testing.T) {
 	pn, _ := newPanel()
 	pn.SetTheme(Theme{Name: "mine", Light: map[string]string{"accent": "rgb(1, 2, 3)"}})
 	pn.Fader("Level", 0, 1, Linear, nil)
-	tb := b.open(t, serve(t, pn), built)
-	tb.eval(`localStorage.clear()`)
-	tb.waitFor(`psalm.css("accent") === "rgb(1, 2, 3)"`, "the panel's own theme")
-	tb.eval(`(() => { const s = document.getElementById("themes"); s.value = "amber"; s.onchange(); })()`)
-	tb.waitFor(`psalm.css("accent") === "#ffb000"`, "the theme chosen")
-	if v := tb.eval(`localStorage.getItem("psalm.theme")`); v != "amber" {
+	tb := b.Open(t, serve(t, pn), built)
+	tb.Eval(`localStorage.clear()`)
+	tb.WaitFor(`psalm.css("accent") === "rgb(1, 2, 3)"`, "the panel's own theme")
+	tb.Eval(`(() => { const s = document.getElementById("themes"); s.value = "amber"; s.onchange(); })()`)
+	tb.WaitFor(`psalm.css("accent") === "#ffb000"`, "the theme chosen")
+	if v := tb.Eval(`localStorage.getItem("psalm.theme")`); v != "amber" {
 		t.Errorf("the theme isn't remembered: %v", v)
 	}
-	tb.eval(`(() => { const s = document.getElementById("mode"); s.value = "dark"; s.onchange(); })()`)
-	if m := tb.eval(`document.documentElement.dataset.mode`); m != "dark" {
+	tb.Eval(`(() => { const s = document.getElementById("mode"); s.value = "dark"; s.onchange(); })()`)
+	if m := tb.Eval(`document.documentElement.dataset.mode`); m != "dark" {
 		t.Errorf("mode %v", m)
 	}
-	tb.eval(`localStorage.clear()`)
+	tb.Eval(`localStorage.clear()`)
 }

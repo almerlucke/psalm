@@ -195,6 +195,8 @@ func (w *Wah) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("q", func(v float64) { w.cfg.Q = v })
 	msg.IfFltVal("attack", func(v float64) { w.cfg.Attack = v })
 	msg.IfFltVal("release", func(v float64) { w.cfg.Release = v })
+	msg.IfIntVal("kind", func(k int) { w.cfg.Kind = Kind(max(0, min(k, int(LowPass)))) })
+	msg.IfBoolVal("down", func(b bool) { w.cfg.Down = b })
 }
 
 func (w *Wah) Synthesize() {

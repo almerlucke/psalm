@@ -44,6 +44,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/almerlucke/psalm"
@@ -137,6 +138,7 @@ type sound struct {
 	synth psalm.Modular
 	keys  func(keyboard.Config) keyboard.Config
 	hall  float64
+	page  *panel.Panel // its editor, nil without a panel
 }
 
 // expressive are the hands on the synths: the mod wheel (controller 1); the bend and the aftertouch
@@ -309,10 +311,11 @@ type part struct {
 	playing  *sound
 	kb       *keyboard.Keyboard
 	group    *mixer.Strip
-	volume   float64 // controller 7, 0-1
-	express  float64 // controller 11, 0-1
-	trim     float64 // dB, from the panel
-	hallSent bool    // the file sends to the hall itself (controller 91)
+	volume   float64                     // controller 7, 0-1
+	express  float64                     // controller 11, 0-1
+	trim     float64                     // dB, from the panel
+	hallSent bool                        // the file sends to the hall itself (controller 91)
+	page     atomic.Pointer[panel.Panel] // the editor of the sound playing (the page reads it)
 }
 
 // use plays the channel on another sound (on the audio thread): the notes of the one left let go,
@@ -324,6 +327,7 @@ func (pt *part) use(s *sound, tick psalm.CtrlTick) {
 	pt.kb.AllNotesOff(tick)
 	pt.playing.synth.Receive(psalm.Message{"sustain": 0.0, "sostenuto": 0.0, "soft": 0.0}, 0)
 	pt.playing = s
+	pt.page.Store(s.page)
 	pt.kb.SetConfig(s.keys(keyboard.Config{Channel: pt.channel}))
 	pt.kb.SetTargets(s.synth)
 	if !pt.hallSent {
@@ -376,6 +380,7 @@ func main() {
 	orchestra := flag.String("orchestra", "", "the folder of the Virtual Playing Orchestra (assets/Virtual-Playing-Orchestra3): its samples play the strings, brass, woodwinds, choirs, harp, timpani and mallets")
 	kit := flag.String("kit", "808", "the drum kit of channel 10: 808, 909, electro, trap or industrial")
 	theme := flag.String("theme", "default", "the theme of the panel: default, midnight, paper, amber, contrast or neon (the page can choose another)")
+	presetDir := flag.String("presets", "editors-presets", "the folder presets of your own are kept in, a folder for every synth (the editors example's too)")
 	addr := flag.String("addr", "localhost:8087", "the address of the control panel page (empty: no panel)")
 	buffer := flag.Int("buffer", 512, "the buffer size")
 	monitor := flag.Bool("monitor", false, "print every MIDI event played")
@@ -570,7 +575,8 @@ func main() {
 
 	if *addr != "" {
 		ctl := panel.New(p, "MIDI file")
-		if t, ok := panel.Themes[*theme]; ok {
+		t, ok := panel.Themes[*theme]
+		if ok {
 			ctl.SetTheme(t)
 		} else {
 			log.Fatalf("theme %q: one of %v", *theme, slices.Sorted(maps.Keys(panel.Themes)))
@@ -605,6 +611,18 @@ func main() {
 				panel.Unit("bpm"), panel.Label("tempo (0: the file's)"))
 		}
 
+		// the editor of every sound a channel plays (made here, before it plays)
+		for _, pt := range parts {
+			for _, s := range pt.built {
+				page, added := editPage(s, t, *presetDir)
+				for _, m := range added {
+					p.Add(m)
+				}
+				s.page = page
+			}
+			pt.page.Store(pt.playing.page)
+		}
+
 		// a card for every channel: its sound, a mute and a volume, what the file plays on it above
 		choices := append([]string{"as the file has it"}, soundNames()...)
 		for _, pt := range parts {
@@ -630,8 +648,13 @@ func main() {
 						log.Printf("channel %d: %v", pt.channel, err)
 						return
 					}
+					page, added := editPage(s, t, *presetDir) // its editor, made here: its presets read from disk
+					s.page = page
 					p.Do(func() {
 						if _, ok := pt.built[name]; !ok {
+							for _, m := range added {
+								p.Add(m)
+							}
 							p.Add(s.synth)
 							mix.Channel(fmt.Sprintf("channel %d %s", pt.channel, name), s.synth, mixer.StripConfig{Volume: level, Group: fmt.Sprintf("channel %d", pt.channel)})
 							mix.Align()
@@ -650,6 +673,16 @@ func main() {
 			ctl.Toggle(fmt.Sprintf("Mute %d", pt.channel), panel.Func(func(v float64) { player.MuteChannel(pt.channel, v > 0.5) }),
 				panel.Label("mute"))
 		}
+
+		// the editor of the sound a channel plays: choose the channel
+		ctl.Section("Edit")
+		edit := &editing{parts: parts}
+		var channelNames []string
+		for _, pt := range parts {
+			channelNames = append(channelNames, fmt.Sprintf("%d · %s", pt.channel, pt.title()))
+		}
+		ctl.Select("Edit channel", channelNames, func(i int) { edit.now.Store(int64(i)) }, panel.Label("channel"))
+		ctl.Mount("Sound", edit)
 
 		ctl.Section("Mix")
 		ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(mix.Master(), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03))

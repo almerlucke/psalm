@@ -112,6 +112,7 @@ func (c *Chorus) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("feedback", c.SetFeedback)
 	msg.IfFltVal("tone", c.SetTone)
 	msg.IfFltVal("mix", c.SetMix)
+	msg.IfIntVal("voices", func(v int) { c.cfg.Voices = max(1, min(v, maxVoices)) })
 }
 
 func (c *Chorus) Synthesize() {

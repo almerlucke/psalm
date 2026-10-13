@@ -11,9 +11,11 @@ against the dry signal, deepest at 0.5.
 **Described.** Every effect describes its settings: `<effect>.Describe(fx.Settings())` (`params`:
 each message key, its range, unit and where it is), for the editor of the panel
 (`modules/controls/panel/editor`). Gain, pan, freeverb and pitchshift take the module itself
-(`gain.Describe(g)`), the auto-wah is `follower.DescribeWah`. Settings no message changes (a
-compressor's auto makeup, the flanger's shape, a granulator's buffer length, the vocoder's bands)
-aren't described.
+(`gain.Describe(g)`), the auto-wah is `follower.DescribeWah`. Every setting changes by message
+while it plays (also the compressor's `autoMakeup`, the flanger's `shape`, the wah's `kind` and
+`down`, the chorus's `voices`, the phaser's `stages`, the rotary's `crossover`), but for the ones
+that size the effect's buffers when it is made: a granulator's buffer length, the vocoder's bands
+and FFT, the convolver's partitions, the pitch shifters' window. Those aren't described.
 
 **Smooth changes.** Mixes, feedback, levels and widths glide to a new value in about 30 ms (the
 chorus and flanger also glide their delay times), so they can be automated or driven by an LFO

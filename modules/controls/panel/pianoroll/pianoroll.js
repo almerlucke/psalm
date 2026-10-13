@@ -68,18 +68,24 @@ psalm.register("pianoroll", (p, api) => {
 	requestAnimationFrame(draw);
 
 	// a click or a drag moves the player there, the wheel zooms
+	// a press measures time on the roll as it is when pressed: the time at its left edge stays for the
+	// whole press (the roll moves to each place jumped to, a drag doesn't run away with it)
+	let dragging = false, last = 0, edge = 0;
 	const timeAt = e => {
 		const r = canvas.getBoundingClientRect();
-		const t = now(), pxs = r.width / seconds;
-		return Math.max(0, Math.min(d.duration, t + (e.clientX - r.left - r.width * 0.3) / pxs));
+		return Math.max(0, Math.min(d.duration, edge + (e.clientX - r.left) * seconds / r.width));
 	};
-	let dragging = false, last = 0;
 	const seek = e => {
 		const s = timeAt(e);
 		pos = s; at = performance.now();
 		if (performance.now() - last > 60) { last = performance.now(); api.message(p.name, {seek: s}); }
 	};
-	canvas.addEventListener("pointerdown", e => { dragging = true; canvas.setPointerCapture(e.pointerId); seek(e); });
+	canvas.addEventListener("pointerdown", e => {
+		edge = now() - 0.3 * seconds; // the playhead is at 30% of the width
+		dragging = true;
+		canvas.setPointerCapture(e.pointerId);
+		seek(e);
+	});
 	canvas.addEventListener("pointermove", e => { if (dragging) seek(e); });
 	canvas.addEventListener("pointerup", e => { if (dragging) { dragging = false; last = 0; seek(e); } });
 	canvas.addEventListener("wheel", e => {

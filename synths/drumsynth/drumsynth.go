@@ -9,6 +9,7 @@ package drumsynth
 
 import (
 	"math"
+	"strings"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/expression"
@@ -137,9 +138,45 @@ func newVoice(cfg Config, sh *shared) *Voice {
 	return v
 }
 
+// ReceiveMessage takes the level of the whole ("level"), the bend and the wheel, and the settings
+// of each sound of the kit by its name: "<sound><Setting>" ("kickPitch", "snareDecay", "hatTone"),
+// the settings Pitch, Decay, Sweep, SweepTime, Tone, Snap, Drive, Level and Pan (see Sound). A
+// sound takes them from its next hit
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
+	for key, val := range msg {
+		for _, st := range soundSettings {
+			name, ok := strings.CutSuffix(key, st.name)
+			if !ok || name == "" {
+				continue
+			}
+			snd, ok := v.cfg.Kit.Sounds[name]
+			if !ok {
+				break
+			}
+			*st.field(&snd) = psalm.FltVal[float64](val)
+			v.cfg.Kit.Sounds[name] = snd // the kit is shared by the voices of a poly: all of them hear it
+			break
+		}
+	}
+}
+
+// soundSettings are the settings of a sound by message, the longer names first (SweepTime before
+// Sweep)
+var soundSettings = []struct {
+	name  string
+	field func(*Sound) *float64
+}{
+	{"SweepTime", func(s *Sound) *float64 { return &s.SweepTime }},
+	{"Sweep", func(s *Sound) *float64 { return &s.Sweep }},
+	{"Pitch", func(s *Sound) *float64 { return &s.Pitch }},
+	{"Decay", func(s *Sound) *float64 { return &s.Decay }},
+	{"Tone", func(s *Sound) *float64 { return &s.Tone }},
+	{"Snap", func(s *Sound) *float64 { return &s.Snap }},
+	{"Drive", func(s *Sound) *float64 { return &s.Drive }},
+	{"Level", func(s *Sound) *float64 { return &s.Level }},
+	{"Pan", func(s *Sound) *float64 { return &s.Pan }},
 }
 
 func (v *Voice) Receive(value any, _ int) {

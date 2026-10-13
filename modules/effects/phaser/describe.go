@@ -13,5 +13,6 @@ func Describe(cfg Config) params.Set {
 		params.K("Phaser", "feedback", -0.95, 0.95, cfg.Feedback),
 		params.K("Phaser", "stereo", 0, 1, cfg.Stereo),
 		params.K("Phaser", "mix", 0, 1, cfg.Mix),
+		params.K("Phaser", "stages", 1, 12, float64(max(1, cfg.Stages)), params.Step(1)),
 	}}
 }

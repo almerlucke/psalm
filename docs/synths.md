@@ -1227,6 +1227,10 @@ kit.Sounds["kick"] = drumsynth.Sound{Kind: drumsynth.Kick, Pitch: 45, Decay: 2, 
 The sounds of the kits peak around -3 dB (kick), -5 (snare), -6 (toms, clap) and -10 (hats, rim).
 
 **Messages**: `sound` (a name of the kit) or `pitch` (a key), `speed`, `velocity`, `level`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+Every sound of the kit by its name: `<sound><Setting>`, the settings `Pitch`, `Decay`, `Sweep`,
+`SweepTime`, `Tone`, `Snap`, `Drive`, `Level` and `Pan` (`"kickDecay": 0.8`, `"hatTone": 0.9`),
+taken from its next hit; the voices of a poly share the kit. `Describe` gives the kit's every sound
+a group of its own: the editor of the panel is a drum kit editor.
 
 ## vocal
 

@@ -49,8 +49,9 @@ func New(cfg Config) *Phaser {
 		mix:    mix.NewSmoother(clamp(cfg.Mix, 0, 1), mix.SmoothMs, sr),
 		fb:     mix.NewSmoother(clamp(cfg.Feedback, -0.95, 0.95), mix.SmoothMs, sr),
 	}
+	p.cfg.Stages = max(1, min(cfg.Stages, maxStages))
 	for c := range p.state {
-		p.state[c] = make([]float64, 2*cfg.Stages)
+		p.state[c] = make([]float64, 2*maxStages) // room for the most: "stages" can change
 	}
 	p.SetSelf(p)
 	return p
@@ -90,6 +91,20 @@ func (p *Phaser) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("min", func(f float64) { p.cfg.Min = f })
 	msg.IfFltVal("max", func(f float64) { p.cfg.Max = f })
 	msg.IfFltVal("stereo", func(f float64) { p.cfg.Stereo = f })
+	msg.IfIntVal("stages", p.SetStages)
+}
+
+// maxStages is the most allpass stages a phaser has
+const maxStages = 12
+
+// SetStages sets how many allpass stages it has (each two a notch more), 1 to 12; the stages
+// brought in start from rest
+func (p *Phaser) SetStages(n int) {
+	n = max(1, min(n, maxStages))
+	for c := range p.state {
+		clear(p.state[c][2*p.cfg.Stages:])
+	}
+	p.cfg.Stages = n
 }
 
 // rate returns the sweeps per second
@@ -127,7 +142,7 @@ func (p *Phaser) Synthesize() {
 			a := coefficient(lo*math.Pow(hi/lo, sweep), sr) // exponential: even over the octaves
 			x := float64(in[c%len(in)][i])
 			v := x + fb*p.last[c]
-			st := p.state[c]
+			st := p.state[c][:2*cfg.Stages]
 			for s := 0; s < len(st); s += 2 { // first order allpass: y = a*x + x1 - a*y1
 				y := a*v + st[s] - a*st[s+1]
 				st[s], st[s+1] = v, y

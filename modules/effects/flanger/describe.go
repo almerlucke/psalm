@@ -12,5 +12,6 @@ func Describe(cfg Config) params.Set {
 		params.K("Flanger", "feedback", -0.95, 0.95, cfg.Feedback),
 		params.K("Flanger", "stereo", 0, 1, cfg.Stereo),
 		params.K("Flanger", "mix", 0, 1, cfg.Mix),
+		params.C("Flanger", "shape", []string{"sine", "triangle"}, int(cfg.Shape)),
 	}}
 }

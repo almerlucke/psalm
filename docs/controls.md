@@ -608,12 +608,29 @@ or Delete. From code: `SavePreset(name)`, `LoadPreset(name)`, `DeletePreset(name
 the folder. Download and Upload on the page keep a setup in a file of your own, with or without
 the folder.
 
-**Tests of the page**: `page_test.go` drives the page in headless Chrome (the DevTools protocol on
-a pipe, no other dependencies): every kind of control, the tiles of cue lists (also cue lists whose
-cues come and go), mounts, the grid, MIDI learn, Start/Stop and Restart, presets, themes and
-plugins; any error the page
-throws fails the test. They run with `go test` when Chrome is installed (`PSALM_CHROME` names
-another browser), and are skipped with `-short`.
+**Tests of the page**: `modules/controls/panel/paneltest` drives pages in headless Chrome (the
+DevTools protocol on a pipe, no other dependencies): `Start`, `Open` a page and wait for it,
+`Eval`, `WaitFor`, `Tap`, `Key`, `Mouse` (press, move, release, the wheel), `Center` of an element,
+`Screenshot`, `Serve` a panel for a test, `Eventually` for the Go side. The panel's tests use it for
+every kind of control, the tiles of cue lists, mounts, the grid, MIDI learn, Start/Stop and Restart,
+presets, themes and plugins; the plugins' for their own pages: the widgets (the keyboard letting go
+whatever happens to the pointer, the XY pad, pads, envelope, scope), the editor (every kind of
+control, presets saved and loaded on the page), the DX editor (the algorithm, one of your own, the
+bank), the piano roll. Any error a page throws fails its test. They run with `go test` when Chrome
+is installed (`PSALM_CHROME` names another browser), and are skipped with `-short`. A plugin of
+your own tests its page the same way:
+
+```go
+func TestMain(m *testing.M) { paneltest.Main(m) }
+
+func TestPage(t *testing.T) {
+	b := paneltest.Start(t)
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".xy")`)
+	x, y := tb.Center(`document.querySelector(".xy")`, 0.5)
+	tb.Mouse("mousePressed", x, y, nil)
+	paneltest.Eventually(t, "the pad pressed", func() bool { return pad.Value() > 0 })
+}
+```
 
 **Themes**: the look of the page is a set of CSS variables, and a `Theme` gives them values, for
 light and for dark mode, plus CSS of its own. The page has a choice of the themes in

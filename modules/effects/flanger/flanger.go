@@ -114,6 +114,7 @@ func (f *Flanger) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("feedback", f.SetFeedback)
 	msg.IfFltVal("stereo", f.SetStereo)
 	msg.IfFltVal("mix", f.SetMix)
+	msg.IfIntVal("shape", func(s int) { f.cfg.Shape = Shape(max(0, min(s, int(Triangle)))) })
 }
 
 // sweep returns the sweep at a phase, 0-1

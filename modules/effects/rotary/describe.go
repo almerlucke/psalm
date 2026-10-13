@@ -11,11 +11,16 @@ func Describe(cfg Config) params.Set {
 	if spread <= 0 {
 		spread = 1
 	}
+	crossover := cfg.Crossover
+	if crossover <= 0 {
+		crossover = 800
+	}
 	return params.Set{Name: "rotary", Params: []params.Param{
 		params.S("Rotary", "fast", cfg.Fast),
 		params.K("Rotary", "drive", 0, 24, cfg.Drive, params.Unit("dB")),
 		params.K("Rotary", "horn", 0.01, 1, horn),
 		params.K("Rotary", "spread", 0.01, 1, spread),
 		params.K("Rotary", "mix", 0, 1, cfg.Mix),
+		params.K("Rotary", "crossover", 150, 4000, crossover, params.Exp(), params.Unit("Hz")),
 	}}
 }

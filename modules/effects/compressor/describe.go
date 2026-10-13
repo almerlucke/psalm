@@ -16,6 +16,7 @@ func Describe(cfg Config) params.Set {
 		params.K("Time", "release", 5, 2000, max(5, cfg.Release), params.Exp(), params.Unit("ms")),
 		params.K("Output", "makeup", -12, 24, cfg.Makeup, params.Unit("dB")),
 		params.K("Output", "mix", 0, 1, cfg.Mix),
+		params.S("Output", "autoMakeup", cfg.AutoMakeup, params.Label("auto makeup")),
 		params.K("Sidechain", "sideCut", 20, 500, sideCut, params.Exp(), params.Unit("Hz"), params.Label("side cut")),
 	}}
 }

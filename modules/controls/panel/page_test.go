@@ -48,14 +48,14 @@ func TestPageBuilds(t *testing.T) {
 	pl.running.Store(true)
 	pn.SetPlayer(pl)
 
-	tb := b.open(t, serve(t, pn), built)
-	tb.waitFor(`document.querySelectorAll(".cue").length === 5`, "the tiles of both cue lists")
+	tb := b.Open(t, serve(t, pn), built)
+	tb.WaitFor(`document.querySelectorAll(".cue").length === 5`, "the tiles of both cue lists")
 	for _, sel := range []string{".fader", ".knob", ".meter", ".cell", ".mountbox", "#presets:not([hidden])", "#run:not([hidden])", "#restart:not([hidden])"} {
-		if n, _ := tb.eval(`document.querySelectorAll("` + sel + `").length`).(float64); n == 0 {
+		if n, _ := tb.Eval(`document.querySelectorAll("` + sel + `").length`).(float64); n == 0 {
 			t.Errorf("the page should have %s", sel)
 		}
 	}
-	if title := tb.eval(`document.title`); title != "Test" {
+	if title := tb.Eval(`document.title`); title != "Test" {
 		t.Errorf("the title should be the panel's, got %v", title)
 	}
 }
@@ -69,27 +69,27 @@ func TestPageControls(t *testing.T) {
 	var presses atomic.Int32
 	pn.Button("Bang", func() { presses.Add(1) })
 	wave := pn.Select("Wave", []string{"sine", "saw", "square"}, func(int) {})
-	tb := b.open(t, serve(t, pn), built)
+	tb := b.Open(t, serve(t, pn), built)
 
 	control := func(name string) string {
 		return `[...document.querySelectorAll(".control")].find(c => c.querySelector(".name") && c.querySelector(".name").textContent === "` + name + `")`
 	}
-	tb.eval(control("Level") + `.querySelector(".fader").focus()`)
-	tb.key("ArrowUp")
+	tb.Eval(control("Level") + `.querySelector(".fader").focus()`)
+	tb.Key("ArrowUp")
 	eventually(t, "the fader to move up", func() bool { return level.Value() > 0.5 })
 
-	tb.tap(`document.querySelector('button[title="Mute"]')`) // toggles and buttons are a button named by its title
+	tb.Tap(`document.querySelector('button[title="Mute"]')`) // toggles and buttons are a button named by its title
 	eventually(t, "the toggle to switch on", func() bool { return mute.Value() == 1 })
 
-	tb.tap(`document.querySelector('button[title="Bang"]')`)
+	tb.Tap(`document.querySelector('button[title="Bang"]')`)
 	eventually(t, "the button to be pressed", func() bool { tk.tick(1); return presses.Load() == 1 })
 
-	tb.eval(`(() => { const s = ` + control("Wave") + `.querySelector("select"); s.value = "2"; s.dispatchEvent(new Event("change")); })()`)
+	tb.Eval(`(() => { const s = ` + control("Wave") + `.querySelector("select"); s.value = "2"; s.dispatchEvent(new Event("change")); })()`)
 	eventually(t, "the select to choose", func() bool { return wave.Value() == 2 })
 
 	// and the other way: a change in the patch shows on the page
 	level.Set(0.1)
-	tb.waitFor(control("Level")+`.querySelector(".value").textContent === "0.10"`, "the page to follow the panel")
+	tb.WaitFor(control("Level")+`.querySelector(".value").textContent === "0.10"`, "the page to follow the panel")
 }
 
 // a tap on a tile asks for its cue, a tap again takes it back, the dot switches it off
@@ -98,18 +98,18 @@ func TestPageCues(t *testing.T) {
 	pn, _ := newPanel()
 	c := newCueList()
 	pn.Cues("Songs", c)
-	tb := b.open(t, serve(t, pn), built)
+	tb := b.Open(t, serve(t, pn), built)
 	tile := func(i string) string { return `document.querySelectorAll(".cue")[` + i + `]` }
 
-	tb.tap(tile("2"))
+	tb.Tap(tile("2"))
 	eventually(t, "the tile to ask for its cue", func() bool { return c.CueState().Queued == 2 })
-	tb.waitFor(tile("2")+`.classList.contains("queued")`, "the tile to show it is next")
-	tb.tap(tile("2"))
+	tb.WaitFor(tile("2")+`.classList.contains("queued")`, "the tile to show it is next")
+	tb.Tap(tile("2"))
 	eventually(t, "a second tap to take it back", func() bool { return c.CueState().Queued == -1 })
 
-	tb.tap(tile("1") + `.querySelector(".switch")`)
+	tb.Tap(tile("1") + `.querySelector(".switch")`)
 	eventually(t, "the dot to switch the cue off", func() bool { return !c.CueState().Enabled[1] })
-	tb.waitFor(tile("1")+`.classList.contains("off")`, "the tile to show it is off")
+	tb.WaitFor(tile("1")+`.classList.contains("off")`, "the tile to show it is off")
 	if q := c.CueState().Queued; q != -1 {
 		t.Fatalf("the dot should not ask for the cue, queued %d", q)
 	}
@@ -159,14 +159,14 @@ func TestPageCueSlots(t *testing.T) {
 	pn, _ := newPanel()
 	s := &sometimes{names: []string{"Intro", "Verse", "End"}, queued: -1}
 	pn.Cues("Sections", s, CueSlots(8))
-	tb := b.open(t, serve(t, pn), built)
-	tb.waitFor(s.has("Verse"), "the first cues")
+	tb := b.Open(t, serve(t, pn), built)
+	tb.WaitFor(s.has("Verse"), "the first cues")
 
 	s.set() // between songs
-	tb.waitFor(`document.querySelectorAll(".cue").length === 0`, "no tiles without cues")
+	tb.WaitFor(`document.querySelectorAll(".cue").length === 0`, "no tiles without cues")
 	s.set("A", "B", "Break", "Out")
-	tb.waitFor(s.has("Break"), "the tiles of the next song")
-	tb.tap(`document.querySelectorAll(".cue")[3]`)
+	tb.WaitFor(s.has("Break"), "the tiles of the next song")
+	tb.Tap(`document.querySelectorAll(".cue")[3]`)
 	eventually(t, "the fourth tile to ask for the fourth cue", func() bool { return s.queuedNow() == 3 })
 }
 
@@ -189,12 +189,12 @@ func TestPageMount(t *testing.T) {
 		h.ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	tb := b.open(t, srv.URL+"/", built)
+	tb := b.Open(t, srv.URL+"/", built)
 
 	frame := `document.querySelector(".mountbox iframe")`
-	tb.waitFor(frame+`.offsetHeight > 100`, "the frame to take the height of the mounted panel")
-	tb.waitFor(`document.querySelector("section.mounthost h2").textContent === "Morning"`, "the heading to be the panel's title")
-	tb.waitFor(frame+`.contentDocument && `+frame+`.contentDocument.querySelector(".fader")`, "the mounted panel's fader in the frame")
+	tb.WaitFor(frame+`.offsetHeight > 100`, "the frame to take the height of the mounted panel")
+	tb.WaitFor(`document.querySelector("section.mounthost h2").textContent === "Morning"`, "the heading to be the panel's title")
+	tb.WaitFor(frame+`.contentDocument && `+frame+`.contentDocument.querySelector(".fader")`, "the mounted panel's fader in the frame")
 	time.Sleep(300 * time.Millisecond) // a few updates of the page
 	if n := loads.Load(); n != 1 {
 		t.Fatalf("the mounted panel should load once, not on every update: %d times", n)
@@ -203,15 +203,15 @@ func TestPageMount(t *testing.T) {
 	groove := New(psalm.New(nil), "Groove")
 	tempo := groove.Fader("Tempo", 90, 120, Linear, nil, Default(104))
 	m.p.Store(groove)
-	tb.waitFor(`document.querySelector("section.mounthost h2").textContent === "Groove"`, "the next panel's title")
+	tb.WaitFor(`document.querySelector("section.mounthost h2").textContent === "Groove"`, "the next panel's title")
 	inFrame := frame + `.contentDocument`
-	tb.waitFor(inFrame+` && `+inFrame+`.title === "Groove" && `+inFrame+`.querySelector(".fader") && `+frame+`.offsetHeight > 100`, "the next panel in the frame")
+	tb.WaitFor(inFrame+` && `+inFrame+`.title === "Groove" && `+inFrame+`.querySelector(".fader") && `+frame+`.offsetHeight > 100`, "the next panel in the frame")
 	// a control in the frame moves the mounted panel
-	tb.eval(`(() => { const f = ` + inFrame + `.querySelector(".fader"); f.focus(); f.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true})); })()`)
+	tb.Eval(`(() => { const f = ` + inFrame + `.querySelector(".fader"); f.focus(); f.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true})); })()`)
 	eventually(t, "the mounted panel's fader to move", func() bool { return tempo.Value() > 104 })
 
 	m.p.Store(nil)
-	tb.waitFor(`!document.querySelector(".mountbox .none").hidden`, "nothing to show without a panel mounted")
+	tb.WaitFor(`!document.querySelector(".mountbox .none").hidden`, "nothing to show without a panel mounted")
 }
 
 // a tap on a step switches it on
@@ -219,8 +219,8 @@ func TestPageGrid(t *testing.T) {
 	b := startBrowser(t)
 	pn, _ := newPanel()
 	g := pn.Grid("Drums", []string{"kick", "snare"}, 8, 2, testFields...)
-	tb := b.open(t, serve(t, pn), built)
-	tb.tap(`document.querySelectorAll(".cell")[10]`) // the snare's third step
+	tb := b.Open(t, serve(t, pn), built)
+	tb.Tap(`document.querySelectorAll(".cell")[10]`) // the snare's third step
 	eventually(t, "the step to switch on", func() bool { return g.Value(0, 1, 2, 0) > 0 })
 }
 
@@ -230,14 +230,14 @@ func TestPageLearn(t *testing.T) {
 	pn, _ := newPanel()
 	cutoff := pn.Fader("Cutoff", 0, 1, Linear, nil)
 	pn.Cues("Songs", newCueList())
-	tb := b.open(t, serve(t, pn), built)
-	tb.tap(`document.getElementById("learn")`)
-	tb.waitFor(`document.body.classList.contains("learn")`, "learn mode")
-	tb.tap(`document.querySelector(".fader")`)
+	tb := b.Open(t, serve(t, pn), built)
+	tb.Tap(`document.getElementById("learn")`)
+	tb.WaitFor(`document.body.classList.contains("learn")`, "learn mode")
+	tb.Tap(`document.querySelector(".fader")`)
 	eventually(t, "the fader to be armed", func() bool { return pn.Learning() == cutoff })
-	tb.tap(`document.querySelectorAll(".cue")[1]`)
+	tb.Tap(`document.querySelectorAll(".cue")[1]`)
 	eventually(t, "a tile to be armed (its button)", func() bool { return pn.Learning() == pn.Param("Songs/Verse") })
-	tb.key("Escape")
+	tb.Key("Escape")
 	eventually(t, "Escape to stop learning", func() bool { return pn.Learning() == nil })
 }
 
@@ -249,11 +249,11 @@ func TestPagePlayer(t *testing.T) {
 	pl := &restartable{}
 	pl.running.Store(true)
 	pn.SetPlayer(pl)
-	tb := b.open(t, serve(t, pn), built)
-	tb.tap(`document.getElementById("run")`)
+	tb := b.Open(t, serve(t, pn), built)
+	tb.Tap(`document.getElementById("run")`)
 	eventually(t, "Stop to stop the sound", func() bool { return !pl.Running() })
-	tb.waitFor(`document.getElementById("run").textContent.includes("Start")`, "the button to offer Start")
-	tb.tap(`document.getElementById("restart")`)
+	tb.WaitFor(`document.getElementById("run").textContent.includes("Start")`, "the button to offer Start")
+	tb.Tap(`document.getElementById("restart")`)
 	eventually(t, "Restart to go back to the start", func() bool { return pl.restarts.Load() == 1 })
 }
 
@@ -264,18 +264,18 @@ func TestPagePresets(t *testing.T) {
 	level := pn.Fader("Level", 0, 1, Linear, nil)
 	dir := t.TempDir()
 	_ = pn.Presets(dir)
-	tb := b.open(t, serve(t, pn), built)
+	tb := b.Open(t, serve(t, pn), built)
 	level.Set(0.75)
-	tb.eval(`document.querySelector("#presets input").value = "Loud"`)
-	tb.tap(`[...document.querySelectorAll("#presets button")].find(b => b.textContent === "Save")`)
+	tb.Eval(`document.querySelector("#presets input").value = "Loud"`)
+	tb.Tap(`[...document.querySelectorAll("#presets button")].find(b => b.textContent === "Save")`)
 	eventually(t, "the preset to be saved", func() bool {
 		_, err := os.Stat(filepath.Join(dir, "Loud.json"))
 		return err == nil
 	})
 	level.Set(0.2)
-	tb.waitFor(`[...document.querySelectorAll("#presets select option")].some(o => o.value === "Loud")`, "the preset in the list")
-	tb.eval(`document.querySelector("#presets select").value = "Loud"`)
-	tb.tap(`[...document.querySelectorAll("#presets button")].find(b => b.textContent === "Load")`)
+	tb.WaitFor(`[...document.querySelectorAll("#presets select option")].some(o => o.value === "Loud")`, "the preset in the list")
+	tb.Eval(`document.querySelector("#presets select").value = "Loud"`)
+	tb.Tap(`[...document.querySelectorAll("#presets button")].find(b => b.textContent === "Load")`)
 	eventually(t, "the preset to be loaded", func() bool { return level.Value() == 0.75 })
 }
 
@@ -289,21 +289,21 @@ func TestPageCueToggles(t *testing.T) {
 	c.state.Active = []bool{true, false, true}
 	c.mu.Unlock()
 	pn.Cues("Parts", c, CueToggles())
-	tb := b.open(t, serve(t, pn), built)
+	tb := b.Open(t, serve(t, pn), built)
 	tile := func(i string) string { return `document.querySelectorAll(".cue")[` + i + `]` }
-	tb.waitFor(tile("0")+`.classList.contains("playing") && !`+tile("1")+`.classList.contains("playing") && `+tile("2")+`.classList.contains("playing")`, "the parts sounding lit")
-	tb.tap(tile("1"))
+	tb.WaitFor(tile("0")+`.classList.contains("playing") && !`+tile("1")+`.classList.contains("playing") && `+tile("2")+`.classList.contains("playing")`, "the parts sounding lit")
+	tb.Tap(tile("1"))
 	eventually(t, "a tap to switch the part off", func() bool { return !c.CueState().Enabled[1] })
-	tb.waitFor(tile("1")+`.classList.contains("off")`, "the tile to show it is off")
+	tb.WaitFor(tile("1")+`.classList.contains("off")`, "the tile to show it is off")
 	if q := c.CueState().Queued; q != -1 {
 		t.Fatalf("a switch should not ask for a cue: %d", q)
 	}
-	tb.tap(tile("2")) // off where it would play: it says off, still lit
-	tb.waitFor(tile("2")+`.querySelector(".tag").textContent === "off" && `+tile("2")+`.classList.contains("playing")`, "a part off where it would play")
-	tb.tap(tile("2"))
-	tb.tap(tile("1"))
+	tb.Tap(tile("2")) // off where it would play: it says off, still lit
+	tb.WaitFor(tile("2")+`.querySelector(".tag").textContent === "off" && `+tile("2")+`.classList.contains("playing")`, "a part off where it would play")
+	tb.Tap(tile("2"))
+	tb.Tap(tile("1"))
 	eventually(t, "a tap again to switch it on", func() bool { return c.CueState().Enabled[1] })
-	if hint := tb.eval(`document.querySelector(".cuehint").textContent`); !strings.Contains(hint.(string), "switch it off or on") {
+	if hint := tb.Eval(`document.querySelector(".cuehint").textContent`); !strings.Contains(hint.(string), "switch it off or on") {
 		t.Fatalf("the hint should say what a tap does: %v", hint)
 	}
 }

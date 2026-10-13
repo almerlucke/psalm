@@ -8,6 +8,10 @@ func Describe(cfg Config) params.Set {
 	if tone <= 0 {
 		tone = 20000 // off: as open as it goes
 	}
+	voices := cfg.Voices
+	if voices <= 0 {
+		voices = 3
+	}
 	return params.Set{Name: "chorus", Params: []params.Param{
 		params.K("Chorus", "rate", 0.05, 10, max(0.05, cfg.Rate), params.Exp(), params.Unit("Hz")),
 		params.K("Chorus", "depth", 0, 10, cfg.Depth, params.Unit("ms")),
@@ -16,5 +20,6 @@ func Describe(cfg Config) params.Set {
 		params.K("Chorus", "feedback", 0, 0.9, cfg.Feedback),
 		params.K("Chorus", "tone", 500, 20000, tone, params.Exp(), params.Unit("Hz")),
 		params.K("Chorus", "mix", 0, 1, cfg.Mix),
+		params.K("Chorus", "voices", 1, 4, float64(voices), params.Step(1)),
 	}}
 }

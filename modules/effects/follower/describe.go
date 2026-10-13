@@ -31,5 +31,7 @@ func DescribeWah(cfg WahConfig) params.Set {
 		params.K("Wah", "attack", 0.1, 500, max(0.1, cfg.Attack), params.Exp(), params.Unit("ms")),
 		params.K("Wah", "release", 5, 5000, max(5, cfg.Release), params.Exp(), params.Unit("ms")),
 		params.K("Wah", "mix", 0, 1, cfg.Mix),
+		params.C("Wah", "kind", []string{"band pass", "low pass"}, int(cfg.Kind), params.Label("filter")),
+		params.S("Wah", "down", cfg.Down, params.Label("sweep down")),
 	}}
 }

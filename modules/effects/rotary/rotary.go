@@ -120,6 +120,15 @@ func (r *Rotary) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("drive", func(db float64) { r.cfg.Drive = db })
 	msg.IfFltVal("horn", func(h float64) { r.cfg.Horn = h })
 	msg.IfFltVal("spread", func(s float64) { r.cfg.Spread = s })
+	msg.IfFltVal("crossover", r.SetCrossover)
+}
+
+// SetCrossover moves the split between the drum and the horn (Hz, 150 to 4000)
+func (r *Rotary) SetCrossover(hz float64) {
+	r.cfg.Crossover = math.Max(150, math.Min(hz, 4000))
+	for _, f := range []*biquad.Biquad{r.lo, r.lo2, r.hi, r.hi2} {
+		f.SetFrequency(r.cfg.Crossover)
+	}
 }
 
 // turn moves a rotor a sample on: its speed towards the target, its phase by its speed

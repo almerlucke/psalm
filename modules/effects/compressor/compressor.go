@@ -105,6 +105,7 @@ func (c *Compressor) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("makeup", c.SetMakeup)
 	msg.IfFltVal("mix", c.SetMix)
 	msg.IfFltVal("sideCut", func(f float64) { c.cfg.SideCut = f })
+	msg.IfBoolVal("autoMakeup", func(b bool) { c.cfg.AutoMakeup = b })
 }
 
 func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
