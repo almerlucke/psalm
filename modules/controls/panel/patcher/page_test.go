@@ -129,6 +129,19 @@ func TestPagePatcher(t *testing.T) {
 	paneltest.Eventually(t, "the pattern taken", func() bool { tx := pt.Texts(clk); return len(tx) == 1 && tx[0].Value == "x . x x" })
 	tb.Eval(`(() => { const i = ` + input + `; i.value = "x ?"; i.dispatchEvent(new Event("change")); })()`)
 	tb.WaitFor(input+`.classList.contains("bad")`, "a bad pattern shown")
+
+	// a script typed in its box: an error of it shown on the module (with its line), then what it logs
+	scr, err := pt.Add("script", "", 700, 380)
+	if err != nil {
+		t.Fatal(err)
+	}
+	box := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-text textarea")`, scr)
+	status := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-status")`, scr)
+	tb.WaitFor(box+`?.value.includes("function trigger")`, "the script in its box")
+	tb.Eval(`(() => { const b = ` + box + `; b.value = "const a = 1\nlet b = (;"; b.dispatchEvent(new Event("change")); })()`)
+	tb.WaitFor(box+`.classList.contains("bad") && `+status+`?.classList.contains("bad") && `+status+`.textContent.includes("line 2")`, "the error on its line")
+	tb.Eval(`(() => { const b = ` + box + `; b.focus(); b.value = "log('hello', [1, 2])"; b.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
+	tb.WaitFor(status+`.textContent === 'hello [1,2]' && !`+status+`.classList.contains("bad") && !`+box+`.classList.contains("bad")`, "what it logged")
 	if os.Getenv("SHOT") != "" {
 		tb.Screenshot(os.Getenv("SHOT"))
 	}

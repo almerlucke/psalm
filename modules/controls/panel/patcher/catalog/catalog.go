@@ -17,6 +17,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/dxeditor"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
+	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
 	"github.com/almerlucke/psalm/modules/effects/chorus"
 	"github.com/almerlucke/psalm/modules/effects/compressor"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
@@ -90,7 +91,8 @@ func effect(name string, make func() (psalm.Modular, func() params.Set)) patcher
 }
 
 // Kinds returns the kinds: the patcher's own (LFO, random, mixer; clock, sequence, notes, quantize),
-// a keyboard, every synth (with its presets) and every effect
+// scripts (of JavaScript, all of them in one runtime: one Kinds for a patch), a keyboard, every
+// synth (with its presets) and every effect
 func Kinds(cfg Config) []patcher.Kind {
 	v := cfg.Voices
 	if v <= 0 {
@@ -101,6 +103,7 @@ func Kinds(cfg Config) []patcher.Kind {
 	kinds := []patcher.Kind{keyboardKind(h)}
 	kinds = append(kinds, patcher.Sources()...)
 	kinds = append(kinds, patcher.Generators()...)
+	kinds = append(kinds, script.Kind(script.NewRuntime()))
 	kinds = append(kinds,
 		synth("subtractive", sorted(subtractive.Presets), func(n string, v int) psalm.Modular { return subtractive.NewPoly(subtractive.Presets[n](), v) },
 			func(n string) params.Set { return subtractive.Describe(subtractive.Presets[n]()) }, v),

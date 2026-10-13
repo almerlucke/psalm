@@ -82,7 +82,8 @@ func main() {
 	p.Out(mix.Master())
 
 	// a patch to start from: a clock of sixteenths through a sequence of C minor, up and down, playing
-	// a wavetable pluck; the keyboard playing a lead; both on a mixer whose send A goes to a reverb
+	// a wavetable pluck; a script on the same clock playing an FM bass; the keyboard playing a lead;
+	// all on a mixer whose send A goes to a reverb
 	if len(pt.Patches()) == 0 || pt.Load(pt.Patches()[0]) != nil {
 		must := func(id string, err error) string {
 			if err != nil {
@@ -99,10 +100,22 @@ func main() {
 		lfo := must(pt.Add("lfo", "", 20, 470))
 		mix := must(pt.Add("mixer", "4 channels", 900, 140))
 		rev := must(pt.Add("reverb", "", 900, 440))
+		bassLine := must(pt.Add("script", "", 460, 250))
+		bass := must(pt.Add("fm", "bass", 680, 130))
 		_ = pt.SetText(clock, "pattern", "x x . x x . x . x x . x . x x .")
 		_ = pt.SetText(seq, "values", "C3 Eb3 G3 Bb3 C4 D4")
 		pt.SettingsOf(seq).Apply(map[string]float64{"order": 3}) // up and down
 		pt.SettingsOf(notes).Apply(map[string]float64{"length": 0.6})
+		_ = pt.SetText(bassLine, "code", `// a bass under the pluck: a root a bar, a note on every beat, now and then its fifth
+const roots = ["C2", "Ab1", "Bb1", "G1"].map(pitch)
+const fifths = genny.bucket([false, false, false, true])
+
+function trigger(ev) {
+  const root = roots[Math.floor(ev.step / 16) % roots.length]
+  if (ev.step % 4 === 0) note(root, 0.9, 3)
+  else if (ev.step % 4 === 3 && fifths.next()) note(root + 7, 0.6, 1)
+}
+`)
 		must(pt.Connect(patcher.Cable{From: clock, To: seq}))
 		must(pt.Connect(patcher.Cable{From: seq, Out: 0, To: notes, In: 1}))
 		must(pt.Connect(patcher.Cable{From: seq, Out: 1, To: notes, In: 0}))
@@ -111,10 +124,13 @@ func main() {
 		must(pt.Connect(patcher.Cable{From: kb, To: lead}))
 		must(pt.Connect(patcher.Cable{From: lead, To: mix, In: 1}))
 		must(pt.Connect(patcher.Cable{From: lfo, To: lead, In: 1, Key: "cutoff", Lo: 0.45, Hi: 0.8}))
+		must(pt.Connect(patcher.Cable{From: clock, To: bassLine}))
+		must(pt.Connect(patcher.Cable{From: bassLine, To: bass}))
+		must(pt.Connect(patcher.Cable{From: bass, To: mix, In: 2}))
 		must(pt.Connect(patcher.Cable{From: mix, Out: 1, To: rev}))
 		must(pt.Connect(patcher.Cable{From: rev, To: mix, In: 4}))
 		must(pt.Connect(patcher.Cable{From: mix, Out: 0, To: "out"}))
-		pt.SettingsOf(mix).Apply(map[string]float64{"sendA1": 0.4, "sendA2": 0.25, "level1": 0.7})
+		pt.SettingsOf(mix).Apply(map[string]float64{"sendA1": 0.4, "sendA2": 0.25, "level1": 0.7, "level3": 0.6, "sendA3": 0.1})
 		pt.Move("out", 1150, 160)
 	}
 

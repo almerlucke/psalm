@@ -71,6 +71,7 @@ type Text struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
 	Value string `json:"value"`
+	Lines int    `json:"lines,omitempty"` // more than one: a box of that many lines (a script)
 }
 
 // Port is a port of a kind of module: its name on the page, what goes through it, its index
@@ -117,6 +118,9 @@ type Made struct {
 	// Late is called on every control tick after every module had its own (a Notes module plays the
 	// triggers of the tick there, when the values feeding it are up to date)
 	Late func(tick psalm.CtrlTick)
+	// Status is a line shown on the module (a script's error or what it logged; "" nothing), asked
+	// when the page is updated
+	Status func() string
 }
 
 // Settings are the settings of a module's editor: what a patch saves of it
@@ -748,7 +752,7 @@ func (pt *Patcher) Texts(id string) []Text {
 	}
 	var ts []Text
 	for _, t := range n.made.Texts {
-		ts = append(ts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key]})
+		ts = append(ts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key], Lines: t.Lines})
 	}
 	return ts
 }
@@ -761,6 +765,17 @@ func (pt *Patcher) TextError(id, key string) string {
 		return n.textErr[key]
 	}
 	return ""
+}
+
+// Status returns what a module says of itself (a script: its error, what it logged; "" nothing)
+func (pt *Patcher) Status(id string) string {
+	pt.mu.Lock()
+	n := pt.node(id)
+	pt.mu.Unlock()
+	if n == nil || n.made.Status == nil {
+		return ""
+	}
+	return n.made.Status()
 }
 
 // Clear takes every module away (the output stays)
@@ -793,6 +808,7 @@ type nodeState struct {
 	Labels   []string          `json:"labels,omitempty"`
 	Texts    []Text            `json:"texts,omitempty"`  // its settings of text, as they are
 	Errors   map[string]string `json:"errors,omitempty"` // what was wrong with one typed
+	Status   string            `json:"status,omitempty"`
 }
 
 type state struct {
@@ -823,10 +839,13 @@ func (pt *Patcher) state() any {
 			ns.Outs = []Port{}
 		}
 		for _, t := range n.made.Texts {
-			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key]})
+			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key], Lines: t.Lines})
 		}
 		if len(n.textErr) > 0 {
 			ns.Errors = maps.Clone(n.textErr)
+		}
+		if n.made.Status != nil {
+			ns.Status = n.made.Status()
 		}
 		for _, p := range n.set.Params {
 			label := p.Label

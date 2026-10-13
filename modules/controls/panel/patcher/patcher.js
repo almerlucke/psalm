@@ -168,11 +168,17 @@ psalm.register("patcher", (p, api) => {
 				if (!inp) {
 					const row = el("label", "pt-text");
 					row.append(el("span", "", t.label));
-					inp = el("input");
+					const box = t.lines > 1; // a box of lines (a script): Ctrl+Enter, or leaving it, takes it
+					inp = el(box ? "textarea" : "input");
+					if (box) { inp.rows = t.lines; inp.wrap = "off"; }
 					inp.spellcheck = false;
 					inp.value = t.value;
 					const commit = () => send({text: {id: n.id, key: t.key, value: inp.value}});
-					inp.addEventListener("keydown", e => { if (e.key === "Enter") { commit(); inp.blur(); } e.stopPropagation(); });
+					inp.addEventListener("keydown", e => {
+						if (box && e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }
+						if (e.key === "Enter" && (!box || e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); if (!box) inp.blur(); }
+						e.stopPropagation();
+					});
 					inp.addEventListener("change", commit);
 					inp.addEventListener("pointerdown", e => e.stopPropagation());
 					row.append(inp);
@@ -183,6 +189,11 @@ psalm.register("patcher", (p, api) => {
 				const err = n.errors && n.errors[t.key];
 				inp.classList.toggle("bad", !!err);
 				inp.title = err || "";
+			}
+			if (n.status !== undefined || v.status) {
+				if (!v.status) { v.status = el("div", "pt-status"); v.el.append(v.status); }
+				v.status.textContent = n.status || "";
+				v.status.classList.toggle("bad", /^error/i.test(n.status || ""));
 			}
 			if (dragging !== n.id) { v.el.style.left = n.x + "px"; v.el.style.top = n.y + "px"; }
 			v.el.classList.toggle("selected", st.selected === n.id);

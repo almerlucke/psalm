@@ -817,6 +817,48 @@ tick: the values feeding it are up to date whatever order the cables were drawn 
 module are taken when they can be read; one that can't is shown in red, the module goes on with the
 one before. They are kept with the patch.
 
+**Scripts** (`patcher/script`) are modules of JavaScript (goja). A script's top level runs when it
+starts, to make its generators; then `trigger(ev)` on every trigger (`ev.step`, the step of the
+clock, and `ev.seconds`, how long a step is) and `value(v, port)` on every value on its input `a` or
+`b`. Its outputs: notes, values `a` and `b`, a trigger and a mod output.
+
+```js
+const minor = scale("C minor")
+const walk = genny.rwalk(60, 48, 72, 0.15)          // a random walk
+const lengths = genny.bucket([1, 1, 2, 0.5])        // shuffled, every one once before again
+
+function trigger(ev) {
+  note(minor.snap(walk.next()), 0.8, lengths.next()) // pitch, velocity, length in steps
+  if (ev.step % 16 === 0) note(["C2", "G2"], 0.9, 8) // a chord, by note names
+}
+```
+
+| In a script | |
+|---|---|
+| `note(pitch, velocity = 0.8, steps = 1)` | a note (or a chord: an array) to the synths its notes cable goes to, played at the end of the tick |
+| `send(port, v)`, `fire()`, `mod(v)` | a value (a number, a note name, a chord) on output `"a"` or `"b"`; a trigger; the mod output's value (0-1) |
+| `input(port)`, `log(...)` | the last value on input `"a"` or `"b"`; a line shown under the module |
+| `pitch("C3")`, `scale("C minor")`, `bpm()` | a pitch; a scale: `snap(p)`, `pitch(degree, octave)`, `notes(lo, hi)`, `contains(p)`, `step(p, n)`; the tempo |
+| `shared` | an object every script of the patch sees |
+| `genny.sequence(values, loop = true)` | the values in order |
+| `genny.bucket(values, "shuffle" \| "random", loop = true)` | every one once before again, or any one every time |
+| `genny.arpeggio(values, "up" \| "converge" \| "alternate" \| "random", "none" \| "exclusive" \| "inclusive", reverse)` | an arpeggio, mirrored |
+| `genny.repeat(gen, n[, n2])` | n values of one that loops, one that ends n times over (n to n2 at random); then it ends |
+| `genny.and(...gens)`, `genny.or("random" \| "shuffle", ...gens)` | one after the other (each to its end), looping; one of them every time |
+| `genny.combine(...gens)`, `genny.continuous(gen)`, `genny.constant(v)` | a value of each (an array); one that ends started over; always v |
+| `genny.rand(lo, hi)`, `genny.rwalk(origin, min, max, step, "clip" \| "bounce" \| "jump")` | random numbers; a random walk |
+| `genny.from(v)` | a generator of a function (called every time), a `function*` (started over on a reset), an iterator |
+
+A generator gives `next()`, `done()`, `reset()` and `take(n)`; where one takes generators it takes
+an array (a sequence of it), a function or a `function*` too. Every script of a patch runs in one
+runtime (`script.NewRuntime()`, one per `catalog.Kinds`), each in a scope of its own, on the audio
+thread. A script is compiled when it is typed (Ctrl+Enter, or leaving its box): one with an error
+is shown in red with the line of it, and the script before it plays on. A call has a time budget
+(`script.StartBudget` to start, `script.CallBudget` on every trigger and value): one going on too
+long is stopped, its error shown, and it is not called again until it is typed anew; the rest of the
+patch plays on. Its presets: a walk, an arpeggio of chords, a phrase of a `function*`, values to
+other modules.
+
 A `patcher.Kind` is a kind of module: its ports and how one is made at a preset (`Make`), giving the
 module, how it describes its settings (for the editor and for modulation), and for a source of
 notes or modulation what it plays (`Notes`) or what it is now (`Mod`, 0-1, asked once a buffer).
@@ -827,9 +869,10 @@ level; its outputs are the main mix, send A and send B (patch a send into a reve
 output back into return A or B, each at a level of its own);
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
 synth with its presets (the DX7 with its own editor) and every effect. From code: `Add`, `Connect`,
-`Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `Save`, `Load`, `Clear`, `Nodes`, `Cables`. A
-module's `Made.Texts` and `SetText` give it settings of text, `Made.Late` a function at the end of
-every control tick (a notes module's). A module whose ports
+`Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `TextError`, `Status`, `Save`, `Load`, `Clear`,
+`Nodes`, `Cables`. A module's `Made.Texts` and `SetText` give it settings of text (`Lines` above 1: a
+box of lines), `Made.Late` a function at the end of every control tick (a notes module's),
+`Made.Status` a line shown under it (a script's error, or what it logged). A module whose ports
 depend on how it is made (the mixer's channels) gives them in `Made.Ins` and `Made.Outs`. Cables
 are drawn over the modules, so one going back (a return) stays in sight, the ports over them.
 

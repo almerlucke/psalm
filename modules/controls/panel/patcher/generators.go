@@ -110,7 +110,7 @@ func (c *Clock) at(step int64) float64 {
 // CtrlTick sends the steps starting on this tick; it follows the patch's clock (a restart, a jump
 // back starts the steps over from where it is)
 func (c *Clock) CtrlTick(tick psalm.CtrlTick) {
-	t := float64(tick.TickTimestamp)
+	t := float64(tick.TickTimestamp - 1) // from 0: the first step on the first tick
 	if !c.started || tick.TickTimestamp < c.last {
 		c.started = true
 		c.next = int64(math.Ceil(t/c.stepTicks() - 1e-9))
