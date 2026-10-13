@@ -49,6 +49,12 @@ func (s *Store) SetFactory(names []string, load func(name string)) {
 	s.mu.Unlock()
 }
 
+// Values returns the settings as they are, by key
+func (s *Store) Values() map[string]float64 { return s.values() }
+
+// Apply sets the settings to values by key (from any goroutine)
+func (s *Store) Apply(values map[string]float64) { s.apply(values) }
+
 // State is what a page shows of the presets: their names, the one chosen last, what went wrong
 func (s *Store) State() any { return s.state() }
 

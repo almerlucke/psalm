@@ -1,0 +1,38 @@
+.pt { display: flex; flex-direction: column; gap: 8px; width: min(1400px, calc(100vw - 64px)); text-align: left; }
+.pt-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.pt-bar select, .pt-bar button { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.pt-bar input { font: inherit; font-size: 13px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: calc(var(--radius) * 2 / 3); padding: 6px 8px; width: 140px; }
+.pt-sep { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+.pt-note { font-size: 12px; color: var(--meter-high); }
+.pt-area { position: relative; height: 520px; overflow: auto; border-radius: calc(var(--radius) * 2 / 3); background: var(--track);
+	background-image: radial-gradient(color-mix(in srgb, var(--muted) 35%, transparent) 1px, transparent 1px); background-size: 20px 20px; touch-action: none; }
+.pt-cables { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; min-width: 100%; min-height: 100%; z-index: 2; } /* over the modules: a cable going back stays in sight */
+.pt-cable { fill: none; stroke-width: 3; pointer-events: stroke; cursor: pointer; opacity: .75; stroke-linecap: round; }
+.pt-cable.audio { stroke: var(--accent); }
+.pt-cable.notes { stroke: var(--meter-low); }
+.pt-cable.mod { stroke: var(--meter-mid); stroke-dasharray: 6 4; }
+.pt-cable.picked { stroke-width: 5; opacity: 1; filter: drop-shadow(0 0 3px var(--ink)); }
+.pt-cable.drawing { pointer-events: none; opacity: .6; }
+.pt-node { position: absolute; min-width: 140px; background: var(--card); border: 1px solid var(--line); border-radius: calc(var(--radius) * 2 / 3); box-shadow: var(--shadow); font-size: 12px; } /* no layer of its own: its ports go over the cables */
+.pt-node.selected { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+.pt-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); cursor: grab; font-weight: 600; touch-action: none; }
+.pt-head .pt-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.pt-node button.pt-x { min-height: 0; min-width: 0; padding: 0 6px; font-size: 14px; line-height: 18px; border: none; background: none; color: var(--muted); }
+.pt-node button.pt-x:hover { color: var(--meter-high); }
+.pt-ports { display: flex; justify-content: space-between; gap: 14px; padding: 6px 0; }
+.pt-ins, .pt-outs { display: flex; flex-direction: column; gap: 4px; }
+.pt-outs { align-items: flex-end; }
+.pt-port { display: flex; align-items: center; gap: 5px; color: var(--muted); }
+.pt-ins .pt-port { margin-left: -6px; }
+.pt-outs .pt-port { margin-right: -6px; }
+.pt-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--card); flex: none; cursor: crosshair; position: relative; z-index: 3; } /* the ports over the cables */
+.pt-port.audio .pt-dot { background: var(--accent); }
+.pt-port.notes .pt-dot { background: var(--meter-low); }
+.pt-port.mod .pt-dot { background: var(--meter-mid); }
+.pt-area.wiring-audio .pt-ins .pt-port.audio .pt-dot, .pt-area.wiring-notes .pt-ins .pt-port.notes .pt-dot,
+.pt-area.wiring-mod .pt-ins .pt-port.mod .pt-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ink) 30%, transparent); }
+.pt-inspector { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; min-height: 34px; }
+.pt-inspector select, .pt-inspector button { min-height: 30px; padding: 4px 8px; font-size: 13px; max-width: 240px; }
+.pt-label { color: var(--muted); }
+.pt-range { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+.pt-range input { width: 110px; accent-color: var(--accent); }

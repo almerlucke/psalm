@@ -211,7 +211,7 @@ func (b *Browser) Open(t *testing.T, url, ready string) *Tab {
 	tb.Call("Runtime.enable", nil)
 	tb.Call("Page.enable", nil)
 	tb.Call("Page.navigate", map[string]any{"url": url})
-	tb.WaitFor(ready, "the page to build")
+	// the errors of the page are told at the end, also when it never builds
 	t.Cleanup(func() {
 		close(tb.stop)
 		_, _ = b.call("", "Target.closeTarget", map[string]any{"targetId": tb.target})
@@ -221,6 +221,7 @@ func (b *Browser) Open(t *testing.T, url, ready string) *Tab {
 			t.Errorf("the page: %s", e)
 		}
 	})
+	tb.WaitFor(ready, "the page to build")
 	return tb
 }
 
@@ -426,4 +427,68 @@ func (tb *Tab) Screenshot(path string) {
 	if err != nil {
 		tb.t.Fatal(err)
 	}
+}
+
+// Engine is an audio engine for page tests: it asks for a buffer every millisecond on a goroutine
+// of its own, as a sound card would, so a patch plays while a test drives its page, and changes
+// made with Psalm.Do wait for the gap between two buffers as they do in a program:
+//
+//	p := psalm.New(paneltest.NewEngine(t))
+//	_ = p.AudioStart()
+type Engine struct {
+	cb   func(in, out [][]float32)
+	stop chan struct{}
+	done chan struct{}
+	mu   sync.Mutex
+}
+
+// NewEngine returns an engine at 44.1 kHz in buffers of 256, stopped at the end of the test
+func NewEngine(t *testing.T) *Engine {
+	e := &Engine{}
+	t.Cleanup(func() { _ = e.Stop() })
+	return e
+}
+
+func (e *Engine) GetSampleRate() float64                   { return 44100 }
+func (e *Engine) GetBufferSize() int                       { return 256 }
+func (e *Engine) SetCallback(cb func(in, out [][]float32)) { e.cb = cb }
+func (e *Engine) Init() error                              { return nil }
+func (e *Engine) Close() error                             { return e.Stop() }
+
+// Start asks for buffers until Stop
+func (e *Engine) Start() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.stop != nil {
+		return nil
+	}
+	e.stop, e.done = make(chan struct{}), make(chan struct{})
+	in := [][]float32{make([]float32, 256), make([]float32, 256)}
+	out := [][]float32{make([]float32, 256), make([]float32, 256)}
+	go func(stop, done chan struct{}) {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			e.cb(in, out)
+			time.Sleep(time.Millisecond)
+		}
+	}(e.stop, e.done)
+	return nil
+}
+
+// Stop stops asking for buffers
+func (e *Engine) Stop() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.stop == nil {
+		return nil
+	}
+	close(e.stop)
+	<-e.done
+	e.stop = nil
+	return nil
 }

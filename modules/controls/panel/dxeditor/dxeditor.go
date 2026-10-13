@@ -270,6 +270,12 @@ func (e *Editor) Load(p dx.Patch) {
 	}
 }
 
+// Values returns every setting of the patch as it is, by name (with an algorithm of your own)
+func (e *Editor) Values() map[string]float64 { return e.store.Values() }
+
+// Apply moves the settings to values by name (from any goroutine)
+func (e *Editor) Apply(values map[string]float64) { e.store.Apply(values) }
+
 // Keep keeps patches of your own in a folder (made when it isn't there): the page saves the
 // settings under a name, loads them back, deletes them
 func (e *Editor) Keep(dir string) error { return e.store.Keep(dir) }

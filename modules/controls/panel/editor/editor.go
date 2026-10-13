@@ -160,6 +160,13 @@ func (e *Editor) Keep(dir string) error { return e.store.keep(dir) }
 // Presets returns the presets of the editor, to save, load and delete them from code
 func (e *Editor) Presets() *Store { return e.store }
 
+// Values returns every setting as it is, by message key (what a preset of your own keeps)
+func (e *Editor) Values() map[string]float64 { return e.store.values() }
+
+// Apply moves the settings to values by message key (from any goroutine); keys it doesn't have are
+// left out
+func (e *Editor) Apply(values map[string]float64) { e.store.apply(values) }
+
 // Setting returns the control of a setting by its message key ("cutoff", "ampRelease"), nil for none
 func (e *Editor) Setting(key string) *panel.Param { return e.parts[key] }
 

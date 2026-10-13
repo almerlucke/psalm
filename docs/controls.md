@@ -611,7 +611,8 @@ the folder.
 **Tests of the page**: `modules/controls/panel/paneltest` drives pages in headless Chrome (the
 DevTools protocol on a pipe, no other dependencies): `Start`, `Open` a page and wait for it,
 `Eval`, `WaitFor`, `Tap`, `Key`, `Mouse` (press, move, release, the wheel), `Center` of an element,
-`Screenshot`, `Serve` a panel for a test, `Eventually` for the Go side. The panel's tests use it for
+`Screenshot`, `Serve` a panel for a test, `Eventually` for the Go side, and an audio `Engine` that
+asks for buffers on a goroutine of its own, so a patch plays while a test drives its page. The panel's tests use it for
 every kind of control, the tiles of cue lists, mounts, the grid, MIDI learn, Start/Stop and Restart,
 presets, themes and plugins; the plugins' for their own pages: the widgets (the keyboard letting go
 whatever happens to the pointer, the XY pad, pads, envelope, scope), the editor (every kind of
@@ -784,6 +785,35 @@ synth := dx.NewPoly(patch, 16, 2).AddTo(p)
 banks, _ := dx.LoadSysEx("assets/dx7/rom1a.syx")
 dxeditor.Add(ctl, "DX", synth, patch, dxeditor.Bank(banks))
 ```
+
+**The patcher** (`modules/controls/panel/patcher`) makes a modular patch on the page. Add modules
+from a palette, move them by their heads, and draw cables from an output to an input of the same
+kind: audio (the sound), notes (a keyboard to the synths it plays) and modulation (an LFO, a random
+source or the mod wheel to any setting of a module, over a part of its range: drawn to a module's
+mod input, the setting and the range are chosen below the patch). Click a module for its settings
+(its editor, with its presets and yours), a cable to take it away (or Delete), a module's × to take
+it and its cables away. Patches are kept by name in a folder: the modules, where they are, the
+cables and every setting. Every change is made between two buffers while it plays.
+
+```go
+kinds := catalog.Kinds(catalog.Config{Input: keys, IR: hall}) // every synth and effect, a keyboard
+pt := patcher.New(p, ctl, "Patch", kinds, patcher.Keep("patches"), patcher.Presets("editors-presets"))
+mix.Channel("patch", pt.Out(), mixer.StripConfig{})
+```
+
+A `patcher.Kind` is a kind of module: its ports and how one is made at a preset (`Make`), giving the
+module, how it describes its settings (for the editor and for modulation), and for a source of
+notes or modulation what it plays (`Notes`) or what it is now (`Mod`, 0-1, asked once a buffer).
+`patcher.Sources()` are the patcher's own: an LFO (a rate or a number of beats, five waves), a
+random source (a new value at a rate, gliding to it) and a mixer of 4, 8 or 16 channels (its
+preset): every channel at a level, panned, muted or not and sent to two buses, A and B, after its
+level; its outputs are the main mix, send A and send B (patch a send into a reverb or a delay and its
+output back into return A or B, each at a level of its own);
+`patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
+synth with its presets (the DX7 with its own editor) and every effect. From code: `Add`, `Connect`,
+`Disconnect`, `Remove`, `Move`, `Save`, `Load`, `Clear`, `Nodes`, `Cables`. A module whose ports
+depend on how it is made (the mixer's channels) gives them in `Made.Ins` and `Made.Outs`. Cables
+are drawn over the modules, so one going back (a return) stays in sight, the ports over them.
 
 `modules/controls/panel/pianoroll` is a plugin to start from: the notes of a MIDI file scrolling
 past a playhead as a `midi.Player` plays them (coloured by channel, the muted ones dimmed); a click
