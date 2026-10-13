@@ -89,8 +89,8 @@ func effect(name string, make func() (psalm.Modular, func() params.Set)) patcher
 	}}
 }
 
-// Kinds returns the kinds: the patcher's own (LFO, random, mixer), a keyboard, every synth (with
-// its presets) and every effect
+// Kinds returns the kinds: the patcher's own (LFO, random, mixer; clock, sequence, notes, quantize),
+// a keyboard, every synth (with its presets) and every effect
 func Kinds(cfg Config) []patcher.Kind {
 	v := cfg.Voices
 	if v <= 0 {
@@ -100,6 +100,7 @@ func Kinds(cfg Config) []patcher.Kind {
 	h := &hub{input: cfg.Input}
 	kinds := []patcher.Kind{keyboardKind(h)}
 	kinds = append(kinds, patcher.Sources()...)
+	kinds = append(kinds, patcher.Generators()...)
 	kinds = append(kinds,
 		synth("subtractive", sorted(subtractive.Presets), func(n string, v int) psalm.Modular { return subtractive.NewPoly(subtractive.Presets[n](), v) },
 			func(n string) params.Set { return subtractive.Describe(subtractive.Presets[n]()) }, v),

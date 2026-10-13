@@ -106,7 +106,8 @@ psalm.register("patcher", (p, api) => {
 		const ports = el("div", "pt-ports");
 		const ins = el("div", "pt-ins"), outs = el("div", "pt-outs");
 		ports.append(ins, outs);
-		box.append(head, ports);
+		const texts = el("div", "pt-texts"); // its settings of text: typed here, sent on Enter or leaving
+		box.append(head, ports, texts);
 		x.addEventListener("pointerdown", e => e.stopPropagation());
 		x.addEventListener("click", () => send({remove: n.id}));
 		// moving it by its head; a tap chooses it (its settings below)
@@ -135,7 +136,7 @@ psalm.register("patcher", (p, api) => {
 		});
 		box.addEventListener("pointerdown", e => { if (!e.target.closest(".pt-port")) send({select: n.id}); });
 		area.append(box);
-		return {el: box, title, ins, outs, sig: ""};
+		return {el: box, title, ins, outs, texts, inputs: {}, sig: ""};
 	}
 
 	function portRow(n, dir, port, i) {
@@ -161,6 +162,27 @@ psalm.register("patcher", (p, api) => {
 				v.ins.innerHTML = ""; v.outs.innerHTML = "";
 				(n.ins || []).forEach((port, i) => v.ins.append(portRow(n, "in", port, i)));
 				(n.outs || []).forEach((port, i) => v.outs.append(portRow(n, "out", port, i)));
+			}
+			for (const t of n.texts || []) {
+				let inp = v.inputs[t.key];
+				if (!inp) {
+					const row = el("label", "pt-text");
+					row.append(el("span", "", t.label));
+					inp = el("input");
+					inp.spellcheck = false;
+					inp.value = t.value;
+					const commit = () => send({text: {id: n.id, key: t.key, value: inp.value}});
+					inp.addEventListener("keydown", e => { if (e.key === "Enter") { commit(); inp.blur(); } e.stopPropagation(); });
+					inp.addEventListener("change", commit);
+					inp.addEventListener("pointerdown", e => e.stopPropagation());
+					row.append(inp);
+					v.texts.append(row);
+					v.inputs[t.key] = inp;
+				}
+				if (document.activeElement !== inp) inp.value = t.value;
+				const err = n.errors && n.errors[t.key];
+				inp.classList.toggle("bad", !!err);
+				inp.title = err || "";
 			}
 			if (dragging !== n.id) { v.el.style.left = n.x + "px"; v.el.style.top = n.y + "px"; }
 			v.el.classList.toggle("selected", st.selected === n.id);

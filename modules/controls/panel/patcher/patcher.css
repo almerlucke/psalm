@@ -11,6 +11,8 @@
 .pt-cable.audio { stroke: var(--accent); }
 .pt-cable.notes { stroke: var(--meter-low); }
 .pt-cable.mod { stroke: var(--meter-mid); stroke-dasharray: 6 4; }
+.pt-cable.trigger { stroke: #a970ff; stroke-dasharray: 2 5; }
+.pt-cable.value { stroke: var(--ink); opacity: .55; }
 .pt-cable.picked { stroke-width: 5; opacity: 1; filter: drop-shadow(0 0 3px var(--ink)); }
 .pt-cable.drawing { pointer-events: none; opacity: .6; }
 .pt-node { position: absolute; min-width: 140px; background: var(--card); border: 1px solid var(--line); border-radius: calc(var(--radius) * 2 / 3); box-shadow: var(--shadow); font-size: 12px; } /* no layer of its own: its ports go over the cables */
@@ -29,10 +31,18 @@
 .pt-port.audio .pt-dot { background: var(--accent); }
 .pt-port.notes .pt-dot { background: var(--meter-low); }
 .pt-port.mod .pt-dot { background: var(--meter-mid); }
+.pt-port.trigger .pt-dot { background: #a970ff; }
+.pt-port.value .pt-dot { background: var(--ink); }
 .pt-area.wiring-audio .pt-ins .pt-port.audio .pt-dot, .pt-area.wiring-notes .pt-ins .pt-port.notes .pt-dot,
-.pt-area.wiring-mod .pt-ins .pt-port.mod .pt-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ink) 30%, transparent); }
+.pt-area.wiring-mod .pt-ins .pt-port.mod .pt-dot, .pt-area.wiring-trigger .pt-ins .pt-port.trigger .pt-dot,
+.pt-area.wiring-value .pt-ins .pt-port.value .pt-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ink) 30%, transparent); }
 .pt-inspector { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; min-height: 34px; }
 .pt-inspector select, .pt-inspector button { min-height: 30px; padding: 4px 8px; font-size: 13px; max-width: 240px; }
 .pt-label { color: var(--muted); }
 .pt-range { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
 .pt-range input { width: 110px; accent-color: var(--accent); }
+.pt-texts { display: flex; flex-direction: column; gap: 4px; padding: 0 8px 8px; }
+.pt-texts:empty { display: none; }
+.pt-text { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 11px; }
+.pt-text input { font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--ink); background: var(--track); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; min-width: 160px; }
+.pt-text input.bad { border-color: var(--meter-high); }

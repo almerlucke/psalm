@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -50,10 +51,27 @@ var Plugin = panel.Plugin{Name: "patcher", JS: script, CSS: styles}
 type PortType string
 
 const (
-	Audio PortType = "audio"
-	Notes PortType = "notes"
-	Mod   PortType = "mod"
+	Audio   PortType = "audio"
+	Notes   PortType = "notes"
+	Mod     PortType = "mod"
+	Trigger PortType = "trigger" // a moment (an Event), on a value connection
+	Value   PortType = "value"   // a number (or a chord: []float64), on a value connection
 )
+
+// Event is what a trigger cable carries: the control tick it falls on (its sample offset in the
+// buffer), the step of the clock that sent it and how long a step lasts
+type Event struct {
+	Tick    psalm.CtrlTick
+	Step    int64
+	Seconds float64
+}
+
+// Text is a setting of text, typed on the module itself (a pattern, a list of values)
+type Text struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
 
 // Port is a port of a kind of module: its name on the page, what goes through it, its index
 // (the module's input or output, for audio; the notes or mod output it is)
@@ -92,6 +110,13 @@ type Made struct {
 	// Ins and Outs are its ports when they aren't its kind's (a mixer of as many channels as its
 	// preset says); nil: the kind's
 	Ins, Outs []Port
+	// Texts are its settings of text, as they start; SetText changes one (off the audio thread: it
+	// parses there, the module takes what it made on the audio thread); an error leaves it as it was
+	Texts   []Text
+	SetText func(key, value string) error
+	// Late is called on every control tick after every module had its own (a Notes module plays the
+	// triggers of the tick there, when the values feeding it are up to date)
+	Late func(tick psalm.CtrlTick)
 }
 
 // Settings are the settings of a module's editor: what a patch saves of it
@@ -112,7 +137,9 @@ type node struct {
 	made     *Made
 	page     *panel.Panel
 	settings Settings
-	set      params.Set // its settings described (for modulation: their ranges)
+	set      params.Set        // its settings described (for modulation: their ranges)
+	texts    map[string]string // its settings of text as they are
+	textErr  map[string]string // what was wrong with one typed (it kept the one before)
 }
 
 // Cable is a cable between two ports: the output Out of From, the input In of To (for a mod
@@ -151,6 +178,7 @@ type Patcher struct {
 	selectedPage atomic.Pointer[panel.Panel]
 	mods         atomic.Pointer[[]*modConn] // read on the audio thread
 	work         chan json.RawMessage
+	late         *lateStep // kept last in the patch
 }
 
 // modConn is a mod cable on the audio thread
@@ -196,6 +224,9 @@ func New(p *psalm.Psalm, ctl *panel.Panel, name string, kinds []Kind, opts ...Op
 	empty := []*modConn{}
 	pt.mods.Store(&empty)
 	(&engine{Module: psalm.NewControl(), pt: pt}).init().AddTo(p)
+	pt.late = &lateStep{Module: psalm.NewControl()}
+	pt.late.SetSelf(pt.late)
+	pt.late.AddTo(p)
 	if pt.dir != "" {
 		_ = os.MkdirAll(pt.dir, 0o755)
 	}
@@ -243,14 +274,17 @@ func (pt *Patcher) worker() {
 // handle does one thing the page asks
 func (pt *Patcher) handle(raw json.RawMessage) error {
 	var m struct {
-		Add    string      `json:"add"`
-		Preset string      `json:"preset"`
-		Move   string      `json:"move"`
-		Remove string      `json:"remove"`
-		Select *string     `json:"select"`
-		Cable  *Cable      `json:"connect"`
-		Unplug string      `json:"disconnect"`
-		Range  *Cable      `json:"range"`
+		Add    string  `json:"add"`
+		Preset string  `json:"preset"`
+		Move   string  `json:"move"`
+		Remove string  `json:"remove"`
+		Select *string `json:"select"`
+		Cable  *Cable  `json:"connect"`
+		Unplug string  `json:"disconnect"`
+		Range  *Cable  `json:"range"`
+		Text   *struct {
+			ID, Key, Value string
+		} `json:"text"`
 		Save   *string     `json:"save"`
 		Load   *string     `json:"load"`
 		Delete *string     `json:"delete"`
@@ -284,6 +318,8 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		pt.Disconnect(m.Unplug)
 	case m.Range != nil:
 		return pt.SetRange(m.Range.ID, m.Range.Key, m.Range.Lo, m.Range.Hi)
+	case m.Text != nil:
+		return pt.SetText(m.Text.ID, m.Text.Key, m.Text.Value)
 	case m.Save != nil:
 		return pt.Save(*m.Save)
 	case m.Load != nil:
@@ -330,7 +366,10 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 	if err != nil {
 		return nil, nil, err
 	}
-	n := &node{ID: id, Kind: kindName, Preset: preset, kind: k, made: made}
+	n := &node{ID: id, Kind: kindName, Preset: preset, kind: k, made: made, texts: map[string]string{}, textErr: map[string]string{}}
+	for _, t := range made.Texts {
+		n.texts[t.Key] = t.Value
+	}
 	add := append([]psalm.Modular{made.Module}, made.Extra...)
 	if made.Describe != nil || made.Edit != nil {
 		l := &later{}
@@ -375,6 +414,11 @@ func (pt *Patcher) Add(kindName, preset string, x, y float64) (string, error) {
 	pt.do(func() {
 		for _, m := range add {
 			pt.p.Add(m)
+		}
+		pt.p.Remove(pt.late) // the late step last again
+		pt.p.Add(pt.late)
+		if n.made.Late != nil {
+			pt.late.add(n.ID, n.made.Late)
 		}
 	})
 	pt.mu.Lock()
@@ -442,6 +486,7 @@ func (pt *Patcher) Remove(id string) error {
 		pt.Disconnect(c)
 	}
 	pt.do(func() {
+		pt.late.remove(n.ID)
 		for _, m := range append([]psalm.Modular{n.made.Module}, n.made.Extra...) {
 			pt.p.Remove(m)
 		}
@@ -511,7 +556,7 @@ func (pt *Patcher) Connect(c Cable) (string, error) {
 		pt.mu.Unlock()
 		return "", fmt.Errorf("%s doesn't go into %s", out.Type, in.Type)
 	}
-	if from == to && out.Type == Audio {
+	if from == to && out.Type != Mod {
 		pt.mu.Unlock()
 		return "", errors.New("a module can't play into itself")
 	}
@@ -566,6 +611,15 @@ func (pt *Patcher) wire(c *Cable, on bool) {
 		})
 	case Notes:
 		pt.renote(from)
+	case Trigger, Value:
+		outIdx, inIdx := from.outPorts()[c.Out].Index, to.inPorts()[c.In].Index
+		pt.do(func() {
+			if on {
+				from.made.Module.ValueConnect(outIdx, to.made.Module, inIdx)
+			} else {
+				from.made.Module.ValueDisconnect(outIdx, to.made.Module, inIdx)
+			}
+		})
 	case Mod:
 		pt.remod()
 	}
@@ -663,6 +717,52 @@ func (pt *Patcher) SetRange(id, key string, lo, hi float64) error {
 	return nil
 }
 
+// SetText changes a setting of text of a module (a pattern, a list of values); what can't be read
+// is kept to show on the module, the module going on with the one before
+func (pt *Patcher) SetText(id, key, value string) error {
+	pt.mu.Lock()
+	n := pt.node(id)
+	pt.mu.Unlock()
+	if n == nil || n.made.SetText == nil {
+		return errors.New("no such setting")
+	}
+	err := n.made.SetText(key, value)
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+	n.texts[key] = value
+	if err != nil {
+		n.textErr[key] = err.Error()
+	} else {
+		delete(n.textErr, key)
+	}
+	return nil
+}
+
+// Texts returns the settings of text of a module, as they are
+func (pt *Patcher) Texts(id string) []Text {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+	n := pt.node(id)
+	if n == nil {
+		return nil
+	}
+	var ts []Text
+	for _, t := range n.made.Texts {
+		ts = append(ts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key]})
+	}
+	return ts
+}
+
+// TextError returns what was wrong with the text last typed into a setting ("" nothing)
+func (pt *Patcher) TextError(id, key string) string {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+	if n := pt.node(id); n != nil {
+		return n.textErr[key]
+	}
+	return ""
+}
+
 // Clear takes every module away (the output stays)
 func (pt *Patcher) Clear() {
 	pt.mu.Lock()
@@ -682,15 +782,17 @@ func (pt *Patcher) Clear() {
 
 // nodeState is a module as the page sees it
 type nodeState struct {
-	ID       string   `json:"id"`
-	Kind     string   `json:"kind"`
-	Preset   string   `json:"preset,omitempty"`
-	X        float64  `json:"x"`
-	Y        float64  `json:"y"`
-	Ins      []Port   `json:"ins"`
-	Outs     []Port   `json:"outs"`
-	Settings []string `json:"settings,omitempty"` // what a mod cable can move: key, label
-	Labels   []string `json:"labels,omitempty"`
+	ID       string            `json:"id"`
+	Kind     string            `json:"kind"`
+	Preset   string            `json:"preset,omitempty"`
+	X        float64           `json:"x"`
+	Y        float64           `json:"y"`
+	Ins      []Port            `json:"ins"`
+	Outs     []Port            `json:"outs"`
+	Settings []string          `json:"settings,omitempty"` // what a mod cable can move: key, label
+	Labels   []string          `json:"labels,omitempty"`
+	Texts    []Text            `json:"texts,omitempty"`  // its settings of text, as they are
+	Errors   map[string]string `json:"errors,omitempty"` // what was wrong with one typed
 }
 
 type state struct {
@@ -720,6 +822,12 @@ func (pt *Patcher) state() any {
 		if ns.Outs == nil {
 			ns.Outs = []Port{}
 		}
+		for _, t := range n.made.Texts {
+			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key]})
+		}
+		if len(n.textErr) > 0 {
+			ns.Errors = maps.Clone(n.textErr)
+		}
 		for _, p := range n.set.Params {
 			label := p.Label
 			if label == "" {
@@ -743,6 +851,7 @@ type patchFile struct {
 	Nodes []struct {
 		node
 		Settings map[string]float64 `json:"settings,omitempty"`
+		Texts    map[string]string  `json:"texts,omitempty"`
 	} `json:"nodes"`
 	Cables []*Cable `json:"cables"`
 }
@@ -789,9 +898,13 @@ func (pt *Patcher) Save(name string) error {
 		e := struct {
 			node
 			Settings map[string]float64 `json:"settings,omitempty"`
+			Texts    map[string]string  `json:"texts,omitempty"`
 		}{node: *n}
 		if n.settings != nil {
 			e.Settings = n.settings.Values()
+		}
+		if len(n.texts) > 0 {
+			e.Texts = maps.Clone(n.texts)
 		}
 		f.Nodes = append(f.Nodes, e)
 	}
@@ -838,6 +951,9 @@ func (pt *Patcher) Load(name string) error {
 			continue
 		}
 		ids[n.ID] = id
+		for key, value := range n.Texts {
+			_ = pt.SetText(id, key, value)
+		}
 		if len(n.Settings) > 0 {
 			pt.mu.Lock()
 			made := pt.node(id)
@@ -875,6 +991,47 @@ func (pt *Patcher) DeletePatch(name string) error {
 		return err
 	}
 	return os.Remove(path)
+}
+
+// --- the late step: after every module's control tick ---
+
+// lateStep calls the late functions of the modules (a Notes module playing the triggers of the
+// tick) at the end of every control tick: it is kept the last module of the patch
+type lateStep struct {
+	*psalm.Module
+	funcs atomic.Pointer[[]lateFunc]
+}
+
+type lateFunc struct {
+	id string
+	f  func(psalm.CtrlTick)
+}
+
+// add and remove change the late functions (on the audio thread, between buffers)
+func (l *lateStep) add(id string, f func(psalm.CtrlTick)) {
+	var fs []lateFunc
+	if old := l.funcs.Load(); old != nil {
+		fs = slices.Clone(*old)
+	}
+	fs = append(fs, lateFunc{id, f})
+	l.funcs.Store(&fs)
+}
+
+func (l *lateStep) remove(id string) {
+	old := l.funcs.Load()
+	if old == nil {
+		return
+	}
+	fs := slices.DeleteFunc(slices.Clone(*old), func(f lateFunc) bool { return f.id == id })
+	l.funcs.Store(&fs)
+}
+
+func (l *lateStep) CtrlTick(tick psalm.CtrlTick) {
+	if fs := l.funcs.Load(); fs != nil {
+		for _, f := range *fs {
+			f.f(tick)
+		}
+	}
 }
 
 // --- modulation on the audio thread ---

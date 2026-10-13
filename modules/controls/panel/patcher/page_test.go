@@ -110,10 +110,6 @@ func TestPagePatcher(t *testing.T) {
 		}
 		return false
 	})
-	if os.Getenv("SHOT") != "" {
-		tb.Screenshot(os.Getenv("SHOT"))
-	}
-
 	// a cable taken away: picked, then its button
 	tb.Eval(`document.querySelector("path.pt-cable.mod").dispatchEvent(new PointerEvent("pointerdown", {bubbles: true}))`)
 	tb.Tap(`[...document.querySelectorAll(".pt-inspector button")].find(b => b.textContent === "Take it away")`)
@@ -121,6 +117,21 @@ func TestPagePatcher(t *testing.T) {
 	// a module taken away, its cables with it
 	tb.Tap(fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-x")`, lfo))
 	paneltest.Eventually(t, "the LFO gone", func() bool { return len(pt.Nodes()) == 3 })
+
+	// a generator's text typed on its module: a good pattern taken, a bad one shown
+	clk, err := pt.Add("clock", "", 400, 380)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-text input")`, clk)
+	tb.WaitFor(input, "the clock's pattern on its module")
+	tb.Eval(`(() => { const i = ` + input + `; i.value = "x . x x"; i.dispatchEvent(new Event("change")); })()`)
+	paneltest.Eventually(t, "the pattern taken", func() bool { tx := pt.Texts(clk); return len(tx) == 1 && tx[0].Value == "x . x x" })
+	tb.Eval(`(() => { const i = ` + input + `; i.value = "x ?"; i.dispatchEvent(new Event("change")); })()`)
+	tb.WaitFor(input+`.classList.contains("bad")`, "a bad pattern shown")
+	if os.Getenv("SHOT") != "" {
+		tb.Screenshot(os.Getenv("SHOT"))
+	}
 
 	// kept by name
 	tb.Eval(`(() => { const i = document.querySelector(".pt-name"); i.value = "first"; [...document.querySelectorAll(".pt-bar button")].find(b => b.textContent === "Save").click(); })()`)

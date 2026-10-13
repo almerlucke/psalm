@@ -801,6 +801,22 @@ pt := patcher.New(p, ctl, "Patch", kinds, patcher.Keep("patches"), patcher.Prese
 mix.Channel("patch", pt.Out(), mixer.StripConfig{})
 ```
 
+**Generators** make music in the patch, on two more kinds of cable: triggers (a moment: the
+control tick it falls on, so notes start on their sample) and values (a number, or a chord). They
+are `patcher.Generators()`, built on genny:
+
+| Module | In | Out | Settings |
+|---|---|---|---|
+| clock | | trigger | division (1/4 to 1/32, triplets), swing, chance; a pattern typed on it (`x . x x`: a hit or a rest, looping) |
+| sequence | trigger, reset | value, after (a trigger once the value is out) | values typed on it (numbers, note names `C3 Eb3`, chords `[C3 E3 G3]`), the order: in order, shuffled, random, up and down, converge, alternate, backwards (genny's sequence, bucket, arpeggio) |
+| notes | trigger, pitch, velocity, length | notes | the pitch, velocity, length (in steps of its clock) and transposition for the inputs not patched |
+| quantize | value | value | a key and a scale (tools/harmony): every pitch, every note of a chord, to its nearest note in it |
+
+A notes module plays the triggers of a control tick at its end, after every other module had its
+tick: the values feeding it are up to date whatever order the cables were drawn in. Texts typed on a
+module are taken when they can be read; one that can't is shown in red, the module goes on with the
+one before. They are kept with the patch.
+
 A `patcher.Kind` is a kind of module: its ports and how one is made at a preset (`Make`), giving the
 module, how it describes its settings (for the editor and for modulation), and for a source of
 notes or modulation what it plays (`Notes`) or what it is now (`Mod`, 0-1, asked once a buffer).
@@ -811,7 +827,9 @@ level; its outputs are the main mix, send A and send B (patch a send into a reve
 output back into return A or B, each at a level of its own);
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
 synth with its presets (the DX7 with its own editor) and every effect. From code: `Add`, `Connect`,
-`Disconnect`, `Remove`, `Move`, `Save`, `Load`, `Clear`, `Nodes`, `Cables`. A module whose ports
+`Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `Save`, `Load`, `Clear`, `Nodes`, `Cables`. A
+module's `Made.Texts` and `SetText` give it settings of text, `Made.Late` a function at the end of
+every control tick (a notes module's). A module whose ports
 depend on how it is made (the mixer's channels) gives them in `Made.Ins` and `Made.Outs`. Cables
 are drawn over the modules, so one going back (a return) stays in sight, the ports over them.
 
