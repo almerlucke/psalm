@@ -11,6 +11,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
@@ -183,6 +184,7 @@ func New(cfg Config) *Voice {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	envelope.Seconds(msg, "amp", &v.cfg.Attack, nil, &v.cfg.Release)
 	msg.IfFltVal("frequency", func(f float64) {
 		if f > 0 {
 			v.pitch = 69 + 12*math.Log2(f/440)

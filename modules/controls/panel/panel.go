@@ -235,6 +235,9 @@ func (pn *Panel) CtrlTick(tick psalm.CtrlTick) {
 			continue
 		}
 		if par.custom != nil {
+			if newBuffer && par.custom.onBuffer != nil {
+				par.custom.onBuffer()
+			}
 			par.custom.deliver()
 		}
 		par.tick(dt)
@@ -247,6 +250,13 @@ type Option func(par *Param)
 // Default is the value a control starts at (and goes back to on a double click); without it a
 // control starts at its minimum. The panel sends it to the target when the patch starts
 func Default(v float64) Option { return func(par *Param) { par.Default = v } }
+
+// NoDefault keeps the default to the control: it isn't sent to the target when the patch starts,
+// the target keeps its own setting until the control is moved (an envelope over synths that each
+// have their own)
+func NoDefault() Option {
+	return func(par *Param) { par.noDefault = true }
+}
 
 // Label is shown on the page instead of the name: names have to be unique ("kick mute"), a label
 // can be short and repeat ("M")
@@ -278,9 +288,12 @@ type Param struct {
 	Smooth   float64  // seconds
 	Options  []string // of a select
 
+	noDefault bool // the default isn't sent when the patch starts
+
 	target Target
 	press  func()
-	custom *custom // a control a plugin draws
+	custom *custom  // a control a plugin draws
+	parts  []*Param // its parts (Part)
 	meter  *meter
 	panel  *Panel
 
@@ -310,7 +323,7 @@ func newParam(kind Kind, name string, min, max float64, curve Curve, to Target, 
 	}
 	par.Default = par.clamp(par.Default)
 	par.value.Store(math.Float64bits(par.Default))
-	par.dirty.Store(kind != ButtonKind && kind != MeterKind) // the default goes out when the patch starts
+	par.dirty.Store(kind != ButtonKind && kind != MeterKind && !par.noDefault) // the default goes out when the patch starts
 	return par
 }
 

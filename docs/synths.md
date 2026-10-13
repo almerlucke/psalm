@@ -1,6 +1,6 @@
 # Synths
 
-Synths: [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
+Synths: [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
 
 Presets of all synths are calibrated to the same loudness: a note at amplitude 1 plays at -12 LUFS
 (or peaks at -1 dBFS for percussive sounds), see [conventions](conventions.md#levels).
@@ -35,6 +35,35 @@ map[int]string{midi.CCModWheel: "modWheel"}}`.
 | supersaw | opens the filter, three octaves |
 
 The code of it is `blocks/expression`, for synths of your own.
+
+## Envelopes by message
+
+Every synth with envelopes takes them by message the same way (`blocks/envelope`), so a panel, an
+envelope widget, an automation lane or a sequence can shape them while it plays:
+`<name>Attack`, `<name>Decay` and `<name>Release` in milliseconds, `<name>Sustain` the level held
+while the key is down (0-1). A change takes effect from the next note.
+
+| Synth | Envelopes |
+|---|---|
+| subtractive, supersaw | `amp`, `filter` |
+| wavetable | `amp`, `filter`, `position` |
+| pulsar | `amp`, `formant` |
+| pd | `amp` (the loudness of both lines), `dcw` (their brightness) |
+| fm | `amp` (the carriers: the operators heard), `op1` to `op4` (each operator) |
+| grains | `amp` |
+| sampler | `amp`: over the envelopes of the regions (each part set replaces theirs) |
+| vocal | `ampAttack`, `ampRelease` |
+| westcoast | `ampAttack`, `ampDecay` (the function generator; a held note falls in it once let go, so `ampRelease` sets it too) |
+| modal | `ampDecay` (how long it rings), `ampRelease` (damped once let go) |
+| waveguide | `ampAttack` (the bow), `ampDecay` (a plucked string's ring), `ampRelease` (let go) |
+
+The piano, the organ and the drumsynth have no envelopes of this kind (the piano is its hammers
+and dampers, the organ is on while a key is down, a drum is its decay); dx keeps the rates and
+levels of the DX7.
+
+```go
+synth.ReceiveMessage(psalm.Message{"ampAttack": 400.0, "ampRelease": 2500.0, "filterSustain": 0.2})
+```
 
 ## poly
 
@@ -437,6 +466,34 @@ when operator frequencies coincide, the hardware removes it in its output stage)
 clipping, DC offset and voices that never finish.
 
 **Messages**: `pitch`, `frequency`, `velocity`, `modScale` (brightness), and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+Every setting of the patch by its name, played from the next note: `algorithm` (1-32), `feedback`,
+`transpose` (24 in tune), `oscSync`, `lfoWaveform`, `lfoSpeed`, `lfoDelay`, `lfoPitchDepth`,
+`lfoAmpDepth`, `lfoSync`, `pitchModSens`, `pitchRate1`-`4`, `pitchLevel1`-`4`, and for each
+operator `op<N>Coarse`, `Fine`, `Detune`, `Level`, `Fixed`, `VelocitySens`, `RateScaling`,
+`AmpModSens`, `Rate1`-`4`, `Level1`-`4`, `BreakPoint`, `LeftDepth`, `RightDepth`, `LeftCurve`,
+`RightCurve` (`"op3Coarse": 2.0`), in the DX7's own ranges (`dx.Settings` lists them,
+`Patch.Set` and `Patch.Get` take them by name). A whole `patch` (a `dx.Patch`) or a `routing`.
+
+### An algorithm of your own
+
+`Patch.Routing` is an algorithm of your own instead of one of the 32: which operator modulates which
+(a modulator has a higher number than the operator it modulates: the voice runs them from 6 down to
+1), the carriers (heard; a carrier can modulate too), and a feedback loop from an operator into
+itself or a higher one. `Algorithm.Check` says what is wrong with one; one that can't play falls
+back to the patch's algorithm. A routing isn't part of the SysEx data.
+
+```go
+p := dx.Presets["bellPad"]()
+p.Routing = &dx.Algorithm{
+	Carriers:     []int{0, 1},                       // operators 1 and 2 heard
+	Mods:         [][2]int{{1, 0}, {5, 1}, {4, 1}},   // 2 into 1, 6 and 5 into 2
+	FeedbackFrom: 5, FeedbackTo: 5,                 // 6 into itself
+}
+synth := dx.NewPoly(p, 12, 2)
+```
+
+The panel has an editor of all of it, the algorithm drawn as a diagram: see
+[dxeditor](controls.md#panel) and `cmd/examples/dxedit`.
 
 ## grains
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -140,6 +141,10 @@ func (v *Voice) SetPitch(pitch float64) {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	// "amp" is the envelope of the carriers (the operators heard), "op1".."op4" each operator's
+	for _, c := range Algorithms[v.cfg.Algorithm%len(Algorithms)].Carriers {
+		envelope.Receive(msg, "amp", &v.cfg.Ops[c].Env)
+	}
 	msg.IfIntVal("algorithm", v.setAlgorithm)
 	msg.IfFltVal("feedback", func(f float64) { v.cfg.Feedback = f })
 	msg.IfFltVal("modDepth", func(f float64) { v.cfg.ModDepth = f })
@@ -153,6 +158,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	for i := range v.cfg.Ops {
 		op := &v.cfg.Ops[i]
 		prefix := fmt.Sprintf("op%d", i+1)
+		envelope.Receive(msg, prefix, &op.Env)
 		msg.IfFltVal(prefix+"Ratio", func(f float64) { op.Ratio = f })
 		msg.IfFltVal(prefix+"Fixed", func(f float64) { op.Fixed = f })
 		msg.IfFltVal(prefix+"Detune", func(f float64) { op.Detune = f })

@@ -14,6 +14,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/modules/poly"
@@ -176,6 +177,10 @@ func New(cfg Config) *Voice {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	// "ampAttack" the bow speeding up, "ampDecay" the ring of a plucked string, "ampRelease" a
+	// string let go (plucked or bowed)
+	envelope.Seconds(msg, "amp", &v.cfg.BowAttack, &v.cfg.Decay, &v.cfg.Release)
+	envelope.Seconds(msg, "amp", nil, nil, &v.cfg.BowRelease)
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })

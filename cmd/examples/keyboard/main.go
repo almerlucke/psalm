@@ -25,6 +25,8 @@
 // synth's own, or a setting such as the cutoff, the fold or the vowel, and how much of its range),
 // the volume and the hall, and meters. Press MIDI learn on the page, tap a control and turn a knob
 // on the keyboard: the knob moves it from then on (the bindings are kept in keyboard-midi.json).
+// The page has a keyboard of its own too (the computer's keys play it: A W S E D ...), played as
+// MIDI, and the amplitude envelope of the synth playing to drag into shape.
 // Record on the panel (or -record, from the start) records what is played; switched off (or at the
 // end) it is written to a MIDI file, recording-<date>-<time>.mid, to play again with the midifile
 // example.
@@ -63,6 +65,7 @@ import (
 	"github.com/almerlucke/psalm/midi"
 	"github.com/almerlucke/psalm/modules/controls/keyboard"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/panel/widgets"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/drumsynth"
@@ -193,6 +196,39 @@ func (pr *panelRoute) routes() []keyboard.Route {
 		rs = append(rs, keyboard.Route{Name: name, Min: d.at(pr.low), Max: d.at(pr.high), Exp: d.exp})
 	}
 	return rs
+}
+
+// shaping sends what the envelope on the page sets to the synth playing, and keeps it for the next
+type shaping struct {
+	synth func() psalm.Modular
+	sent  map[string]float64
+}
+
+func (s *shaping) ReceiveMessage(msg psalm.Message) {
+	for k, v := range msg {
+		if f, ok := v.(float64); ok {
+			s.sent[k] = f
+		}
+	}
+	s.synth().Receive(msg, 0)
+}
+
+func (s *shaping) Receive(value any, _ int) {
+	if msg, ok := psalm.MsgVal(value); ok {
+		s.ReceiveMessage(msg)
+	}
+}
+
+// replay gives a synth the envelope moved on the page (nothing when it wasn't)
+func (s *shaping) replay(m psalm.Modular) {
+	if len(s.sent) == 0 {
+		return
+	}
+	msg := psalm.Message{}
+	for k, v := range s.sent {
+		msg[k] = v
+	}
+	m.Receive(msg, 0)
 }
 
 // short writes a number for the terminal: whole above 100, three digits below
@@ -382,6 +418,7 @@ func main() {
 		return slices.Index(sounds, sound{synth, preset})
 	}
 	var soundSelect *panel.Param // the sound on the panel, following every switch
+	shaped := &shaping{synth: func() psalm.Modular { return synthOf(instruments[current]) }, sent: map[string]float64{}}
 
 	// switchTo plays another synth and preset (on the audio thread): the notes of the one left are
 	// released, the pedals of a piano left come up
@@ -400,6 +437,7 @@ func main() {
 		in.selected.Store(int64(preset))
 		kb.SetConfig(keysFor(in))
 		kb.SetTargets(synthOf(in))
+		shaped.replay(synthOf(in)) // the envelope moved on the page, on the new synth too
 		playing.Store(int64(current))
 		if soundSelect != nil {
 			soundSelect.Set(float64(soundIndex(synth, preset)))
@@ -444,6 +482,19 @@ func main() {
 			kb.AllNotesOff(psalm.CtrlTick{})
 			synthOf(instruments[current]).Receive(psalm.Message{"sustain": 0.0, "sostenuto": 0.0, "soft": 0.0}, 0)
 		})
+
+		// a keyboard on the page (the computer's keys too: A W S E D ...), played as MIDI: the curve, the
+		// routes and the switches apply as to the real one; the amplitude envelope of the synth playing
+		ctl.Section("Play")
+		widgets.Keys(ctl, "Page keys", func(note int, velocity float64, on bool) {
+			ch := max(*channel, 1)
+			if on {
+				commands.Push(midi.NoteOnMsg(ch, note, max(1, int(velocity*127))))
+			} else {
+				commands.Push(midi.NoteOffMsg(ch, note, 0))
+			}
+		}, widgets.From(48), widgets.Octaves(3))
+		widgets.Envelope(ctl, "Amp envelope", shaped, "amp", widgets.ADSR{Attack: 5, Decay: 300, Sustain: 0.7, Release: 400}, panel.NoDefault())
 
 		ctl.Section("Keys")
 		ctl.Fader("Transpose", -24, 24, panel.Linear, panel.Func(func(v float64) {

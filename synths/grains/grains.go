@@ -5,6 +5,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 	"github.com/almerlucke/sndfile"
@@ -177,6 +178,7 @@ func (v *Voice) SetSample(sample sndfile.SoundFiler[float32]) {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	envelope.Receive(msg, "amp", &v.cfg.AmpEnv)
 	cfg := &v.cfg
 	msg.IfStrVal("sound", func(name string) {
 		if s, ok := cfg.SoundBank[name]; ok {

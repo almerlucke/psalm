@@ -682,6 +682,54 @@ for a variable of the theme. A plugin's script is served at `plugins/<name>/plug
 at `plugin.css` (before the theme's, so a theme can restyle it) and its `Files` under
 `plugins/<name>/`. A control of a kind no plugin draws shows as a note on the page instead.
 
+A custom control can have **parts**: values of their own that its plugin draws, not shown by
+themselves (the y of an XY pad, the decay of an envelope). `par.Part(name, min, max, curve, target,
+options...)` adds one; it is a control like any other (a target, presets, `api.send(name, value)`),
+the builder gets them in `p.parts` and its `part(name, value)` is called when one changes.
+`panel.OnBuffer(f)` calls `f` on the audio thread at the start of every buffer (a scope reading a
+module's output, as the meters do). `panel.NoDefault()`, for any control, keeps its default from
+the target when the patch starts: the target keeps its own setting until the control moves.
+
+**Widgets** (`modules/controls/panel/widgets`) are plugins to play and shape synths with, all
+following the theme:
+
+| Widget | |
+|---|---|
+| `XY(ctl, name, x, y Axis)` | A pad moving two values at once, x across and y up (a cutoff and a resonance); arrow keys move it, a double click goes back |
+| `Keys(ctl, name, play, From(48), Octaves(3))` | A keyboard: lower on a key is louder, sliding plays the keys passed; the computer's keys play the first one on a page (A W S E D F T G Y H U J K, Z and X an octave down and up). `Play(synth)` plays a synth; or pass a function of your own (the keyboard example pushes MIDI) |
+| `Pads(ctl, name, Hit(kit, "kick", "snare", ...), columns)` | Pads, louder in the middle; the number keys hit the first nine |
+| `Envelope(ctl, name, synth, "amp", ADSR{...})` | An attack, decay, sustain and release to drag into shape, sent as the envelope messages every synth takes ([envelopes by message](synths.md#envelopes-by-message)) |
+| `Scope(ctl, name, module)` | The sound of a module: its wave (steady on its rising zero crossings) and its spectrum; a click switches between them |
+
+```go
+ctl.Section("Synth")
+widgets.Keys(ctl, "Keys", widgets.Play(lead), widgets.From(48), widgets.Octaves(3))
+widgets.XY(ctl, "Filter",
+	widgets.Axis{Name: "cutoff", Min: 200, Max: 8000, Curve: panel.Exp, To: panel.Message(lead, "cutoff")},
+	widgets.Axis{Name: "resonance", Max: 0.9, To: panel.Message(lead, "resonance")})
+widgets.Envelope(ctl, "Amp", lead, "amp", widgets.ADSR{Attack: 5, Decay: 200, Sustain: 0.7, Release: 300})
+widgets.Pads(ctl, "Drums", widgets.Hit(kit, "kick", "snare", "hat", "clap"))
+widgets.Scope(ctl, "Out", mix.Master())
+```
+
+`cmd/examples/widgets` has them all, on nine synths to switch between.
+
+**The DX editor** (`modules/controls/panel/dxeditor`) edits the six operator FM synth on the page,
+as a DX7 with a screen: the algorithm as a diagram (click through the 32, or "my own": the carriers
+by clicking the operators, the modulations a higher operator makes into a lower one in a grid, the
+feedback loop), each operator in a row (its frequency as a ratio or fixed, coarse and fine, detune,
+level, velocity sensitivity, rate scaling, amplitude modulation, its envelope drawn; open it for
+the rates and levels and the keyboard scaling), the LFO and the pitch envelope, and a bank of
+patches to load from. Drag a number up or down (Shift slower), turn it with the wheel, double click
+for its default. Every setting is a control of the panel named as the dx messages are ("DX
+op3Coarse"), so presets keep them, MIDI learn binds them, code sets them.
+
+```go
+synth := dx.NewPoly(patch, 16, 2).AddTo(p)
+banks, _ := dx.LoadSysEx("assets/dx7/rom1a.syx")
+dxeditor.Add(ctl, "DX", synth, patch, dxeditor.Bank(banks))
+```
+
 `modules/controls/panel/pianoroll` is a plugin to start from: the notes of a MIDI file scrolling
 past a playhead as a `midi.Player` plays them (coloured by channel, the muted ones dimmed); a click
 or drag moves the player there, the wheel zooms. `pianoroll.Add(ctl, "Notes", player)`.

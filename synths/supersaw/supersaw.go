@@ -12,6 +12,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
@@ -169,6 +170,8 @@ func (v *Voice) random() float64 {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	envelope.Receive(msg, "amp", &v.cfg.AmpEnv)
+	envelope.Receive(msg, "filter", &v.cfg.FilterEnv)
 	msg.IfFltVal("frequency", func(f float64) { v.setFrequency(f) })
 	msg.IfFltVal("pitch", func(p float64) { v.setFrequency(440 * math.Exp2((p-69)/12)) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })

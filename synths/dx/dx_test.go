@@ -316,3 +316,95 @@ func TestPresets(t *testing.T) {
 		})
 	}
 }
+
+func TestNoStandardCarrierModulates(t *testing.T) {
+	// the carriers of the 32 algorithms only sound: their modulation output is never read, so
+	// algorithms of your own (whose carriers may modulate) leave them as they were
+	for i, a := range Algorithms {
+		if err := a.Check(); err != nil {
+			t.Errorf("algorithm %d: %v", i+1, err)
+		}
+		for _, m := range a.Mods {
+			for _, c := range a.Carriers {
+				if m[0] == c {
+					t.Errorf("algorithm %d: carrier %d modulates", i+1, c+1)
+				}
+			}
+		}
+	}
+}
+
+func TestSettingsByName(t *testing.T) {
+	p := InitVoice()
+	for _, c := range []struct {
+		name string
+		v    float64
+		get  func() int
+	}{
+		{"algorithm", 5, func() int { return p.Algorithm + 1 }},
+		{"feedback", 9, func() int { return p.Feedback }}, // kept in its range
+		{"op3Coarse", 2, func() int { return p.Ops[2].Coarse }},
+		{"op6Rate4", 12.4, func() int { return p.Ops[5].EGRates[3] }},
+		{"op1Level2", 80, func() int { return p.Ops[0].EGLevels[1] }},
+		{"op2Level", 70, func() int { return p.Ops[1].OutputLevel }},
+		{"pitchLevel3", 60, func() int { return p.PitchEGLevels[2] }},
+	} {
+		if !p.Set(c.name, c.v) {
+			t.Errorf("%s isn't a setting", c.name)
+		}
+		if got, want := c.get(), max(0, min(int(c.v+0.5), func() int {
+			if c.name == "feedback" {
+				return 7
+			}
+			return 99
+		}())); got != want {
+			t.Errorf("%s = %d, want %d", c.name, got, want)
+		}
+		if v, ok := p.Get(c.name); !ok || int(v) != c.get() {
+			t.Errorf("get %s: %v", c.name, v)
+		}
+	}
+	p.Set("op4Fixed", 1)
+	if !p.Ops[3].FixedFreq {
+		t.Errorf("op4Fixed")
+	}
+	if p.Set("pitch", 60) || p.Set("velocity", 1) {
+		t.Errorf("a note's pitch or velocity taken as a setting")
+	}
+}
+
+func TestRoutingOfYourOwn(t *testing.T) {
+	bad := Algorithm{Carriers: []int{0}, Mods: [][2]int{{0, 1}}, FeedbackFrom: 0, FeedbackTo: 0}
+	if bad.Check() == nil {
+		t.Errorf("operator 1 modulating 2 should be refused")
+	}
+	// operator 2 modulates operator 1 and is heard itself: louder and brighter than 1 alone
+	p := InitVoice()
+	p.Ops[1].OutputLevel = 90
+	alone := New(p, 1)
+	own := New(p, 1)
+	own.ReceiveMessage(psalm.Message{"routing": Algorithm{Carriers: []int{0, 1}, Mods: [][2]int{{1, 0}}, FeedbackFrom: 5, FeedbackTo: 5}})
+	if own.alg.Carriers[1] != 1 || len(own.modTargets[0]) != 1 {
+		t.Fatalf("the routing isn't played: %+v", own.alg)
+	}
+	for _, v := range []*Voice{alone, own} {
+		v.NoteOn(1, psalm.Message{"pitch": 60.0}, psalm.CtrlTick{}, v.Config())
+		v.Synthesize()
+	}
+	diff := 0.0
+	for i, s := range own.Output(0).Channels[0] {
+		diff += math.Abs(float64(s - alone.Output(0).Channels[0][i]))
+	}
+	if diff == 0 {
+		t.Errorf("a routing of your own sounds like algorithm 1")
+	}
+	// a routing that can't play falls back to the algorithm
+	own.ReceiveMessage(psalm.Message{"routing": bad})
+	if own.patch.Routing != nil {
+		t.Errorf("a broken routing was kept")
+	}
+	own.ReceiveMessage(psalm.Message{"op2Coarse": 3.0, "algorithm": 32.0})
+	if own.patch.Ops[1].Coarse != 3 || own.alg.Carriers[5] != 5 {
+		t.Errorf("settings by message: coarse %d, carriers %v", own.patch.Ops[1].Coarse, own.alg.Carriers)
+	}
+}

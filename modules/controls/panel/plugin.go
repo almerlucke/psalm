@@ -95,7 +95,30 @@ func (pn *Panel) servePlugin(w http.ResponseWriter, r *http.Request) {
 }
 
 // builtin are the kinds the page draws itself
-var builtin = []Kind{FaderKind, KnobKind, ToggleKind, ButtonKind, SelectKind, MeterKind, GridKind, CuesKind, MountKind}
+var builtin = []Kind{FaderKind, KnobKind, ToggleKind, ButtonKind, SelectKind, MeterKind, GridKind, CuesKind, MountKind, PartKind}
+
+// PartKind is the kind of a part of a custom control (Part)
+const PartKind Kind = "part"
+
+// Part adds a value to a custom control: a control of its own (a name, a range, a target, kept
+// in snapshots and presets, set with api.send on the page) that the control's plugin draws, not
+// shown by itself. The second axis of an XY pad, the decay of an envelope. The plugin's builder
+// gets them in p.parts, and its part(name, value) is called when one changes
+func (par *Param) Part(name string, min, max float64, curve Curve, to Target, opts ...Option) *Param {
+	if par.custom == nil || par.panel == nil {
+		panic(fmt.Sprintf("panel: %q isn't a custom control on a panel: it can't have parts", par.Name))
+	}
+	part := newParam(PartKind, name, min, max, curve, to, opts)
+	pn := par.panel
+	pn.mu.Lock()
+	defer pn.mu.Unlock()
+	pn.addLocked(part, false)
+	par.parts = append(par.parts, part)
+	return part
+}
+
+// Parts returns the parts of a custom control
+func (par *Param) Parts() []*Param { return append([]*Param(nil), par.parts...) }
 
 // Custom adds a control a plugin draws (Use the plugin too): a kind of its own, a value like a
 // fader's (0 to 1 unless Range says otherwise) bound to a target (nil for none), and what the
@@ -118,6 +141,7 @@ type custom struct {
 	data      json.RawMessage
 	live      func() any
 	onMessage func(data json.RawMessage)
+	onBuffer  func()
 
 	mu       sync.Mutex
 	state    json.RawMessage // pushed
@@ -134,6 +158,9 @@ func (par *Param) customPart() *custom {
 
 // Range sets the range of a custom control's value (a fader's range: min, max and a curve)
 func Range(min, max float64, curve Curve) Option {
+	if curve == Exp && (min <= 0 || max <= 0) {
+		panic(fmt.Sprintf("panel: an exponential range has to be above 0 (%v to %v)", min, max))
+	}
 	return func(par *Param) { par.Min, par.Max, par.Curve = min, max, curve }
 }
 
@@ -161,6 +188,12 @@ func Live(f func() any) Option {
 // thread like the other controls' changes
 func OnMessage(f func(data json.RawMessage)) Option {
 	return func(par *Param) { par.customPart().onMessage = f }
+}
+
+// OnBuffer is called on the audio thread at the start of every buffer, for a custom control that
+// follows the sound (a scope reading the output of a module, as the meters do). Keep it quick
+func OnBuffer(f func()) Option {
+	return func(par *Param) { par.customPart().onBuffer = f }
 }
 
 // Push gives a custom control a new state for its plugin (anything that turns into JSON); the

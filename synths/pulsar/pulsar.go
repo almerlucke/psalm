@@ -6,6 +6,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -135,6 +136,8 @@ func (v *Voice) SetPitch(pitch float64) {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	envelope.Receive(msg, "amp", &v.cfg.AmpEnv)
+	envelope.Receive(msg, "formant", &v.cfg.FormantEnv)
 	cfg := &v.cfg
 	msg.IfFltVal("formant", func(f float64) { cfg.Formant = f })
 	msg.IfFltVal("formant2", func(f float64) { cfg.Formant2 = f })

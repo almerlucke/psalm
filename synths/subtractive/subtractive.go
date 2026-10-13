@@ -5,6 +5,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/formant"
 	"github.com/almerlucke/psalm/blocks/filters/ladder"
@@ -190,6 +191,8 @@ func (v *Voice) SetPulseWidth(pw float64) {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	envelope.Receive(msg, "amp", &v.cfg.AmpEnv)
+	envelope.Receive(msg, "filter", &v.cfg.FilterEnv)
 	msg.IfIntVal("osc1Waveform", func(wf int) {
 		v.cfg.Osc1Waveform = blosc.Waveform(wf)
 		v.osc1.SetWaveform(v.cfg.Osc1Waveform)

@@ -63,6 +63,7 @@ func (sh *shared) ccGain(r *Region) float64 {
 type Voice struct {
 	*psalm.Module
 	cfg       Config
+	envOver   envOverride // the envelope set by messages, over the regions' own
 	shared    *shared
 	layers    []layer
 	pitch     float64
@@ -228,6 +229,7 @@ func newVoice(cfg Config, sh *shared) *Voice {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	v.envOver.receive(msg)
 	msg.IfFltVal("pitch", func(p float64) { v.pitch = p })
 	msg.IfFltVal("frequency", func(f float64) {
 		if f > 0 {
@@ -539,9 +541,50 @@ func (v *Voice) envFor(r *Region) Envelope {
 			add(c.Env, v.shared.cc[c.CC]/127)
 		}
 	}
+	v.envOver.apply(&e)
 	e.Delay, e.Attack, e.Hold = max(0, e.Delay), max(0, e.Attack), max(0, e.Hold)
 	e.Decay, e.Release = max(0, e.Decay), max(0.001, e.Release)
 	return e
+}
+
+// envOverride is an envelope set by messages ("ampAttack", "ampDecay", "ampRelease" in
+// milliseconds, "ampSustain" 0-1) over the envelopes of the regions: each part set replaces theirs
+type envOverride struct {
+	attack, decay, sustain, release float64
+	set                             [4]bool
+}
+
+func (o *envOverride) receive(msg psalm.Message) {
+	for i, name := range []string{"ampAttack", "ampDecay", "ampSustain", "ampRelease"} {
+		msg.IfFltVal(name, func(f float64) {
+			o.set[i] = true
+			switch i {
+			case 0:
+				o.attack = math.Max(0, f) / 1000
+			case 1:
+				o.decay = math.Max(0, f) / 1000
+			case 2:
+				o.sustain = math.Max(0, math.Min(f, 1))
+			case 3:
+				o.release = math.Max(0.1, f) / 1000
+			}
+		})
+	}
+}
+
+func (o *envOverride) apply(e *Envelope) {
+	if o.set[0] {
+		e.Attack = o.attack
+	}
+	if o.set[1] {
+		e.Decay = o.decay
+	}
+	if o.set[2] {
+		e.Sustain = o.sustain
+	}
+	if o.set[3] {
+		e.Release = o.release
+	}
 }
 
 // depthFor returns the band limited copy of a sound for playing it step times as fast: copy d is

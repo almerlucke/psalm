@@ -368,6 +368,7 @@ type control struct {
 	Grid    *gridDesc       `json:"grid,omitempty"`
 	Cues    *cuesDesc       `json:"cues,omitempty"`
 	Mount   *mountDesc      `json:"mount,omitempty"`
+	Parts   []control       `json:"parts,omitempty"` // of a custom control
 	Data    json.RawMessage `json:"data,omitempty"`  // of a custom control
 	State   json.RawMessage `json:"state,omitempty"` // of a custom control
 }
@@ -441,6 +442,10 @@ func (pn *Panel) describe() description {
 		}
 		if par.custom != nil {
 			c.Data, c.State = par.custom.data, par.custom.stateNow()
+			for _, part := range par.parts {
+				c.Parts = append(c.Parts, control{Kind: PartKind, Name: part.Name, Min: part.Min, Max: part.Max, Curve: part.Curve,
+					Step: part.Step, Unit: part.Unit, Label: part.Label, Default: part.Default, Value: part.Value()})
+			}
 		}
 		d.Sections[i].Controls = append(d.Sections[i].Controls, c)
 	}

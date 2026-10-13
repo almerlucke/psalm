@@ -1,0 +1,44 @@
+.dx { display: flex; flex-direction: column; gap: 12px; align-items: stretch; text-align: left; font-size: 12px; max-width: calc(100vw - 64px); }
+.dx-top { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start; }
+.dx-alg { width: 240px; height: 190px; background: var(--track); border-radius: calc(var(--radius) * 2 / 3); flex: none; }
+.dx-alg .dx-wire { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+.dx-alg .dx-wire.out { stroke: var(--line); }
+.dx-alg .dx-wire.fb { stroke: var(--meter-mid); stroke-dasharray: 3 2; }
+.dx-alg .dx-wire.fb.idle { opacity: .35; }
+.dx-alg .dx-op rect:first-child { fill: var(--card); stroke: var(--muted); stroke-width: 1.5; }
+.dx-alg .dx-op.carrier rect:first-child { fill: var(--accent); stroke: var(--accent); }
+.dx-alg .dx-op.unused { opacity: .4; }
+.dx-alg .dx-op text { fill: var(--ink); font-size: 13px; font-weight: 600; text-anchor: middle; pointer-events: none; }
+.dx-alg .dx-op.carrier text { fill: var(--accent-ink); }
+.dx-alg .dx-level { fill: var(--ink); opacity: .5; }
+.dx.custom .dx-alg .dx-op { cursor: pointer; }
+.dx-head { display: flex; flex-direction: column; gap: 8px; min-width: 200px; }
+.dx-name { font-size: 15px; font-weight: 600; letter-spacing: .04em; min-height: 18px; }
+.dx-row { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.dx-label { color: var(--muted); font-size: 11px; }
+.dx-group { font-weight: 600; text-transform: uppercase; letter-spacing: .06em; min-width: 44px; }
+.dx-field { display: inline-flex; gap: 5px; align-items: center; }
+.dx-num { display: inline-block; min-width: 30px; padding: 3px 6px; border-radius: 5px; background: var(--track); color: var(--ink); font-variant-numeric: tabular-nums; text-align: center; cursor: ns-resize; touch-action: none; outline: none; white-space: nowrap; }
+.dx-num:hover, .dx-num:focus-visible { box-shadow: inset 0 0 0 1px var(--accent); }
+.dx button.dx-flag, .dx button.dx-step, .dx button.dx-badge, .dx button.dx-cell { min-height: 26px; min-width: 0; padding: 2px 8px; font-size: 12px; }
+.dx button.dx-flag.on, .dx button.dx-cell.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.dx select.dx-bank { min-height: 28px; padding: 2px 6px; font-size: 12px; max-width: 220px; }
+.dx-routing { display: none; flex-direction: column; gap: 8px; }
+.dx.custom .dx-routing { display: flex; }
+.dx-matrix { display: grid; grid-template-columns: auto repeat(5, 30px); gap: 3px; align-items: center; }
+.dx-matrix .dx-head-cell { text-align: center; color: var(--muted); }
+.dx-matrix .dx-corner { font-size: 10px; color: var(--muted); padding-right: 6px; }
+.dx button.dx-cell { width: 30px; height: 26px; padding: 0; }
+.dx-hint { color: var(--muted); font-size: 11px; max-width: 240px; }
+.dx-ops { display: flex; flex-direction: column; gap: 3px; }
+.dx-op-row { display: grid; grid-template-columns: 52px 200px 52px 46px 110px 52px 64px 58px 1fr; gap: 6px; align-items: center; }
+.dx-op-head span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+.dx-freq { display: inline-flex; gap: 4px; align-items: center; }
+.dx-freq-text { min-width: 72px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.dx-levelbox { position: relative; display: inline-flex; align-items: center; }
+.dx-levelbox .dx-bar { position: absolute; left: 0; bottom: -3px; height: 2px; background: var(--accent); border-radius: 1px; }
+.dx-eg { width: 100%; min-width: 120px; height: 28px; border-radius: 4px; cursor: pointer; display: block; }
+.dx-eg.big { height: 70px; max-width: 360px; cursor: default; }
+.dx-detail { display: none; flex-direction: column; gap: 6px; padding: 6px 0 10px 58px; border-bottom: 1px solid var(--line); }
+.dx-detail.open { display: flex; }
+.dx-voice { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }

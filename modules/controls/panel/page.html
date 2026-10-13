@@ -837,6 +837,10 @@ async function build() {
 			widgets[p.name] = w;
 			w.el.dataset.kind = p.kind; w.el.dataset.name = p.name;
 			w.show(p.value);
+			for (const part of p.parts || []) { // values the control draws: their changes reach it by name
+				widgets[part.name] = {param: part, el: document.createElement("div"), show: v => w.part && w.part(part.name, v)};
+				widgets[part.name].show(part.value);
+			}
 			if (p.state !== undefined && w.update) w.update(p.state);
 			const own = ["fader", "knob", "toggle", "button", "select"].includes(p.kind);
 			if (own || (w.bindable && !["meter", "grid", "cues", "mount"].includes(p.kind))) bindable(w, p);

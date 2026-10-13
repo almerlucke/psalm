@@ -12,6 +12,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/modules/poly"
@@ -115,6 +116,9 @@ func New(cfg Config) *Voice {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	// the function generator: "ampAttack", "ampDecay"; a note held (Sustain) falls in Decay once let
+	// go, so "ampRelease" sets it too
+	envelope.Seconds(msg, "amp", &v.cfg.Attack, &v.cfg.Decay, &v.cfg.Decay)
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
@@ -125,6 +129,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("modRatio", func(f float64) { v.cfg.ModRatio = f })
 	msg.IfFltVal("decay", func(f float64) { v.cfg.Decay = f })
 	msg.IfFltVal("resonance", func(f float64) { v.cfg.Resonance = f })
+	msg.IfFltVal("response", func(f float64) { v.cfg.Response = f })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
 }
 

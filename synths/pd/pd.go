@@ -12,6 +12,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -116,6 +117,11 @@ func (v *Voice) line(i int) *Line {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	// both lines: "amp" their loudness (DCA), "dcw" their brightness
+	for _, l := range []*Line{&v.cfg.Line1, &v.cfg.Line2} {
+		envelope.Receive(msg, "amp", &l.DCAEnv)
+		envelope.Receive(msg, "dcw", &l.DCWEnv)
+	}
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })

@@ -44,6 +44,19 @@ type Patch struct {
 	PitchModSens  int                    // 0-7
 	Transpose     int                    // 0-48, 24 is no transposition
 	Level         float64                // output gain (0 is 1), for calibrating, not part of the SysEx data
+
+	// Routing is an algorithm of your own instead of Algorithm (nil plays Algorithm): which operator
+	// modulates which, the carriers, the feedback loop (see Algorithm.Check). It isn't part of the
+	// SysEx data: a patch with one is sent as its Algorithm
+	Routing *Algorithm
+}
+
+// Routed returns the algorithm the patch plays: its own Routing, or one of the 32
+func (p *Patch) Routed() Algorithm {
+	if p.Routing != nil {
+		return *p.Routing
+	}
+	return Algorithms[max(0, min(p.Algorithm, 31))]
 }
 
 // InitVoice returns the classic initial voice: a single sine (operator 1 at full level)

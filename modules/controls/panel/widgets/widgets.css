@@ -1,0 +1,25 @@
+/* xy */
+.xypad { position: relative; width: 200px; height: 200px; border-radius: calc(var(--radius) * 2 / 3); background: var(--track); touch-action: none; cursor: crosshair; outline: none; overflow: hidden; }
+.xypad:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+.xypad .hline, .xypad .vline { position: absolute; background: color-mix(in srgb, var(--accent) 35%, transparent); pointer-events: none; }
+.xypad .hline { left: 0; right: 0; height: 1px; }
+.xypad .vline { top: 0; bottom: 0; width: 1px; }
+.xypad .dot { position: absolute; width: 18px; height: 18px; margin: 0 0 -9px -9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); pointer-events: none; }
+
+/* keys */
+.keys { position: relative; width: min(calc(var(--whites) * 30px), calc(100vw - 64px)); height: 120px; touch-action: none; user-select: none; }
+.keys .key { position: absolute; top: 0; box-sizing: border-box; cursor: pointer; }
+.keys .white { height: 100%; background: #f6f5f1; border: 1px solid color-mix(in srgb, var(--line) 60%, #999); border-radius: 0 0 5px 5px; font-size: 9px; color: #8a8a86; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; }
+.keys .black { height: 62%; background: #1b1b1d; box-shadow: 0 1px 2px rgba(0,0,0,.35); border-radius: 0 0 4px 4px; z-index: 1; }
+.keys .key.down { background: var(--accent); }
+
+/* pads */
+.pads { display: grid; gap: 8px; }
+.pads .pad { position: relative; width: 74px; height: 74px; border-radius: calc(var(--radius) * 2 / 3); background: var(--track); border: 1px solid var(--line); cursor: pointer; touch-action: none; display: flex; align-items: flex-end; padding: 6px; box-sizing: border-box; font-size: 12px; overflow: hidden; }
+.pads .pad .num { position: absolute; top: 5px; left: 7px; font-size: 10px; color: var(--muted); }
+.pads .pad.hit { animation: padhit .35s ease-out; }
+@keyframes padhit { from { background: color-mix(in srgb, var(--accent) calc(var(--velocity, 1) * 100%), var(--track)); } to { background: var(--track); } }
+
+/* envelope, scope */
+canvas.envelope { width: 300px; height: 140px; border-radius: calc(var(--radius) * 2 / 3); background: var(--track); touch-action: none; cursor: grab; display: block; }
+canvas.scope { width: min(460px, calc(100vw - 64px)); height: 160px; border-radius: calc(var(--radius) * 2 / 3); background: var(--track); cursor: pointer; display: block; }

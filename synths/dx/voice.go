@@ -83,8 +83,11 @@ func New(patch Patch, numChannels int) *Voice {
 
 // SetPatch changes the patch, it is used from the next note on
 func (v *Voice) SetPatch(patch Patch) {
+	if patch.Routing != nil && patch.Routing.Check() != nil {
+		patch.Routing = nil // one that can't play: the algorithm instead
+	}
 	v.patch = patch
-	v.alg = Algorithms[max(0, min(patch.Algorithm, 31))]
+	v.alg = patch.Routed()
 
 	v.isCarrier = [NumOperators]bool{}
 	for _, c := range v.alg.Carriers {
@@ -101,8 +104,34 @@ func (v *Voice) Patch() Patch {
 	return v.patch
 }
 
+// ReceiveMessage takes the bend, the wheel and the pressure, the note, and every setting of the
+// patch by its name (Patch.Set: "algorithm", "feedback", "op1Coarse", "op3Rate2", ...), a whole
+// "patch" (a Patch) or a "routing" of your own (an Algorithm, or nil for the patch's algorithm).
+// The settings are played from the next note
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	changed := false
+	if p, ok := msg["patch"].(Patch); ok {
+		v.patch, changed = p, true
+	}
+	if r, ok := msg["routing"]; ok {
+		switch a := r.(type) {
+		case Algorithm:
+			v.patch.Routing, changed = &a, true
+		case *Algorithm:
+			v.patch.Routing, changed = a, true
+		case nil:
+			v.patch.Routing, changed = nil, true
+		}
+	}
+	for key, val := range msg {
+		if f, ok := val.(float64); ok && v.patch.Set(key, f) {
+			changed = true
+		}
+	}
+	if changed {
+		v.SetPatch(v.patch)
+	}
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0.0, math.Min(f, 1.0)) })
 	msg.IfFltVal("modScale", func(f float64) { v.modScale = f })
 	msg.IfFltVal("pitch", func(f float64) { v.note = f })
@@ -330,11 +359,11 @@ func (v *Voice) Synthesize() {
 				v.fb[1], v.fb[0] = v.fb[0], s*amp
 			}
 
+			// what it modulates with (an algorithm of your own can have a carrier modulate too), what
+			// it adds to the sound
+			v.out[op] = s * amp * modIndex * v.curModScale
 			if v.isCarrier[op] {
-				v.out[op] = s * amp
-				sample += v.out[op]
-			} else {
-				v.out[op] = s * amp * modIndex * v.curModScale
+				sample += s * amp
 			}
 
 			f := v.fixed[op]
