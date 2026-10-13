@@ -610,11 +610,83 @@ the folder.
 
 **Tests of the page**: `page_test.go` drives the page in headless Chrome (the DevTools protocol on
 a pipe, no other dependencies): every kind of control, the tiles of cue lists (also cue lists whose
-cues come and go), mounts, the grid, MIDI learn, Start/Stop and Restart, presets; any error the page
+cues come and go), mounts, the grid, MIDI learn, Start/Stop and Restart, presets, themes and
+plugins; any error the page
 throws fails the test. They run with `go test` when Chrome is installed (`PSALM_CHROME` names
 another browser), and are skipped with `-short`.
 
-**The page** follows the system's light or dark mode and works with touch (several faders at once
+**Themes**: the look of the page is a set of CSS variables, and a `Theme` gives them values, for
+light and for dark mode, plus CSS of its own. The page has a choice of the themes in
+`panel.Themes` (`default`, `midnight`, `paper`, `amber`, `contrast`, `neon`) and of light, dark or
+the system's mode, remembered in the browser; a mounted panel follows the page it is in.
+`ctl.SetTheme(t)` gives a panel its own theme, the one its page starts with:
+
+```go
+ctl.SetTheme(panel.Theme{
+	Name:  "studio",
+	Light: map[string]string{"accent": "#e0662b", "radius": "4px", "font": "Inter, sans-serif"},
+	Dark:  map[string]string{"bg": "#101010", "card": "#1a1a1a", "accent": "#ff8a3d"},
+	CSS:   `section h2 { letter-spacing: .2em; }`,
+})
+```
+
+| Variable | |
+|---|---|
+| `bg`, `card`, `ink`, `muted`, `line` | The page, the cards of the sections, the text, quiet text, borders |
+| `track`, `accent`, `accent-ink` | The travel of faders and knobs, what is on, the text on it |
+| `meter-low`, `meter-mid`, `meter-high` | The meters (and the status light) |
+| `shadow`, `radius` | The shadow and the corners of the cards (buttons get two thirds of the radius) |
+| `font`, `fader-height` | The font, and the height of faders and meters |
+
+A theme without `Dark` looks the same in both modes. Its CSS can change anything: every control is
+in an element with `data-kind` and `data-name` (`[data-name="Cutoff"] .fader { ... }`).
+
+**Plugins** draw controls of their own: a `Plugin` is a script, styles and files, and `Custom`
+adds a control of a kind its script draws. The script registers a builder for the kind with
+`psalm.register(kind, (p, api) => ...)`, getting the control as the page sees it and returning its
+element and how it changes:
+
+```js
+psalm.register("xy", (p, api) => {
+	const pad = document.createElement("div");
+	pad.className = "xy";
+	pad.addEventListener("pointermove", e => api.message(p.name, {x: e.offsetX, y: e.offsetY}));
+	return {
+		el: api.labelled(p, pad),      // under its name, as the page's own controls are
+		show(value) {},                // its value changed (here, elsewhere, from code)
+		update(state) {},              // its state changed (Push, Live)
+		restyle() {},                  // the theme changed (for a canvas: read api.css again)
+		bindable: true,                // MIDI learn can bind its value
+	};
+});
+```
+
+```go
+//go:embed xy.js
+var xyJS string
+
+ctl.Use(panel.Plugin{Name: "xy", JS: xyJS, CSS: ".xy { width: 200px; height: 200px; }"})
+ctl.Custom("xy", "Pad", panel.Message(filter, "cutoff"), panel.Range(200, 8000, panel.Exp),
+	panel.Data(map[string]any{"grid": 8}),                  // sent once: p.data
+	panel.Live(func() any { return lfo.Phase() }),          // asked for 20 times a second: update(state)
+	panel.OnMessage(func(m json.RawMessage) { /* ... */ }), // api.message, on the audio thread
+)
+```
+
+A custom control has a value like a fader (0 to 1, or its `Range`) bound to a target, kept in
+snapshots and presets, set with `api.send(name, value)`. `Data` is anything it needs to draw it,
+`Live` (asked for on the page's goroutine) or `Push` (from any goroutine) give it a state that
+changes, `OnMessage` gets what it sends back with `api.message`. The `api` has the page's own
+helpers too: `labelled`, `drag`, `position`, `valueAt`, `format`, `press`, `post` and `css(name)`
+for a variable of the theme. A plugin's script is served at `plugins/<name>/plugin.js`, its styles
+at `plugin.css` (before the theme's, so a theme can restyle it) and its `Files` under
+`plugins/<name>/`. A control of a kind no plugin draws shows as a note on the page instead.
+
+`modules/controls/panel/pianoroll` is a plugin to start from: the notes of a MIDI file scrolling
+past a playhead as a `midi.Player` plays them (coloured by channel, the muted ones dimmed); a click
+or drag moves the player there, the wheel zooms. `pianoroll.Add(ctl, "Notes", player)`.
+
+**The page** follows the system's light or dark mode (or the one chosen on it) and works with touch (several faders at once
 on a tablet). Drag a fader or knob (Shift for fine steps on a knob), use the arrow keys on a
 focused fader, double click to return to the default. Every open page shows the same values.
 `ctl.Handler()` gives the page and its JSON API as an `http.Handler` to serve yourself:
@@ -627,6 +699,9 @@ focused fader, double click to return to the default. Every open page shows the 
 | `POST /api/press` | `{"name": "Bells"}` presses a button |
 | `GET /api/events` | The values and meters as they change (server sent events, 20 times a second) |
 | `GET /api/snapshot`, `POST /api/snapshot` | All values, and restoring them (`?download` to save it as a file) |
+| `POST /api/message` | `{"name": "Pad", "data": {...}}` sends anything to a custom control's `OnMessage` |
+| `GET /theme.css` | The stylesheet of a theme (`?name=amber`; the panel's own without) |
+| `GET /plugins/<name>/...` | A plugin's `plugin.js`, `plugin.css` and files |
 | `GET /api/presets` | `{"enabled": true, "names": [...]}`: the saved presets |
 | `POST /api/presets` | `{"action": "save", "name": "Groove"}` (or `"load"`, `"delete"`), answers with the names |
 | `POST /api/learn` | `{"name": "Cutoff"}` arms a control for MIDI learn, `{"name": ""}` stops |

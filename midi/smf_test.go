@@ -475,3 +475,20 @@ func TestPlayTime(t *testing.T) {
 		t.Errorf("at 240 %g, want 1", d)
 	}
 }
+
+func TestNotes(t *testing.T) {
+	notes := song().Notes()
+	want := []Note{
+		{Start: 0, End: 0.5, Key: 60, Velocity: 100, Channel: 1, Track: 0},
+		{Start: 0.5, End: 2 + 460.0/480, Key: 48, Velocity: 70, Channel: 2, Track: 1},
+		{Start: 2, End: 3, Key: 62, Velocity: 100, Channel: 1, Track: 0},
+	}
+	if len(notes) != len(want) {
+		t.Fatalf("notes %v", notes)
+	}
+	for i := range want {
+		if n := notes[i]; n.Key != want[i].Key || math.Abs(n.Start-want[i].Start) > 1e-9 || math.Abs(n.End-want[i].End) > 1e-9 || n.Channel != want[i].Channel || n.Track != want[i].Track {
+			t.Errorf("note %d: %+v, want %+v", i, n, want[i])
+		}
+	}
+}

@@ -97,6 +97,9 @@ type server struct {
 //	                    {"name": "Song", "cue": 2, "on": false} switches one off
 //	POST /api/audio     {"running": false} stops the sound of the patch, true starts it, {"restart": true}
 //	                    sets it back to the start (see SetPlayer)
+//	POST /api/message   {"name": "Notes", "data": {...}} sends anything to a custom control's OnMessage
+//	GET  /theme.css     the stylesheet of a theme (?name=, the panel's own without; see Theme)
+//	GET  /plugins/<name>/plugin.js, plugin.css, <file>   a plugin's script, styles and files (see Plugin)
 //	GET  /api/presets   {"enabled": true, "names": [...]}: the saved setups (see Presets)
 //	POST /api/presets   {"action": "save" (or "load", "delete"), "name": "Groove"}
 func (pn *Panel) Handler() http.Handler {
@@ -293,6 +296,22 @@ func (pn *Panel) Handler() http.Handler {
 		writeJSON(w, map[string]bool{"running": pl.Running()})
 	})
 	mux.HandleFunc("/mount/{name}/", pn.serveMount)
+	mux.HandleFunc("GET /theme.css", pn.serveTheme)
+	mux.HandleFunc("GET /plugins/{plugin}/{file...}", pn.servePlugin)
+	mux.HandleFunc("POST /api/message", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Name string          `json:"name"`
+			Data json.RawMessage `json:"data"`
+		}
+		if par := pn.decode(w, r, &req, func() string { return req.Name }); par != nil {
+			if par.custom == nil {
+				http.Error(w, fmt.Sprintf("%q is not a control of a plugin", req.Name), http.StatusBadRequest)
+				return
+			}
+			par.custom.receive(req.Data)
+			writeJSON(w, map[string]bool{"ok": true})
+		}
+	})
 	mux.HandleFunc("GET /api/events", pn.events)
 	return mux
 }
@@ -317,12 +336,15 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 // description is the panel as the page sees it
 type description struct {
-	Title    string    `json:"title"`
-	Presets  bool      `json:"presets"` // whether the page can save and load setups
-	Player   bool      `json:"player"`  // whether the page can start and stop the sound
-	Running  bool      `json:"running"` // whether the sound plays
-	Restart  bool      `json:"restart"` // whether the page can set the sound back to its start
-	Sections []section `json:"sections"`
+	Title    string       `json:"title"`
+	Presets  bool         `json:"presets"` // whether the page can save and load setups
+	Player   bool         `json:"player"`  // whether the page can start and stop the sound
+	Running  bool         `json:"running"` // whether the sound plays
+	Restart  bool         `json:"restart"` // whether the page can set the sound back to its start
+	Sections []section    `json:"sections"`
+	Plugins  []pluginDesc `json:"plugins"`
+	Themes   []string     `json:"themes"`
+	Theme    string       `json:"theme"` // the panel's own
 }
 
 type section struct {
@@ -331,21 +353,23 @@ type section struct {
 }
 
 type control struct {
-	Kind    Kind       `json:"kind"`
-	Name    string     `json:"name"`
-	Min     float64    `json:"min"`
-	Max     float64    `json:"max"`
-	Curve   Curve      `json:"curve"`
-	Step    float64    `json:"step"`
-	Unit    string     `json:"unit,omitempty"`
-	Label   string     `json:"label,omitempty"`
-	Default float64    `json:"default"`
-	Options []string   `json:"options,omitempty"`
-	Value   float64    `json:"value"`
-	CC      *Binding   `json:"cc,omitempty"`
-	Grid    *gridDesc  `json:"grid,omitempty"`
-	Cues    *cuesDesc  `json:"cues,omitempty"`
-	Mount   *mountDesc `json:"mount,omitempty"`
+	Kind    Kind            `json:"kind"`
+	Name    string          `json:"name"`
+	Min     float64         `json:"min"`
+	Max     float64         `json:"max"`
+	Curve   Curve           `json:"curve"`
+	Step    float64         `json:"step"`
+	Unit    string          `json:"unit,omitempty"`
+	Label   string          `json:"label,omitempty"`
+	Default float64         `json:"default"`
+	Options []string        `json:"options,omitempty"`
+	Value   float64         `json:"value"`
+	CC      *Binding        `json:"cc,omitempty"`
+	Grid    *gridDesc       `json:"grid,omitempty"`
+	Cues    *cuesDesc       `json:"cues,omitempty"`
+	Mount   *mountDesc      `json:"mount,omitempty"`
+	Data    json.RawMessage `json:"data,omitempty"`  // of a custom control
+	State   json.RawMessage `json:"state,omitempty"` // of a custom control
 }
 
 // cuesDesc is a cue list as the page sees it
@@ -372,7 +396,12 @@ func (pn *Panel) describe() description {
 	pn.mu.Lock()
 	sections := append([]string(nil), pn.sections...)
 	pn.mu.Unlock()
-	d := description{Title: pn.title, Presets: pn.presetsEnabled()}
+	d := description{Title: pn.title, Presets: pn.presetsEnabled(), Plugins: []pluginDesc{}}
+	for _, p := range pn.pluginList() {
+		d.Plugins = append(d.Plugins, pluginDesc{Name: p.Name, Script: p.JS != "", Style: p.CSS != ""})
+	}
+	all, theme := pn.themes()
+	d.Themes, d.Theme = themeNames(all), theme
 	if pl := pn.Player(); pl != nil {
 		d.Player, d.Running = true, pl.Running()
 		_, d.Restart = pl.(restarter)
@@ -410,6 +439,9 @@ func (pn *Panel) describe() description {
 		if b, ok := par.Binding(); ok {
 			c.CC = &b
 		}
+		if par.custom != nil {
+			c.Data, c.State = par.custom.data, par.custom.stateNow()
+		}
 		d.Sections[i].Controls = append(d.Sections[i].Controls, c)
 	}
 	return d
@@ -417,13 +449,14 @@ func (pn *Panel) describe() description {
 
 // update is what the page gets every interval: the values that changed and the meters
 type update struct {
-	Values map[string]float64     `json:"values,omitempty"`
-	Meters map[string][2]float64  `json:"meters,omitempty"`
-	MIDI   *midiUpdate            `json:"midi,omitempty"` // when the bindings or learning changed
-	Grids  map[string]*gridUpdate `json:"grids,omitempty"`
-	Cues   map[string]CueState    `json:"cues,omitempty"`
-	Audio  *audioUpdate           `json:"audio,omitempty"` // when the sound starts or stops
-	Mounts map[string]*mountDesc  `json:"mounts,omitempty"`
+	Values map[string]float64         `json:"values,omitempty"`
+	Meters map[string][2]float64      `json:"meters,omitempty"`
+	MIDI   *midiUpdate                `json:"midi,omitempty"` // when the bindings or learning changed
+	Grids  map[string]*gridUpdate     `json:"grids,omitempty"`
+	Cues   map[string]CueState        `json:"cues,omitempty"`
+	Audio  *audioUpdate               `json:"audio,omitempty"` // when the sound starts or stops
+	Mounts map[string]*mountDesc      `json:"mounts,omitempty"`
+	States map[string]json.RawMessage `json:"states,omitempty"` // of custom controls, when they changed
 }
 
 type audioUpdate struct {
@@ -469,6 +502,7 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 	cuesSent := map[string]string{}
 	mountsSent := map[string]*Panel{}
 	runningSent := -1
+	statesSent := map[string]string{}
 	ticker := time.NewTicker(updateInterval)
 	defer ticker.Stop()
 	for {
@@ -490,6 +524,20 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 					sent[par.Name] = par.Value()
 				}
 			}
+		}
+		for _, par := range pn.Params() {
+			if par.custom == nil {
+				continue
+			}
+			st := par.custom.stateNow()
+			if st == nil || string(st) == statesSent[par.Name] {
+				continue
+			}
+			statesSent[par.Name] = string(st)
+			if u.States == nil {
+				u.States = map[string]json.RawMessage{}
+			}
+			u.States[par.Name] = st
 		}
 		for _, g := range pn.Grids() {
 			sent := gridsSent[g.Name]
@@ -553,7 +601,7 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 				u.MIDI.Learning = l.Name
 			}
 		}
-		if len(u.Values) > 0 || len(u.Meters) > 0 || u.MIDI != nil || len(u.Grids) > 0 || len(u.Cues) > 0 || u.Audio != nil || len(u.Mounts) > 0 {
+		if len(u.Values) > 0 || len(u.Meters) > 0 || u.MIDI != nil || len(u.Grids) > 0 || len(u.Cues) > 0 || u.Audio != nil || len(u.Mounts) > 0 || len(u.States) > 0 {
 			data, _ := json.Marshal(u)
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
 				return

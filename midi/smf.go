@@ -528,3 +528,56 @@ func (f *File) Programs(channel int) []int {
 	}
 	return programs
 }
+
+// Note is a note of a file: when it starts and ends (seconds, following the tempo), its key,
+// velocity, channel (1-16) and track
+type Note struct {
+	Start, End float64
+	Key        int
+	Velocity   int
+	Channel    int
+	Track      int
+}
+
+// Notes returns the notes of the file in order of their start: every note on with the note off
+// that ends it (a note never let go ends at the end of the file)
+func (f *File) Notes() []Note {
+	tempo := f.tempoMap()
+	end := secondsAt(tempo, f.Ticks())
+	var notes []Note
+	for i, t := range f.Tracks {
+		var open [16][128][]int // the notes started and not ended, first in first out
+		for _, e := range t.Events {
+			m := e.Message
+			if !m.IsChannel() {
+				continue
+			}
+			ch, key := m.Channel()-1, m.Note()
+			switch m.Kind() {
+			case NoteOn:
+				open[ch][key] = append(open[ch][key], len(notes))
+				notes = append(notes, Note{Start: secondsAt(tempo, e.Tick), End: -1, Key: key, Velocity: m.Velocity(), Channel: ch + 1, Track: i})
+			case NoteOff:
+				if q := open[ch][key]; len(q) > 0 {
+					notes[q[0]].End = secondsAt(tempo, e.Tick)
+					open[ch][key] = q[1:]
+				}
+			}
+		}
+	}
+	for i := range notes {
+		if notes[i].End < 0 {
+			notes[i].End = end
+		}
+	}
+	slices.SortStableFunc(notes, func(a, b Note) int {
+		switch {
+		case a.Start < b.Start:
+			return -1
+		case a.Start > b.Start:
+			return 1
+		}
+		return 0
+	})
+	return notes
+}

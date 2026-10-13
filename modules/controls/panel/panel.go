@@ -67,8 +67,10 @@ type Panel struct {
 	mountsNow atomic.Pointer[[]*Mount] // the mounts in order, for the audio thread
 	order     []item                   // the controls, grids and cue lists in the order they were declared, for the page
 
-	player Player // started and stopped from the page, nil for none
-	id     int64  // every panel its own (a mount shows which one it shows)
+	player  Player   // started and stopped from the page, nil for none
+	theme   *Theme   // the panel's own theme, nil for the default
+	plugins []Plugin // the plugins of the page
+	id      int64    // every panel its own (a mount shows which one it shows)
 	presetState
 }
 
@@ -232,6 +234,9 @@ func (pn *Panel) CtrlTick(tick psalm.CtrlTick) {
 			}
 			continue
 		}
+		if par.custom != nil {
+			par.custom.deliver()
+		}
 		par.tick(dt)
 	}
 }
@@ -275,6 +280,7 @@ type Param struct {
 
 	target Target
 	press  func()
+	custom *custom // a control a plugin draws
 	meter  *meter
 	panel  *Panel
 

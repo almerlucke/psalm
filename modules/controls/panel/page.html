@@ -9,17 +9,24 @@
 	--bg: #f4f4f2; --card: #ffffff; --ink: #1d1d1f; --muted: #6e6e73; --line: #d8d8d4;
 	--track: #e6e6e2; --accent: #2f6fdb; --accent-ink: #ffffff; --meter-low: #2fa36b;
 	--meter-mid: #d9a514; --meter-high: #d94a3d; --shadow: 0 1px 3px rgba(0,0,0,.08);
+	--font: system-ui, -apple-system, "Segoe UI", sans-serif; --radius: 12px; --fader-height: 180px;
 }
+/* dark: the system's, unless light is chosen on the page; or chosen on the page (a theme's
+   stylesheet, theme.css, comes after this with the same selectors) */
 @media (prefers-color-scheme: dark) {
-	:root {
+	:root:not([data-mode="light"]) {
 		--bg: #141416; --card: #1f1f22; --ink: #ececee; --muted: #9a9aa0; --line: #34343a;
 		--track: #2c2c31; --accent: #5b8ff0; --accent-ink: #0e0e10; --shadow: none;
 	}
 }
+:root[data-mode="dark"] {
+	--bg: #141416; --card: #1f1f22; --ink: #ececee; --muted: #9a9aa0; --line: #34343a;
+	--track: #2c2c31; --accent: #5b8ff0; --accent-ink: #0e0e10; --shadow: none;
+}
 * { box-sizing: border-box; }
 body {
 	margin: 0; background: var(--bg); color: var(--ink);
-	font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+	font: 14px/1.35 var(--font);
 	-webkit-user-select: none; user-select: none; touch-action: manipulation;
 }
 header { display: flex; align-items: center; gap: 10px; padding: 14px 16px 4px; flex-wrap: wrap; }
@@ -27,14 +34,14 @@ h1 { font-size: 18px; margin: 0; font-weight: 600; }
 #status { width: 9px; height: 9px; border-radius: 50%; background: var(--meter-high); }
 #status.on { background: var(--meter-low); }
 main { display: flex; flex-wrap: wrap; gap: 14px; padding: 12px 16px 24px; }
-section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); padding: 10px 12px 12px; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 12px 12px; }
 section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
 .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .control { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 64px; }
 .name { font-size: 12px; color: var(--muted); text-align: center; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .value { font-size: 12px; font-variant-numeric: tabular-nums; min-height: 16px; }
 
-.fader { position: relative; width: 44px; height: 180px; touch-action: none; cursor: ns-resize; outline: none; }
+.fader { position: relative; width: 44px; height: var(--fader-height); touch-action: none; cursor: ns-resize; outline: none; }
 .fader .track { position: absolute; left: 19px; top: 8px; bottom: 8px; width: 6px; border-radius: 3px; background: var(--track); }
 .fader .fill { position: absolute; left: 19px; bottom: 8px; width: 6px; border-radius: 3px; background: var(--accent); }
 .fader .thumb { position: absolute; left: 6px; width: 32px; height: 16px; margin-bottom: -8px; border-radius: 4px; background: var(--card); border: 2px solid var(--accent); }
@@ -45,11 +52,11 @@ section h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; 
 .knob .arc { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; }
 .knob .dot { fill: var(--ink); }
 
-button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 10px 14px; min-width: 64px; min-height: 44px; cursor: pointer; touch-action: manipulation; }
+button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: calc(var(--radius) * 2 / 3); padding: 10px 14px; min-width: 64px; min-height: 44px; cursor: pointer; touch-action: manipulation; }
 button.on, button.down { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-select { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; min-height: 44px; max-width: 160px; }
+select { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: calc(var(--radius) * 2 / 3); padding: 9px 10px; min-height: 44px; max-width: 160px; }
 
-.meter { position: relative; width: 16px; height: 180px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.meter { position: relative; width: 16px; height: var(--fader-height); border-radius: 4px; background: var(--track); overflow: hidden; }
 .meter .rms { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(to top, var(--meter-low) 0 70%, var(--meter-mid) 70% 90%, var(--meter-high) 90%); clip-path: inset(100% 0 0 0); }
 .meter .peak { position: absolute; left: 0; right: 0; height: 2px; background: var(--ink); bottom: 0; }
 
@@ -130,10 +137,19 @@ body.embed main { padding: 0 0 4px; }
 body.learn .cue.bindable { outline: 1px dashed var(--line); outline-offset: 2px; }
 body.learn .cue.armed { outline: 2px solid var(--accent); animation: armed 1s ease-in-out infinite; }
 .inspector button, .inspector select { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+/* the look: a theme and light or dark */
+#look { display: flex; gap: 6px; }
+#look select { min-height: 34px; padding: 4px 8px; font-size: 13px; }
+.missing { font-size: 12px; color: var(--muted); border: 1px dashed var(--line); border-radius: 6px; padding: 8px; max-width: 200px; }
 </style>
+<link id="theme" rel="stylesheet" href="theme.css">
+<script>
+// the mode chosen (light, dark, or the system's) before anything is drawn
+try { const m = localStorage.getItem("psalm.mode"); if (m === "light" || m === "dark") document.documentElement.dataset.mode = m; } catch (e) {}
+</script>
 </head>
 <body>
-<header><span id="status" title="connection"></span><h1 id="title">Panel</h1><button id="run" hidden title="start or stop the sound (space)"><span class="icon"></span><span class="text">Stop</span></button><button id="restart" hidden title="back to the start"><span class="icon"></span>Restart</button><span class="spacer"></span><span id="note"></span><span id="presets" hidden></span><button id="learn" title="Tap a control, then move a knob or fader on your MIDI controller">MIDI learn</button></header>
+<header><span id="status" title="connection"></span><h1 id="title">Panel</h1><button id="run" hidden title="start or stop the sound (space)"><span class="icon"></span><span class="text">Stop</span></button><button id="restart" hidden title="back to the start"><span class="icon"></span>Restart</button><span class="spacer"></span><span id="note"></span><span id="look"><select id="themes" title="theme"></select><select id="mode" title="light or dark"><option value="">system</option><option value="light">light</option><option value="dark">dark</option></select></span><span id="presets" hidden></span><button id="learn" title="Tap a control, then move a knob or fader on your MIDI controller">MIDI learn</button></header>
 <main id="panel"></main>
 <script>
 "use strict";
@@ -650,7 +666,7 @@ function mount(p) {
 		none.hidden = !!m.title;
 		if (m.id === shown) return; // the same panel: it stays as it is
 		shown = m.id;
-		if (m.title) frame.src = "mount/" + encodeURIComponent(p.name) + "/?embed&id=" + m.id;
+		if (m.title) frame.src = "mount/" + encodeURIComponent(p.name) + "/?embed&id=" + m.id + "&theme=" + encodeURIComponent(themeNow);
 		else { frame.src = "about:blank"; frame.style.height = "0"; }
 	};
 	setTimeout(() => show(p.mount), 0); // once it is on the page
@@ -664,6 +680,15 @@ window.addEventListener("message", e => {
 		if (f.contentWindow !== e.source) continue;
 		if (m.psalm === "height") f.style.height = m.height + "px";
 	}
+	if (m.psalm === "theme" && e.source === window.parent && m.name) {
+		themeNow = m.name;
+		document.getElementById("theme").href = "theme.css?name=" + encodeURIComponent(m.name);
+		for (const w of Object.values(widgets)) if (w.restyle) setTimeout(w.restyle, 50);
+	}
+	if (m.psalm === "mode" && e.source === window.parent) {
+		if (m.mode) document.documentElement.dataset.mode = m.mode; else delete document.documentElement.dataset.mode;
+		for (const w of Object.values(widgets)) if (w.restyle) setTimeout(w.restyle, 50);
+	}
 	if (m.psalm === "learn" && window.parent === window && m.on !== learnMode) setLearnMode(m.on, false);
 	if (m.psalm === "learn" && window.parent !== window && e.source === window.parent) setLearnMode(m.on, !m.on);
 });
@@ -676,6 +701,72 @@ if (embedded) {
 }
 
 const builders = {fader, knob, toggle, button, select: choice, meter, grid, cues, mount};
+
+// the API of plugins: a builder for a kind of control, and the page's own helpers
+const css = name => getComputedStyle(document.documentElement).getPropertyValue("--" + name).trim();
+const api = {
+	register(kind, builder) { builders[kind] = builder; },
+	send, press: name => post("api/press", {name}), message: (name, data) => post("api/message", {name, data}),
+	post, labelled, drag, position, valueAt, format, clamp01, css,
+};
+window.psalm = api;
+
+// a control of a kind no plugin draws
+function missing(p) {
+	const el = document.createElement("div");
+	el.className = "missing";
+	el.textContent = `${p.label || p.name}: no plugin draws "${p.kind}"`;
+	return {el, show() {}};
+}
+
+// the plugins: their styles, then their scripts, in order, before the controls are drawn
+async function loadPlugins(list) {
+	for (const pl of list || []) {
+		const base = "plugins/" + encodeURIComponent(pl.name) + "/";
+		if (pl.style) {
+			const link = document.createElement("link");
+			link.rel = "stylesheet"; link.href = base + "plugin.css";
+			document.head.insertBefore(link, document.getElementById("theme")); // the theme over it
+		}
+		if (pl.script) {
+			await new Promise(done => {
+				const sc = document.createElement("script");
+				sc.src = base + "plugin.js";
+				sc.onload = done;
+				sc.onerror = () => { note(`the plugin ${pl.name} didn't load`, true); done(); };
+				document.head.append(sc);
+			});
+		}
+	}
+}
+
+// the look: the theme (chosen here, remembered in the browser; else the one of the page above, a
+// mounted panel follows it; else the panel's own) and light or dark
+let themeNow = "";
+function look(themes, own) {
+	const sel = document.getElementById("themes"), mode = document.getElementById("mode");
+	let chosen = null;
+	try { chosen = localStorage.getItem("psalm.theme"); } catch (e) {}
+	const above = new URLSearchParams(location.search).get("theme");
+	themeNow = [chosen, above, own].find(t => t && themes.includes(t)) || own;
+	const apply = () => {
+		document.getElementById("theme").href = "theme.css?name=" + encodeURIComponent(themeNow);
+		for (const f of frames) if (f.contentWindow) f.contentWindow.postMessage({psalm: "theme", name: themeNow}, "*");
+		for (const w of Object.values(widgets)) if (w.restyle) setTimeout(w.restyle, 50);
+	};
+	sel.innerHTML = "";
+	for (const t of themes) { const o = document.createElement("option"); o.value = o.textContent = t; sel.append(o); }
+	sel.value = themeNow;
+	sel.onchange = () => { themeNow = sel.value; try { localStorage.setItem("psalm.theme", themeNow); } catch (e) {} apply(); };
+	mode.value = document.documentElement.dataset.mode || "";
+	mode.onchange = () => {
+		if (mode.value) document.documentElement.dataset.mode = mode.value; else delete document.documentElement.dataset.mode;
+		try { localStorage.setItem("psalm.mode", mode.value); } catch (e) {}
+		for (const f of frames) if (f.contentWindow) f.contentWindow.postMessage({psalm: "mode", mode: mode.value}, "*");
+		for (const w of Object.values(widgets)) if (w.restyle) setTimeout(w.restyle, 50);
+	};
+	apply();
+}
 
 // MIDI learn: in learn mode a tap on a control arms it (its value stays), the next control change
 // from the controller binds to it (or the next note, for a button, a toggle or the tile of a cue
@@ -727,6 +818,8 @@ function showMIDI(m) {
 
 async function build() {
 	const d = await (await fetch("api/panel")).json();
+	look(d.themes || ["default"], d.theme || "default");
+	await loadPlugins(d.plugins);
 	document.title = d.title;
 	document.getElementById("title").textContent = d.title;
 	const main = document.getElementById("panel");
@@ -737,11 +830,16 @@ async function build() {
 		const row = document.createElement("div"); row.className = "controls";
 		sec.append(h, row);
 		for (const p of s.controls) {
-			const w = builders[p.kind](p);
+			let w;
+			try { w = (builders[p.kind] || missing)(p, api); }
+			catch (e) { console.error(e); note(`${p.name}: ${e.message}`, true); w = missing(p); }
 			w.param = p;
 			widgets[p.name] = w;
+			w.el.dataset.kind = p.kind; w.el.dataset.name = p.name;
 			w.show(p.value);
-			if (p.kind !== "meter" && p.kind !== "grid" && p.kind !== "cues" && p.kind !== "mount") bindable(w, p);
+			if (p.state !== undefined && w.update) w.update(p.state);
+			const own = ["fader", "knob", "toggle", "button", "select"].includes(p.kind);
+			if (own || (w.bindable && !["meter", "grid", "cues", "mount"].includes(p.kind))) bindable(w, p);
 			row.append(w.el);
 		}
 		main.append(sec);
@@ -887,6 +985,9 @@ function listen() {
 			if (widgets[name] && widgets[name].update) widgets[name].update(m);
 		}
 		for (const [name, st] of Object.entries(u.cues || {})) {
+			if (widgets[name] && widgets[name].update) widgets[name].update(st);
+		}
+		for (const [name, st] of Object.entries(u.states || {})) {
 			if (widgets[name] && widgets[name].update) widgets[name].update(st);
 		}
 		for (const [name, gu] of Object.entries(u.grids || {})) {

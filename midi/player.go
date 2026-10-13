@@ -212,6 +212,17 @@ func (p *Player) PlayTime(from float64) float64 {
 	return total / p.speed
 }
 
+// Rate returns how fast the file plays now against its own time: the speed, and the tempo followed
+// against the file's (0 when it is stopped)
+func (p *Player) Rate() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.playing {
+		return 0
+	}
+	return p.rate()
+}
+
 // nextTempoChange returns the time of the file's next tempo change after where it is
 func (p *Player) nextTempoChange() (float64, bool) {
 	i, _ := slices.BinarySearchFunc(p.tempoMap, p.pos+1e-9, func(c tempoChange, s float64) int {

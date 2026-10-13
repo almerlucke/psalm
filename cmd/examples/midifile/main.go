@@ -14,7 +14,7 @@
 // pan (10) and reverb send (91) set its strip on the mixer.
 //
 // A control panel runs alongside (http://localhost:8087, -addr to move it, empty to leave it
-// out): play, stop, back to the start, where in the file (drag to jump), the speed, loop; for every
+// out): the notes scrolling past as they play (a piano roll: click it to jump), play, stop, back to the start, where in the file (drag to jump), the speed, loop; for every
 // channel its sound (as the file has it, or any synth and preset, drum kit or orchestra
 // instrument), a mute and a volume; the master and the hall, and meters.
 //
@@ -51,6 +51,7 @@ import (
 	"github.com/almerlucke/psalm/midi"
 	"github.com/almerlucke/psalm/modules/controls/keyboard"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/panel/pianoroll"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/drumsynth"
@@ -337,6 +338,19 @@ func (pt *part) gain() {
 	pt.group.SetVolume(db)
 }
 
+// title returns what the file plays on the part, short: its first program (the drums), and how
+// many more
+func (pt *part) title() string {
+	name := midi.ProgramName(pt.order[0])
+	if pt.channel == midi.DrumChannel {
+		name = "Drums"
+	}
+	if n := len(pt.order) - 1; n > 0 && pt.channel != midi.DrumChannel {
+		name += fmt.Sprintf(" +%d", n)
+	}
+	return name
+}
+
 // describe returns what the part plays
 func (pt *part) describe() string {
 	var s []string
@@ -361,6 +375,7 @@ func main() {
 	start := flag.Float64("start", 0, "seconds into the file to start at")
 	orchestra := flag.String("orchestra", "", "the folder of the Virtual Playing Orchestra (assets/Virtual-Playing-Orchestra3): its samples play the strings, brass, woodwinds, choirs, harp, timpani and mallets")
 	kit := flag.String("kit", "808", "the drum kit of channel 10: 808, 909, electro, trap or industrial")
+	theme := flag.String("theme", "default", "the theme of the panel: default, midnight, paper, amber, contrast or neon (the page can choose another)")
 	addr := flag.String("addr", "localhost:8087", "the address of the control panel page (empty: no panel)")
 	buffer := flag.Int("buffer", 512, "the buffer size")
 	monitor := flag.Bool("monitor", false, "print every MIDI event played")
@@ -555,6 +570,14 @@ func main() {
 
 	if *addr != "" {
 		ctl := panel.New(p, "MIDI file")
+		if t, ok := panel.Themes[*theme]; ok {
+			ctl.SetTheme(t)
+		} else {
+			log.Fatalf("theme %q: one of %v", *theme, slices.Sorted(maps.Keys(panel.Themes)))
+		}
+
+		ctl.Section("Notes")
+		pianoroll.Add(ctl, "Notes", player)
 
 		ctl.Section("Transport")
 		ctl.Button("Play", player.Play)
@@ -582,10 +605,10 @@ func main() {
 				panel.Unit("bpm"), panel.Label("tempo (0: the file's)"))
 		}
 
-		ctl.Section("Channels")
+		// a card for every channel: its sound, a mute and a volume, what the file plays on it above
 		choices := append([]string{"as the file has it"}, soundNames()...)
 		for _, pt := range parts {
-			label := fmt.Sprintf("%d %s", pt.channel, pt.describe())
+			ctl.Section(fmt.Sprintf("%d · %s", pt.channel, pt.title()))
 			// another sound for the channel: made off the audio thread the first time (an SFZ file
 			// takes a moment to load), then put on the mixer and played between two buffers
 			ctl.Select(fmt.Sprintf("Sound %d", pt.channel), choices, func(i int) {
@@ -621,11 +644,11 @@ func main() {
 						}
 					})
 				}()
-			}, panel.Label("sound "+strconv.Itoa(pt.channel)))
+			}, panel.Label("sound"))
+			ctl.Knob(fmt.Sprintf("Volume %d", pt.channel), -30, 12, panel.Linear, panel.Func(func(v float64) { pt.trim = v; pt.gain() }),
+				panel.Label("volume"), panel.Unit("dB"), panel.Default(0), panel.Step(0.5))
 			ctl.Toggle(fmt.Sprintf("Mute %d", pt.channel), panel.Func(func(v float64) { player.MuteChannel(pt.channel, v > 0.5) }),
-				panel.Label("mute "+label))
-			ctl.Fader(fmt.Sprintf("Volume %d", pt.channel), -30, 12, panel.Linear, panel.Func(func(v float64) { pt.trim = v; pt.gain() }),
-				panel.Label("volume "+strconv.Itoa(pt.channel)), panel.Unit("dB"), panel.Default(0), panel.Step(0.5))
+				panel.Label("mute"))
 		}
 
 		ctl.Section("Mix")
