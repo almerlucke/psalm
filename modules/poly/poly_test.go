@@ -1,6 +1,7 @@
 package poly
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -279,5 +280,32 @@ func TestMonoDurations(t *testing.T) {
 	}
 	if v.held {
 		t.Errorf("the notes of a duration never let go")
+	}
+}
+
+func TestNoteMessage(t *testing.T) {
+	voices := []*recVoice{newRecVoice(), newRecVoice(), newRecVoice()}
+	p := New(psalm.Stereo, voices)
+	on(p, "a", 60)
+	on(p, "b", 64)
+	p.ReceiveMessage(psalm.Message{"command": "note", "id": "b", "message": psalm.Message{"pitch": 99.0}})
+	var pitches []float64
+	for _, v := range voices {
+		pitches = append(pitches, v.pitch)
+	}
+	if !slices.Contains(pitches, 99) || !slices.Contains(pitches, 60) {
+		t.Errorf("the message for b reached the voices as %v", pitches)
+	}
+	// in mono only the note sounding takes it
+	p.ReceiveMessage(psalm.Message{"mono": 1.0, "legato": 1.0})
+	on(p, "c", 60)
+	on(p, "d", 62)
+	p.ReceiveMessage(psalm.Message{"command": "note", "id": "c", "message": psalm.Message{"pitch": 1.0}})
+	if v := p.monoVoice.voice; v.pitch != 62 {
+		t.Errorf("a note held under the one sounding moved it to %g", v.pitch)
+	}
+	p.ReceiveMessage(psalm.Message{"command": "note", "id": "d", "message": psalm.Message{"pitch": 63.0}})
+	if v := p.monoVoice.voice; v.pitch != 63 {
+		t.Errorf("the note sounding didn't take its message: %g", v.pitch)
 	}
 }

@@ -26,6 +26,9 @@ type Player struct {
 	playing  bool
 	loop     bool
 	speed    float64
+	tempoMap []tempoChange
+	division int
+	tempo    func() float64 // the tempo followed (quarter notes a minute), nil: the file's
 	used     [16]bool
 	mutedCh  [16]bool
 	mutedTr  []bool
@@ -41,8 +44,9 @@ type playEvent struct {
 
 // NewPlayer returns a player of a file, stopped at its start
 func NewPlayer(f *File) *Player {
-	p := &Player{file: f, speed: 1, mutedTr: make([]bool, len(f.Tracks))}
+	p := &Player{file: f, speed: 1, mutedTr: make([]bool, len(f.Tracks)), division: f.Division}
 	tempo := f.tempoMap()
+	p.tempoMap = tempo
 	for i, t := range f.Tracks {
 		for _, e := range t.Events {
 			if !e.Message.IsChannel() {
@@ -139,6 +143,101 @@ func (p *Player) SetSpeed(speed float64) {
 	p.mu.Unlock()
 }
 
+// SetTempo plays the file at a tempo (quarter notes a minute) instead of its own: every beat at
+// that tempo, the tempo changes of the file left out, so it plays in step with whatever keeps that
+// tempo; 0 plays it at its own tempo again. The speed applies on top. A file timed in SMPTE frames
+// has no beats: it keeps its time
+func (p *Player) SetTempo(bpm float64) {
+	if bpm <= 0 {
+		p.FollowTempo(nil)
+		return
+	}
+	p.FollowTempo(func() float64 { return bpm })
+}
+
+// FollowTempo plays the file at a tempo that may change, asked for every buffer (on the goroutine
+// reading the player: the audio thread, so a patch's tempo can be followed, or a MIDI clock):
+// as SetTempo. Nil (or a tempo of 0) plays it at its own tempo
+func (p *Player) FollowTempo(bpm func() float64) {
+	p.mu.Lock()
+	p.tempo = bpm
+	p.mu.Unlock()
+}
+
+// Tempo returns the tempo of the file where it is (quarter notes a minute; 0 for SMPTE time)
+func (p *Player) Tempo() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.fileTempo(p.pos)
+}
+
+// fileTempo returns the tempo of the file at a time
+func (p *Player) fileTempo(seconds float64) float64 {
+	if p.division <= 0 {
+		return 0
+	}
+	i, _ := slices.BinarySearchFunc(p.tempoMap, seconds, func(c tempoChange, s float64) int {
+		if c.seconds <= s {
+			return -1
+		}
+		return 1
+	})
+	c := p.tempoMap[max(0, i-1)]
+	return 60 / (c.perTick * float64(p.division))
+}
+
+// PlayTime returns the seconds it takes to play from a time in the file to its end, at the speed
+// and the tempo followed now
+func (p *Player) PlayTime(from float64) float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	from = math.Max(0, math.Min(from, p.length))
+	bpm := 0.0
+	if p.tempo != nil {
+		bpm = p.tempo()
+	}
+	if bpm <= 0 || p.division <= 0 {
+		return (p.length - from) / p.speed
+	}
+	total := 0.0
+	for i, c := range p.tempoMap {
+		end := p.length
+		if i+1 < len(p.tempoMap) {
+			end = math.Min(end, p.tempoMap[i+1].seconds)
+		}
+		if seg := end - math.Max(from, c.seconds); seg > 0 {
+			total += seg * (60 / (c.perTick * float64(p.division))) / bpm
+		}
+	}
+	return total / p.speed
+}
+
+// nextTempoChange returns the time of the file's next tempo change after where it is
+func (p *Player) nextTempoChange() (float64, bool) {
+	i, _ := slices.BinarySearchFunc(p.tempoMap, p.pos+1e-9, func(c tempoChange, s float64) int {
+		if c.seconds <= s {
+			return -1
+		}
+		return 1
+	})
+	if i >= len(p.tempoMap) {
+		return 0, false
+	}
+	return p.tempoMap[i].seconds, true
+}
+
+// rate returns how fast the file plays now: the speed, and the tempo followed against the file's
+func (p *Player) rate() float64 {
+	r := p.speed
+	if p.tempo == nil {
+		return r
+	}
+	if bpm, own := p.tempo(), p.fileTempo(p.pos); bpm > 0 && own > 0 {
+		r *= bpm / own
+	}
+	return math.Max(0.01, r)
+}
+
 // Speed returns how fast the file plays
 func (p *Player) Speed() float64 {
 	p.mu.Lock()
@@ -200,13 +299,23 @@ func (p *Player) Read(events []Event, frames int, sampleRate float64) []Event {
 	}
 	done := 0
 	for done < frames {
-		end := p.pos + float64(frames-done)/sampleRate*p.speed
+		speed := p.rate()
+		// following a tempo, the rate changes where the file's tempo does: the buffer is played in
+		// parts, up to the next change
+		part := frames - done
+		if p.tempo != nil {
+			if next, ok := p.nextTempoChange(); ok && next < p.length {
+				part = max(1, min(part, int(math.Ceil((next-p.pos)/speed*sampleRate-1e-6))))
+			}
+		}
+		stop := done + part
+		end := p.pos + float64(part)/sampleRate*speed
 		for p.next < len(p.events) {
 			e := p.events[p.next]
 			// the frame it falls on (a hair added: the position is a sum of buffers, a time on a
 			// frame may come out just before it)
-			offset := done + int(math.Floor((e.at-p.pos)/p.speed*sampleRate+1e-6))
-			if offset >= frames {
+			offset := done + int(math.Floor((e.at-p.pos)/speed*sampleRate+1e-6))
+			if offset >= stop {
 				break
 			}
 			p.next++
@@ -215,11 +324,11 @@ func (p *Player) Read(events []Event, frames int, sampleRate float64) []Event {
 			}
 		}
 		if end < p.length {
-			p.pos = end
-			break
+			p.pos, done = end, stop
+			continue
 		}
 		// the end: let go of everything, start over or stop
-		done += max(1, int(math.Ceil((p.length-p.pos)/p.speed*sampleRate)))
+		done += max(1, int(math.Ceil((p.length-p.pos)/speed*sampleRate)))
 		at := min(done, frames-1)
 		var msgs []Message
 		if p.loop && p.length > 0 {

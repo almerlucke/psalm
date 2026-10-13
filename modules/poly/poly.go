@@ -215,7 +215,8 @@ func (p *Poly[T]) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, i
 
 // ReceiveMessage triggers notes ("command": "trigger"). A message without a command (or with
 // "command": "voice") goes to all voices: a setting for every voice, like the sustain pedal of a
-// piano
+// piano. "command": "note" sends its "message" to the voice of one note, by its "id" (the id of
+// its noteOn): the polyphonic aftertouch of a key
 func (p *Poly[T]) ReceiveMessage(msg psalm.Message) {
 	command, ok := msg.StrVal("command")
 	if !ok {
@@ -244,6 +245,23 @@ func (p *Poly[T]) ReceiveMessage(msg psalm.Message) {
 			p.monoOn(id, msg.MustMsg("message"), msg.MustFltVal("amplitude"), tick)
 		}
 		p.triggerCount++
+	case command == "note":
+		id, _ := msg.StrVal("id")
+		m, ok := msg.Msg("message")
+		if !ok || id == "" {
+			return
+		}
+		if p.mono {
+			if n := len(p.held); n > 0 && p.held[n-1].id == id && p.monoVoice != nil {
+				p.monoVoice.voice.ReceiveMessage(m)
+			}
+			return
+		}
+		for _, v := range p.activePool {
+			if v.voice.ID() == id {
+				v.voice.ReceiveMessage(m)
+			}
+		}
 	case !ok || command == "voice":
 		p.CallVoices(func(v T) {
 			v.ReceiveMessage(msg)

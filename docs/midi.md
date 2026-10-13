@@ -81,6 +81,7 @@ right sample.
 | `midi.Inputs{a, b}` | Several inputs merged into one, in order of offset. |
 | `midi.NewPlayer(file)` | A MIDI file, played in time (see [MIDI files](#midi-files)). |
 | `midi.Tee(input, n)` | One input shared by `n` readers, such as a keyboard for every channel of a file. Each reader gets every event. |
+| `midi.Record(input)` | Passes another input on and, between `Start` and `Stop`, keeps its channel messages with the time they played. `File(bpm)` turns them into a MIDI file at a tempo: the silence before the first note is left out, notes still held are let go at the end. |
 
 A device or a queue stamps each message with the time it arrives, and plays it a constant latency
 later, at the frame that latency puts it on. The timing of the playing is kept: a quick run of
@@ -115,6 +116,7 @@ messages, such as a poly synth or the piano.
 | `Controls` | Maps controllers to messages for every voice, as `{name: value}` with the value 0-1. Nil means `DefaultControls`: 64 to `sustain`, 66 to `sostenuto` and 67 to `soft`, the piano's pedals. Because sustain is sent as a continuous value, half pedaling works. An empty map sends nothing. |
 | `HoldNotes` | The keyboard holds released notes itself while the sustain pedal is down, instead of sending the pedal. Use this for synths without a sustain pedal of their own. |
 | `PitchBend`, `Pressure` | The message names for pitch bend (-1 to 1) and channel pressure (0-1), sent to every voice. Empty sends none. |
+| `PolyPressure` | The message name for the pressure of one key (polyphonic aftertouch, 0-1), sent to the voice of that note alone (a poly's `"command": "note"`). Empty sends none. |
 | `Routes` | Sends controllers to any setting of a synth, scaled to its range (see below). A routed controller is sent as its routes instead of by `Controls` (`PitchBend`, `Pressure`). |
 | `FollowClock` | Sets the tempo of the patch from a MIDI clock, averaged over the last beat. `Tempo()` reads it. |
 | `Hits` | Plays notes as hits that play to their end: a note on becomes a note of no duration, and a note off sends nothing. Use this for drums played from a file or a pad, whose short note offs would otherwise choke the drumsynth. |
@@ -206,6 +208,8 @@ player.Play()
 | `Seek(seconds)`, `Position()`, `Duration()` | Jump to a time. Every channel is then set as the file has it there: the controllers are reset, then the bank, the program, the controllers, the bend and the pressure are sent as they last were. A note started before that point doesn't sound. |
 | `SetLoop(bool)` | Start over at the end. |
 | `SetSpeed(x)` | 1 plays at the file's tempo, 0.5 at half of it (0.05 to 8). |
+| `SetTempo(bpm)`, `FollowTempo(func() float64)` | Play every beat at a tempo instead of the file's, so it stays in step with whatever keeps that tempo: a fixed one, or one asked for every buffer, such as the patch's tempo (which a keyboard with `FollowClock` sets from a MIDI clock). The file's own tempo changes are left out. 0 or nil plays it at its own tempo again. `Tempo()` is the file's tempo where it is. |
+| `PlayTime(from)` | The seconds it takes to play from a time to the end, at the speed and tempo now (how long to render). |
 | `MuteChannel(ch, bool)`, `MuteTrack(i, bool)` | Mute the notes of a channel or a track. Its controllers still go through, so it plays correctly when unmuted. |
 
 All of these can be called from any goroutine, while it plays.
@@ -247,6 +251,14 @@ go run ./cmd/examples/midifile song.mid
 go run ./cmd/examples/midifile -list song.mid           # the tracks, the channels and their synths
 go run ./cmd/examples/midifile -synth 1=supersaw/lead -kit 909 -loop song.mid
 go run ./cmd/examples/midifile -render song.wav song.mid
+go run ./cmd/examples/midifile -orchestra assets/Virtual-Playing-Orchestra3 song.mid
+go run ./cmd/examples/midifile -tempo 128 song.mid                 # every beat at 128
+go run ./cmd/examples/midifile -clock /dev/snd/midiC3D0 song.mid   # in step with a sequencer
 ```
+
+With `-orchestra` the strings, brass, woodwinds, choirs, harp, timpani and mallets play the samples
+of the Virtual Playing Orchestra. On the panel every channel can play any other sound while it
+plays: a synth and preset, a drum kit or an orchestra instrument. `cmd/examples/keyboard -record`
+(or Record on its panel) records what you play to a MIDI file, to play again with it.
 
 See [examples](examples.md).

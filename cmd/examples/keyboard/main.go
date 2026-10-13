@@ -25,6 +25,9 @@
 // synth's own, or a setting such as the cutoff, the fold or the vowel, and how much of its range),
 // the volume and the hall, and meters. Press MIDI learn on the page, tap a control and turn a knob
 // on the keyboard: the knob moves it from then on (the bindings are kept in keyboard-midi.json).
+// Record on the panel (or -record, from the start) records what is played; switched off (or at the
+// end) it is written to a MIDI file, recording-<date>-<time>.mid, to play again with the midifile
+// example.
 //
 //	go run ./cmd/examples/keyboard -list                  the MIDI devices
 //	go run ./cmd/examples/keyboard                        the first keyboard, through portaudio
@@ -35,6 +38,7 @@
 //	                                                      the wheel on the fold, the aftertouch on the FM index
 //	go run ./cmd/examples/keyboard -jack                  JACK audio and a JACK MIDI port (sample accurate)
 //	go run ./cmd/examples/keyboard -demo                  no keyboard: a phrase played as MIDI
+//	go run ./cmd/examples/keyboard -record                record what is played to a MIDI file
 package main
 
 import (
@@ -46,6 +50,7 @@ import (
 	"maps"
 	"math"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -112,14 +117,14 @@ var expressive = map[int]string{midi.CCModWheel: "modWheel"}
 // most synths play the velocity as the amplitude, the sustain pedal holds their notes, they bend
 // and take the mod wheel
 func synthKeys(cfg keyboard.Config) keyboard.Config {
-	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure = 1, expressive, true, "pitchBend", "pressure"
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure, cfg.PolyPressure = 1, expressive, true, "pitchBend", "pressure", "pressure"
 	return cfg
 }
 
 // fm, dx and the physical models take the velocity themselves (it brightens them, or plays the
 // mallet or the string harder), the sustain pedal holds their notes
 func velocityKeys(cfg keyboard.Config) keyboard.Config {
-	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure = 0, expressive, true, "pitchBend", "pressure"
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure, cfg.PolyPressure = 0, expressive, true, "pitchBend", "pressure", "pressure"
 	return cfg
 }
 
@@ -234,6 +239,8 @@ func main() {
 	addr := flag.String("addr", "localhost:8087", "the address of the control panel page (empty: no panel)")
 	bindingsFile := flag.String("bindings", "keyboard-midi.json", "the file the MIDI learn bindings of the panel are kept in")
 	presetDir := flag.String("presets", "keyboard-presets", "the folder the presets saved on the panel's page are kept in")
+	record := flag.Bool("record", false, "record what is played from the start, written to a MIDI file in -recordings when it stops")
+	recordings := flag.String("recordings", ".", "the folder recordings are written to (recording-<date>-<time>.mid)")
 	flag.Parse()
 
 	if *list {
@@ -356,7 +363,9 @@ func main() {
 		}
 		return c
 	}
-	kb := keyboard.New(merged{input, commands}, keysFor(in), synthOf(in))
+	// what is played on the keyboard (not typed in the terminal) can be recorded to a MIDI file
+	recorder := midi.Record(input)
+	kb := keyboard.New(merged{recorder, commands}, keysFor(in), synthOf(in))
 	reroute := func() { kb.SetConfig(keysFor(instruments[current])) } // on the audio thread
 
 	// every sound (a synth and a preset), in order, for the panel
@@ -484,6 +493,23 @@ func main() {
 				panel.Default(100), panel.Unit("%"), panel.Step(1), panel.Label("up to"))
 		}
 
+		ctl.Section("Record")
+		recordOn := 0.0
+		if *record {
+			recordOn = 1
+		}
+		ctl.Toggle("Record", panel.Func(func(v float64) {
+			switch {
+			case v > 0.5 && !recorder.Recording():
+				recorder.Start()
+				log.Print("recording")
+			case v <= 0.5 && recorder.Recording():
+				recorder.Stop()
+				bpm := kb.Env().BPM()
+				go saveRecording(recorder, bpm, *recordings) // not on the audio thread
+			}
+		}), panel.Default(recordOn))
+
 		ctl.Section("Mix")
 		ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(mix.Master(), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03))
 		ctl.Fader("Hall", -40, 6, panel.Linear, panel.Message(mix.Strip("hall"), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03))
@@ -510,9 +536,31 @@ func main() {
 
 	log.Printf("%s: %s, %s velocity curve; bank select or a synth name switches between %v, a program change or a preset name the preset (\"list\" shows them)",
 		in.name, in.presets[in.selected.Load()], *curve, names(instruments))
+	if *record {
+		recorder.Start()
+		log.Printf("recording; written to %s when it stops", *recordings)
+	}
 	if err := p.Listen(); err != nil {
 		log.Fatal(err)
 	}
+	if recorder.Recording() {
+		recorder.Stop()
+		saveRecording(recorder, kb.Env().BPM(), *recordings)
+	}
+}
+
+// saveRecording writes what was recorded to a MIDI file named by the time, at a tempo
+func saveRecording(r *midi.Recorder, bpm float64, dir string) {
+	if r.Len() == 0 {
+		log.Print("nothing recorded")
+		return
+	}
+	path := filepath.Join(dir, "recording-"+time.Now().Format("20060102-150405")+".mid")
+	if err := r.File(bpm).WriteFile(path); err != nil {
+		log.Printf("the recording: %v", err)
+		return
+	}
+	log.Printf("recorded %d messages to %s (play it: go run ./cmd/examples/midifile %s)", r.Len(), path, path)
 }
 
 // newInstruments makes every synth that plays notes with all its presets (grains when its

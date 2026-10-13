@@ -28,6 +28,7 @@ const (
 	Rim                 // two short high tones and a click
 	Cowbell             // two square waves through a band filter, dying in two steps
 	Cymbal              // the hat's metal, lower and long
+	Shaker              // a shake of filtered noise (maracas, cabasa), with jingles (a tambourine)
 )
 
 // Sound is a drum of a kit. What Tone and Snap do depends on the kind
@@ -53,14 +54,19 @@ type Kit struct {
 	Keys map[int]string
 }
 
-// GeneralMIDI are the keys of the General MIDI drums, for the names of the kits here
+// GeneralMIDI are the keys of the General MIDI drums, for the names of the kits here (every kit
+// has all of them)
 var GeneralMIDI = map[int]string{
 	35: "kick", 36: "kick", 37: "rim", 38: "snare", 39: "clap", 40: "snare",
 	41: "tomLow", 43: "tomLow", 45: "tomMid", 47: "tomMid", 48: "tomHigh", 50: "tomHigh",
-	42: "hat", 44: "hat", 46: "open", 49: "cymbal", 51: "cymbal", 57: "cymbal", 56: "cowbell",
-	52: "cymbal", 53: "cymbal", 55: "cymbal", 59: "cymbal", // china, ride bell, splash, ride 2
-	54: "hat", 69: "hat", 70: "hat", // tambourine, cabasa, maracas
-	75: "rim", 76: "rim", 77: "rim", // claves, wood blocks
+	42: "hat", 44: "hat", 46: "open",
+	49: "crash", 52: "crash", 55: "crash", 57: "crash", // crash, china, splash, crash 2
+	51: "ride", 53: "rideBell", 59: "ride",
+	54: "tambourine", 56: "cowbell", 58: "shaker", // vibraslap
+	60: "bongoHigh", 61: "bongoLow", 62: "congaMute", 63: "congaHigh", 64: "congaLow",
+	65: "timbaleHigh", 66: "timbaleLow", 67: "agogoHigh", 68: "agogoLow",
+	69: "shaker", 70: "shaker", 73: "shaker", 74: "shaker", // cabasa, maracas, guiro
+	75: "clave", 76: "woodblockHigh", 77: "woodblockLow", 80: "triangleMute", 81: "triangle",
 }
 
 // Config is a drum synth playing a kit
@@ -225,6 +231,9 @@ func (v *Voice) hit(amplitude float64, msg psalm.Message, tick psalm.CtrlTick) {
 		v.filt[0].SetFrequencyQ(math.Min(400, sr*0.45), 0.7)
 	case Cowbell:
 		v.filt[0].SetFrequencyQ(math.Min(pitch*4.8, sr*0.45), 1.5)
+	case Shaker:
+		v.filt[0].SetFrequencyQ(math.Min(3000+6000*tone, sr*0.45), 0.9)
+		v.filt[1].SetFrequencyQ(math.Min(6000*math.Sqrt(pitch), sr*0.45), 2)
 	case Tom, Kick:
 		v.filt[0].SetFrequencyQ(math.Min(2000+tone*6000, sr*0.45), 0.7)
 	}
@@ -238,7 +247,7 @@ func (v *Voice) pitch() float64 {
 	p := v.snd.Pitch
 	if p <= 0 {
 		switch v.snd.Kind {
-		case Hat, Cymbal:
+		case Hat, Cymbal, Shaker:
 			p = 1
 		default:
 			p = 100
@@ -371,6 +380,24 @@ func (v *Voice) Synthesize() {
 			// it dies in two steps: a fast drop to 40%, then the ring
 			e := v.env * (0.4 + 0.6*math.Exp(-t/(0.012*sr)))
 			s = v.filt[0].Process(sq, svf.BandPass) * e * 1.5
+		case Shaker:
+			// the beads: noise rising in a few milliseconds; the jingles of a tambourine: the
+			// metal, high (Snap is how much of them)
+			m := v.filt[0].Process(v.noise(), svf.BandPass)
+			if snap > 0 {
+				j := 0.0
+				for k, f := range metal {
+					v.phase[k] += f * 2.2 * pitch / sr
+					v.phase[k] -= math.Floor(v.phase[k])
+					if v.phase[k] < 0.5 {
+						j++
+					} else {
+						j--
+					}
+				}
+				m = m*(1-0.5*snap) + v.filt[1].Process(j/6, svf.BandPass)*snap*2
+			}
+			s = m * v.env * (1 - math.Exp(-t/(0.004*sr))) * 2.5
 		}
 		if snd.Kind != Clap || t > 0.03*sr {
 			v.env *= v.envCoef

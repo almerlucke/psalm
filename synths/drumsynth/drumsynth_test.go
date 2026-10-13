@@ -166,3 +166,14 @@ func f64(x []float32) []float64 {
 	}
 	return y
 }
+
+func TestEveryKitHasTheGeneralMIDIDrums(t *testing.T) {
+	for kn, f := range Kits {
+		kit := f()
+		for key, name := range GeneralMIDI {
+			if _, ok := kit.Sounds[name]; !ok {
+				t.Errorf("%s has no %s (key %d)", kn, name, key)
+			}
+		}
+	}
+}

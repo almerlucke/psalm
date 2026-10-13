@@ -64,6 +64,7 @@ type Voice interface {
 | `{"command": "trigger", "tick", "amplitude", "message", "duration"}` | Plays a note of `duration` seconds on a free voice, the voice receives `message` (pitch, settings, ...) |
 | `{"command": "trigger", "tick", "amplitude", "message", "noteOn": id}` | Starts a held note, remembered under `id` |
 | `{"command": "trigger", "tick", "noteOff": id}` | Releases the held note `id` |
+| `{"command": "note", "id": id, "message": {...}}` | Passes `message` to the voice of the held note `id` alone (in mono, when it is the note sounding): the polyphonic aftertouch of one key |
 | `{"command": "voice", ...}`, or a message without a command | Passes the whole message to all voices (change settings of every voice, `AutomateMessage` of an arrangement works this way) |
 
 **Value inputs**: plain values on inputs above 0 are passed to all voices on the same input, so
@@ -1144,8 +1145,13 @@ seq.Row("kick", stepseq.Sound(kit, "kick"))
 ```
 
 The kits `Kit808()`, `Kit909()`, `KitElectro()` (zapping kicks and toms, tight hats), `KitTrap()` (a long driven 808 boom, a big clap) and `KitIndustrial()` (everything distorted, metal for hats) have `kick`, `snare`, `hat`, `open`, `tomLow`, `tomMid`,
-`tomHigh`, `clap`, `rim`, `cowbell` and `cymbal`; the hats choke each other. A `Sound` has a
-`Kind` (`Kick`, `Snare`, `Hat`, `Tom`, `Clap`, `Rim`, `Cowbell`, `Cymbal`), `Pitch`, `Decay`,
+`tomHigh`, `clap`, `rim`, `cowbell` and `cymbal`; the hats choke each other. Every kit also has the rest of
+the General MIDI percussion in its own character (driven in the industrial kit, tuned higher in
+the electro kit): `crash`, `ride`, `rideBell`, `tambourine`, `shaker`, `bongoHigh`, `bongoLow`,
+`congaMute`, `congaHigh`, `congaLow`, `timbaleHigh`, `timbaleLow`, `agogoHigh`, `agogoLow`,
+`clave`, `woodblockHigh`, `woodblockLow`, `triangle` and `triangleMute`. `GeneralMIDI` maps the
+General MIDI drum keys to them, so a drum track from a MIDI file plays every hit. A `Sound` has a
+`Kind` (`Kick`, `Snare`, `Hat`, `Tom`, `Clap`, `Rim`, `Cowbell`, `Cymbal`, `Shaker`), `Pitch`, `Decay`,
 `Sweep` and `SweepTime` (the pitch falling), `Tone` (the filter of its noise or metal), `Snap`
 (the attack: a kick's click, a snare's wires), `Drive`, `Level`, `Pan` and `Choke` (a group).
 Change one or add your own:

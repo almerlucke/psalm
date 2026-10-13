@@ -237,3 +237,18 @@ func TestParseRoute(t *testing.T) {
 		t.Errorf("by message: %v", rec.msgs)
 	}
 }
+
+func TestPolyPressure(t *testing.T) {
+	p, q, _, rec := setup(Config{PolyPressure: "pressure"})
+	q.PushOffset(midi.NoteOnMsg(1, 60, 100), 0)
+	q.PushOffset(midi.PolyPressureMsg(1, 60, 127), 5)
+	q.PushOffset(midi.PolyPressureMsg(1, 61, 127), 6) // no such note sounding: nothing
+	run(p)
+	if len(rec.msgs) != 2 {
+		t.Fatalf("got %v", rec.msgs)
+	}
+	m := rec.msgs[1]
+	if m["command"] != "note" || m["id"] != "midi-1-60" || m.MustMsg("message").MustFltVal("pressure") != 1 {
+		t.Errorf("poly pressure sent as %v", m)
+	}
+}

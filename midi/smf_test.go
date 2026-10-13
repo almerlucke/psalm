@@ -372,3 +372,106 @@ func TestTee(t *testing.T) {
 		t.Errorf("three readers didn't play it through at the speed of one: at %g s", p.Position())
 	}
 }
+
+func TestRecorder(t *testing.T) {
+	const sr = 48000.0
+	q := NewQueue()
+	r := Record(q)
+	read := func() { r.Read(nil, 480, sr) } // a hundredth of a second
+	q.PushOffset(NoteOnMsg(1, 50, 90), 0)
+	read() // not recording: passed on, not kept
+	r.Start()
+	read() // 10 ms of silence before the first note: left out
+	q.PushOffset(ControlChangeMsg(1, CCSustain, 127), 100)
+	read()
+	q.PushOffset(NoteOnMsg(1, 60, 100), 240) // at 25 ms
+	read()
+	for range 49 {
+		read()
+	}
+	q.PushOffset(NoteOffMsg(1, 60, 0), 240) // half a second later
+	q.PushOffset(NoteOnMsg(1, 64, 80), 240)
+	read()
+	q.PushOffset(Message{0xF8}, 0) // a clock: not kept
+	read()
+	r.Stop()
+	q.PushOffset(NoteOnMsg(1, 67, 80), 0)
+	read()
+	if r.Len() != 4 {
+		t.Fatalf("recorded %d messages, want 4", r.Len())
+	}
+
+	var b bytes.Buffer
+	if err := r.File(120).Write(&b); err != nil { // 960 ticks a second
+		t.Fatal(err)
+	}
+	f, err := ParseFile(b.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []timedMsg
+	for _, e := range f.Tracks[0].Events {
+		if !e.IsMeta() {
+			got = append(got, timedMsg{e.Tick, e.Message.String()})
+		}
+	}
+	want := []timedMsg{
+		{0, ControlChangeMsg(1, CCSustain, 127).String()}, // before the first note: at the start
+		{0, NoteOnMsg(1, 60, 100).String()},
+		{480, NoteOffMsg(1, 60, 0).String()},
+		{480, NoteOnMsg(1, 64, 80).String()},
+		{494, NoteOffMsg(1, 64, 0).String()}, // held at the end: let go there (the last buffer read, 14 ms on)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("recorded\n got %v\nwant %v", got, want)
+	}
+}
+
+func TestPlayerFollowsATempo(t *testing.T) {
+	const sr = 48000.0
+	// the song is two beats at 120 and two at 60: at a tempo of 120 every beat takes half a second
+	p := NewPlayer(song())
+	p.SetTempo(120)
+	p.Play()
+	all := collect(p, 200, 512, sr)
+	if got, want := frameOf(all, NoteOnMsg(1, 62, 100)), int64(1.5*sr); got != want {
+		t.Errorf("at 120 the note on the fourth beat at %d, want %d", got, want)
+	}
+	// a tempo that changes as it plays: 60 from the start, then 240
+	p = NewPlayer(song())
+	bpm := 60.0
+	p.FollowTempo(func() float64 { return bpm })
+	p.Play()
+	all = collect(p, 94, 512, sr) // 1.0027 s: a beat at 60
+	bpm = 240
+	all = append(all, collect(p, 200, 512, sr)...)
+	if got := frameOf(all, NoteOnMsg(2, 48, 70)); got < 0 || got > int64(1.01*sr) {
+		t.Errorf("the second beat at 60 at frame %d, want about %g", got, sr)
+	}
+	if p.Playing() {
+		t.Errorf("at 240 it should be done by now, at %g s of the file", p.Position())
+	}
+	if p.Tempo() != 60 {
+		t.Errorf("the tempo of the file at its end %g, want 60", p.Tempo())
+	}
+	p.SetTempo(0)
+	if p.rate() != 1 {
+		t.Errorf("back to its own tempo, the rate is %g", p.rate())
+	}
+}
+
+func TestPlayTime(t *testing.T) {
+	p := NewPlayer(song()) // two beats at 120, two at 60: 3 s
+	if d := p.PlayTime(0); math.Abs(d-3) > 1e-9 {
+		t.Errorf("play time %g, want 3", d)
+	}
+	p.SetSpeed(2)
+	if d := p.PlayTime(1.5); math.Abs(d-0.75) > 1e-9 {
+		t.Errorf("from 1.5 s at double speed %g, want 0.75", d)
+	}
+	p.SetSpeed(1)
+	p.SetTempo(240) // four beats at 240
+	if d := p.PlayTime(0); math.Abs(d-1) > 1e-9 {
+		t.Errorf("at 240 %g, want 1", d)
+	}
+}

@@ -81,6 +81,9 @@ func dry(cfg Config) Config {
 }
 
 func TestPluckInTune(t *testing.T) {
+	// every pluck the same (a random burst can fool the pitch measure an octave up)
+	psalm.Seed(1)
+	psalm.SetCurrentEnv(psalm.NewEnv(psalm.CurrentStackConfig()))
 	for _, p := range []float64{28, 40, 52, 64, 76, 88, 96} {
 		_, x := play(dry(Steel()), p, 0.5)
 		if c := cents(pitchOf(x[int(0.1*sr()):]), hz(p)); math.Abs(c) > 3 {

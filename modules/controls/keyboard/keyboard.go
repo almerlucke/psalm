@@ -63,6 +63,10 @@ type Config struct {
 	PitchBend string
 	Pressure  string
 
+	// PolyPressure is the name of the message the pressure of a single key (polyphonic aftertouch,
+	// 0-1) is sent as, to the voice of that note alone; "" sends none
+	PolyPressure string
+
 	// FollowClock sets the tempo of the patch from a MIDI clock
 	FollowClock bool
 
@@ -267,6 +271,14 @@ func (k *Keyboard) handle(e midi.Event, tick psalm.CtrlTick) {
 		}
 		if k.cfg.PitchBend != "" {
 			k.send(psalm.Message{k.cfg.PitchBend: m.BendAmount()})
+		}
+	case midi.PolyPressure:
+		if k.cfg.PolyPressure != "" && k.sounding[ch][m.Note()] {
+			k.send(psalm.Message{
+				"command": "note",
+				"id":      k.ids[ch][m.Note()],
+				"message": psalm.Message{k.cfg.PolyPressure: float64(m.Pressure()) / 127},
+			})
 		}
 	case midi.ChannelPressure:
 		if k.routed(RoutePressure, float64(m.Pressure())/127) {

@@ -5,15 +5,18 @@
 // organ for the organs, waveguide for the guitars and the bowed strings, modal for the mallets and
 // bells, vocal for the choirs, subtractive, supersaw, wavetable and pd for the synth leads and
 // pads, pulsar and westcoast for the effects; channel 10 plays the drumsynth (-kit). A program
-// change in the middle of the file switches the synth of its channel. -synth gives a channel a
+// change in the middle of the file switches the synth of its channel. With -orchestra (the folder
+// of the Virtual Playing Orchestra) the strings, brass, woodwinds, choirs, harp, timpani and
+// mallets play its samples instead. -synth gives a channel a
 // synth of your own choosing (any synth and preset): -synth 2=supersaw/hoover. Each channel plays
 // through a keyboard (modules/controls/keyboard), so the velocity, the sustain pedal, the pitch bend,
 // the mod wheel and the aftertouch of the file all play; its volume (controller 7), expression (11),
 // pan (10) and reverb send (91) set its strip on the mixer.
 //
 // A control panel runs alongside (http://localhost:8087, -addr to move it, empty to leave it
-// out): play, stop, back to the start, where in the file (drag to jump), the speed, loop; a
-// mute and a volume for every channel; the master and the hall, and meters.
+// out): play, stop, back to the start, where in the file (drag to jump), the speed, loop; for every
+// channel its sound (as the file has it, or any synth and preset, drum kit or orchestra
+// instrument), a mute and a volume; the master and the hall, and meters.
 //
 // Without a file it plays the first page of Bach's Prelude in C (BWV 846) on a piano with a cello
 // under it, written as a MIDI file in memory (-write saves it).
@@ -22,6 +25,10 @@
 //	go run ./cmd/examples/midifile -list song.mid           the tracks, the channels and their synths
 //	go run ./cmd/examples/midifile -synth 1=supersaw/lead -kit 909 -loop song.mid
 //	go run ./cmd/examples/midifile -speed 0.8 -start 30 song.mid
+//	go run ./cmd/examples/midifile -tempo 128 song.mid        every beat at 128
+//	go run ./cmd/examples/midifile -clock /dev/snd/midiC3D0 song.mid   in step with a sequencer's clock
+//	go run ./cmd/examples/midifile -orchestra assets/Virtual-Playing-Orchestra3 song.mid
+//	go run ./cmd/examples/midifile -synth 3=sfz/Strings/harp-sustain -orchestra assets/Virtual-Playing-Orchestra3 song.mid
 //	go run ./cmd/examples/midifile -render song.wav song.mid
 //	go run ./cmd/examples/midifile -write prelude.mid       the prelude as a file
 package main
@@ -33,6 +40,7 @@ import (
 	"maps"
 	"math"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -53,6 +61,7 @@ import (
 	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
+	"github.com/almerlucke/psalm/synths/sampler"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
@@ -100,6 +109,27 @@ var generalMIDI = [128]string{
 	"waveguide/scrape", "vocal/whisper", "westcoast/livingDrone", "pulsar/insects", "westcoast/laserPing", "pulsar/motor", "pulsar/crackle", "westcoast/metal",
 }
 
+// orchestral are the programs the Virtual Playing Orchestra plays with -orchestra: its SFZ files,
+// in the folder of the library (the sustained articulations, which take the velocity)
+var orchestral = map[int]string{
+	8: "Keys/celesta", 9: "Percussion/glockenspiel", 11: "Percussion/vibraphone-auto-damp",
+	13: "Percussion/xylophone", 14: "Percussion/tubular-bells",
+	40: "Strings/1st-violin-SOLO-sustain", 41: "Strings/viola-SOLO-sustain", 42: "Strings/cello-SOLO-sustain",
+	43: "Strings/bass-SOLO-sustain", 44: "Strings/all-strings-SEC-tremolo", 45: "Strings/all-strings-SEC-pizzicato",
+	46: "Strings/harp-sustain", 47: "Percussion/timpani-hit",
+	48: "Strings/all-strings-SEC-sustain", 49: "Strings/all-strings-SEC-sustain",
+	52: "Vocals/choir-MIXED-sustain", 53: "Vocals/choir-FEMALE-sustain",
+	56: "Brass/trumpet-SOLO-sustain", 57: "Brass/trombone-SOLO-sustain", 58: "Brass/tuba-SOLO-sustain",
+	59: "Brass/trumpet-SOLO-staccato", 60: "Brass/french-horn-SOLO-sustain", 61: "Brass/all-brass-SEC-sustain",
+	68: "Woodwinds/oboe-SOLO-sustain", 69: "Woodwinds/english-horn-SOLO-sustain",
+	70: "Woodwinds/bassoon-SOLO-sustain", 71: "Woodwinds/clarinet-SOLO-sustain",
+	72: "Woodwinds/piccolo-SOLO-sustain", 73: "Woodwinds/flute-SOLO-sustain",
+}
+
+// orchestraDir is the folder of the Virtual Playing Orchestra (-orchestra), relative SFZ paths are
+// in it
+var orchestraDir string
+
 // sound is a synth made to play a channel: how the keyboard plays it, how much goes to the hall
 type sound struct {
 	name  string // synth/preset
@@ -120,13 +150,13 @@ func pianoKeys(cfg keyboard.Config) keyboard.Config {
 
 // most synths play the velocity as the amplitude, the sustain pedal holds their notes
 func synthKeys(cfg keyboard.Config) keyboard.Config {
-	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure = 1, expressive, true, "pitchBend", "pressure"
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure, cfg.PolyPressure = 1, expressive, true, "pitchBend", "pressure", "pressure"
 	return cfg
 }
 
 // fm, dx and the physical models take the velocity themselves
 func velocityKeys(cfg keyboard.Config) keyboard.Config {
-	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure = 0, expressive, true, "pitchBend", "pressure"
+	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure, cfg.PolyPressure = 0, expressive, true, "pitchBend", "pressure", "pressure"
 	return cfg
 }
 
@@ -149,6 +179,32 @@ func newSound(name string) (*sound, error) {
 	}
 	s := &sound{name: name, keys: velocityKeys, hall: 0.3}
 	switch synth {
+	case "sfz":
+		// a sampled instrument: an SFZ file (in the orchestra's folder when not absolute)
+		path := preset
+		if !strings.HasSuffix(path, ".sfz") {
+			path += ".sfz"
+		}
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(orchestraDir, path)
+		}
+		inst, err := sampler.LoadSFZ(path)
+		if err != nil {
+			return nil, err
+		}
+		s.synth, s.hall = sampler.NewPoly(sampler.DefaultConfig(inst), 32), 0.25
+		// it takes the velocity itself and every controller as itself ("cc1" the mod wheel); without
+		// a pedal of its own the keyboard holds the notes
+		controls := map[int]string{}
+		for cc := range 120 {
+			if cc != midi.CCSustain || !inst.NoSustain {
+				controls[cc] = fmt.Sprintf("cc%d", cc)
+			}
+		}
+		s.keys = func(cfg keyboard.Config) keyboard.Config {
+			cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure = 0, controls, inst.NoSustain, "pitchBend", "pressure"
+			return cfg
+		}
 	case "piano":
 		f, ok := piano.Presets[preset]
 		if !ok {
@@ -234,7 +290,7 @@ func newSound(name string) (*sound, error) {
 		}
 		s.synth, s.keys, s.hall = drumsynth.NewPoly(drumsynth.Config{Kit: f()}, 16), drumKeys, 0.12
 	default:
-		return nil, fmt.Errorf("no synth %q: piano, fm, dx, organ, waveguide, modal, westcoast, subtractive, supersaw, wavetable, pd, pulsar, vocal or drumsynth", synth)
+		return nil, fmt.Errorf("no synth %q: sfz, piano, fm, dx, organ, waveguide, modal, westcoast, subtractive, supersaw, wavetable, pd, pulsar, vocal or drumsynth", synth)
 	}
 	return s, nil
 }
@@ -243,8 +299,12 @@ func newSound(name string) (*sound, error) {
 // strip on the mixer, the volume the file gives it and the one of the panel
 type part struct {
 	channel  int
-	sounds   map[int]*sound // by program
-	order    []int          // the programs, in the order they come
+	sounds   map[int]*sound    // by program
+	order    []int             // the programs, in the order they come
+	built    map[string]*sound // every sound made for it, by name (on the mixer)
+	program  int               // the program the file plays now
+	fixed    *sound            // the sound chosen on the panel, nil: as the file has it
+	wanted   string            // the sound chosen last on the panel (it may still be made)
 	playing  *sound
 	kb       *keyboard.Keyboard
 	group    *mixer.Strip
@@ -252,6 +312,22 @@ type part struct {
 	express  float64 // controller 11, 0-1
 	trim     float64 // dB, from the panel
 	hallSent bool    // the file sends to the hall itself (controller 91)
+}
+
+// use plays the channel on another sound (on the audio thread): the notes of the one left let go,
+// the pedals of a piano left up
+func (pt *part) use(s *sound, tick psalm.CtrlTick) {
+	if s == nil || s == pt.playing {
+		return
+	}
+	pt.kb.AllNotesOff(tick)
+	pt.playing.synth.Receive(psalm.Message{"sustain": 0.0, "sostenuto": 0.0, "soft": 0.0}, 0)
+	pt.playing = s
+	pt.kb.SetConfig(s.keys(keyboard.Config{Channel: pt.channel}))
+	pt.kb.SetTargets(s.synth)
+	if !pt.hallSent {
+		pt.group.SetSend("hall", s.hall)
+	}
 }
 
 // gain sets the strip of the channel: the volume and the expression of the file (as General MIDI
@@ -280,7 +356,10 @@ func main() {
 	writeTo := flag.String("write", "", "write the file played (the prelude, without a file) to this MIDI file")
 	loop := flag.Bool("loop", false, "start over at the end")
 	speed := flag.Float64("speed", 1, "how fast to play: 1 at the tempo of the file")
+	tempo := flag.Float64("tempo", 0, "play every beat at this tempo (quarter notes a minute) instead of the file's; 0 is the file's")
+	clockDevice := flag.String("clock", "", "follow the MIDI clock of a raw MIDI device (a sequencer, a drum machine): its tempo, start, stop and continue")
 	start := flag.Float64("start", 0, "seconds into the file to start at")
+	orchestra := flag.String("orchestra", "", "the folder of the Virtual Playing Orchestra (assets/Virtual-Playing-Orchestra3): its samples play the strings, brass, woodwinds, choirs, harp, timpani and mallets")
 	kit := flag.String("kit", "808", "the drum kit of channel 10: 808, 909, electro, trap or industrial")
 	addr := flag.String("addr", "localhost:8087", "the address of the control panel page (empty: no panel)")
 	buffer := flag.Int("buffer", 512, "the buffer size")
@@ -292,8 +371,10 @@ func main() {
 		if !ok || err != nil || c < 1 || c > 16 {
 			return fmt.Errorf("%q: channel=synth/preset, the channel 1-16", text)
 		}
-		if _, err := newSound(name); err != nil {
-			return err
+		if synth, _, _ := strings.Cut(name, "/"); synth != "sfz" { // an SFZ file is loaded when it plays
+			if _, err := newSound(name); err != nil {
+				return err
+			}
 		}
 		overrides[c] = name
 		return nil
@@ -303,6 +384,7 @@ func main() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	orchestraDir = *orchestra
 
 	var file *midi.File
 	title := "Prelude in C"
@@ -337,6 +419,9 @@ func main() {
 		if ch == midi.DrumChannel {
 			return "drumsynth/" + *kit
 		}
+		if path, ok := orchestral[program&127]; ok && *orchestra != "" {
+			return "sfz/" + path
+		}
 		return generalMIDI[program&127]
 	}
 	if *list {
@@ -360,15 +445,20 @@ func main() {
 	player := midi.NewPlayer(file)
 	player.SetLoop(*loop)
 	player.SetSpeed(*speed)
+	player.SetTempo(*tempo)
 	inputs := midi.Tee(player, len(channels))
+	// the synths are calibrated to the same loudness: the more channels, the lower each, so a busy
+	// file leaves the limiter of the master little to do (two channels at -6 dB, eight at -12)
+	level := -3 - 10*math.Log10(float64(len(channels)))
 	var parts []*part
 	for i, ch := range channels {
-		pt := &part{channel: ch, sounds: map[int]*sound{}, volume: 100.0 / 127, express: 1}
+		pt := &part{channel: ch, sounds: map[int]*sound{}, built: map[string]*sound{}, volume: 100.0 / 127, express: 1}
 		programs := file.Programs(ch)
 		if len(programs) == 0 {
 			programs = []int{0}
 		}
-		byName := map[string]*sound{} // two programs played by the same synth share it
+		pt.program = programs[0]
+		byName := pt.built // two programs played by the same synth share it
 		for _, prog := range programs {
 			name := soundOf(ch, prog)
 			s, ok := byName[name]
@@ -387,23 +477,17 @@ func main() {
 		group := fmt.Sprintf("channel %d", ch)
 		pt.group = mix.Group(group, mixer.StripConfig{Sends: map[string]float64{"hall": pt.playing.hall}})
 		for _, name := range slices.Sorted(maps.Keys(byName)) {
-			mix.Channel(group+" "+name, byName[name].synth, mixer.StripConfig{Volume: -6, Group: group})
+			mix.Channel(group+" "+name, byName[name].synth, mixer.StripConfig{Volume: level, Group: group})
 		}
 		pt.gain()
 
 		pt.kb = keyboard.New(inputs[i], pt.playing.keys(keyboard.Config{Channel: ch}), pt.playing.synth)
 		pt.kb.OnProgram(func(program int, tick psalm.CtrlTick) {
-			s, ok := pt.sounds[program]
-			if !ok || s == pt.playing {
-				return
+			if _, ok := pt.sounds[program]; ok {
+				pt.program = program
 			}
-			pt.kb.AllNotesOff(tick)
-			pt.playing.synth.Receive(psalm.Message{"sustain": 0.0, "sostenuto": 0.0, "soft": 0.0}, 0) // a piano left
-			pt.playing = s
-			pt.kb.SetConfig(s.keys(keyboard.Config{Channel: ch}))
-			pt.kb.SetTargets(s.synth)
-			if !pt.hallSent {
-				pt.group.SetSend("hall", s.hall)
+			if pt.fixed == nil { // a sound chosen on the panel stays
+				pt.use(pt.sounds[pt.program], tick)
 			}
 		})
 		pt.kb.OnControl(midi.CCVolume, func(v float64, _ psalm.CtrlTick) { pt.volume = v; pt.gain() })
@@ -422,14 +506,41 @@ func main() {
 	}
 	p.Out(mix.Master())
 
+	// a MIDI clock to follow: its tempo (the keyboard sets the patch's from it), its start (from the
+	// top), stop and continue
+	if *clockDevice != "" && *renderTo == "" {
+		d, err := midi.OpenDevice(*clockDevice)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer d.Close()
+		clock := keyboard.New(d, keyboard.Config{FollowClock: true, Controls: map[int]string{}})
+		clock.OnEvent(func(e midi.Event, _ psalm.CtrlTick) {
+			switch e.Message.Kind() {
+			case midi.Start:
+				player.Seek(*start)
+				player.Play()
+			case midi.Continue:
+				player.Play()
+			case midi.Stop:
+				player.Stop()
+			}
+		})
+		clock.AddTo(p)
+		player.FollowTempo(func() float64 { return clock.Env().BPM() })
+		log.Printf("following the clock of %s: start it there", d.Path())
+	}
+
 	describe(file, title, soundOf)
 	if *start > 0 {
 		player.Seek(*start)
 	}
-	player.Play()
+	if *clockDevice == "" || *renderTo != "" {
+		player.Play()
+	}
 
 	if *renderTo != "" {
-		seconds := (player.Duration() - *start) / player.Speed()
+		seconds := player.PlayTime(*start)
 		if *loop {
 			seconds *= 2 // twice through
 		}
@@ -438,6 +549,7 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Println(stats)
+		fmt.Printf("the limiter took the loudest peaks down %.1f dB\n", math.Abs(mix.Master().Reduction()))
 		return
 	}
 
@@ -465,10 +577,51 @@ func main() {
 			loopOn = 1
 		}
 		ctl.Toggle("Loop", panel.Func(func(v float64) { player.SetLoop(v > 0.5) }), panel.Default(loopOn))
+		if *clockDevice == "" {
+			ctl.Knob("Tempo", 0, 240, panel.Linear, panel.Func(player.SetTempo), panel.Default(*tempo), panel.Step(1),
+				panel.Unit("bpm"), panel.Label("tempo (0: the file's)"))
+		}
 
 		ctl.Section("Channels")
+		choices := append([]string{"as the file has it"}, soundNames()...)
 		for _, pt := range parts {
 			label := fmt.Sprintf("%d %s", pt.channel, pt.describe())
+			// another sound for the channel: made off the audio thread the first time (an SFZ file
+			// takes a moment to load), then put on the mixer and played between two buffers
+			ctl.Select(fmt.Sprintf("Sound %d", pt.channel), choices, func(i int) {
+				if i == 0 {
+					pt.wanted, pt.fixed = "", nil
+					pt.use(pt.sounds[pt.program], psalm.CtrlTick{})
+					return
+				}
+				name := choices[i]
+				pt.wanted = name
+				if s, ok := pt.built[name]; ok {
+					pt.fixed = s
+					pt.use(s, psalm.CtrlTick{})
+					return
+				}
+				go func() {
+					s, err := newSound(name)
+					if err != nil {
+						log.Printf("channel %d: %v", pt.channel, err)
+						return
+					}
+					p.Do(func() {
+						if _, ok := pt.built[name]; !ok {
+							p.Add(s.synth)
+							mix.Channel(fmt.Sprintf("channel %d %s", pt.channel, name), s.synth, mixer.StripConfig{Volume: level, Group: fmt.Sprintf("channel %d", pt.channel)})
+							mix.Align()
+							pt.built[name] = s
+						}
+						if pt.wanted == name {
+							pt.fixed = pt.built[name]
+							pt.use(pt.fixed, psalm.CtrlTick{})
+							log.Printf("channel %d: %s", pt.channel, name)
+						}
+					})
+				}()
+			}, panel.Label("sound "+strconv.Itoa(pt.channel)))
 			ctl.Toggle(fmt.Sprintf("Mute %d", pt.channel), panel.Func(func(v float64) { player.MuteChannel(pt.channel, v > 0.5) }),
 				panel.Label("mute "+label))
 			ctl.Fader(fmt.Sprintf("Volume %d", pt.channel), -30, 12, panel.Linear, panel.Func(func(v float64) { pt.trim = v; pt.gain() }),
@@ -493,6 +646,42 @@ func main() {
 	if err := p.Listen(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// soundNames returns every sound a channel can play: each synth with its presets, the drum kits,
+// the instruments of the orchestra (with -orchestra)
+func soundNames() []string {
+	var names []string
+	add := func(synth string, presets []string) {
+		slices.Sort(presets)
+		for _, p := range presets {
+			names = append(names, synth+"/"+p)
+		}
+	}
+	add("piano", slices.Collect(maps.Keys(piano.Presets)))
+	add("fm", slices.Collect(maps.Keys(fm.Presets)))
+	add("dx", slices.Collect(maps.Keys(dx.Presets)))
+	add("organ", slices.Collect(maps.Keys(organ.Presets)))
+	add("waveguide", slices.Collect(maps.Keys(waveguide.Presets)))
+	add("modal", slices.Collect(maps.Keys(modal.Presets)))
+	add("westcoast", slices.Collect(maps.Keys(westcoast.Presets)))
+	add("subtractive", slices.Collect(maps.Keys(subtractive.Presets)))
+	add("supersaw", slices.Collect(maps.Keys(supersaw.Presets)))
+	add("wavetable", slices.Collect(maps.Keys(wavetable.Presets)))
+	add("pd", slices.Collect(maps.Keys(pd.Presets)))
+	add("pulsar", slices.Collect(maps.Keys(pulsar.Presets)))
+	add("vocal", slices.Collect(maps.Keys(vocal.Presets)))
+	add("drumsynth", slices.Collect(maps.Keys(drumsynth.Kits)))
+	if orchestraDir != "" {
+		var files []string
+		for _, f := range orchestral {
+			if !slices.Contains(files, f) {
+				files = append(files, f)
+			}
+		}
+		add("sfz", files)
+	}
+	return names
 }
 
 // describe prints the tracks of a file and the synths its channels play on
