@@ -869,7 +869,7 @@ type nodeState struct {
 	Texts    []Text            `json:"texts,omitempty"`  // its settings of text, as they are
 	Errors   map[string]string `json:"errors,omitempty"` // what was wrong with one typed
 	Status   string            `json:"status,omitempty"`
-	Log      *string           `json:"log,omitempty"` // a log for the side panel (nil: it has none)
+	Log      *string           `json:"log,omitempty"`  // a log for the side panel (nil: it has none)
 	Page     bool              `json:"page,omitempty"` // it has settings to show (its editor)
 }
 
