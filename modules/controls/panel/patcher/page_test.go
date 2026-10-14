@@ -516,7 +516,7 @@ func TestPageNoteRoll(t *testing.T) {
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
 	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
 	canvas := frame + `.querySelector(".noteroll canvas")`
-	tb.WaitFor(`!!`+canvas, "the roll in the side panel")
+	tb.WaitFor(`!!`+canvas+` && `+canvas+`.clientHeight > 300 && parseInt(document.querySelector(".pt-drawer-frame").style.height) > 400`, "the roll in the side panel, at its size")
 	// where a beat and a key are on the canvas (in the page), 8 beats, 36 keys from C3
 	at := func(beat, key float64) (float64, float64) {
 		r := tb.Eval(fmt.Sprintf(`(() => { const f = document.querySelector(".pt-drawer-frame").getBoundingClientRect(), c = %s, r = c.getBoundingClientRect();
