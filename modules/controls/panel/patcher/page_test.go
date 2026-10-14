@@ -495,3 +495,58 @@ func TestPageLog(t *testing.T) {
 		t.Error("the label above the log, the log read only")
 	}
 }
+
+// the note editor: a click puts a note (a drag makes it longer), a drag moves it, a right click takes it away
+func TestPageNoteRoll(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("noteroll", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	canvas := frame + `.querySelector(".noteroll canvas")`
+	tb.WaitFor(`!!`+canvas, "the roll in the side panel")
+	// where a beat and a key are on the canvas (in the page), 8 beats, 36 keys from C3
+	at := func(beat, key float64) (float64, float64) {
+		r := tb.Eval(fmt.Sprintf(`(() => { const f = document.querySelector(".pt-drawer-frame").getBoundingClientRect(), c = %s, r = c.getBoundingClientRect();
+			const pxb = (r.width - 52) / 8, rowH = r.height / 36;
+			return [f.left + r.left + 52 + %v * pxb, f.top + r.top + (36 - 1 - (%v - 48)) * rowH + rowH / 2]; })()`, canvas, beat, key)).([]any)
+		return r[0].(float64), r[1].(float64)
+	}
+	values := func() map[string]float64 { return pt.SettingsOf(id).Values() }
+	x0, y0 := at(1.1, 60)
+	x1, _ := at(2.4, 60)
+	tb.Mouse("mousePressed", x0, y0, nil)
+	tb.Mouse("mouseMoved", x1, y0, nil)
+	tb.Mouse("mouseReleased", x1, y0, nil)
+	paneltest.Eventually(t, "a note put, dragged longer", func() bool {
+		v := values()
+		return v["n/0/key"] == 60 && v["n/0/start"] == 1 && v["n/0/length"] >= 1.25 && v["n/1/key"] == 0
+	})
+	// moved up and later
+	xa, ya := at(1.5, 60)
+	xb, yb := at(3.1, 64)
+	tb.Mouse("mousePressed", xa, ya, nil)
+	tb.Mouse("mouseMoved", xb, yb, nil)
+	tb.Mouse("mouseReleased", xb, yb, nil)
+	paneltest.Eventually(t, "the note moved", func() bool {
+		v := values()
+		return v["n/0/key"] == 64 && v["n/0/start"] >= 2.5
+	})
+	// a right click takes it away
+	xc, yc := at(3.4, 64)
+	tb.Mouse("mousePressed", xc, yc, map[string]any{"button": "right", "buttons": 2, "clickCount": 1})
+	tb.Mouse("mouseReleased", xc, yc, map[string]any{"button": "right", "clickCount": 1})
+	paneltest.Eventually(t, "the note taken away", func() bool { _, ok := values()["n/0/key"]; return !ok })
+}

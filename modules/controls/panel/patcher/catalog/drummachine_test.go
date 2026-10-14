@@ -142,3 +142,46 @@ func TestDrumMachinePatternInput(t *testing.T) {
 	}
 	run(0.2)
 }
+
+// the note editor: its notes play a synth of the patch, and are kept with the patch
+func TestNoteRoll(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 240, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	dir := t.TempDir()
+	mk := func() (*psalm.Psalm, *patcher.Patcher) {
+		p := psalm.New(nil)
+		pt := patcher.New(p, panel.New(p, "A"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}), patcher.Keep(dir))
+		p.Out(pt.Out())
+		return p, pt
+	}
+	p, pt := mk()
+	roll, _ := pt.Add("noteroll", "", 0, 0)
+	synth, _ := pt.Add("subtractive", "", 0, 0)
+	for _, c := range []patcher.Cable{{From: roll, To: synth}, {From: synth, To: "out"}} {
+		if _, err := pt.Connect(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pt.SettingsOf(roll).Apply(map[string]float64{"length": 4, "n/0/start": 0, "n/0/length": 1, "n/0/key": 60, "n/0/velocity": 0.9})
+	var peak float32
+	for range 44100 * 2 / 256 {
+		p.ResetRun()
+		p.Run()
+		for _, s := range pt.Out().Output(0).Channels[0] {
+			peak = max(peak, s, -s)
+		}
+	}
+	if peak < 0.01 {
+		t.Errorf("the roll should play the synth: peak %v", peak)
+	}
+	if err := pt.Save("roll"); err != nil {
+		t.Fatal(err)
+	}
+	_, pt2 := mk()
+	if err := pt2.Load("roll"); err != nil {
+		t.Fatal(err)
+	}
+	if v := pt2.SettingsOf(roll).Values(); v["length"] != 4 || v["n/0/key"] != 60 || v["n/0/velocity"] != 0.9 {
+		t.Errorf("the notes should come back with the patch: %v", v)
+	}
+}
