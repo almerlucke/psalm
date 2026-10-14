@@ -57,7 +57,7 @@ type Clock struct {
 func NewClock() *Clock {
 	c := &Clock{Module: psalm.NewControl(), Division: 3, Swing: 0.5, Chance: 1, rng: rand.New(rand.NewPCG(rand.Uint64(), 3))}
 	all, _ := ParsePattern("x")
-	c.pattern.Store(&patterns{rest: all, hasRest: true})
+	c.pattern.Store(&patterns{rest: &all, hasRest: true})
 	c.SetSelf(c)
 	c.song = SongOf(c.Env())
 	return c
@@ -73,6 +73,7 @@ type Pattern struct {
 // pattern, and the chance it is played (0-1)
 type Hit struct {
 	At, Len, Chance float64
+	Pitches         []float64 // what it plays (a part's: a note, a chord)
 }
 
 // ParsePattern reads a step pattern: x (or X, o, 1) a hit, . (or -, _, 0) a rest, a step each; x3
@@ -229,7 +230,7 @@ func (pr *patternReader) element() (element, error) {
 
 // SetPattern sets the step pattern (from any goroutine)
 func (c *Clock) SetPattern(text string) error {
-	each, rest, hasRest, err := perSection(text, ParsePattern)
+	each, rest, hasRest, err := perSection(text, pointer(ParsePattern))
 	if err == nil {
 		c.pattern.Store(&patterns{each: each, rest: rest, hasRest: hasRest})
 	}
@@ -238,9 +239,17 @@ func (c *Clock) SetPattern(text string) error {
 
 // patterns are a clock's patterns: per section of the song, and for the others
 type patterns struct {
-	each    map[string]Pattern
-	rest    Pattern
+	each    map[string]*Pattern
+	rest    *Pattern
 	hasRest bool
+}
+
+// pointer makes a reader of patterns give them by pointer (one stays the same while it plays)
+func pointer(read func(string) (Pattern, error)) func(string) (*Pattern, error) {
+	return func(text string) (*Pattern, error) {
+		p, err := read(text)
+		return &p, err
+	}
 }
 
 func (c *Clock) ReceiveMessage(msg psalm.Message) {
@@ -315,25 +324,32 @@ func (c *Clock) now(tick psalm.CtrlTick) (*Pattern, float64) {
 		}
 		bpb := c.song.Transport().Form().BeatsPerBar
 		in := (pos.Beat - float64(pos.Section.StartBar)*bpb) * float64(c.Config().PPQ)
-		return &p, math.Round(float64(tick.TickTimestamp) - in)
+		return p, math.Round(float64(tick.TickTimestamp) - in)
 	}
 	if !ps.hasRest {
 		return nil, 0
 	}
-	return &ps.rest, 0
+	return ps.rest, 0
 }
 
-// CtrlTick sends the hits falling on this tick; it follows the patch's clock (a restart, a jump
-// back, another division, pattern or section starts it over from where it is)
+// CtrlTick sends the hits falling on this tick
 func (c *Clock) CtrlTick(tick psalm.CtrlTick) {
+	c.play(tick, func(_ Hit, step int64, seconds float64) {
+		c.Send(Event{Tick: tick, Step: step, Seconds: seconds}, 0)
+	})
+}
+
+// play gives the hits falling on this tick (the step they are in, how long they last); it follows
+// the patch's clock (a restart, a jump back, another division, pattern or section starts it over
+// from where it is)
+func (c *Clock) play(tick psalm.CtrlTick, hit func(h Hit, step int64, seconds float64)) {
 	t := float64(tick.TickTimestamp)
 	p, origin := c.now(tick)
 	if p == nil {
 		c.playing, c.started = nil, false
 		return
 	}
-	same := c.playing != nil && c.playing.Steps == p.Steps && len(c.playing.Hits) == len(p.Hits) && slices.Equal(c.playing.Hits, p.Hits)
-	if !c.started || tick.TickTimestamp < c.last || c.Division != c.div || origin != c.origin || !same {
+	if !c.started || tick.TickTimestamp < c.last || c.Division != c.div || origin != c.origin || c.playing != p {
 		c.started, c.div, c.origin, c.playing = true, c.Division, origin, p
 		c.seek(t)
 	}
@@ -352,7 +368,7 @@ func (c *Clock) CtrlTick(tick psalm.CtrlTick) {
 		if chance := h.Chance * c.Chance; chance < 1 && c.rng.Float64() >= chance {
 			continue
 		}
-		c.Send(Event{Tick: tick, Step: int64(math.Floor(at/l + 1e-6)), Seconds: h.Len * stepSeconds}, 0)
+		hit(h, int64(math.Floor(at/l+1e-6)), h.Len*stepSeconds)
 	}
 }
 
@@ -777,7 +793,7 @@ func Generators() []Kind {
 				return &Made{Module: n, Describe: func(string) params.Set { return n.Describe() },
 					Notes: n.SetTargets, Late: n.late}, nil
 			}},
-		SongKind(),
+		SongKind(), laneKind(), gateKind(), partKind(),
 		{Name: "quantize", Group: "Generators", Ins: []Port{{Name: "in", Type: Value}}, Outs: []Port{{Name: "out", Type: Value}},
 			Make: func(string) (*Made, error) {
 				q := NewQuantize()

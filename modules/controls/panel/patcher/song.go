@@ -20,8 +20,9 @@ import (
 // Song is the song of a patch: a form of sections and its transport (arrange), made by a song
 // module, followed by the sequences, the clocks and the scripts of the patch (SongOf)
 type Song struct {
-	tr  atomic.Pointer[arrange.Transport] // nil: no song
-	now atomic.Pointer[SongNow]           // where it is, for the page
+	tr    atomic.Pointer[arrange.Transport] // nil: no song
+	now   atomic.Pointer[SongNow]           // where it is, for the page
+	gates gateList                          // its parts
 }
 
 // SongNow is where a song is, as the page shows it
@@ -326,6 +327,7 @@ const SongHelp = "a name and a number of bars a section, by commas or lines: `In
 	"its tiles below: a tap plays a section next, its dot switches it off (skipped); repeat plays the one playing again\n" +
 	"outputs: a trigger every bar and at every section (a note of a step lasts a bar), the section's number, how far through it (mod)\n" +
 	"a sequence, a clock's pattern can be per section: a line `Verse: C3 Eb3` each; a script asks `song.section`\n" +
+	"its parts below the sections: the gates of the patch (sound, notes, triggers through in some sections), a tap switches one; a lane is a curve per section\n" +
 	"Ctrl+Enter (or Run) takes them; a restart starts the song again"
 
 // SongKind is the kind of song modules: the song of the patch (one at a time: the last made)
@@ -343,6 +345,7 @@ func SongKind() Kind {
 				Edit: func(page *panel.Panel, name, _ string) Settings {
 					page.Section("Song")
 					page.Cues(name+" sections", songCues{s}, panel.CueSlots(32))
+					page.Cues(name+" parts", partCues{s.song}, panel.CueSlots(32), panel.CueToggles()) // its gates: a tap switches one
 					st := songSettings{
 						repeat: page.Toggle(name+" repeat", panel.Func(func(v float64) {
 							if tr := (songCues{s}).transport(); tr != nil {

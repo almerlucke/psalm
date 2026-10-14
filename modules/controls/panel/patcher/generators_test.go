@@ -15,6 +15,7 @@ type played struct {
 	*psalm.Module
 	pitches []float64
 	at      []int64
+	seconds []float64 // how long, a note of a duration
 }
 
 func (r *played) ReceiveMessage(m psalm.Message) {
@@ -24,6 +25,8 @@ func (r *played) ReceiveMessage(m psalm.Message) {
 	tick := m.MustTickVal("tick")
 	r.pitches = append(r.pitches, m.MustMsg("message").MustFltVal("pitch"))
 	r.at = append(r.at, tick.SampleTimestamp)
+	d, _ := m.FltVal("duration")
+	r.seconds = append(r.seconds, d)
 }
 
 func (r *played) Receive(v any, _ int) {

@@ -847,7 +847,10 @@ are `patcher.Generators()`, built on genny:
 | sequence | trigger, reset | value, after (a trigger once the value is out) | values typed in its side panel (numbers, note names `C3 Eb3`, chords `[C3 E3 G3]`), the order: in order, shuffled, random, up and down, converge, alternate, backwards (genny's sequence, bucket, arpeggio) |
 | notes | trigger, pitch, velocity, length (steps) | notes | the pitch, velocity, length and transposition for the inputs not patched. A length is in steps of the clock that triggered the note (at 1/16 and 120 bpm a step is 125 ms: a length of 8 is a second) |
 | quantize | value | value | a key and a scale (tools/harmony): every pitch, every note of a chord, to its nearest note in it |
-| song | | bar, section (triggers), number (value), progress (mod) | its sections typed (`Intro 4, Verse 8, Chorus 8`); tiles to play a section next or switch one off, repeat, jump at, loop |
+| song | | bar, section (triggers), number (value), progress (mod) | its sections typed (`Intro 4, Verse 8, Chorus 8`); tiles to play a section next or switch one off, repeat, jump at, loop; tiles of its parts (its gates) |
+| lane | | value, mod | a curve per section typed (`Intro: 0 → 1`, `Verse: 1`, `Chorus: 0.2 → 0.8 smooth`; lin, exp, smooth): through the section as it plays |
+| gate | in (audio), notes, trigger | out, notes, trigger | its name (its tile) and the sections it plays in (`Verse, Chorus`, `not Intro`, `all`) typed; on (its tile in the song's side panel switches it) |
+| part | | notes | notes written per step (`C3 Eb3 . G3 -`: `.` a rest, `-` held longer, `C3+Eb3` a chord, `[C3 D3 Eb3]` a group in a step, `*2` longer, `?` by chance), per section too; the clock's division, swing, chance; velocity, length, transpose |
 
 A notes module plays the triggers of a control tick at its end, after every other module had its
 tick: the values feeding it are up to date whatever order the cables were drawn in. Texts (a clock's
@@ -874,6 +877,33 @@ and at every section (a note of a step lasts a bar), the section's number and ho
   `song.progress`, `song.loop`, `song.sections`, `song.playing`) and calls `section(name, index)`
   when a section starts (its "song" preset: a chord a bar from the song's bar trigger, other chords
   in the chorus).
+
+- a lane gives a value per section: a curve each, through the section as it plays; its mod output
+  to any setting (a filter opening over the intro), its value output to a value input.
+- a gate makes a part of the song: sound, notes and triggers go through it in its sections only
+  (a note let go always goes through), and when it is on. The song's side panel has a tile for
+  every gate of the patch, by its name: a tap switches the part off and on while it plays, the
+  parts playing light up.
+- a part plays notes written per step, as a clock plays its pattern: per section too.
+
+The **setlist** example plays the patches kept in a folder as the songs of a playlist
+(modules/playlist): each built in a patch of its own when it is needed; one with a song ends with
+it (its loop off: skipping a section ends it sooner), one without plays until Next. Its page has
+the songs, the sections of the song playing and the patch playing itself (its patcher), to change
+while it plays. A patch as a playlist song:
+
+```go
+playlist.Song{Name: name, Build: func(sp *psalm.Psalm) playlist.Built {
+	ctl := panel.New(sp, name)
+	pt := patcher.New(sp, ctl, "Patch", catalog.Kinds(cfg), patcher.Keep("patches"))
+	_ = pt.Load(name)
+	b := playlist.Built{Out: pt.Out(), Panel: ctl}
+	if tr := patcher.SongOf(sp.Env()).Transport(); tr != nil {
+		b.Transport, b.Length = tr, tr.Form().Beats()*60/pt.Tempo().Value()
+	}
+	return b
+}}
+```
 
 One song a patch: the last made; `patcher.SongOf(env)` is the song of a patch for modules of your
 own (`At(tick, ppq)`: where it is).

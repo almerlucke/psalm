@@ -424,4 +424,14 @@ func TestPageSong(t *testing.T) {
 	tb.WaitFor(`document.querySelector(".pt-drawer-text")?.value === "Intro 64, Verse 64" && `+frame+`?.querySelectorAll(".cue").length === 2`, "its sections and their tiles in the side panel")
 	tb.Eval(`[...` + frame + `.querySelectorAll(".cue")].find(c => c.textContent.includes("Verse")).click()`)
 	tb.WaitFor(`document.querySelector(".pt-songbar span").textContent.includes("→ Verse")`, "the section asked for next in the bar at the top")
+
+	// a gate is a part of the song: its tile in the song's side panel switches it off
+	gate, err := pt.Add("gate", "", 300, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = pt.SetText(gate, "name", "drums")
+	tb.WaitFor(`[...`+frame+`.querySelectorAll(".cue")].some(c => c.textContent.includes("drums"))`, "the gate's tile among the song's parts")
+	tb.Eval(`[...` + frame + `.querySelectorAll(".cue")].find(c => c.textContent.includes("drums")).click()`)
+	paneltest.Eventually(t, "the gate switched off by its tile (kept with the patch)", func() bool { return pt.SettingsOf(gate).Values()["on"] == 0 })
 }
