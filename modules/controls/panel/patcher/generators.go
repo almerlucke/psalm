@@ -60,7 +60,7 @@ func ParsePattern(text string) ([]bool, error) {
 			p = append(p, true)
 		case '.', '-', '0', '_':
 			p = append(p, false)
-		case ' ', '\t', '\n', '|':
+		case ' ', '\t', '\n', '\r', '|':
 		default:
 			return nil, fmt.Errorf("%q in a pattern: x is a hit, . a rest", r)
 		}
@@ -443,6 +443,19 @@ func (q *Quantize) Describe() params.Set {
 	}}
 }
 
+// PatternHelp is what to know to type a clock's pattern
+const PatternHelp = "`x` (or `X`, `1`, `o`) is a hit, `.` (or `-`, `0`, `_`) a rest: a step of the division each\n" +
+	"spaces, `|` and new lines are left out: `x . x x | x x . x`, a bar a line\n" +
+	"the pattern loops; chance and swing are below\n" +
+	"Ctrl+Enter (or Run) takes it; one that can't be read is shown in red, the clock keeps the one before"
+
+// ValuesHelp is what to know to type a sequence's values
+const ValuesHelp = "numbers or note names: `60 C3 Eb3 F#4 Bb2` (C3 is 48)\n" +
+	"a chord in brackets: `[C3 Eb3 G3]`, played together\n" +
+	"spaces, commas or new lines between them\n" +
+	"the order (in order, shuffled, up and down...) is below; a trigger on reset starts it over\n" +
+	"Ctrl+Enter (or Run) takes them"
+
 // Generators are the kinds of generator modules: a clock, a sequence of values, notes, a quantizer
 func Generators() []Kind {
 	trig := Port{Name: "trigger", Type: Trigger}
@@ -450,7 +463,7 @@ func Generators() []Kind {
 		{Name: "clock", Group: "Generators", Outs: []Port{trig}, Make: func(string) (*Made, error) {
 			c := NewClock()
 			return &Made{Module: c, Describe: func(string) params.Set { return c.Describe() },
-				Texts: []Text{{Key: "pattern", Label: "pattern", Value: "x"}}, SetText: func(_, v string) error { return c.SetPattern(v) }}, nil
+				Texts: []Text{{Key: "pattern", Label: "pattern", Value: "x", Help: PatternHelp}}, SetText: func(_, v string) error { return c.SetPattern(v) }}, nil
 		}},
 		{Name: "sequence", Group: "Generators",
 			Ins:  []Port{trig, {Name: "reset", Type: Trigger, Index: 1}},
@@ -458,7 +471,7 @@ func Generators() []Kind {
 			Make: func(string) (*Made, error) {
 				s := NewSequence()
 				return &Made{Module: s, Describe: func(string) params.Set { return s.Describe() },
-					Texts: []Text{{Key: "values", Label: "values", Value: "C3 Eb3 G3 Bb3"}}, SetText: func(_, v string) error { return s.SetValues(v) }}, nil
+					Texts: []Text{{Key: "values", Label: "values", Value: "C3 Eb3 G3 Bb3", Help: ValuesHelp}}, SetText: func(_, v string) error { return s.SetValues(v) }}, nil
 			}},
 		{Name: "notes", Group: "Generators",
 			Ins:  []Port{trig, {Name: "pitch", Type: Value, Index: 1}, {Name: "velocity", Type: Value, Index: 2}, {Name: "length (steps)", Type: Value, Index: 3}},

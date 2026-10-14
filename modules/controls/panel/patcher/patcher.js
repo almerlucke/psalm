@@ -114,7 +114,7 @@ psalm.register("patcher", (p, api) => {
 		const ports = el("div", "pt-ports");
 		const ins = el("div", "pt-ins"), outs = el("div", "pt-outs");
 		ports.append(ins, outs);
-		const texts = el("div", "pt-texts"); // its settings of text: typed here, sent on Enter or leaving
+		const texts = el("div", "pt-texts"); // (its settings of text are in its side panel)
 		box.append(head, ports, texts);
 		// moving it by its head (with the other modules chosen, when it is one of them); a tap chooses
 		// it (its settings below), with shift (or ctrl, cmd) it is added to the chosen or taken out
@@ -186,31 +186,6 @@ psalm.register("patcher", (p, api) => {
 				v.ins.innerHTML = ""; v.outs.innerHTML = "";
 				(n.ins || []).forEach((port, i) => v.ins.append(portRow(n, "in", port, i)));
 				(n.outs || []).forEach((port, i) => v.outs.append(portRow(n, "out", port, i)));
-			}
-			for (const t of n.texts || []) {
-				if (t.lines > 1) continue; // a box of lines (a script): in the side panel
-				let inp = v.inputs[t.key];
-				if (!inp) {
-					const row = el("label", "pt-text");
-					row.append(el("span", "pt-text-label", t.label));
-					inp = el("input");
-					inp.spellcheck = false;
-					inp.value = t.value;
-					const commit = () => send({text: {id: n.id, key: t.key, value: inp.value}});
-					inp.addEventListener("keydown", e => {
-						if (e.key === "Enter") { e.preventDefault(); commit(); inp.blur(); }
-						e.stopPropagation();
-					});
-					inp.addEventListener("change", commit);
-					inp.addEventListener("pointerdown", e => e.stopPropagation());
-					row.append(inp);
-					v.texts.append(row);
-					v.inputs[t.key] = inp;
-				}
-				if (document.activeElement !== inp) inp.value = t.value;
-				const err = n.errors && n.errors[t.key];
-				inp.classList.toggle("bad", !!err);
-				inp.title = err || "";
 			}
 			if (n.status !== undefined || v.status) {
 				if (!v.status) { v.status = el("div", "pt-status"); v.el.append(v.status); }
@@ -361,26 +336,27 @@ psalm.register("patcher", (p, api) => {
 	});
 	document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && maxed) setMax(false); });
 
-	// --- the side panel of a module: its script (a box of lines) and its settings (its editor,
-	// served by the patcher's hidden mount), its error or what it says below the script ---
+	// --- the side panel of a module: its settings of text (a pattern, values, a script), each in a box
+	// of lines, what is wrong or what it says below them; its settings (its editor, served by the
+	// patcher's hidden mount) below ---
 	const drawer = el("div", "pt-drawer"); drawer.hidden = true;
 	const grip = el("div", "pt-drawer-grip"); grip.title = "drag to make it wider or narrower";
 	const dHead = el("div", "pt-drawer-head");
 	const dTitle = el("span", "pt-drawer-title");
-	const runBtn = el("button", "", "Run"); runBtn.title = "take the script (Ctrl+Enter)";
-	const closeBtn = el("button", "pt-x", "×"); closeBtn.title = "close (Esc): a script typed is taken";
+	const runBtn = el("button", "", "Run"); runBtn.title = "take what is typed (Ctrl+Enter)";
+	const closeBtn = el("button", "pt-x", "×"); closeBtn.title = "close (Esc): what is typed is taken";
 	dHead.append(dTitle, runBtn, closeBtn);
 	const dCode = el("div", "pt-drawer-code");
-	const dText = el("textarea", "pt-drawer-text"); dText.spellcheck = false; dText.wrap = "off";
+	const dBoxes = el("div", "pt-drawer-boxes");
 	const dStatus = el("div", "pt-status");
-	dCode.append(dText, dStatus);
+	dCode.append(dBoxes, dStatus);
 	const dSettings = el("div", "pt-drawer-settings");
 	const frame = el("iframe", "pt-drawer-frame"); frame.title = "settings";
 	api.frame(frame); // its height, the theme, learn mode: as the page's own frames
 	dSettings.append(frame);
 	drawer.append(grip, dHead, dCode, dSettings);
 	root.append(drawer);
-	let editing = null;  // {id, key}: the module in the side panel, the key of its script ("" none)
+	let editing = null;  // {id, boxes}: the module in the side panel, the boxes of its texts by key
 	let framed = "";     // the module whose settings the frame shows
 	const textOf = (id, key) => { const n = st.nodes.find(x => x.id === id); const t = n && (n.texts || []).find(x => x.key === key); return t ? t.value : null; };
 	const nodeOf = id => st.nodes.find(x => x.id === id);
@@ -401,27 +377,60 @@ psalm.register("patcher", (p, api) => {
 	function openSide(id) {
 		const n = nodeOf(id);
 		if (!n) return;
-		const box = (n.texts || []).find(t => t.lines > 1);
-		if (!box && !n.page) { if (editing) closeEditor(); return; } // nothing to show
+		const texts = n.texts || [];
+		if (!texts.length && !n.page) { if (editing) closeEditor(); return; } // nothing to show
 		if (editing) closeEditor();
-		editing = {id, key: box ? box.key : ""};
+		editing = {id, boxes: {}};
 		dTitle.textContent = n.kind + (n.preset ? " · " + n.preset : "");
-		dCode.hidden = runBtn.hidden = !box;
-		if (box) dText.value = box.value;
+		dBoxes.innerHTML = "";
+		for (const t of texts) { // a box each: Ctrl+Enter (or Run) takes them, Tab is a tab
+			const wrap = el("label", "pt-drawer-box");
+			if (texts.length > 1) wrap.append(el("span", "pt-label", t.label));
+			if (t.help) wrap.append(helpOf(t.help));
+			const ta = el("textarea", "pt-drawer-text"); ta.spellcheck = false; ta.wrap = "off"; ta.value = t.value;
+			ta.addEventListener("keydown", e => {
+				e.stopPropagation();
+				if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }
+				else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitEditor(); }
+				else if (e.key === "Escape") { e.preventDefault(); closeEditor(); }
+			});
+			wrap.append(ta);
+			dBoxes.append(wrap);
+			editing.boxes[t.key] = ta;
+		}
+		dCode.hidden = runBtn.hidden = !texts.length;
 		dSettings.hidden = !n.page;
-		drawer.classList.toggle("both", !!box && !!n.page);
+		// a script gets the room; a pattern or values a few lines, the settings the rest
+		const script = texts.some(t => t.lines > 1);
+		drawer.classList.toggle("both", !!texts.length && !!n.page && script);
+		drawer.classList.toggle("short", !!texts.length && !!n.page && !script);
 		send({select: n.page ? id : ""}); // the frame follows once it is chosen (update)
 		drawer.hidden = false;
 		roomForDrawer();
 		updateEditor();
-		if (box) dText.focus();
+		const first = dBoxes.querySelector("textarea");
+		if (first) first.focus();
 	}
-	function commitEditor() {
-		if (!editing || !editing.key) return;
-		send({text: {id: editing.id, key: editing.key, value: dText.value}});
+	// what to know to type a text: a point a line, `code` in backquotes
+	function helpOf(text) {
+		const list = el("ul", "pt-help");
+		for (const line of text.split("\n")) {
+			const li = el("li");
+			line.split("`").forEach((part, i) => { if (part) li.append(i % 2 ? el("code", "", part) : document.createTextNode(part)); });
+			list.append(li);
+		}
+		return list;
+	}
+	function commitText(key, value) {
+		if (editing) send({text: {id: editing.id, key, value}});
+	}
+	// what is typed taken: every text (only those changed, when closing)
+	function commitEditor(changed) {
+		if (!editing) return;
+		for (const [key, ta] of Object.entries(editing.boxes)) if (!changed || ta.value !== textOf(editing.id, key)) commitText(key, ta.value);
 	}
 	function closeEditor() {
-		if (editing && editing.key && dText.value !== textOf(editing.id, editing.key)) commitEditor();
+		commitEditor(true);
 		editing = null;
 		drawer.hidden = true;
 		frame.src = "about:blank"; frame.style.height = "0"; framed = "";
@@ -441,21 +450,18 @@ psalm.register("patcher", (p, api) => {
 			framed = n.id;
 			frame.src = "mount/" + encodeURIComponent(p.data.mount) + "/?embed&id=" + encodeURIComponent(n.id) + "&theme=" + encodeURIComponent(api.theme());
 		}
-		if (!editing.key) return;
-		const err = n.errors && n.errors[editing.key];
-		const say = err ? "error: " + err : n.status || "";
+		let say = "";
+		for (const [key, ta] of Object.entries(editing.boxes)) { // what is wrong with a text: below the boxes
+			const e = n.errors && n.errors[key];
+			ta.classList.toggle("bad", !!e);
+			if (e && !say) say = "error: " + (Object.keys(editing.boxes).length > 1 ? key + ": " : "") + e;
+		}
+		if (!say) say = n.status || "";
 		dStatus.textContent = say;
 		dStatus.classList.toggle("bad", /^error/i.test(say));
-		dText.classList.toggle("bad", !!err);
 	}
-	runBtn.addEventListener("click", commitEditor);
+	runBtn.addEventListener("click", () => commitEditor());
 	closeBtn.addEventListener("click", closeEditor);
-	dText.addEventListener("keydown", e => {
-		e.stopPropagation();
-		if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }
-		else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitEditor(); }
-		else if (e.key === "Escape") { e.preventDefault(); closeEditor(); }
-	});
 	grip.addEventListener("pointerdown", e => {
 		e.preventDefault();
 		grip.setPointerCapture(e.pointerId);

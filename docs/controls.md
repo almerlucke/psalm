@@ -843,15 +843,18 @@ are `patcher.Generators()`, built on genny:
 
 | Module | In | Out | Settings |
 |---|---|---|---|
-| clock | | trigger | division (1/4 to 1/32, triplets), swing, chance; a pattern typed on it (`x . x x`: a hit or a rest, looping) |
-| sequence | trigger, reset | value, after (a trigger once the value is out) | values typed on it (numbers, note names `C3 Eb3`, chords `[C3 E3 G3]`), the order: in order, shuffled, random, up and down, converge, alternate, backwards (genny's sequence, bucket, arpeggio) |
+| clock | | trigger | division (1/4 to 1/32, triplets), swing, chance; a pattern typed in its side panel (`x . x x`: a hit or a rest, looping) |
+| sequence | trigger, reset | value, after (a trigger once the value is out) | values typed in its side panel (numbers, note names `C3 Eb3`, chords `[C3 E3 G3]`), the order: in order, shuffled, random, up and down, converge, alternate, backwards (genny's sequence, bucket, arpeggio) |
 | notes | trigger, pitch, velocity, length (steps) | notes | the pitch, velocity, length and transposition for the inputs not patched. A length is in steps of the clock that triggered the note (at 1/16 and 120 bpm a step is 125 ms: a length of 8 is a second) |
 | quantize | value | value | a key and a scale (tools/harmony): every pitch, every note of a chord, to its nearest note in it |
 
 A notes module plays the triggers of a control tick at its end, after every other module had its
-tick: the values feeding it are up to date whatever order the cables were drawn in. Texts typed on a
-module are taken when they can be read; one that can't is shown in red, the module goes on with the
-one before. They are kept with the patch.
+tick: the values feeding it are up to date whatever order the cables were drawn in. Texts (a clock's
+pattern, a sequence's values, a script) are typed in the module's side panel (a double tap on it), in
+a box of lines each, as a script: Ctrl+Enter or Run takes them, or the panel closing; a pattern or
+values may go over lines. One that can't be read is shown in red with what is wrong with it below,
+the module goes on with the one before. They are kept with
+the patch.
 
 **Scripts** (`patcher/script`) are modules of JavaScript (goja). A script's top level runs when it
 starts, to make its generators; then `trigger(ev)` on every trigger (`ev.step`, the step of the
@@ -906,8 +909,8 @@ output back into return A or B, each at a level of its own);
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
 synth with its presets (the DX7 with its own editor) and every effect. From code: `Add`, `Connect`,
 `Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `TextError`, `Status`, `Copy`, `Paste`, `Save`, `Load`, `Clear`,
-`Nodes`, `Cables`. A module's `Made.Texts` and `SetText` give it settings of text (`Lines` above 1: a
-box of lines), `Made.Late` a function at the end of every control tick (a notes module's),
+`Nodes`, `Cables`. A module's `Made.Texts` and `SetText` give it settings of text (`Help`: what to
+know to type one, shown above its box in the side panel, a point a line, `code` in backquotes), `Made.Late` a function at the end of every control tick (a notes module's),
 `Made.Status` a line shown under it (a script's error, or what it logged). A module whose ports
 depend on how it is made (the mixer's channels) gives them in `Made.Ins` and `Made.Outs`. Cables
 are drawn over the modules, so one going back (a return) stays in sight, the ports over them.

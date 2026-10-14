@@ -72,6 +72,8 @@ type Text struct {
 	Label string `json:"label"`
 	Value string `json:"value"`
 	Lines int    `json:"lines,omitempty"` // more than one: a box of that many lines (a script)
+	// Help is what to know to type it, shown above its box: a point a line, `code` in backquotes
+	Help string `json:"help,omitempty"`
 }
 
 // Port is a port of a kind of module: its name on the page, what goes through it, its index
@@ -866,7 +868,7 @@ func (pt *Patcher) state() any {
 			ns.Outs = []Port{}
 		}
 		for _, t := range n.made.Texts {
-			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key], Lines: t.Lines})
+			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key], Lines: t.Lines, Help: t.Help})
 		}
 		if len(n.textErr) > 0 {
 			ns.Errors = maps.Clone(n.textErr)

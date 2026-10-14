@@ -135,17 +135,39 @@ func TestPagePatcher(t *testing.T) {
 	paneltest.Eventually(t, "the LFO gone", func() bool { return len(pt.Nodes()) == 3 })
 	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "its side panel closed")
 
-	// a generator's text typed on its module: a good pattern taken, a bad one shown
+	// a generator's text in its side panel, in a box as a script's (none on the module): a good
+	// pattern taken (Ctrl+Enter, over lines too), a bad one shown with what is wrong with it; its
+	// settings below
 	clk, err := pt.Add("clock", "", 400, 380)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-text input")`, clk)
-	tb.WaitFor(input, "the clock's pattern on its module")
-	tb.Eval(`(() => { const i = ` + input + `; i.value = "x . x x"; i.dispatchEvent(new Event("change")); })()`)
-	paneltest.Eventually(t, "the pattern taken", func() bool { tx := pt.Texts(clk); return len(tx) == 1 && tx[0].Value == "x . x x" })
-	tb.Eval(`(() => { const i = ` + input + `; i.value = "x ?"; i.dispatchEvent(new Event("change")); })()`)
-	tb.WaitFor(input+`.classList.contains("bad")`, "a bad pattern shown")
+	clkNode := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s']")`, clk)
+	tb.WaitFor(clkNode, "the clock on the patch")
+	if tb.Eval(clkNode + `.querySelector("input, textarea") !== null`).(bool) {
+		t.Error("the clock's pattern is in its side panel, not on its module")
+	}
+	doubleTap(tb, clkNode+`.querySelector(".pt-head")`)
+	input := `document.querySelector(".pt-drawer-text")`
+	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+input+`?.value === "x" && document.querySelector(".pt-drawer-frame").contentDocument?.querySelector(".control")`, "the pattern and the clock's settings in its side panel")
+	enter := func(text string) {
+		tb.Eval(`(() => { const i = ` + input + `; i.focus(); i.value = ` + strconv.Quote(text) + `; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
+	}
+	if !tb.Eval(`!!([...document.querySelectorAll(".pt-drawer .pt-help li")].some(li => li.textContent.includes("a hit")) && document.querySelector(".pt-help code"))`).(bool) {
+		t.Error("what to know to type a pattern is not above its box")
+	}
+	if !tb.Eval(`document.querySelector(".pt-drawer-text").getBoundingClientRect().right <= document.querySelector(".pt-drawer").getBoundingClientRect().right - 8`).(bool) {
+		t.Error("the box of a text runs past the side panel")
+	}
+	enter("x . x x\nx x . .")
+	paneltest.Eventually(t, "the pattern taken", func() bool { tx := pt.Texts(clk); return len(tx) == 1 && tx[0].Value == "x . x x\nx x . ." })
+	if e := pt.TextError(clk, "pattern"); e != "" {
+		t.Errorf("a pattern over two lines: %s", e)
+	}
+	enter("x ?")
+	tb.WaitFor(input+`.classList.contains("bad") && document.querySelector(".pt-drawer .pt-status").textContent.startsWith("error")`, "a bad pattern shown, what is wrong below it")
+	tb.Key("Escape")
+	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "the side panel closed")
 
 	// a script, opened in the side panel by a tap (no box of it on the module): an error of it shown
 	// on its line, in the side panel and on the module, then what it logs
@@ -162,6 +184,7 @@ func TestPagePatcher(t *testing.T) {
 	box, status := `document.querySelector(".pt-drawer-text")`, `document.querySelector(".pt-drawer .pt-status")`
 	onNode := node + `.querySelector(".pt-status")`
 	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+box+`.value.includes("function trigger")`, "the script in the side panel")
+	tb.WaitFor(`[...document.querySelectorAll(".pt-drawer .pt-help li")].some(li => li.textContent.includes("function trigger(ev)"))`, "what to know to write a script above it")
 	run := func(code string) {
 		tb.Eval(`(() => { const b = ` + box + `; b.focus(); b.value = ` + strconv.Quote(code) + `; b.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
 	}

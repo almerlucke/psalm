@@ -57,6 +57,14 @@ function value(v, port) {
 `,
 }
 
+// Help is what to know to write a script, shown above it in its side panel
+const Help = "its top level runs when it starts: make its generators there\n" +
+	"`function trigger(ev)` on every trigger (`ev.step`, `ev.seconds`); `function value(v, port)` for a value on `a` or `b`\n" +
+	"`note(pitch, velocity, steps)` (a pitch: `48`, `\"C3\"`, a chord `[48, 51]`), `send(\"a\", v)`, `fire()`, `mod(0 to 1)`, `log(...)`\n" +
+	"`pitch(\"C3\")`, `scale(\"C minor\").snap(p)`, `bpm()`, `input(\"a\")`, `shared` (every script of the patch sees it)\n" +
+	"`genny.sequence`, `bucket`, `arpeggio`, `repeat`, `and`, `or`, `rand`, `rwalk`, `from(function* ...)`: `.next()`\n" +
+	"Ctrl+Enter (or Run) runs it; an error (its line) or what it logs is below; a call may take 5 ms"
+
 // Code is the code of a preset (the first, "walk", for one not known)
 func Code(preset string) string {
 	if c, ok := codes[preset]; ok {
@@ -78,7 +86,7 @@ func Kind(rt *Runtime) patcher.Kind {
 				return nil, err
 			}
 			return &patcher.Made{Module: s,
-				Texts:   []patcher.Text{{Key: "code", Label: "script", Value: code, Lines: 12}},
+				Texts:   []patcher.Text{{Key: "code", Label: "script", Value: code, Lines: 12, Help: Help}},
 				SetText: func(_, v string) error { return s.SetCode(v) },
 				Notes:   s.SetTargets, Late: s.late, Status: s.Status,
 				Mod: func(int) func() float64 { return s.Mod }}, nil
