@@ -78,6 +78,7 @@ func (pn *Panel) servePlugin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := pn.pluginList()[i]
+	w.Header().Set("Cache-Control", "no-cache") // a program started again shows its new script, not the one kept
 	switch file {
 	case "plugin.js":
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
