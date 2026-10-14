@@ -465,3 +465,33 @@ func TestPageDrumMachine(t *testing.T) {
 	tb.WaitFor(frame+`.querySelectorAll(".gridhead > button.off").length === 12 && `+frame+`.querySelector(".stepslab input[type=checkbox]").checked`, "the first four patterns in the rotation")
 	tb.WaitFor(`[...`+frame+`.querySelectorAll("select")].filter(s => s.options.length > 200).length === 7`, "a sample to choose for every row")
 }
+
+// the log: not on the module, but in a box of its side panel, below the label
+func TestPageLog(t *testing.T) {
+	b := paneltest.Start(t)
+	psalm.PushConfig(psalm.Config{BPM: 240, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	clock, _ := pt.Add("clock", "", 60, 40)
+	lg, _ := pt.Add("log", "", 400, 40)
+	if _, err := pt.Connect(patcher.Cable{From: clock, To: lg, In: 1}); err != nil {
+		t.Fatal(err)
+	}
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 3`)
+	tb.Size(1300, 900)
+	if !tb.Eval(fmt.Sprintf(`!document.querySelector(".pt-node[data-id='%s'] .pt-status")`, lg)).(bool) {
+		t.Error("the log is not on the module")
+	}
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, lg))
+	tb.WaitFor(`document.querySelector(".pt-drawer-log")?.value.includes("trigger step")`, "the log in a box of the side panel")
+	if !tb.Eval(`document.querySelector(".pt-drawer-log").readOnly && document.querySelector(".pt-drawer-text:not(.pt-drawer-log)").getBoundingClientRect().bottom <= document.querySelector(".pt-drawer-log").getBoundingClientRect().top`).(bool) {
+		t.Error("the label above the log, the log read only")
+	}
+}

@@ -70,7 +70,7 @@ func (l *Log) Receive(v any, index int) {
 	l.Send(v, index)
 }
 
-// Status is the last lines, the newest below
+// Status is the last lines (Made.Log), the newest below
 func (l *Log) Status() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -91,7 +91,7 @@ func LogKind() Kind {
 		Outs: []Port{{Name: "value", Type: Value}, {Name: "trigger", Type: Trigger, Index: 1}},
 		Make: func(string) (*Made, error) {
 			l := NewLog()
-			return &Made{Module: l, Status: l.Status,
+			return &Made{Module: l, Log: l.Status,
 				Texts: []Text{{Key: "label", Label: "label (starts every line)", Value: "", Help: LogHelp}},
 				SetText: func(_, v string) error {
 					l.SetLabel(v)
@@ -102,5 +102,5 @@ func LogKind() Kind {
 
 // LogHelp is what to know about the log
 const LogHelp = "shows what comes in: a value (a number, a chord in brackets) on the value input, a moment on the trigger input\n" +
-	"the last 12 lines, the newest below; what comes in goes out the same way\n" +
+	"the last 12 lines in the side panel, the newest below; what comes in goes out the same way\n" +
 	"a label starts every line, to tell logs apart"

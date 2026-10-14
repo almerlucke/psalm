@@ -398,6 +398,13 @@ psalm.register("patcher", (p, api) => {
 			dBoxes.append(wrap);
 			editing.boxes[t.key] = ta;
 		}
+		if (n.log !== undefined && n.log !== null) { // a log: its own box, below the texts (they stay small)
+			for (const w of dBoxes.children) w.style.flex = "0 0 auto";
+			const wrap = el("label", "pt-drawer-box pt-drawer-logbox");
+			const ta = el("textarea", "pt-drawer-text pt-drawer-log"); ta.readOnly = true; ta.spellcheck = false; ta.wrap = "off";
+			wrap.append(ta); dBoxes.append(wrap);
+			editing.log = ta;
+		}
 		dCode.hidden = runBtn.hidden = !texts.length;
 		dSettings.hidden = !n.page;
 		// a script gets the room; a pattern or values a few lines, the settings the rest
@@ -449,6 +456,11 @@ psalm.register("patcher", (p, api) => {
 		if (n.page && st.selected === n.id && framed !== n.id) { // its page is the one served now
 			framed = n.id;
 			frame.src = "mount/" + encodeURIComponent(p.data.mount) + "/?embed&id=" + encodeURIComponent(n.id) + "&theme=" + encodeURIComponent(api.theme());
+		}
+		if (editing.log && typeof n.log === "string" && editing.log.value !== n.log) { // the newest lines stay in view
+			const ta = editing.log, atEnd = ta.scrollTop + ta.clientHeight >= ta.scrollHeight - 4;
+			ta.value = n.log;
+			if (atEnd) ta.scrollTop = ta.scrollHeight;
 		}
 		let say = "";
 		for (const [key, ta] of Object.entries(editing.boxes)) { // what is wrong with a text: below the boxes

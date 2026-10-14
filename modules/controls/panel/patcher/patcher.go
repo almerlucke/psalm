@@ -129,6 +129,9 @@ type Made struct {
 	// Status is a line shown on the module (a script's error or what it logged; "" nothing), asked
 	// when the page is updated
 	Status func() string
+	// Log is a log shown in a box of the side panel (a log module's), not on the module; asked when
+	// the page is updated
+	Log func() string
 }
 
 // Settings are the settings of a module's editor: what a patch saves of it
@@ -823,7 +826,13 @@ func (pt *Patcher) Status(id string) string {
 	pt.mu.Lock()
 	n := pt.node(id)
 	pt.mu.Unlock()
-	if n == nil || n.made.Status == nil {
+	if n == nil {
+		return ""
+	}
+	if n.made.Log != nil {
+		return n.made.Log()
+	}
+	if n.made.Status == nil {
 		return ""
 	}
 	return n.made.Status()
@@ -860,6 +869,7 @@ type nodeState struct {
 	Texts    []Text            `json:"texts,omitempty"`  // its settings of text, as they are
 	Errors   map[string]string `json:"errors,omitempty"` // what was wrong with one typed
 	Status   string            `json:"status,omitempty"`
+	Log      *string           `json:"log,omitempty"` // a log for the side panel (nil: it has none)
 	Page     bool              `json:"page,omitempty"` // it has settings to show (its editor)
 }
 
@@ -902,6 +912,10 @@ func (pt *Patcher) state() any {
 		ns.Page = n.page != nil
 		if n.made.Status != nil {
 			ns.Status = n.made.Status()
+		}
+		if n.made.Log != nil {
+			log := n.made.Log()
+			ns.Log = &log
 		}
 		for _, p := range n.set.Params {
 			label := p.Label
