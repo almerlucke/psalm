@@ -218,7 +218,8 @@ func (pn *Panel) Handler() http.Handler {
 		var req struct {
 			Name    string       `json:"name"`
 			Pattern *int         `json:"pattern"`
-			Steps   *[2]int      `json:"steps"` // [pattern, how many steps it has]
+			Steps   *[2]int      `json:"steps"`  // [pattern, how many steps it has]
+			Active  *[2]int      `json:"active"` // [pattern, 1 in the rotation or 0 out of it]
 			Set     [][5]float64 `json:"set"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -235,6 +236,9 @@ func (pn *Panel) Handler() http.Handler {
 		}
 		if req.Steps != nil {
 			g.SetPatternSteps(req.Steps[0], req.Steps[1])
+		}
+		if req.Active != nil {
+			g.SetActive(req.Active[0], req.Active[1] != 0)
 		}
 		if req.Pattern != nil {
 			g.SetPattern(*req.Pattern)
@@ -398,6 +402,7 @@ type gridDesc struct {
 	Playing  int       `json:"playing"`
 	Lengths  []int     `json:"lengths"`
 	PSteps   []int     `json:"psteps"` // the steps of every pattern
+	Active   []bool    `json:"active"` // which patterns are in the rotation
 }
 
 func (pn *Panel) describe() description {
@@ -437,7 +442,7 @@ func (pn *Panel) describe() description {
 			i := index[g.Section]
 			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: GridKind, Name: g.Name, Grid: &gridDesc{
 				Rows: g.Rows, Steps: g.Steps, Patterns: g.Patterns, Fields: g.Fields,
-				Cells: g.values(), Pattern: g.Pattern(), Playing: g.Playing(), Lengths: g.Lengths(), PSteps: g.allPatternSteps(),
+				Cells: g.values(), Pattern: g.Pattern(), Playing: g.Playing(), Lengths: g.Lengths(), PSteps: g.allPatternSteps(), Active: g.allActive(),
 			}})
 			continue
 		}
@@ -500,6 +505,7 @@ type gridUpdate struct {
 	Playheads []int     `json:"playheads"`
 	Lengths   []int     `json:"lengths"`
 	PSteps    []int     `json:"psteps"`
+	Active    []bool    `json:"active"`
 }
 
 // gridSent is what a page was sent of a grid last
@@ -574,14 +580,14 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 				sent = &gridSent{version: -1}
 				gridsSent[g.Name] = sent
 			}
-			gu := &gridUpdate{Pattern: g.Pattern(), Playing: g.Playing(), Playheads: g.Playheads(), Lengths: g.Lengths(), PSteps: g.allPatternSteps()}
+			gu := &gridUpdate{Pattern: g.Pattern(), Playing: g.Playing(), Playheads: g.Playheads(), Lengths: g.Lengths(), PSteps: g.allPatternSteps(), Active: g.allActive()}
 			changed := false
 			if v := g.version.Load(); v != sent.version {
 				sent.version = v
 				gu.Cells = g.values()
 				changed = true
 			}
-			if heads := fmt.Sprint(gu.Playheads, gu.Lengths, gu.PSteps); heads != sent.playheads || gu.Pattern != sent.pattern || gu.Playing != sent.playing {
+			if heads := fmt.Sprint(gu.Playheads, gu.Lengths, gu.PSteps, gu.Active); heads != sent.playheads || gu.Pattern != sent.pattern || gu.Playing != sent.playing {
 				sent.playheads, sent.pattern, sent.playing = heads, gu.Pattern, gu.Playing
 				changed = true
 			}

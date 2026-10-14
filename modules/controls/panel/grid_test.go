@@ -156,3 +156,31 @@ func TestGridPatternSteps(t *testing.T) {
 		t.Fatalf("restored steps %d %d %d", g.PatternSteps(0), g.PatternSteps(1), g.PatternSteps(2))
 	}
 }
+
+// patterns out of the rotation are skipped by Next, and kept in a snapshot
+func TestGridRotation(t *testing.T) {
+	pn, _ := newPanel()
+	g := pn.Grid("Drums", []string{"kick"}, 4, 5, testFields...)
+	g.SetActive(1, false)
+	g.SetActive(2, false)
+	if g.Next(0) != 3 || g.Next(3) != 4 || g.Next(4) != 0 || g.Next(1) != 3 {
+		t.Fatalf("next: %d %d %d %d", g.Next(0), g.Next(3), g.Next(4), g.Next(1))
+	}
+	snap := pn.Snapshot()
+	if snap["Drums/B/off"] != 1 || snap["Drums/C/off"] != 1 || len(snap) != 3 {
+		t.Fatalf("the snapshot should hold the patterns out of the rotation: %v", snap)
+	}
+	g.SetActive(1, true)
+	g.SetActive(4, false)
+	pn.Restore(snap)
+	if g.Active(1) || g.Active(2) || !g.Active(4) || !g.Active(0) {
+		t.Fatal("restore should bring the rotation back")
+	}
+	g.SetActive(0, false)
+	g.SetActive(3, false)
+	g.SetActive(4, false)
+	g.SetActive(1, false)
+	if g.Next(2) != 2 {
+		t.Fatal("with none active the pattern stays")
+	}
+}

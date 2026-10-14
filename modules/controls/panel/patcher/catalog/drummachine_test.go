@@ -134,6 +134,9 @@ func TestDrumMachinePatternInput(t *testing.T) {
 	if got := pt.SettingsOf(drum).Values()["Beat"]; got < 1 {
 		t.Errorf("every trigger should ask for the next pattern: %v", got)
 	}
+	if got := pt.SettingsOf(drum).Values()["Beat"]; got > 3 {
+		t.Errorf("only A to D are in the rotation to start with: %v", got)
+	}
 	if err := pt.Remove(drum); err != nil { // its sequencer goes with it
 		t.Fatal(err)
 	}

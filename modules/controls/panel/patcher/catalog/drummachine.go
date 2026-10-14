@@ -165,6 +165,9 @@ func drumMachineKind(dir string) (patcher.Kind, bool) {
 				page.Section("Beat")
 				grid := stepseq.NewGrid(page, "Beat", rows, drumSteps, drumPatterns)
 				grid.DefaultSteps(16) // a pattern starts with 16, up to drumSteps
+				for i := 4; i < drumPatterns; i++ {
+					grid.SetActive(i, false) // the rotation of the next input: A to D to start with
+				}
 				seq = stepseq.New(&added, grid, stepseq.Config{StepsPerBeat: 4, Swing: 0.5, Humanize: 4, HumanizeVelocity: 0.06})
 				targets := map[string]*stepseq.SampleSound{}
 				for i, r := range rows {

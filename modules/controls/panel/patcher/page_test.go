@@ -462,5 +462,6 @@ func TestPageDrumMachine(t *testing.T) {
 	tb.WaitFor(shown+` === 7*24`, "the first pattern of 24 steps")
 	tb.Eval(`[...` + frame + `.querySelectorAll(".gridhead > button")][1].click()`)
 	tb.WaitFor(shown+` === 7*16`, "the second pattern still of 16")
+	tb.WaitFor(frame+`.querySelectorAll(".gridhead > button.off").length === 12 && ` +frame+`.querySelector(".stepslab input[type=checkbox]").checked`, "the first four patterns in the rotation")
 	tb.WaitFor(`[...`+frame+`.querySelectorAll("select")].filter(s => s.options.length > 200).length === 7`, "a sample to choose for every row")
 }

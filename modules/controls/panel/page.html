@@ -116,6 +116,7 @@ body.learn .control.armed { outline: 2px solid var(--accent); animation: armed 1
 .cell.marked .mark { display: block; }
 .cell.head { outline: 2px solid var(--ink); outline-offset: -2px; }
 .cell.out { opacity: .3; }
+.gridhead button.off:not(.on) { opacity: .5; }
 .cell[hidden] { display: none; }
 .gridhead .stepslab { display: flex; gap: 4px; align-items: center; font-size: 13px; }
 .gridhead input.stepsin { width: 4em; min-height: 32px; padding: 2px 6px; font-size: 13px; }
@@ -397,6 +398,7 @@ function grid(p) {
 	let cells = d.cells.slice(), pattern = d.pattern, playing = d.playing;
 	let heads = d.rows.map(() => -1), lengths = d.lengths || d.rows.map(() => S);
 	let psteps = d.psteps || Array(d.patterns).fill(S); // the steps of every pattern: the rest is not shown
+	let active = d.active || Array(d.patterns).fill(true); // the patterns in the rotation (next skips the others)
 	const rowLen = r => Math.min(lengths[r], psteps[pattern]);
 	let selected = null, selectedRow = null;
 	const idx = (pt, r, s, f) => ((pt * R + r) * S + s) * F + f;
@@ -462,6 +464,19 @@ function grid(p) {
 			post("api/grid", {name: p.name, steps: [pattern, n]});
 		});
 		const lab = document.createElement("label"); lab.className = "stepslab"; lab.append("Steps ", stepsIn);
+		patTools.append(lab);
+	}
+	// whether the pattern on view is in the rotation (the next pattern skips the ones that are not)
+	let inRotation = null;
+	if (d.patterns > 1) {
+		inRotation = document.createElement("input");
+		inRotation.type = "checkbox";
+		inRotation.title = "in the rotation: asking for the next pattern comes to this one";
+		inRotation.addEventListener("change", () => {
+			active[pattern] = inRotation.checked; render();
+			post("api/grid", {name: p.name, active: [pattern, inRotation.checked ? 1 : 0]});
+		});
+		const lab = document.createElement("label"); lab.className = "stepslab"; lab.append(inRotation, " In rotation");
 		patTools.append(lab);
 	}
 	head.append(patTools);
@@ -617,13 +632,14 @@ function grid(p) {
 	}
 
 	function render() {
-		patButtons.forEach((b, i) => { b.classList.toggle("on", i === pattern); b.classList.toggle("playing", i === playing); });
+		patButtons.forEach((b, i) => { b.classList.toggle("off", !active[i]); b.classList.toggle("on", i === pattern); b.classList.toggle("playing", i === playing); });
 		if (copyTo) { // never to itself
 			Array.from(copyTo.options).forEach((o, i) => o.disabled = i === pattern);
 			if (Number(copyTo.value) === pattern) copyTo.value = (pattern + 1) % d.patterns;
 		}
 		const shown = psteps[pattern];
 		table.style.gridTemplateColumns = `auto repeat(${shown}, minmax(20px, 1fr))`;
+		if (inRotation) inRotation.checked = active[pattern];
 		if (stepsIn && document.activeElement !== stepsIn) stepsIn.value = shown;
 		for (let r = 0; r < R; r++) {
 			rowEls[r].classList.toggle("selected", selectedRow === r);
@@ -655,6 +671,7 @@ function grid(p) {
 			pattern = u.pattern; playing = u.playing;
 			if (u.playheads) heads = u.playheads;
 			if (u.psteps) psteps = u.psteps;
+			if (u.active) active = u.active;
 			if (u.lengths) { const changed = String(u.lengths) !== String(lengths); lengths = u.lengths; if (changed && selectedRow !== null) inspect(); }
 			render();
 			if (u.cells) inspect(true);
