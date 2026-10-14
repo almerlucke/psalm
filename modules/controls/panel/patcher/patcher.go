@@ -7,8 +7,8 @@
 //   - modulation, from an LFO, a random source or the mod wheel to any setting of a module (what
 //     it describes of itself, params), over a part of its range.
 //
-// Click a module to edit its settings (the editor of the panel, below the patch), a cable or a
-// module's × to take it away. Patches are kept by name in a folder: the modules, where they are,
+// Double-tap a module for its side panel: its settings (its editor) and its script; click a cable to take
+// it away, Delete takes the modules chosen away. Patches are kept by name in a folder: the modules, where they are,
 // the cables and every setting. Every change is made between two buffers while it plays.
 //
 //	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(), patcher.Keep("patches"))
@@ -216,8 +216,8 @@ type kindDesc struct {
 	Outs    []Port   `json:"outs"`
 }
 
-// New adds a patcher to a panel (with its plugin): the patch at the top, the editor of the module
-// chosen below it, its output Out
+// New adds a patcher to a panel (with its plugin): the patch, a module's settings (its editor, its
+// script) in a side panel when it is chosen; its output Out
 func New(p *psalm.Psalm, ctl *panel.Panel, name string, kinds []Kind, opts ...Option) *Patcher {
 	ctl.Use(Plugin)
 	pt := &Patcher{p: p, ctl: ctl, kinds: kinds, out: gain.New(0), work: make(chan json.RawMessage, 256), theme: panel.Themes["default"]}
@@ -236,7 +236,9 @@ func New(p *psalm.Psalm, ctl *panel.Panel, name string, kinds []Kind, opts ...Op
 	}
 	var d struct {
 		Kinds []kindDesc `json:"kinds"`
+		Mount string     `json:"mount"` // where the page of the module chosen is served (mount/<it>/)
 	}
+	d.Mount = name + " module"
 	for _, k := range kinds {
 		d.Kinds = append(d.Kinds, kindDesc{Name: k.Name, Group: k.Group, Presets: k.Presets, Ins: k.Ins, Outs: k.Outs})
 	}
@@ -250,8 +252,7 @@ func New(p *psalm.Psalm, ctl *panel.Panel, name string, kinds []Kind, opts ...Op
 			default: // too much at once: dropped
 			}
 		}))
-	ctl.Section(name + ": module") // the settings of the module chosen, in a section of their own
-	ctl.Mount(name+" module", selection{pt})
+	ctl.Mount(d.Mount, selection{pt}).Hide() // the settings of the module chosen: in the side panel
 	go pt.worker()
 	return pt
 }
@@ -457,7 +458,8 @@ func (pt *Patcher) Move(id string, x, y float64) {
 	}
 }
 
-// Select chooses the module whose settings show below the patch ("" none)
+// Select chooses the module whose settings the side panel shows (its page, served by the
+// patcher's hidden mount; "" none)
 func (pt *Patcher) Select(id string) {
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
@@ -809,6 +811,7 @@ type nodeState struct {
 	Texts    []Text            `json:"texts,omitempty"`  // its settings of text, as they are
 	Errors   map[string]string `json:"errors,omitempty"` // what was wrong with one typed
 	Status   string            `json:"status,omitempty"`
+	Page     bool              `json:"page,omitempty"` // it has settings to show (its editor)
 }
 
 type state struct {
@@ -844,6 +847,7 @@ func (pt *Patcher) state() any {
 		if len(n.textErr) > 0 {
 			ns.Errors = maps.Clone(n.textErr)
 		}
+		ns.Page = n.page != nil
 		if n.made.Status != nil {
 			ns.Status = n.made.Status()
 		}

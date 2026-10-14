@@ -1,4 +1,7 @@
-.pt { display: flex; flex-direction: column; gap: 8px; width: min(1400px, calc(100vw - 64px)); text-align: left; }
+.pt { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; text-align: left; }
+/* the section of a patch takes the whole row of the page: the patch as wide as the page (to a sidebar of keys) */
+section:has(.pt) { flex-basis: 100%; min-width: 0; }
+.controls:has(> .pt) { display: block; }
 .pt-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .pt-bar select, .pt-bar button { min-height: 32px; padding: 4px 10px; font-size: 13px; }
 .pt-bar input { font: inherit; font-size: 13px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: calc(var(--radius) * 2 / 3); padding: 6px 8px; width: 140px; }
@@ -7,7 +10,9 @@
 .pt-area { position: relative; height: clamp(520px, 70vh, 1000px); resize: vertical; overflow: auto; border-radius: calc(var(--radius) * 2 / 3); background: var(--track);
 	background-image: radial-gradient(color-mix(in srgb, var(--muted) 35%, transparent) 1px, transparent 1px); background-size: 20px 20px; touch-action: none; }
 .pt-cables { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; min-width: 100%; min-height: 100%; z-index: 2; } /* over the modules: a cable going back stays in sight */
-.pt-cable { fill: none; stroke-width: 3; pointer-events: stroke; cursor: pointer; opacity: .75; stroke-linecap: round; }
+.pt-cable { fill: none; stroke-width: 3; pointer-events: none; opacity: .75; stroke-linecap: round; }
+.pt-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; } /* what takes hold of a cable: wider than it */
+.pt-hit:hover + .pt-cable { stroke-width: 5; opacity: 1; }
 .pt-cable.audio { stroke: var(--accent); }
 .pt-cable.notes { stroke: var(--meter-low); }
 .pt-cable.mod { stroke: var(--meter-mid); stroke-dasharray: 6 4; }
@@ -19,8 +24,6 @@
 .pt-node.selected { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
 .pt-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); cursor: grab; font-weight: 600; touch-action: none; }
 .pt-head .pt-title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-.pt-node button.pt-x { min-height: 0; min-width: 0; padding: 0 6px; font-size: 14px; line-height: 18px; border: none; background: none; color: var(--muted); }
-.pt-node button.pt-x:hover { color: var(--meter-high); }
 .pt-ports { display: flex; justify-content: space-between; gap: 14px; padding: 6px 0; }
 .pt-ins, .pt-outs { display: flex; flex-direction: column; gap: 4px; }
 .pt-outs { align-items: flex-end; }
@@ -43,6 +46,8 @@
 .pt-range input { width: 110px; accent-color: var(--accent); }
 .pt-texts { display: flex; flex-direction: column; gap: 4px; padding: 0 8px 8px; }
 .pt-texts:empty { display: none; }
+.pt-marquee { position: absolute; z-index: 4; pointer-events: none; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 3px; }
+.pt-text-label { display: flex; align-items: center; gap: 6px; }
 .pt-text { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: 11px; }
 .pt-text input, .pt-text textarea { font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--ink); background: var(--track); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; min-width: 160px; }
 .pt-text input.bad, .pt-text textarea.bad { border-color: var(--meter-high); }
@@ -50,3 +55,26 @@
 .pt-status { padding: 0 8px 8px; font: 11px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); white-space: pre-wrap; max-width: 380px; }
 .pt-status:empty { display: none; }
 .pt-status.bad { color: var(--meter-high); }
+
+/* the patch over the whole screen (beside a sidebar of keys) */
+.pt.pt-max { position: fixed; top: 0; left: 0; bottom: 0; right: calc(var(--side-width, 0px) + var(--drawer-width, 0px)); width: auto; z-index: 50; background: var(--bg); padding: 10px 12px; box-sizing: border-box; }
+.pt.pt-max .pt-area { flex: 1; height: auto; min-height: 0; resize: none; }
+/* a box of lines (a script) in a side panel */
+.pt-drawer { position: fixed; top: 0; bottom: 0; right: var(--side-width, 0px); width: min(760px, 70vw); z-index: 55; display: flex; flex-direction: column; gap: 8px;
+	padding: 10px 12px 10px 16px; box-sizing: border-box; background: var(--card); border-left: 1px solid var(--line); box-shadow: -4px 0 16px rgba(0,0,0,.15); }
+.pt-drawer[hidden] { display: none; }
+.pt-drawer-grip { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
+.pt-drawer-grip:hover { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.pt-drawer-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+.pt-drawer-title { flex: 1; }
+.pt-drawer-head button { min-height: 28px; padding: 2px 10px; font-size: 13px; }
+.pt-drawer-head button.pt-x { border: none; background: none; color: var(--muted); font-size: 18px; padding: 0 6px; }
+.pt-drawer-code { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.pt-drawer-settings { flex: 1; min-height: 0; overflow: auto; }
+.pt-drawer.both .pt-drawer-code { flex: 0 0 45%; }
+.pt-drawer-code[hidden], .pt-drawer-settings[hidden] { display: none; }
+.pt-drawer-frame { width: 100%; border: 0; display: block; height: 0; color-scheme: normal; }
+.pt-drawer-text { flex: 1; min-height: 0; resize: none; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); background: var(--track);
+	border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; tab-size: 2; white-space: pre; }
+.pt-drawer-text.bad { border-color: var(--meter-high); }
+.pt-drawer .pt-status { padding: 0; max-width: none; min-height: 1.3em; }

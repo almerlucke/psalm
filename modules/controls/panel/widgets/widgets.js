@@ -72,25 +72,29 @@ psalm.register("keys", (p, api) => {
 	const els = {};
 	let whites = 0;
 	for (let n = from; n <= last; n++) if (!black(n)) whites++;
-	let w = 0;
 	for (let n = from; n <= last; n++) {
 		const k = document.createElement("div");
 		k.dataset.note = n;
-		if (black(n)) {
-			k.className = "key black";
-			k.style.left = `calc(${w} * 100% / ${whites} - 100% / ${whites} * 0.32)`;
-			k.style.width = `calc(100% / ${whites} * 0.64)`;
-		} else {
-			k.className = "key white";
-			k.style.left = `calc(${w} * 100% / ${whites})`;
-			k.style.width = `calc(100% / ${whites})`;
-			if (n % 12 === 0) k.textContent = "C" + (Math.floor(n / 12) - 1);
-			w++;
-		}
+		k.className = black(n) ? "key black" : "key white";
+		if (!black(n) && n % 12 === 0) k.textContent = "C" + (Math.floor(n / 12) - 1);
 		els[n] = k;
 		box.append(k);
 	}
 	box.style.setProperty("--whites", whites);
+	// along the keyboard: left to right, or (upright, in the sidebar) bottom to top
+	let upright = false;
+	const layout = () => {
+		box.classList.toggle("upright", upright);
+		let w = 0;
+		for (let n = from; n <= last; n++) {
+			const k = els[n], at = black(n) ? `calc(${w} * 100% / ${whites} - 100% / ${whites} * 0.32)` : `calc(${w} * 100% / ${whites})`;
+			const size = black(n) ? `calc(100% / ${whites} * 0.64)` : `calc(100% / ${whites})`;
+			k.style.left = upright ? "" : at; k.style.width = upright ? "" : size;
+			k.style.bottom = upright ? at : ""; k.style.height = upright ? size : "";
+			if (!black(n)) w++;
+		}
+	};
+	layout();
 	const held = new Map(); // a pointer (or a computer key) -> the note it holds
 	const on = (who, n, velocity) => {
 		off(who);
@@ -109,9 +113,9 @@ psalm.register("keys", (p, api) => {
 		const el = document.elementFromPoint(e.clientX, e.clientY);
 		return el && el.parentNode === box && el.dataset.note ? el : null;
 	};
-	const velocityOn = (el, e) => {
+	const velocityOn = (el, e) => { // further from where the key is held down, louder
 		const r = el.getBoundingClientRect();
-		return clamp01(0.25 + 0.75 * (e.clientY - r.top) / r.height);
+		return clamp01(0.25 + 0.75 * (upright ? (e.clientX - r.left) / r.width : (e.clientY - r.top) / r.height));
 	};
 	box.addEventListener("pointerdown", e => {
 		const el = keyAt(e);
@@ -157,7 +161,58 @@ psalm.register("keys", (p, api) => {
 		box.title = "the computer's keys play it too: A W S E D F T G Y H U J K (Z and X: an octave down, up)";
 	}
 	window.addEventListener("pagehide", () => { for (const who of [...held.keys()]) off(who); });
-	return {el: api.labelled(p, box), show() {}};
+
+	// in a sidebar on the right of the window, upright, that hides to a tab on its edge (and comes
+	// back from it); kept per keyboard in the browser
+	const wrap = document.createElement("div");
+	wrap.className = "keys-wrap";
+	const dockBtn = document.createElement("button");
+	dockBtn.className = "keys-dock"; dockBtn.textContent = "Sidebar ⇥"; dockBtn.title = "play it from a sidebar on the side of the window";
+	const here = document.createElement("div");
+	here.className = "keys-here"; here.textContent = "in the sidebar ";
+	const backBtn = document.createElement("button");
+	backBtn.textContent = "bring it back"; here.append(backBtn); here.hidden = true;
+	wrap.append(box, dockBtn, here);
+	const side = document.createElement("div");
+	side.className = "keys-side";
+	const sideHead = document.createElement("div");
+	sideHead.className = "keys-side-head";
+	const sideName = document.createElement("span"); sideName.textContent = p.label || p.name;
+	const hideBtn = document.createElement("button"); hideBtn.textContent = "⇥"; hideBtn.title = "hide the sidebar (its tab brings it back)";
+	const undockBtn = document.createElement("button"); undockBtn.textContent = "×"; undockBtn.title = "back on the page";
+	sideHead.append(sideName, hideBtn, undockBtn);
+	const sideBody = document.createElement("div"); sideBody.className = "keys-side-body";
+	side.append(sideHead, sideBody);
+	const tab = document.createElement("button");
+	tab.className = "keys-tab"; tab.textContent = p.label || p.name; tab.title = "show the keys";
+	const stateKey = "psalm-keys-side:" + p.name;
+	let docked = false, shown = true;
+	const sideWidth = () => (!docked ? 0 : shown ? side.offsetWidth : tab.offsetWidth);
+	const apply = () => {
+		letGoAll();
+		upright = docked;
+		layout();
+		if (docked) {
+			if (!side.isConnected) document.body.append(side, tab);
+			sideBody.append(box);
+		} else {
+			wrap.prepend(box);
+			side.remove(); tab.remove();
+		}
+		side.hidden = !docked || !shown;
+		tab.hidden = !docked || shown;
+		here.hidden = !docked; dockBtn.hidden = docked;
+		document.documentElement.style.setProperty("--side-width", sideWidth() + "px");
+		try { localStorage.setItem(stateKey, JSON.stringify({docked, shown})); } catch (e) {}
+	};
+	dockBtn.addEventListener("click", () => { docked = true; shown = true; apply(); });
+	backBtn.addEventListener("click", () => { docked = false; apply(); });
+	undockBtn.addEventListener("click", () => { docked = false; apply(); });
+	hideBtn.addEventListener("click", () => { shown = false; apply(); });
+	tab.addEventListener("click", () => { shown = true; apply(); });
+	try { const was = JSON.parse(localStorage.getItem(stateKey) || "null"); if (was) { docked = !!was.docked; shown = was.shown !== false; } } catch (e) {}
+	if (docked) requestAnimationFrame(apply); // once the page is built
+	return {el: api.labelled(p, wrap), show() {}};
 });
 
 // --- Pads: hits, louder in the middle of a pad; the number keys hit the first nine ---

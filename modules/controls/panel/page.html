@@ -714,6 +714,10 @@ const api = {
 	has: kind => !!builders[kind],
 	// MIDI learn on a widget of a value (a part): a tap in learn mode arms it
 	bindable: (w, p) => bindable(w, p),
+	// a frame of a plugin showing a panel (a hidden mount's: mount/<name>/?embed): it gets its
+	// height, the theme, light or dark and learn mode as the page's own frames do
+	frame: f => { frames.add(f); },
+	theme: () => themeNow,
 };
 window.psalm = api;
 

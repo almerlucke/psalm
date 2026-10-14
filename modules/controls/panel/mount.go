@@ -40,7 +40,16 @@ type MountBinder interface {
 type Mount struct {
 	Name    string
 	Section string
+	Hidden  bool // served and reached by MIDI, not drawn on the page: a plugin shows it (Hide)
 	m       Mounter
+}
+
+// Hide keeps the mount off the page: its panel is still served (under mount/<name>/) and reached by
+// MIDI, for a plugin to show where it wants (api.frame). The patcher shows the settings of a module
+// in its side panel so
+func (mt *Mount) Hide() *Mount {
+	mt.Hidden = true
+	return mt
 }
 
 // Mount adds a place showing another panel, the one the mounter gives now: its controls, as they

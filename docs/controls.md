@@ -544,6 +544,8 @@ learn on the page binds its controls. A mounter that is a `panel.MountKeeper` (`
 playlist keeps the controls of every song this way. A mounter that is a `panel.MountBinder`
 (`BindingsMount`, `SetBindingsMount`) keeps MIDI bindings the same way: they are in `Bindings()` as
 `"<mount>/..."`, so `KeepBindings` saves and loads what was learned on every song's controls.
+`ctl.Mount(...).Hide()` keeps a mount off the page while it is still served and reached by MIDI,
+for a plugin to show it where it wants: the patcher shows a module's settings in its side panel so.
 
 **Labels**: `panel.Label("M")` shows a short text on the page instead of the name (names have to
 be unique, labels can repeat).
@@ -699,7 +701,9 @@ snapshots and presets, set with `api.send(name, value)`. `Data` is anything it n
 `Live` (asked for on the page's goroutine) or `Push` (from any goroutine) give it a state that
 changes, `OnMessage` gets what it sends back with `api.message`. The `api` has the page's own
 helpers too: `labelled`, `drag`, `position`, `valueAt`, `format`, `press`, `post` and `css(name)`
-for a variable of the theme. A plugin's script is served at `plugins/<name>/plugin.js`, its styles
+for a variable of the theme; `theme()` is the theme's name, and `frame(iframe)` gives a frame of
+the plugin showing a panel (`mount/<name>/?embed`) its height, the theme, light or dark and learn
+mode, as the page's own frames. A plugin's script is served at `plugins/<name>/plugin.js`, its styles
 at `plugin.css` (before the theme's, so a theme can restyle it) and its `Files` under
 `plugins/<name>/`. A control of a kind no plugin draws shows as a note on the page instead.
 
@@ -717,7 +721,7 @@ following the theme:
 | Widget | |
 |---|---|
 | `XY(ctl, name, x, y Axis)` | A pad moving two values at once, x across and y up (a cutoff and a resonance); arrow keys move it, a double click goes back |
-| `Keys(ctl, name, play, From(48), Octaves(3))` | A keyboard: lower on a key is louder, sliding plays the keys passed; the computer's keys play the first one on a page (A W S E D F T G Y H U J K, Z and X an octave down and up). `Play(synth)` plays a synth; or pass a function of your own (the keyboard example pushes MIDI) |
+| `Keys(ctl, name, play, From(48), Octaves(3))` | A keyboard: lower on a key is louder, sliding plays the keys passed; the computer's keys play the first one on a page (A W S E D F T G Y H U J K, Z and X an octave down and up). `Play(synth)` plays a synth; or pass a function of your own (the keyboard example pushes MIDI). Its Sidebar button puts it upright in a sidebar on the right of the window (the page makes room, a patch over the whole screen too), where ⇥ hides it to a tab on the edge and the tab brings it back, × puts it back on the page; the browser keeps where it is |
 | `Pads(ctl, name, Hit(kit, "kick", "snare", ...), columns)` | Pads, louder in the middle; the number keys hit the first nine |
 | `Envelope(ctl, name, synth, "amp", ADSR{...})` | An attack, decay, sustain and release to drag into shape, sent as the envelope messages every synth takes ([envelopes by message](synths.md#envelopes-by-message)) |
 | `Scope(ctl, name, module)` | The sound of a module: its wave (steady on its rising zero crossings) and its spectrum; a click switches between them |
@@ -793,10 +797,21 @@ dxeditor.Add(ctl, "DX", synth, patch, dxeditor.Bank(banks))
 from a palette, move them by their heads, and draw cables from an output to an input of the same
 kind: audio (the sound), notes (a keyboard to the synths it plays) and modulation (an LFO, a random
 source or the mod wheel to any setting of a module, over a part of its range: drawn to a module's
-mod input, the setting and the range are chosen below the patch). Click a module for its settings
-(its editor, with its presets and yours), a cable to take it away (or Delete), a module's × to take
-it and its cables away. Patches are kept by name in a folder: the modules, where they are, the
+mod input, the setting and the range are chosen below the patch). A tap on a module chooses it, a double
+tap opens its side panel: its script (a box of lines) and its settings (its editor, with its presets
+and yours); a double tap on it again, Esc or × closes it. With the panel open, a tap on another module
+shows that one. Click a cable to take it
+away (or Delete); Delete (or Backspace) takes the modules chosen away with their cables. Patches are kept by name in a folder: the modules, where they are, the
 cables and every setting. Every change is made between two buffers while it plays.
+
+Several modules move together: shift-click (or ctrl, cmd) adds a module to the ones chosen or takes
+it out, a drag over the empty patch draws a rectangle that chooses every module it touches (with
+shift, adding to them); dragging one of them moves them all. Delete takes the chosen away (asking
+first when there are several), Esc lets go of them. A cable is taken hold of a little beside its
+line too. **Full screen** puts the patch over the whole screen (Esc, or the button again, brings it
+back). In the side panel a script has room to work: Ctrl+Enter (or Run) runs it, its error or what
+it logs is below it (and on its module), what was typed is taken when it closes; the panel's edge
+drags it wider or narrower. Over the whole screen the patch goes beside the side panel.
 
 ```go
 kinds := catalog.Kinds(catalog.Config{Input: keys, IR: hall}) // every synth and effect, a keyboard

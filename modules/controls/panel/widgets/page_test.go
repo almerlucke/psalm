@@ -18,15 +18,23 @@ type notes struct {
 	mu   sync.Mutex
 	held map[int]bool
 	ons  int
+	vel  float64 // of the last note on
 }
 
-func (n *notes) play(note int, _ float64, on bool) {
+func (n *notes) play(note int, velocity float64, on bool) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.held[note] = on
 	if on {
 		n.ons++
+		n.vel = velocity
 	}
+}
+
+func (n *notes) velocity() float64 {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.vel
 }
 
 func (n *notes) sounding() int {
@@ -179,4 +187,56 @@ func (r *recorder) get(k string) float64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.got[k]
+}
+
+// the keys in a sidebar, upright: played there (louder further along a key), hidden to a tab and
+// back from it, kept so through a reload, back on the page
+func TestPageKeysSidebar(t *testing.T) {
+	b := paneltest.Start(t)
+	pn := panel.New(psalm.New(nil), "Keys")
+	n := &notes{held: map[int]bool{}}
+	Keys(pn, "Keys", n.play)
+	tick := func() { pn.CtrlTick(psalm.CtrlTick{}) }
+	sounding := func(want int) func() bool { return func() bool { tick(); return n.sounding() == want } }
+	tb := b.Open(t, paneltest.Serve(t, pn.Handler()), `document.querySelector(".keys .white")`)
+	tb.Size(900, 700)
+	tb.Eval(`localStorage.clear()`)
+
+	tb.Tap(`document.querySelector(".keys-dock")`)
+	tb.WaitFor(`(() => { const s = document.querySelector(".keys-side"); return s && !s.hidden && s.contains(document.querySelector(".keys.upright"))
+		&& parseFloat(getComputedStyle(document.body).paddingRight) === s.offsetWidth; })()`, "the keys upright in the sidebar, the page making room")
+	key := `document.querySelector(".keys-side [data-note='52']")`
+	near := func(part float64) (float64, float64) {
+		pos := tb.Eval(`(() => { const r = ` + key + `.getBoundingClientRect(); return [r.left + r.width * ` + fmt.Sprint(part) + `, r.top + r.height / 2]; })()`).([]any)
+		return pos[0].(float64), pos[1].(float64)
+	}
+	x, y := near(0.9)
+	tb.Mouse("mousePressed", x, y, nil)
+	paneltest.Eventually(t, "a key played in the sidebar", sounding(1))
+	tb.Mouse("mouseReleased", x, y, nil)
+	paneltest.Eventually(t, "let go", sounding(0))
+	loud := n.velocity()
+	x, y = near(0.75)
+	tb.Mouse("mousePressed", x, y, nil)
+	paneltest.Eventually(t, "played again", sounding(1))
+	tb.Mouse("mouseReleased", x, y, nil)
+	paneltest.Eventually(t, "let go", sounding(0))
+	if soft := n.velocity(); !(loud > soft) {
+		t.Errorf("upright, further along the key is louder: %.2f at 90%%, %.2f at 75%%", loud, soft)
+	}
+
+	// hidden to a tab, back from it
+	tb.Tap(`document.querySelector(".keys-side-head button")`)
+	tb.WaitFor(`document.querySelector(".keys-side").hidden && !document.querySelector(".keys-tab").hidden`, "the sidebar hidden, its tab there")
+	tb.Tap(`document.querySelector(".keys-tab")`)
+	tb.WaitFor(`!document.querySelector(".keys-side").hidden`, "the sidebar back")
+
+	// kept through a reload
+	tb.Eval(`location.reload()`)
+	tb.WaitFor(`(() => { const s = document.querySelector(".keys-side"); return s && !s.hidden && s.querySelector(".keys.upright"); })()`, "the sidebar after a reload")
+
+	// back on the page
+	tb.Tap(`document.querySelectorAll(".keys-side-head button")[1]`)
+	tb.WaitFor(`!document.querySelector(".keys-side") && !document.querySelector(".keys.upright") && document.querySelector(".keys-wrap .keys")
+		&& parseFloat(getComputedStyle(document.body).paddingRight) === 0`, "the keys back on the page")
 }

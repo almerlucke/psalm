@@ -47,7 +47,9 @@ psalm.register("patcher", (p, api) => {
 	delBtn.addEventListener("click", () => { if (patchSel.value && confirm(`Delete the patch "${patchSel.value}"?`)) send({delete: patchSel.value}); });
 	clearBtn.addEventListener("click", () => { if (confirm("Take every module away?")) send({clear: true}); });
 	const note = el("span", "pt-note");
-	bar.append(kindSel, presetSel, addBtn, sep, patchSel, nameIn, saveBtn, delBtn, clearBtn, note);
+	const maxBtn = el("button", "pt-max-btn", "Full screen");
+	maxBtn.title = "the patch over the whole screen (Esc: back)";
+	bar.append(maxBtn, el("span", "pt-sep"), kindSel, presetSel, addBtn, sep, patchSel, nameIn, saveBtn, delBtn, clearBtn, note);
 
 	// --- the patch: modules over a layer of cables ---
 	const area = el("div", "pt-area");
@@ -60,7 +62,8 @@ psalm.register("patcher", (p, api) => {
 
 	let st = {nodes: [], cables: [], patches: [], selected: ""}, shownPatches = "";
 	const nodes = {};       // id -> {el, data}
-	let dragging = null;    // a module moved: its id
+	const chosen = new Set(); // the modules chosen (shift-click, or a rectangle around them): moved together
+	let dragging = new Set(); // the modules moved: their ids
 	let wiring = null;      // a cable drawn: {from, out, type, path}
 	let picked = "";        // the cable chosen (its id)
 	let pickNew = null;     // a mod cable just drawn: chosen when it comes (the cables there before)
@@ -77,20 +80,26 @@ psalm.register("patcher", (p, api) => {
 
 	function drawCables() {
 		svg.setAttribute("width", area.scrollWidth); svg.setAttribute("height", area.scrollHeight);
-		for (const old of [...svg.querySelectorAll("path.pt-cable")]) old.remove();
+		for (const old of [...svg.querySelectorAll("path.pt-cable:not(.drawing), path.pt-hit")]) old.remove();
 		for (const c of st.cables) {
 			const a = portEl(c.from, "out", c.out), b = portEl(c.to, "in", c.type === "mod" ? modIndex(c.to) : c.in);
 			if (!a || !b) continue;
 			const [x1, y1] = center(a), [x2, y2] = center(b);
-			const path = document.createElementNS(svgNS, "path");
-			path.setAttribute("d", curve(x1, y1, x2, y2));
-			path.setAttribute("class", `pt-cable ${c.type}` + (c.id === picked ? " picked" : ""));
-			path.dataset.id = c.id;
+			const d = curve(x1, y1, x2, y2);
+			// a wide stroke no one sees takes hold of it (a cable is thin), the cable drawn over it
+			const hit = document.createElementNS(svgNS, "path");
+			hit.setAttribute("d", d);
+			hit.setAttribute("class", "pt-hit");
+			hit.dataset.id = c.id;
 			const t = document.createElementNS(svgNS, "title");
 			t.textContent = c.type === "mod" ? `${c.from} → ${c.to} ${c.key}` : `${c.from} → ${c.to}`;
-			path.append(t);
-			path.addEventListener("pointerdown", e => { e.stopPropagation(); pick(c.id); });
-			svg.append(path);
+			hit.append(t);
+			const path = document.createElementNS(svgNS, "path");
+			path.setAttribute("d", d);
+			path.setAttribute("class", `pt-cable ${c.type}` + (c.id === picked ? " picked" : ""));
+			path.dataset.id = c.id;
+			for (const e of [hit, path]) e.addEventListener("pointerdown", ev => { ev.stopPropagation(); pick(c.id); });
+			svg.append(hit, path);
 		}
 	}
 	const modIndex = id => { const n = st.nodes.find(x => x.id === id); return n ? (n.ins || []).findIndex(x => x.type === "mod") : -1; };
@@ -100,41 +109,55 @@ psalm.register("patcher", (p, api) => {
 		box.dataset.id = n.id;
 		const head = el("div", "pt-head");
 		const title = el("span", "pt-title");
-		const x = el("button", "pt-x", "×"); x.title = "take it away";
-		if (n.id === "out") x.hidden = true;
-		head.append(title, x);
+		head.append(title);
 		const ports = el("div", "pt-ports");
 		const ins = el("div", "pt-ins"), outs = el("div", "pt-outs");
 		ports.append(ins, outs);
 		const texts = el("div", "pt-texts"); // its settings of text: typed here, sent on Enter or leaving
 		box.append(head, ports, texts);
-		x.addEventListener("pointerdown", e => e.stopPropagation());
-		x.addEventListener("click", () => send({remove: n.id}));
-		// moving it by its head; a tap chooses it (its settings below)
+		// moving it by its head (with the other modules chosen, when it is one of them); a tap chooses
+		// it (its settings below), with shift (or ctrl, cmd) it is added to the chosen or taken out
 		head.addEventListener("pointerdown", e => {
 			if (e.button !== 0) return;
-			const startX = e.clientX, startY = e.clientY, ox = box.offsetLeft, oy = box.offsetTop;
+			e.preventDefault(); e.stopPropagation();
+			if (e.shiftKey || e.ctrlKey || e.metaKey) {
+				if (chosen.has(n.id)) { chosen.delete(n.id); showChosen(); return; }
+				chosen.add(n.id);
+			} else if (!chosen.has(n.id)) {
+				chosen.clear(); chosen.add(n.id);
+			}
+			showChosen();
+			const startX = e.clientX, startY = e.clientY;
+			const moving = [...chosen].filter(id => nodes[id]).map(id => ({id, el: nodes[id].el, x: nodes[id].el.offsetLeft, y: nodes[id].el.offsetTop}));
+			// the group stays together at the edge: none of them goes left of or above the patch
+			const minX = Math.min(...moving.map(m => m.x)), minY = Math.min(...moving.map(m => m.y));
 			let moved = false;
-			dragging = n.id;
+			dragging = new Set(moving.map(m => m.id));
 			head.setPointerCapture(e.pointerId);
 			const move = ev => {
-				const nx = Math.max(0, ox + ev.clientX - startX), ny = Math.max(0, oy + ev.clientY - startY);
+				const dx = Math.max(-minX, ev.clientX - startX), dy = Math.max(-minY, ev.clientY - startY);
 				if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 3) moved = true;
-				box.style.left = nx + "px"; box.style.top = ny + "px";
+				for (const m of moving) { m.el.style.left = m.x + dx + "px"; m.el.style.top = m.y + dy + "px"; }
 				drawCables();
 			};
-			const up = () => {
+			const up = ev => {
 				head.removeEventListener("pointermove", move);
 				head.removeEventListener("pointerup", up);
-				dragging = null;
-				if (moved) send({move: n.id, pos: [box.offsetLeft, box.offsetTop]});
-				else send({select: n.id});
+				dragging = new Set();
+				if (moved) {
+					for (const m of moving) send({move: m.id, pos: [m.el.offsetLeft, m.el.offsetTop]});
+				} else if (!(ev.shiftKey || ev.ctrlKey || ev.metaKey)) {
+					tapped(n.id);
+				}
 			};
 			head.addEventListener("pointermove", move);
 			head.addEventListener("pointerup", up);
-			e.preventDefault();
 		});
-		box.addEventListener("pointerdown", e => { if (!e.target.closest(".pt-port")) send({select: n.id}); });
+		// a tap on it (not on a port or a setting typed on it) chooses it; a double tap opens its side
+		// panel, or closes it
+		const onIt = e => !e.target.closest(".pt-port, input, textarea, button, select") && !(e.shiftKey || e.ctrlKey || e.metaKey);
+		box.addEventListener("click", e => { if (onIt(e) && !e.target.closest(".pt-head")) tapped(n.id); });
+		box.addEventListener("dblclick", e => { if (onIt(e)) doubleTapped(n.id); });
 		area.append(box);
 		return {el: box, title, ins, outs, texts, inputs: {}, sig: ""};
 	}
@@ -164,19 +187,17 @@ psalm.register("patcher", (p, api) => {
 				(n.outs || []).forEach((port, i) => v.outs.append(portRow(n, "out", port, i)));
 			}
 			for (const t of n.texts || []) {
+				if (t.lines > 1) continue; // a box of lines (a script): in the side panel
 				let inp = v.inputs[t.key];
 				if (!inp) {
 					const row = el("label", "pt-text");
-					row.append(el("span", "", t.label));
-					const box = t.lines > 1; // a box of lines (a script): Ctrl+Enter, or leaving it, takes it
-					inp = el(box ? "textarea" : "input");
-					if (box) { inp.rows = t.lines; inp.wrap = "off"; }
+					row.append(el("span", "pt-text-label", t.label));
+					inp = el("input");
 					inp.spellcheck = false;
 					inp.value = t.value;
 					const commit = () => send({text: {id: n.id, key: t.key, value: inp.value}});
 					inp.addEventListener("keydown", e => {
-						if (box && e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }
-						if (e.key === "Enter" && (!box || e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); if (!box) inp.blur(); }
+						if (e.key === "Enter") { e.preventDefault(); commit(); inp.blur(); }
 						e.stopPropagation();
 					});
 					inp.addEventListener("change", commit);
@@ -195,10 +216,17 @@ psalm.register("patcher", (p, api) => {
 				v.status.textContent = n.status || "";
 				v.status.classList.toggle("bad", /^error/i.test(n.status || ""));
 			}
-			if (dragging !== n.id) { v.el.style.left = n.x + "px"; v.el.style.top = n.y + "px"; }
-			v.el.classList.toggle("selected", st.selected === n.id);
+			if (!dragging.has(n.id)) { v.el.style.left = n.x + "px"; v.el.style.top = n.y + "px"; }
+			v.el.classList.toggle("selected", chosen.has(n.id));
 		}
 		for (const id of Object.keys(nodes)) if (!seen.has(id)) { nodes[id].el.remove(); delete nodes[id]; }
+		for (const id of [...chosen]) if (!seen.has(id)) chosen.delete(id);
+	}
+
+	// the modules chosen shown; choosing them lets go of a cable picked (what Delete takes away)
+	function showChosen() {
+		for (const [id, v] of Object.entries(nodes)) v.el.classList.toggle("selected", chosen.has(id));
+		if (chosen.size && picked) { picked = ""; drawCables(); showInspector(); }
 	}
 
 	// --- drawing a cable: from an output to an input of its type ---
@@ -229,7 +257,7 @@ psalm.register("patcher", (p, api) => {
 	}
 
 	// --- a cable chosen: take it away; a mod cable: the setting it moves, over what part of its range ---
-	function pick(id) { picked = id; drawCables(); showInspector(); }
+	function pick(id) { picked = id; chosen.clear(); showChosen(); drawCables(); showInspector(); } // a cable, or modules: what Delete takes away
 	function showInspector() {
 		inspector.innerHTML = "";
 		const c = st.cables.find(x => x.id === picked);
@@ -256,11 +284,175 @@ psalm.register("patcher", (p, api) => {
 		del.addEventListener("click", () => { send({disconnect: c.id}); picked = ""; showInspector(); });
 		inspector.append(del);
 	}
-	area.addEventListener("pointerdown", e => { if (e.target === area || e.target === svg) { picked = ""; drawCables(); showInspector(); } });
+	area.addEventListener("pointerdown", e => {
+		if (e.button !== 0 || (e.target !== area && e.target !== svg)) return;
+		const adding = e.shiftKey || e.ctrlKey || e.metaKey;
+		const a = area.getBoundingClientRect();
+		const at = ev => [ev.clientX - a.left + area.scrollLeft, ev.clientY - a.top + area.scrollTop];
+		const [x0, y0] = at(e);
+		const before = new Set(chosen);
+		let rect = null;
+		area.setPointerCapture(e.pointerId);
+		const move = ev => {
+			const [x1, y1] = at(ev);
+			if (!rect && Math.abs(x1 - x0) + Math.abs(y1 - y0) < 4) return;
+			if (!rect) { rect = el("div", "pt-marquee"); area.append(rect); }
+			const l = Math.min(x0, x1), t = Math.min(y0, y1), w = Math.abs(x1 - x0), h = Math.abs(y1 - y0);
+			Object.assign(rect.style, {left: l + "px", top: t + "px", width: w + "px", height: h + "px"});
+			chosen.clear();
+			if (adding) for (const id of before) chosen.add(id);
+			for (const [id, v] of Object.entries(nodes)) {
+				const b = v.el;
+				if (b.offsetLeft < l + w && b.offsetLeft + b.offsetWidth > l && b.offsetTop < t + h && b.offsetTop + b.offsetHeight > t) chosen.add(id);
+			}
+			showChosen();
+		};
+		const up = () => {
+			area.removeEventListener("pointermove", move);
+			area.removeEventListener("pointerup", up);
+			if (rect) { rect.remove(); return; }
+			if (!adding) { chosen.clear(); showChosen(); } // a tap on the patch: nothing chosen
+			picked = ""; drawCables(); showInspector();
+		};
+		area.addEventListener("pointermove", move);
+		area.addEventListener("pointerup", up);
+	});
+	const typing = () => /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
 	window.addEventListener("keydown", e => {
-		if ((e.key === "Delete" || e.key === "Backspace") && picked && !/INPUT|SELECT/.test(document.activeElement.tagName)) {
-			send({disconnect: picked}); picked = ""; showInspector();
+		if (e.key === "Escape") {
+			if (editing) closeEditor();
+			else if (picked || chosen.size) { picked = ""; chosen.clear(); showChosen(); drawCables(); showInspector(); }
+			else if (maxed) setMax(false);
+			return;
 		}
+		if ((e.key === "Delete" || e.key === "Backspace") && !typing()) {
+			if (picked) { send({disconnect: picked}); picked = ""; showInspector(); return; }
+			const gone = [...chosen].filter(id => id !== "out");
+			if (!gone.length || (gone.length > 1 && !confirm(`Take ${gone.length} modules away?`))) return;
+			for (const id of gone) send({remove: id});
+			chosen.clear();
+		}
+	});
+
+	// --- the patch over the whole screen (the browser's full screen when it may) ---
+	let maxed = false;
+	function setMax(on) {
+		maxed = on;
+		root.classList.toggle("pt-max", on);
+		maxBtn.textContent = on ? "Exit full screen" : "Full screen";
+		if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
+		requestAnimationFrame(drawCables);
+	}
+	maxBtn.addEventListener("click", () => {
+		if (maxed) { setMax(false); return; }
+		setMax(true);
+		if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+	});
+	document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && maxed) setMax(false); });
+
+	// --- the side panel of a module: its script (a box of lines) and its settings (its editor,
+	// served by the patcher's hidden mount), its error or what it says below the script ---
+	const drawer = el("div", "pt-drawer"); drawer.hidden = true;
+	const grip = el("div", "pt-drawer-grip"); grip.title = "drag to make it wider or narrower";
+	const dHead = el("div", "pt-drawer-head");
+	const dTitle = el("span", "pt-drawer-title");
+	const runBtn = el("button", "", "Run"); runBtn.title = "take the script (Ctrl+Enter)";
+	const closeBtn = el("button", "pt-x", "×"); closeBtn.title = "close (Esc): a script typed is taken";
+	dHead.append(dTitle, runBtn, closeBtn);
+	const dCode = el("div", "pt-drawer-code");
+	const dText = el("textarea", "pt-drawer-text"); dText.spellcheck = false; dText.wrap = "off";
+	const dStatus = el("div", "pt-status");
+	dCode.append(dText, dStatus);
+	const dSettings = el("div", "pt-drawer-settings");
+	const frame = el("iframe", "pt-drawer-frame"); frame.title = "settings";
+	api.frame(frame); // its height, the theme, learn mode: as the page's own frames
+	dSettings.append(frame);
+	drawer.append(grip, dHead, dCode, dSettings);
+	root.append(drawer);
+	let editing = null;  // {id, key}: the module in the side panel, the key of its script ("" none)
+	let framed = "";     // the module whose settings the frame shows
+	const textOf = (id, key) => { const n = st.nodes.find(x => x.id === id); const t = n && (n.texts || []).find(x => x.key === key); return t ? t.value : null; };
+	const nodeOf = id => st.nodes.find(x => x.id === id);
+	// a tap chooses a module; with the side panel open, the panel shows it
+	let taps = [false, false]; // the last two taps: whether each brought the panel to its module
+	function tapped(id) {
+		chosen.clear(); chosen.add(id); showChosen();
+		const follow = !!editing && editing.id !== id;
+		taps = [taps[1], follow];
+		if (follow) openSide(id);
+	}
+	// a double tap opens the side panel of a module, or closes it; not when its first tap brought the
+	// panel to it (the tap before the last: a double tap is two taps, then this)
+	function doubleTapped(id) {
+		if (taps[0]) { taps = [false, false]; return; }
+		if (editing && editing.id === id) closeEditor(); else openSide(id);
+	}
+	function openSide(id) {
+		const n = nodeOf(id);
+		if (!n) return;
+		const box = (n.texts || []).find(t => t.lines > 1);
+		if (!box && !n.page) { if (editing) closeEditor(); return; } // nothing to show
+		if (editing) closeEditor();
+		editing = {id, key: box ? box.key : ""};
+		dTitle.textContent = n.kind + (n.preset ? " · " + n.preset : "");
+		dCode.hidden = runBtn.hidden = !box;
+		if (box) dText.value = box.value;
+		dSettings.hidden = !n.page;
+		drawer.classList.toggle("both", !!box && !!n.page);
+		send({select: n.page ? id : ""}); // the frame follows once it is chosen (update)
+		drawer.hidden = false;
+		roomForDrawer();
+		updateEditor();
+		if (box) dText.focus();
+	}
+	function commitEditor() {
+		if (!editing || !editing.key) return;
+		send({text: {id: editing.id, key: editing.key, value: dText.value}});
+	}
+	function closeEditor() {
+		if (editing && editing.key && dText.value !== textOf(editing.id, editing.key)) commitEditor();
+		editing = null;
+		drawer.hidden = true;
+		frame.src = "about:blank"; frame.style.height = "0"; framed = "";
+		send({select: ""});
+		roomForDrawer();
+	}
+	// over the whole screen the patch goes beside the side panel, not under it
+	function roomForDrawer() {
+		root.style.setProperty("--drawer-width", drawer.hidden ? "0px" : drawer.offsetWidth + "px");
+		requestAnimationFrame(drawCables);
+	}
+	function updateEditor() {
+		if (!editing) return;
+		const n = nodeOf(editing.id);
+		if (!n) { closeEditor(); return; }
+		if (n.page && st.selected === n.id && framed !== n.id) { // its page is the one served now
+			framed = n.id;
+			frame.src = "mount/" + encodeURIComponent(p.data.mount) + "/?embed&id=" + encodeURIComponent(n.id) + "&theme=" + encodeURIComponent(api.theme());
+		}
+		if (!editing.key) return;
+		const err = n.errors && n.errors[editing.key];
+		const say = err ? "error: " + err : n.status || "";
+		dStatus.textContent = say;
+		dStatus.classList.toggle("bad", /^error/i.test(say));
+		dText.classList.toggle("bad", !!err);
+	}
+	runBtn.addEventListener("click", commitEditor);
+	closeBtn.addEventListener("click", closeEditor);
+	dText.addEventListener("keydown", e => {
+		e.stopPropagation();
+		if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }
+		else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitEditor(); }
+		else if (e.key === "Escape") { e.preventDefault(); closeEditor(); }
+	});
+	grip.addEventListener("pointerdown", e => {
+		e.preventDefault();
+		grip.setPointerCapture(e.pointerId);
+		const right = drawer.getBoundingClientRect().right;
+		const move = ev => { drawer.style.width = Math.max(280, Math.min(right - 40, right - ev.clientX)) + "px"; roomForDrawer(); };
+		const up = () => { grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); };
+		grip.addEventListener("pointermove", move);
+		grip.addEventListener("pointerup", up);
 	});
 
 	function updatePatches() {
@@ -297,6 +489,7 @@ psalm.register("patcher", (p, api) => {
 			drawCables();
 			if (!inspector.contains(document.activeElement)) showInspector();
 			updatePatches();
+			updateEditor();
 		},
 		restyle: drawCables,
 	};

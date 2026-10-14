@@ -3,6 +3,9 @@ package patcher_test
 import (
 	"fmt"
 	"os"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -114,9 +117,23 @@ func TestPagePatcher(t *testing.T) {
 	tb.Eval(`document.querySelector("path.pt-cable.mod").dispatchEvent(new PointerEvent("pointerdown", {bubbles: true}))`)
 	tb.Tap(`[...document.querySelectorAll(".pt-inspector button")].find(b => b.textContent === "Take it away")`)
 	paneltest.Eventually(t, "the mod cable gone", func() bool { return len(pt.Cables()) == 2 })
-	// a module taken away, its cables with it
-	tb.Tap(fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-x")`, lfo))
+	// a tap on a module chooses it; a double tap: its settings in the side panel (its editor,
+	// served by the patcher's mount)
+	lfoHead := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, lfo)
+	tb.Tap(lfoHead)
+	tb.WaitFor(lfoHead+`.parentNode.classList.contains("selected")`, "the LFO chosen")
+	if !tb.Eval(`document.querySelector(".pt-drawer").hidden`).(bool) {
+		t.Error("a tap chooses a module, it doesn't open its side panel")
+	}
+	doubleTap(tb, lfoHead)
+	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-frame").contentDocument?.querySelector(".control")`, "the LFO's settings in the side panel")
+	if tb.Eval(`!!document.querySelector("section.mounthost")`).(bool) {
+		t.Error("the settings of the module chosen are in the side panel, not in a section below the patch")
+	}
+	// a module taken away by the Delete key, its cables with it, its side panel closed
+	tb.Key("Delete")
 	paneltest.Eventually(t, "the LFO gone", func() bool { return len(pt.Nodes()) == 3 })
+	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "its side panel closed")
 
 	// a generator's text typed on its module: a good pattern taken, a bad one shown
 	clk, err := pt.Add("clock", "", 400, 380)
@@ -130,18 +147,28 @@ func TestPagePatcher(t *testing.T) {
 	tb.Eval(`(() => { const i = ` + input + `; i.value = "x ?"; i.dispatchEvent(new Event("change")); })()`)
 	tb.WaitFor(input+`.classList.contains("bad")`, "a bad pattern shown")
 
-	// a script typed in its box: an error of it shown on the module (with its line), then what it logs
+	// a script, opened in the side panel by a tap (no box of it on the module): an error of it shown
+	// on its line, in the side panel and on the module, then what it logs
 	scr, err := pt.Add("script", "", 700, 380)
 	if err != nil {
 		t.Fatal(err)
 	}
-	box := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-text textarea")`, scr)
-	status := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-status")`, scr)
-	tb.WaitFor(box+`?.value.includes("function trigger")`, "the script in its box")
-	tb.Eval(`(() => { const b = ` + box + `; b.value = "const a = 1\nlet b = (;"; b.dispatchEvent(new Event("change")); })()`)
-	tb.WaitFor(box+`.classList.contains("bad") && `+status+`?.classList.contains("bad") && `+status+`.textContent.includes("line 2")`, "the error on its line")
-	tb.Eval(`(() => { const b = ` + box + `; b.focus(); b.value = "log('hello', [1, 2])"; b.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
-	tb.WaitFor(status+`.textContent === 'hello [1,2]' && !`+status+`.classList.contains("bad") && !`+box+`.classList.contains("bad")`, "what it logged")
+	node := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s']")`, scr)
+	tb.WaitFor(node, "the script on the patch")
+	if tb.Eval(node + `.querySelector("textarea") !== null`).(bool) {
+		t.Error("a script has no box on its module")
+	}
+	doubleTap(tb, node+`.querySelector(".pt-head")`)
+	box, status := `document.querySelector(".pt-drawer-text")`, `document.querySelector(".pt-drawer .pt-status")`
+	onNode := node + `.querySelector(".pt-status")`
+	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+box+`.value.includes("function trigger")`, "the script in the side panel")
+	run := func(code string) {
+		tb.Eval(`(() => { const b = ` + box + `; b.focus(); b.value = ` + strconv.Quote(code) + `; b.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
+	}
+	run("const a = 1\nlet b = (;")
+	tb.WaitFor(box+`.classList.contains("bad") && `+status+`.classList.contains("bad") && `+status+`.textContent.includes("line 2") && `+onNode+`?.textContent.includes("line 2")`, "the error on its line")
+	run("log('hello', [1, 2])")
+	tb.WaitFor(status+`.textContent === 'hello [1,2]' && !`+status+`.classList.contains("bad") && !`+box+`.classList.contains("bad") && `+onNode+`.textContent === 'hello [1,2]'`, "what it logged")
 	if os.Getenv("SHOT") != "" {
 		tb.Screenshot(os.Getenv("SHOT"))
 	}
@@ -150,4 +177,151 @@ func TestPagePatcher(t *testing.T) {
 	tb.Eval(`(() => { const i = document.querySelector(".pt-name"); i.value = "first"; [...document.querySelectorAll(".pt-bar button")].find(b => b.textContent === "Save").click(); })()`)
 	paneltest.Eventually(t, "the patch kept", func() bool { _, err := os.Stat(dir + "/first.json"); return err == nil })
 	tb.WaitFor(`[...document.querySelectorAll(".pt-patches option")].some(o => o.value === "first")`, "the patch listed")
+}
+
+// the workspace: modules chosen together (shift-click, a rectangle) and moved together, a cable
+// taken hold of beside its line, a script in the side panel, the patch over the whole screen
+func TestPageWorkspace(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	add := func(kind string, x, y float64) string {
+		t.Helper()
+		id, err := pt.Add(kind, "", x, y)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	lfo, rnd, scr, clock := add("lfo", 60, 40), add("random", 300, 40), add("script", 60, 300), add("clock", 560, 420)
+	if _, err := pt.Connect(patcher.Cable{From: clock, To: scr}); err != nil {
+		t.Fatal(err)
+	}
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 5 && document.querySelector("path.pt-cable.trigger")`)
+	tb.Size(1300, 900)
+	node := func(id string) string { return fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s']")`, id) }
+	// the patch as wide as the page: its section takes the whole row
+	tb.WaitFor(`Math.abs(document.querySelector(".pt").closest("section").getBoundingClientRect().right - (document.querySelector("main").getBoundingClientRect().right - parseFloat(getComputedStyle(document.querySelector("main")).paddingRight))) < 2`, "the patch as wide as the page")
+	at := func(id string) (float64, float64) {
+		for _, n := range pt.Nodes() {
+			if n.ID == id {
+				return n.X, n.Y
+			}
+		}
+		t.Fatalf("no module %s", id)
+		return 0, 0
+	}
+
+	// two chosen (a tap, a shift-tap), moved together by one of them
+	tb.Tap(node(lfo) + `.querySelector(".pt-head")`)
+	x, y := tb.Center(node(rnd)+`.querySelector(".pt-title")`, 0.5)
+	tb.Mouse("mousePressed", x, y, map[string]any{"modifiers": 8}) // shift
+	tb.Mouse("mouseReleased", x, y, map[string]any{"modifiers": 8})
+	tb.WaitFor(`document.querySelectorAll(".pt-node.selected").length === 2`, "two modules chosen")
+	x, y = tb.Center(node(lfo)+`.querySelector(".pt-title")`, 0.5)
+	tb.Mouse("mousePressed", x, y, nil)
+	for i := 1; i <= 5; i++ {
+		tb.Mouse("mouseMoved", x+float64(i)*20, y+float64(i)*16, nil)
+	}
+	tb.Mouse("mouseReleased", x+100, y+80, nil)
+	paneltest.Eventually(t, "both moved by the drag", func() bool {
+		lx, ly := at(lfo)
+		rx, ry := at(rnd)
+		return lx == 160 && ly == 120 && rx == 400 && ry == 120
+	})
+
+	// Esc lets go of them; a rectangle around both chooses them again
+	if !tb.Eval(`document.querySelector(".pt-drawer").hidden`).(bool) {
+		t.Error("taps choose modules, they don't open a side panel")
+	}
+	tb.Key("Escape")
+	tb.WaitFor(`document.querySelectorAll(".pt-node.selected").length === 0`, "nothing chosen")
+	rectangle := func() { // dragged around the LFO and the random source, from the empty patch
+		r := tb.Eval(`(() => { const a = ` + node(lfo) + `.getBoundingClientRect(), b = ` + node(rnd) + `.getBoundingClientRect();
+			return [a.left - 12, a.top - 12, b.right + 12, Math.max(a.bottom, b.bottom) + 12]; })()`).([]any)
+		x0, y0, x1, y1 := r[0].(float64), r[1].(float64), r[2].(float64), r[3].(float64)
+		tb.Mouse("mousePressed", x0, y0, nil)
+		for i := 1; i <= 6; i++ {
+			tb.Mouse("mouseMoved", x0+(x1-x0)*float64(i)/6, y0+(y1-y0)*float64(i)/6, nil)
+		}
+		tb.Mouse("mouseReleased", x1, y1, nil)
+	}
+	rectangle()
+	tb.WaitFor(`[...document.querySelectorAll(".pt-node.selected")].map(n => n.dataset.id).sort().join() === "`+strings.Join(sortedIDs(lfo, rnd), ",")+`"`, "the two in the rectangle chosen")
+
+	// a cable taken hold of 6 pixels beside its line
+	pos := tb.Eval(`(() => { const p = document.querySelector("path.pt-cable.trigger"), l = p.getTotalLength(), q = p.getPointAtLength(l / 2), m = p.getScreenCTM();
+		return [q.x * m.a + m.e, q.y * m.d + m.f]; })()`).([]any)
+	cx, cy := pos[0].(float64), pos[1].(float64)+6
+	tb.Mouse("mousePressed", cx, cy, nil)
+	tb.Mouse("mouseReleased", cx, cy, nil)
+	tb.WaitFor(`document.querySelector(".pt-inspector").textContent.includes("trigger cable")`, "the cable picked beside its line")
+	tb.WaitFor(`document.querySelectorAll(".pt-node.selected").length === 0`, "the modules let go of when the cable was picked")
+	tb.Key("Delete")
+	paneltest.Eventually(t, "the cable taken away", func() bool { return len(pt.Cables()) == 0 })
+
+	// the script in the side panel: typed there, run with Ctrl+Enter, what it logs below; Esc closes
+	doubleTap(tb, node(scr)+`.querySelector(".pt-head")`)
+	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-text").value.includes("function trigger")`, "the script in the side panel")
+	tb.Eval(`(() => { const d = document.querySelector(".pt-drawer-text"); d.focus(); d.value = "log('wide')"; d.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
+	tb.WaitFor(`document.querySelector(".pt-drawer .pt-status").textContent === "wide"`, "what it logs in the side panel")
+	if tx := pt.Texts(scr); len(tx) != 1 || tx[0].Value != "log('wide')" {
+		t.Fatalf("the script typed in the side panel: %v", tx)
+	}
+	tb.Key("Escape")
+	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "the side panel closed")
+
+	// the side panel open: a tap on another module shows that one, a double tap on it closes it
+	doubleTap(tb, node(scr)+`.querySelector(".pt-head")`)
+	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden`, "the script's side panel again")
+	tb.Tap(node(lfo) + `.querySelector(".pt-head")`)
+	tb.WaitFor(`document.querySelector(".pt-drawer-title").textContent === "lfo" && document.querySelector(".pt-drawer-code").hidden`, "the LFO in the side panel, after a tap")
+	doubleTap(tb, node(lfo)+`.querySelector(".pt-head")`)
+	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "the side panel closed by a double tap")
+	doubleTap(tb, node(lfo)+`.querySelector(".pt-head")`)
+	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden`, "the LFO's side panel by a double tap")
+	// a double tap on another module, the panel open: its first tap brings the panel, which stays
+	doubleTap(tb, node(scr)+`.querySelector(".pt-head")`)
+	if open := tb.Eval(`new Promise(r => setTimeout(() => r(!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-title").textContent.startsWith("script")), 150))`).(bool); !open {
+		t.Error("a double tap on another module, the panel open, should show that module, not close the panel")
+	}
+	tb.Tap(`document.querySelector(".pt-drawer .pt-x")`)
+	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "the side panel closed by its ×")
+
+	// the patch over the whole screen, and back
+	if os.Getenv("SHOT") != "" {
+		doubleTap(tb, node(scr)+`.querySelector(".pt-head")`)
+		tb.Tap(`document.querySelector(".pt-max-btn")`)
+		tb.Screenshot(os.Getenv("SHOT"))
+		tb.Tap(`document.querySelector(".pt-drawer .pt-x")`)
+		tb.Tap(`document.querySelector(".pt-max-btn")`)
+	}
+	tb.Tap(`document.querySelector(".pt-max-btn")`)
+	tb.WaitFor(`document.querySelector(".pt").classList.contains("pt-max") && document.querySelector(".pt-area").getBoundingClientRect().height > 750`, "the patch over the whole screen")
+	tb.Tap(`document.querySelector(".pt-max-btn")`)
+	tb.WaitFor(`!document.querySelector(".pt").classList.contains("pt-max")`, "the patch back in the page")
+
+	// the Delete key: the modules chosen
+	rectangle()
+	tb.WaitFor(`document.querySelectorAll(".pt-node.selected").length === 2`, "the two chosen again")
+	tb.Eval(`window.confirm = () => true`)
+	tb.Key("Delete")
+	paneltest.Eventually(t, "the two chosen taken away", func() bool { return len(pt.Nodes()) == 3 })
+}
+
+func sortedIDs(ids ...string) []string { slices.Sort(ids); return ids }
+
+// doubleTap taps an element twice, quickly (a double click)
+func doubleTap(tb *paneltest.Tab, expr string) {
+	x, y := tb.Center(expr, 0.5)
+	for _, n := range []int{1, 2} {
+		tb.Mouse("mousePressed", x, y, map[string]any{"clickCount": n})
+		tb.Mouse("mouseReleased", x, y, map[string]any{"clickCount": n})
+	}
 }

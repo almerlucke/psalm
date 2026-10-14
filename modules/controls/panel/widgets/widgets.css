@@ -12,6 +12,23 @@
 .keys .white { height: 100%; background: #f6f5f1; border: 1px solid color-mix(in srgb, var(--line) 60%, #999); border-radius: 0 0 5px 5px; font-size: 9px; color: #8a8a86; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 4px; }
 .keys .black { height: 62%; background: #1b1b1d; box-shadow: 0 1px 2px rgba(0,0,0,.35); border-radius: 0 0 4px 4px; z-index: 1; }
 .keys .key.down { background: var(--accent); }
+.keys-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.keys-wrap > button, .keys-here button { min-height: 0; padding: 3px 8px; font-size: 12px; }
+.keys-here { font-size: 12px; color: var(--muted); }
+/* upright, in the sidebar: low notes at the bottom, the black keys on the left */
+.keys.upright { width: 100%; height: 100%; }
+.keys.upright .key { top: auto; left: 0; }
+.keys.upright .white { width: 100%; border-radius: 0 5px 5px 0; justify-content: flex-end; align-items: center; padding: 0 6px 0 0; }
+.keys.upright .black { width: 62%; border-radius: 0 4px 4px 0; }
+.keys-side { position: fixed; top: 0; right: 0; bottom: 0; width: 96px; z-index: 60; display: flex; flex-direction: column; gap: 6px; padding: 8px; box-sizing: border-box;
+	background: var(--card); border-left: 1px solid var(--line); box-shadow: var(--shadow); }
+.keys-side[hidden], .keys-tab[hidden] { display: none; }
+.keys-side-head { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.keys-side-head span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.keys-side-head button { min-height: 0; min-width: 0; padding: 1px 6px; font-size: 13px; }
+.keys-side-body { flex: 1; min-height: 0; }
+.keys-tab { position: fixed; right: 0; top: 50%; transform: translateY(-50%); z-index: 60; writing-mode: vertical-rl; min-height: 0; padding: 12px 4px;
+	font-size: 12px; border-radius: 6px 0 0 6px; border-right: none; }
 
 /* pads */
 .pads { display: grid; gap: 8px; }
@@ -23,3 +40,4 @@
 /* envelope, scope */
 canvas.envelope { width: 300px; height: 140px; border-radius: calc(var(--radius) * 2 / 3); background: var(--track); touch-action: none; cursor: grab; display: block; }
 canvas.scope { width: min(460px, calc(100vw - 64px)); height: 160px; border-radius: calc(var(--radius) * 2 / 3); background: var(--track); cursor: pointer; display: block; }
+body { padding-right: var(--side-width, 0px); } /* the page makes room for a sidebar of keys */

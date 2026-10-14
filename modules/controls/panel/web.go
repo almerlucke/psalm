@@ -414,6 +414,9 @@ func (pn *Panel) describe() description {
 	}
 	for _, it := range pn.items() {
 		if mt := it.mount; mt != nil {
+			if mt.Hidden {
+				continue
+			}
 			i := index[mt.Section]
 			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: MountKind, Name: mt.Name, Mount: describeMount(mt.Mounted())})
 			continue
