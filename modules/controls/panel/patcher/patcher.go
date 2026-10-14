@@ -163,12 +163,16 @@ type Cable struct {
 // Patcher is a patch made on the page
 type Patcher struct {
 	*panel.Param
-	p     *psalm.Psalm
-	ctl   *panel.Panel
-	tempo *panel.Param // the tempo of the patch, in the bar at the top of the page
-	theme panel.Theme
-	kinds []Kind
-	out   *gain.Gain // the output: what the patch plays
+	p      *psalm.Psalm
+	ctl    *panel.Panel
+	tempo  *panel.Param // the tempo of the patch, in the bar at the top of the page
+	clip   *patchFile   // the modules copied (Copy), to paste
+	pastes int          // how often they were pasted: every paste a little further
+	pasted []string     // the modules the last paste made (the page chooses them)
+	pasteN int          // the pastes so far
+	theme  panel.Theme
+	kinds  []Kind
+	out    *gain.Gain // the output: what the patch plays
 
 	mu       sync.Mutex // the patch as the page sees it (the audio thread has its own copies)
 	nodes    []*node
@@ -301,6 +305,8 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		Delete *string     `json:"delete"`
 		Clear  bool        `json:"clear"`
 		Pos    *[2]float64 `json:"pos"`
+		Copy   []string    `json:"copy"`
+		Paste  bool        `json:"paste"`
 	}
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return err
@@ -339,6 +345,15 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		return pt.DeletePatch(*m.Delete)
 	case m.Clear:
 		pt.Clear()
+	case len(m.Copy) > 0:
+		if n := pt.Copy(m.Copy...); n > 0 {
+			pt.mu.Lock()
+			pt.note = fmt.Sprintf("%d copied: Ctrl+V pastes", n)
+			pt.mu.Unlock()
+		}
+	case m.Paste:
+		_, err := pt.Paste()
+		return err
 	}
 	return nil
 }
@@ -828,13 +843,16 @@ type state struct {
 	Current  string      `json:"current"`
 	Keeps    bool        `json:"keeps"`
 	Note     string      `json:"note"`
+	Pasted   []string    `json:"pasted,omitempty"` // the modules the last paste made
+	PasteN   int         `json:"pasteN,omitempty"` // the pastes so far: another one, the page chooses them
 }
 
 func (pt *Patcher) state() any {
 	patches := pt.Patches()
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
-	st := state{Cables: []*Cable{}, Selected: pt.selected, Patches: patches, Current: pt.current, Keeps: pt.dir != "", Note: pt.note}
+	st := state{Cables: []*Cable{}, Selected: pt.selected, Patches: patches, Current: pt.current, Keeps: pt.dir != "", Note: pt.note,
+		Pasted: pt.pasted, PasteN: pt.pasteN}
 	for _, c := range pt.cables {
 		cc := *c
 		st.Cables = append(st.Cables, &cc)
@@ -916,15 +934,14 @@ func (pt *Patcher) Patches() []string {
 	return names
 }
 
-// Save keeps the patch under a name: its modules, where they are, its cables, every setting
-func (pt *Patcher) Save(name string) error {
-	path, err := pt.file(name)
-	if err != nil {
-		return err
-	}
+// snapshot is the patch as it is kept: the modules (all, or those keep has) with their settings
+// and texts, the cables between them. With the lock held
+func (pt *Patcher) snapshot(keep map[string]bool) patchFile {
 	var f patchFile
-	pt.mu.Lock()
 	for _, n := range pt.nodes {
+		if keep != nil && !keep[n.ID] {
+			continue
+		}
 		e := struct {
 			node
 			Settings map[string]float64 `json:"settings,omitempty"`
@@ -938,7 +955,114 @@ func (pt *Patcher) Save(name string) error {
 		}
 		f.Nodes = append(f.Nodes, e)
 	}
-	f.Cables = pt.cables
+	for _, c := range pt.cables {
+		if keep == nil || keep[c.From] && keep[c.To] {
+			cc := *c
+			f.Cables = append(f.Cables, &cc)
+		}
+	}
+	return f
+}
+
+// place makes the modules of a patch kept, moved by dx, dy (the output there is moved to its place
+// when out), and the cables between them: the ids in f, the ids now; what went wrong
+func (pt *Patcher) place(f patchFile, dx, dy float64, out bool) (map[string]string, []string) {
+	ids := map[string]string{"out": "out"}
+	var failed []string
+	for _, n := range f.Nodes {
+		if n.ID == "out" {
+			if out {
+				pt.Move("out", n.X, n.Y)
+			}
+			continue
+		}
+		id, err := pt.Add(n.Kind, n.Preset, n.X+dx, n.Y+dy)
+		if err != nil {
+			failed = append(failed, n.Kind+": "+err.Error())
+			continue
+		}
+		ids[n.ID] = id
+		for key, value := range n.Texts {
+			_ = pt.SetText(id, key, value)
+		}
+		if len(n.Settings) > 0 {
+			pt.mu.Lock()
+			made := pt.node(id)
+			pt.mu.Unlock()
+			if made != nil && made.settings != nil {
+				made.settings.Apply(n.Settings)
+			}
+		}
+	}
+	for _, c := range f.Cables {
+		from, ok1 := ids[c.From]
+		to, ok2 := ids[c.To]
+		if !ok1 || !ok2 {
+			continue
+		}
+		cc := *c
+		cc.ID, cc.From, cc.To = "", from, to
+		if _, err := pt.Connect(cc); err != nil {
+			failed = append(failed, err.Error())
+		}
+	}
+	return ids, failed
+}
+
+// Copy keeps modules to paste (Paste): their kind, preset, settings and texts, the cables between
+// them; the output can't be copied. It returns how many it keeps (from any goroutine)
+func (pt *Patcher) Copy(ids ...string) int {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+	keep := map[string]bool{}
+	for _, id := range ids {
+		if id != "out" && pt.node(id) != nil {
+			keep[id] = true
+		}
+	}
+	if len(keep) == 0 {
+		return 0
+	}
+	f := pt.snapshot(keep)
+	pt.clip, pt.pastes = &f, 0
+	return len(keep)
+}
+
+// Paste makes the modules copied again, with the cables between them: every paste a little further
+// down and to the right of where they were copied. It returns their ids (from any goroutine)
+func (pt *Patcher) Paste() ([]string, error) {
+	pt.mu.Lock()
+	clip := pt.clip
+	pt.pastes++
+	d := 30 * float64(pt.pastes)
+	pt.mu.Unlock()
+	if clip == nil {
+		return nil, errors.New("nothing copied")
+	}
+	ids, failed := pt.place(*clip, d, d, false)
+	var made []string
+	for _, n := range clip.Nodes {
+		if id, ok := ids[n.ID]; ok && id != "out" {
+			made = append(made, id)
+		}
+	}
+	pt.mu.Lock()
+	pt.pasted, pt.pasteN = made, pt.pasteN+1
+	pt.mu.Unlock()
+	if len(failed) > 0 {
+		return made, errors.New("pasted, but: " + strings.Join(failed, "; "))
+	}
+	return made, nil
+}
+
+// Save keeps the patch under a name: its modules, where they are, its cables, every setting
+func (pt *Patcher) Save(name string) error {
+	path, err := pt.file(name)
+	if err != nil {
+		return err
+	}
+	pt.mu.Lock()
+	f := pt.snapshot(nil)
 	f.BPM = pt.tempo.Value()
 	data, err := json.MarshalIndent(f, "", "\t")
 	pt.mu.Unlock()
@@ -972,43 +1096,7 @@ func (pt *Patcher) Load(name string) error {
 	if f.BPM > 0 {
 		pt.tempo.Set(f.BPM)
 	}
-	ids := map[string]string{"out": "out"} // the ids in the file, the ids now
-	var failed []string
-	for _, n := range f.Nodes {
-		if n.ID == "out" {
-			pt.Move("out", n.X, n.Y)
-			continue
-		}
-		id, err := pt.Add(n.Kind, n.Preset, n.X, n.Y)
-		if err != nil {
-			failed = append(failed, n.Kind+": "+err.Error())
-			continue
-		}
-		ids[n.ID] = id
-		for key, value := range n.Texts {
-			_ = pt.SetText(id, key, value)
-		}
-		if len(n.Settings) > 0 {
-			pt.mu.Lock()
-			made := pt.node(id)
-			pt.mu.Unlock()
-			if made != nil && made.settings != nil {
-				made.settings.Apply(n.Settings)
-			}
-		}
-	}
-	for _, c := range f.Cables {
-		from, ok1 := ids[c.From]
-		to, ok2 := ids[c.To]
-		if !ok1 || !ok2 {
-			continue
-		}
-		cc := *c
-		cc.From, cc.To = from, to
-		if _, err := pt.Connect(cc); err != nil {
-			failed = append(failed, err.Error())
-		}
-	}
+	_, failed := pt.place(f, 0, 0, true)
 	pt.mu.Lock()
 	pt.current = strings.TrimSpace(name)
 	pt.mu.Unlock()

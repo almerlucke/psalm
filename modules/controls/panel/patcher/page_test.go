@@ -325,3 +325,49 @@ func doubleTap(tb *paneltest.Tab, expr string) {
 		tb.Mouse("mouseReleased", x, y, map[string]any{"clickCount": n})
 	}
 }
+
+// the keys: Ctrl+C copies the modules chosen, Ctrl+V pastes them (chosen then, to move them),
+// Ctrl+D duplicates, Ctrl+X cuts
+func TestPageCopyPaste(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	clock, _ := pt.Add("clock", "", 60, 40)
+	seq, _ := pt.Add("sequence", "", 300, 40)
+	if _, err := pt.Connect(patcher.Cable{From: clock, To: seq}); err != nil {
+		t.Fatal(err)
+	}
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 3`)
+	tb.Size(1300, 900)
+	head := func(id string) string {
+		return fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id)
+	}
+	key := func(k string) {
+		tb.Eval(`window.dispatchEvent(new KeyboardEvent("keydown", {key: "` + k + `", ctrlKey: true, bubbles: true}))`)
+	}
+	chosenIDs := `[...document.querySelectorAll(".pt-node.selected")].map(n => n.dataset.id).sort().join()`
+
+	tb.Tap(head(clock))
+	x, y := tb.Center(head(seq), 0.5)
+	tb.Mouse("mousePressed", x, y, map[string]any{"modifiers": 8})
+	tb.Mouse("mouseReleased", x, y, map[string]any{"modifiers": 8})
+	tb.WaitFor(`document.querySelectorAll(".pt-node.selected").length === 2`, "two chosen")
+	key("c")
+	tb.WaitFor(`document.querySelector(".pt-note").textContent.includes("2 copied")`, "a note of the copy")
+	key("v")
+	paneltest.Eventually(t, "two pasted", func() bool { return len(pt.Nodes()) == 5 && len(pt.Cables()) == 2 })
+	tb.WaitFor(`document.querySelectorAll(".pt-node.selected").length === 2 && !`+chosenIDs+`.split(",").some(id => id === "`+clock+`" || id === "`+seq+`")`, "the modules pasted chosen")
+	key("d")
+	paneltest.Eventually(t, "two duplicated", func() bool { return len(pt.Nodes()) == 7 && len(pt.Cables()) == 3 })
+	tb.WaitFor(`document.querySelectorAll(".pt-node.selected").length === 2`, "the duplicates chosen")
+	key("x")
+	paneltest.Eventually(t, "the two cut", func() bool { return len(pt.Nodes()) == 5 })
+	key("v")
+	paneltest.Eventually(t, "the cut pasted", func() bool { return len(pt.Nodes()) == 7 })
+}

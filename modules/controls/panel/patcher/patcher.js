@@ -67,6 +67,7 @@ psalm.register("patcher", (p, api) => {
 	let wiring = null;      // a cable drawn: {from, out, type, path}
 	let picked = "";        // the cable chosen (its id)
 	let pickNew = null;     // a mod cable just drawn: chosen when it comes (the cables there before)
+	let pastes = -1;        // the pastes seen: another one, its modules are chosen
 
 	const portEl = (n, dir, i) => nodes[n] && nodes[n].el.querySelector(`.pt-port[data-dir="${dir}"][data-i="${i}"] .pt-dot`);
 	const center = dot => {
@@ -325,6 +326,16 @@ psalm.register("patcher", (p, api) => {
 			else if (maxed) setMax(false);
 			return;
 		}
+		// copy, cut, paste, duplicate the modules chosen (with the cables between them)
+		if ((e.ctrlKey || e.metaKey) && !e.altKey && !typing() && ["c", "x", "v", "d"].includes(e.key.toLowerCase())) {
+			const k = e.key.toLowerCase(), some = [...chosen].filter(id => id !== "out");
+			if (k !== "v" && !some.length) return;
+			e.preventDefault();
+			if (k === "c" || k === "x" || k === "d") send({copy: some});
+			if (k === "x") { for (const id of some) send({remove: id}); chosen.clear(); }
+			if (k === "v" || k === "d") send({paste: true});
+			return;
+		}
 		if ((e.key === "Delete" || e.key === "Backspace") && !typing()) {
 			if (picked) { send({disconnect: picked}); picked = ""; showInspector(); return; }
 			const gone = [...chosen].filter(id => id !== "out");
@@ -482,6 +493,10 @@ psalm.register("patcher", (p, api) => {
 			if (JSON.stringify(s) === was) return;
 			updateNodes();
 			if (picked && !st.cables.some(c => c.id === picked)) picked = "";
+			if ((st.pasteN || 0) !== pastes) { // a paste: its modules chosen, to move them where they go
+				if (pastes >= 0) { chosen.clear(); for (const id of st.pasted || []) chosen.add(id); showChosen(); }
+				pastes = st.pasteN || 0;
+			}
 			if (pickNew) {
 				const c = st.cables.find(c => c.type === "mod" && !pickNew.has(c.id));
 				if (c) { picked = c.id; pickNew = null; }

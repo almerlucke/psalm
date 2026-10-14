@@ -176,3 +176,98 @@ func TestMixerSends(t *testing.T) {
 		t.Errorf("the send %g, the main out (with the reverb's return) %g", send, main)
 	}
 }
+
+// modules copied and pasted: their kind, preset, settings and texts, the cables between them (not
+// those to other modules), every paste a little further; the output isn't copied
+func TestCopyPaste(t *testing.T) {
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	must := func(id string, err error) string {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	clock := must(pt.Add("clock", "", 100, 100))
+	seq := must(pt.Add("sequence", "", 300, 100))
+	notes := must(pt.Add("notes", "", 500, 100))
+	syn := must(pt.Add("subtractive", "pad", 700, 100))
+	_ = pt.SetText(seq, "values", "C3 G3")
+	pt.SettingsOf(seq).Apply(map[string]float64{"order": 2})
+	pt.SettingsOf(syn).Apply(map[string]float64{"cutoff": 900})
+	must(pt.Connect(patcher.Cable{From: clock, To: seq}))
+	must(pt.Connect(patcher.Cable{From: seq, Out: 1, To: notes}))
+	must(pt.Connect(patcher.Cable{From: notes, To: syn}))
+	must(pt.Connect(patcher.Cable{From: syn, To: "out"}))
+
+	if n := pt.Copy("out"); n != 0 {
+		t.Errorf("the output copied: %d", n)
+	}
+	if n := pt.Copy(clock, seq, syn, "out"); n != 3 {
+		t.Fatalf("copied %d, want 3", n)
+	}
+	at := map[string]patcher.NodeInfo{}
+	byID := func() {
+		for _, n := range pt.Nodes() {
+			at[n.ID] = n
+		}
+	}
+	ids, err := pt.Paste()
+	if err != nil || len(ids) != 3 {
+		t.Fatalf("pasted %v: %v", ids, err)
+	}
+	byID()
+	var c2, s2, y2 string
+	for _, id := range ids {
+		switch at[id].Kind {
+		case "clock":
+			c2 = id
+		case "sequence":
+			s2 = id
+		case "subtractive":
+			y2 = id
+		}
+	}
+	if at[c2].X != 130 || at[c2].Y != 130 || at[y2].Preset != "pad" {
+		t.Errorf("pasted: the clock at %v,%v (want 130,130), the synth at preset %q", at[c2].X, at[c2].Y, at[y2].Preset)
+	}
+	if tx := pt.Texts(s2); len(tx) != 1 || tx[0].Value != "C3 G3" {
+		t.Errorf("the sequence's values pasted: %v", tx)
+	}
+	if v := pt.SettingsOf(s2).Values()["order"]; v != 2 {
+		t.Errorf("the sequence's order pasted: %v", v)
+	}
+	if v := pt.SettingsOf(y2).Values()["cutoff"]; math.Abs(v-900) > 1 {
+		t.Errorf("the synth's cutoff pasted: %v", v)
+	}
+	var between, outside int
+	for _, c := range pt.Cables() {
+		switch {
+		case c.From == c2 && c.To == s2:
+			between++
+		case c.From == s2 || c.To == y2 || c.From == y2:
+			outside++
+		}
+	}
+	if between != 1 || outside != 0 {
+		t.Errorf("cables pasted: %d between the modules (want 1), %d to others (want 0)", between, outside)
+	}
+
+	// again: further; and after the modules copied are gone
+	for _, id := range []string{clock, seq, syn} {
+		if err := pt.Remove(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ids, err = pt.Paste()
+	if err != nil || len(ids) != 3 {
+		t.Fatalf("pasted again %v: %v", ids, err)
+	}
+	byID()
+	for _, id := range ids {
+		if at[id].Kind == "clock" && (at[id].X != 160 || at[id].Y != 160) {
+			t.Errorf("the second paste at %v,%v, want 160,160", at[id].X, at[id].Y)
+		}
+	}
+}

@@ -819,7 +819,10 @@ cables and every setting. Every change is made between two buffers while it play
 Several modules move together: shift-click (or ctrl, cmd) adds a module to the ones chosen or takes
 it out, a drag over the empty patch draws a rectangle that chooses every module it touches (with
 shift, adding to them); dragging one of them moves them all. Delete takes the chosen away (asking
-first when there are several), Esc lets go of them. A cable is taken hold of a little beside its
+first when there are several), Esc lets go of them. Ctrl+C (cmd on a Mac) copies them with their
+settings, scripts and the cables between them, Ctrl+V pastes them a little further each time (chosen
+then, to drag them where they go), Ctrl+D duplicates, Ctrl+X cuts; the copy is the patcher's, so it
+outlives the modules copied. From code: `Copy(ids...)`, `Paste()`. A cable is taken hold of a little beside its
 line too. **Full screen** puts the patch over the whole screen (Esc, or the button again, brings it
 back). In the side panel a script has room to work: Ctrl+Enter (or Run) runs it, its error or what
 it logs is below it (and on its module), what was typed is taken when it closes; the panel's edge
@@ -902,7 +905,7 @@ level; its outputs are the main mix, send A and send B (patch a send into a reve
 output back into return A or B, each at a level of its own);
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
 synth with its presets (the DX7 with its own editor) and every effect. From code: `Add`, `Connect`,
-`Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `TextError`, `Status`, `Save`, `Load`, `Clear`,
+`Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `TextError`, `Status`, `Copy`, `Paste`, `Save`, `Load`, `Clear`,
 `Nodes`, `Cables`. A module's `Made.Texts` and `SetText` give it settings of text (`Lines` above 1: a
 box of lines), `Made.Late` a function at the end of every control tick (a notes module's),
 `Made.Status` a line shown under it (a script's error, or what it logged). A module whose ports
