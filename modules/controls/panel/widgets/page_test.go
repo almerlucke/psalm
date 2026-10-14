@@ -240,3 +240,34 @@ func TestPageKeysSidebar(t *testing.T) {
 	tb.WaitFor(`!document.querySelector(".keys-side") && !document.querySelector(".keys.upright") && document.querySelector(".keys-wrap .keys")
 		&& parseFloat(getComputedStyle(document.body).paddingRight) === 0`, "the keys back on the page")
 }
+
+// the keys at the top of the page: a button showing them in the sidebar (hidden at first), played
+// there, hidden again; they don't go back onto the page
+func TestPageKeysTop(t *testing.T) {
+	b := paneltest.Start(t)
+	pn := panel.New(psalm.New(nil), "Keys")
+	n := &notes{held: map[int]bool{}}
+	Keys(pn, "Keys", n.play).Top()
+	pn.Section("Other")
+	pn.Knob("Drive", 0, 1, panel.Linear, nil)
+	sounding := func(want int) func() bool {
+		return func() bool { pn.CtrlTick(psalm.CtrlTick{}); return n.sounding() == want }
+	}
+	tb := b.Open(t, paneltest.Serve(t, pn.Handler()), `document.querySelector("#top .keys-toggle")`)
+	tb.Size(900, 700)
+	tb.Eval(`localStorage.clear()`)
+	tb.WaitFor(`!document.querySelector(".keys-side") || document.querySelector(".keys-side").hidden`, "the sidebar hidden at first")
+	tb.Tap(`document.querySelector("#top .keys-toggle")`)
+	tb.WaitFor(`!document.querySelector(".keys-side").hidden && document.querySelector(".keys-side .keys.upright") && document.querySelector("#top .keys-toggle").classList.contains("on")`, "the keys in the sidebar")
+	if tb.Eval(`[...document.querySelectorAll(".keys-side-head button")].some(b => !b.hidden && b.textContent === "×")`).(bool) {
+		t.Error("keys at the top stay in the sidebar: no × to put them back on the page")
+	}
+	x, y := tb.Center(`document.querySelector(".keys-side [data-note='52']")`, 0.5)
+	tb.Mouse("mousePressed", x, y, nil)
+	paneltest.Eventually(t, "a key played", sounding(1))
+	tb.Mouse("mouseReleased", x, y, nil)
+	paneltest.Eventually(t, "let go", sounding(0))
+	tb.Tap(`document.querySelector("#top .keys-toggle")`)
+	tb.WaitFor(`document.querySelector(".keys-side").hidden && !document.querySelector("#top .keys-toggle").classList.contains("on")`, "the sidebar hidden by the button")
+	tb.Eval(`localStorage.clear()`)
+}

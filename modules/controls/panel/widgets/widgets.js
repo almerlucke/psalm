@@ -186,7 +186,10 @@ psalm.register("keys", (p, api) => {
 	const tab = document.createElement("button");
 	tab.className = "keys-tab"; tab.textContent = p.label || p.name; tab.title = "show the keys";
 	const stateKey = "psalm-keys-side:" + p.name;
-	let docked = false, shown = true;
+	let docked = !!p.top, shown = !p.top; // at the top of the page: in the sidebar, hidden until its button shows it
+	const topBtn = document.createElement("button");
+	topBtn.className = "keys-toggle"; topBtn.textContent = p.label || p.name; topBtn.title = "show or hide the keys (a sidebar on the side of the window)";
+	undockBtn.hidden = !!p.top;
 	const sideWidth = () => (!docked ? 0 : shown ? side.offsetWidth : tab.offsetWidth);
 	const apply = () => {
 		letGoAll();
@@ -200,8 +203,9 @@ psalm.register("keys", (p, api) => {
 			side.remove(); tab.remove();
 		}
 		side.hidden = !docked || !shown;
-		tab.hidden = !docked || shown;
+		tab.hidden = !docked || shown || !!p.top; // at the top its button shows the keys, no tab
 		here.hidden = !docked; dockBtn.hidden = docked;
+		topBtn.classList.toggle("on", docked && shown);
 		document.documentElement.style.setProperty("--side-width", sideWidth() + "px");
 		try { localStorage.setItem(stateKey, JSON.stringify({docked, shown})); } catch (e) {}
 	};
@@ -210,9 +214,10 @@ psalm.register("keys", (p, api) => {
 	undockBtn.addEventListener("click", () => { docked = false; apply(); });
 	hideBtn.addEventListener("click", () => { shown = false; apply(); });
 	tab.addEventListener("click", () => { shown = true; apply(); });
-	try { const was = JSON.parse(localStorage.getItem(stateKey) || "null"); if (was) { docked = !!was.docked; shown = was.shown !== false; } } catch (e) {}
+	topBtn.addEventListener("click", () => { shown = !shown; apply(); });
+	try { const was = JSON.parse(localStorage.getItem(stateKey) || "null"); if (was) { docked = !!was.docked || !!p.top; shown = was.shown !== false; } } catch (e) {}
 	if (docked) requestAnimationFrame(apply); // once the page is built
-	return {el: api.labelled(p, wrap), show() {}};
+	return {el: p.top ? topBtn : api.labelled(p, wrap), show() {}};
 });
 
 // --- Pads: hits, louder in the middle of a pad; the number keys hit the first nine ---
@@ -350,7 +355,8 @@ psalm.register("scope", (p, api) => {
 	const canvas = document.createElement("canvas");
 	canvas.className = "scope";
 	canvas.title = "click: the wave, the spectrum, both";
-	let mode = 2, last = null, spectrum = null, colors = {};
+	let mode = p.top ? 0 : 2, last = null, spectrum = null, colors = {}; // at the top: small, the wave
+	if (p.top) { canvas.classList.add("small"); canvas.title = (p.label || p.name) + ": " + canvas.title; }
 	const restyle = () => { colors = {line: api.css("line"), accent: api.css("accent"), muted: api.css("muted"), ok: api.css("meter-low")}; draw(); };
 	canvas.addEventListener("click", () => { mode = (mode + 1) % 3; draw(); });
 	function wave(g, x0, y0, w, h, s) {
@@ -414,7 +420,7 @@ psalm.register("scope", (p, api) => {
 	new ResizeObserver(draw).observe(canvas);
 	setTimeout(restyle, 0);
 	return {
-		el: api.labelled(p, canvas),
+		el: p.top ? canvas : api.labelled(p, canvas), // at the top: its title names it
 		show() {},
 		update(st) { if (st && st.samples) { last = st; analyse(st.samples); draw(); } },
 		restyle,

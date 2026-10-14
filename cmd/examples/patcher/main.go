@@ -134,17 +134,18 @@ function trigger(ev) {
 		pt.Move("out", 1150, 160)
 	}
 
-	ctl.Section("Play")
+	// in the bar at the top, beside the patch's tempo: the volume, the level, the sound, the keys (a
+	// button showing them in a sidebar)
+	ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(mix.Master(), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03)).Top()
+	ctl.Meter("Out", mix.Master()).Top()
+	widgets.Scope(ctl, "Scope", mix.Master()).Top()
 	widgets.Keys(ctl, "Keys", func(note int, velocity float64, on bool) {
 		if on {
 			keys.Push(midi.NoteOnMsg(1, note, max(1, int(velocity*127))))
 		} else {
 			keys.Push(midi.NoteOffMsg(1, note, 0))
 		}
-	}, widgets.From(36), widgets.Octaves(4))
-	widgets.Scope(ctl, "Scope", mix.Master())
-	ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(mix.Master(), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03))
-	ctl.Meter("Out", mix.Master())
+	}, widgets.From(36), widgets.Octaves(4)).Top()
 
 	go func() {
 		if err := ctl.Serve(*addr); err != nil {

@@ -342,6 +342,7 @@ type description struct {
 	Running  bool         `json:"running"` // whether the sound plays
 	Restart  bool         `json:"restart"` // whether the page can set the sound back to its start
 	Sections []section    `json:"sections"`
+	Top      []control    `json:"top,omitempty"` // the controls in the bar at the top
 	Plugins  []pluginDesc `json:"plugins"`
 	Themes   []string     `json:"themes"`
 	Theme    string       `json:"theme"` // the panel's own
@@ -368,6 +369,7 @@ type control struct {
 	Grid    *gridDesc       `json:"grid,omitempty"`
 	Cues    *cuesDesc       `json:"cues,omitempty"`
 	Mount   *mountDesc      `json:"mount,omitempty"`
+	Top     bool            `json:"top,omitempty"`   // in the bar at the top: drawn small
 	Parts   []control       `json:"parts,omitempty"` // of a custom control
 	Data    json.RawMessage `json:"data,omitempty"`  // of a custom control
 	State   json.RawMessage `json:"state,omitempty"` // of a custom control
@@ -450,8 +452,21 @@ func (pn *Panel) describe() description {
 					Step: part.Step, Unit: part.Unit, Label: part.Label, Default: part.Default, Value: part.Value()})
 			}
 		}
+		if par.top {
+			c.Top = true
+			d.Top = append(d.Top, c)
+			continue
+		}
 		d.Sections[i].Controls = append(d.Sections[i].Controls, c)
 	}
+	// a section with no controls (they all went to the top, or a mount hidden) isn't shown
+	shown := d.Sections[:0]
+	for _, sec := range d.Sections {
+		if len(sec.Controls) > 0 {
+			shown = append(shown, sec)
+		}
+	}
+	d.Sections = shown
 	return d
 }
 

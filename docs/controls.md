@@ -599,6 +599,18 @@ with `AudioStart`, `AudioStop` and `Running` (and `Restart` for the restart butt
 away). `psalm.Psalm`'s `AudioStart` and `AudioStop` can be called from any goroutine and do nothing
 when it already plays or stands still; `Running()` tells which.
 
+**The bar at the top**: `.Top()` on a control puts it in the page's header, beside Start/Stop and
+Restart, small: a fader or a knob as a short slider with its value (a tap on the value types one,
+Enter takes it, Esc doesn't), a meter as a bar; a plugin's control is told to draw itself small (the
+keys widget becomes a button showing them in a sidebar, the scope a strip of the wave). A section
+left with nothing else isn't shown.
+
+```go
+ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(master, "volume"), panel.Unit("dB")).Top()
+ctl.Meter("Out", master).Top()
+widgets.Scope(ctl, "Scope", master).Top()
+```
+
 `p.Restart()` (from any goroutine) sets the clock of the patch back to 0 at the next buffer and
 calls `Restart()` on every module that keeps time of its own: a `psalm.Restarter`, also in patches
 within the patch. The arrangement, the parts (`score.Sequencer`), the streams, the step sequencer,
@@ -721,10 +733,10 @@ following the theme:
 | Widget | |
 |---|---|
 | `XY(ctl, name, x, y Axis)` | A pad moving two values at once, x across and y up (a cutoff and a resonance); arrow keys move it, a double click goes back |
-| `Keys(ctl, name, play, From(48), Octaves(3))` | A keyboard: lower on a key is louder, sliding plays the keys passed; the computer's keys play the first one on a page (A W S E D F T G Y H U J K, Z and X an octave down and up). `Play(synth)` plays a synth; or pass a function of your own (the keyboard example pushes MIDI). Its Sidebar button puts it upright in a sidebar on the right of the window (the page makes room, a patch over the whole screen too), where ⇥ hides it to a tab on the edge and the tab brings it back, × puts it back on the page; the browser keeps where it is |
+| `Keys(ctl, name, play, From(48), Octaves(3))` | A keyboard: lower on a key is louder, sliding plays the keys passed; the computer's keys play the first one on a page (A W S E D F T G Y H U J K, Z and X an octave down and up). `Play(synth)` plays a synth; or pass a function of your own (the keyboard example pushes MIDI). Its Sidebar button puts it upright in a sidebar on the right of the window (the page makes room, a patch over the whole screen too), where ⇥ hides it to a tab on the edge and the tab brings it back, × puts it back on the page; the browser keeps where it is. At the top of the page (`.Top()`) it is a button that shows and hides it in the sidebar (hidden at first) |
 | `Pads(ctl, name, Hit(kit, "kick", "snare", ...), columns)` | Pads, louder in the middle; the number keys hit the first nine |
 | `Envelope(ctl, name, synth, "amp", ADSR{...})` | An attack, decay, sustain and release to drag into shape, sent as the envelope messages every synth takes ([envelopes by message](synths.md#envelopes-by-message)) |
-| `Scope(ctl, name, module)` | The sound of a module: its wave (steady on its rising zero crossings) and its spectrum; a click switches between them |
+| `Scope(ctl, name, module)` | The sound of a module: its wave (steady on its rising zero crossings) and its spectrum; a click switches between them. At the top of the page (`.Top()`): a strip of the wave |
 
 ```go
 ctl.Section("Synth")
@@ -818,6 +830,9 @@ kinds := catalog.Kinds(catalog.Config{Input: keys, IR: hall}) // every synth and
 pt := patcher.New(p, ctl, "Patch", kinds, patcher.Keep("patches"), patcher.Presets("editors-presets"))
 mix.Channel("patch", pt.Out(), mixer.StripConfig{})
 ```
+
+The tempo of the patch is in the bar at the top of the page (`pt.Tempo()`, 30 to 300 bpm, a value
+typed too), and kept with a patch: loading one sets its tempo.
 
 **Generators** make music in the patch, on two more kinds of cable: triggers (a moment: the
 control tick it falls on, so notes start on their sample) and values (a number, or a chord). They

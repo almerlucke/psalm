@@ -72,7 +72,14 @@ func TestPatch(t *testing.T) {
 	}
 	pt.Disconnect(mod)
 
-	// kept, cleared, made again: the modules, the cables, the settings
+	// the tempo, from its control (in the bar at the top)
+	pt.Tempo().Set(97)
+	run(2)
+	if bpm := p.BPM(); bpm != 97 {
+		t.Fatalf("the tempo set to 97 is %g", bpm)
+	}
+
+	// kept, cleared, made again: the modules, the cables, the settings, the tempo
 	pt.SettingsOf(ch).Apply(map[string]float64{"mix": 0.9})
 	if err := pt.Save("test"); err != nil {
 		t.Fatal(err)
@@ -81,8 +88,14 @@ func TestPatch(t *testing.T) {
 	if n := len(pt.Nodes()); n != 1 {
 		t.Fatalf("cleared: %d modules (the output stays)", n)
 	}
+	pt.Tempo().Set(150)
+	run(2)
 	if err := pt.Load("test"); err != nil {
 		t.Fatal(err)
+	}
+	run(2)
+	if bpm := p.BPM(); bpm != 97 || pt.Tempo().Value() != 97 {
+		t.Errorf("the tempo loaded: %g (its control %g), want 97", bpm, pt.Tempo().Value())
 	}
 	nodes := pt.Nodes()
 	if len(nodes) != 6 || len(pt.Cables()) != 3 {

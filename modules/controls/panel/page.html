@@ -61,6 +61,20 @@ select { font: inherit; color: var(--ink); background: var(--card); border: 1px 
 .meter .peak { position: absolute; left: 0; right: 0; height: 2px; background: var(--ink); bottom: 0; }
 
 header .spacer { flex: 1; }
+/* the bar at the top: controls drawn small beside Stop and Restart */
+#top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+#top:empty { display: none; }
+#top .control { flex-direction: row; align-items: center; gap: 6px; min-width: 0; }
+#top .control .name { margin: 0; font-size: 12px; }
+.top-slider, .top-meter { display: flex; align-items: center; gap: 6px; }
+.top-slider input[type=range] { width: 80px; accent-color: var(--accent); margin: 0; }
+.top-slider .value { min-width: 4em; font-size: 12px; color: var(--ink); font-variant-numeric: tabular-nums; cursor: text; border-radius: 4px; padding: 1px 4px; }
+.top-slider .value:hover { background: var(--track); }
+.top-slider input.typed { width: 4.5em; font: inherit; font-size: 12px; padding: 1px 4px; color: var(--ink); background: var(--track); border: 1px solid var(--accent); border-radius: 4px; }
+.top-meter .bar { position: relative; width: 64px; height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.top-meter .rms { position: absolute; inset: 0; background: linear-gradient(90deg, var(--meter-low) 0 70%, var(--meter-mid) 70% 90%, var(--meter-high) 90%); }
+.top-meter .peak { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); }
+.top-meter .value { font-size: 11px; color: var(--muted); min-width: 3em; font-variant-numeric: tabular-nums; }
 #learn { min-height: 34px; padding: 6px 12px; font-size: 13px; }
 #run { min-height: 34px; min-width: 84px; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; }
 #run .icon { width: 10px; height: 10px; background: currentColor; }
@@ -149,7 +163,7 @@ try { const m = localStorage.getItem("psalm.mode"); if (m === "light" || m === "
 </script>
 </head>
 <body>
-<header><span id="status" title="connection"></span><h1 id="title">Panel</h1><button id="run" hidden title="start or stop the sound (space)"><span class="icon"></span><span class="text">Stop</span></button><button id="restart" hidden title="back to the start"><span class="icon"></span>Restart</button><span class="spacer"></span><span id="note"></span><span id="look"><select id="themes" title="theme"></select><select id="mode" title="light or dark"><option value="">system</option><option value="light">light</option><option value="dark">dark</option></select></span><span id="presets" hidden></span><button id="learn" title="Tap a control, then move a knob or fader on your MIDI controller">MIDI learn</button></header>
+<header><span id="status" title="connection"></span><h1 id="title">Panel</h1><button id="run" hidden title="start or stop the sound (space)"><span class="icon"></span><span class="text">Stop</span></button><button id="restart" hidden title="back to the start"><span class="icon"></span>Restart</button><span id="top"></span><span class="spacer"></span><span id="note"></span><span id="look"><select id="themes" title="theme"></select><select id="mode" title="light or dark"><option value="">system</option><option value="light">light</option><option value="dark">dark</option></select></span><span id="presets" hidden></span><button id="learn" title="Tap a control, then move a knob or fader on your MIDI controller">MIDI learn</button></header>
 <main id="panel"></main>
 <script>
 "use strict";
@@ -323,6 +337,55 @@ function meter(p) {
 	};
 }
 
+
+// in the bar at the top: a fader or a knob as a short slider, its value typed when tapped
+function topSlider(p) {
+	const box = document.createElement("div");
+	box.className = "top-slider";
+	const range = document.createElement("input");
+	range.type = "range"; range.min = 0; range.max = 1; range.step = 0.001;
+	const val = document.createElement("span"); val.className = "value"; val.title = "tap to type a value";
+	box.append(range, val);
+	let now = p.value;
+	const show = v => { now = v; range.value = position(p, v); val.textContent = format(p, v); };
+	range.addEventListener("pointerdown", () => touching.add(p.name));
+	range.addEventListener("pointerup", () => touching.delete(p.name));
+	range.addEventListener("input", () => { const v = valueAt(p, Number(range.value)); show(v); send(p.name, v); });
+	val.addEventListener("click", () => {
+		const typed = document.createElement("input");
+		typed.className = "typed"; typed.value = String(Math.round(now * 100) / 100);
+		val.replaceWith(typed); typed.focus(); typed.select();
+		let done = false;
+		const finish = take => {
+			if (done) return;
+			done = true;
+			const v = Number(typed.value);
+			if (take && typed.value.trim() !== "" && isFinite(v)) { const c = Math.max(p.min, Math.min(p.max, v)); show(c); send(p.name, c); }
+			typed.replaceWith(val);
+		};
+		typed.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") finish(true); if (e.key === "Escape") finish(false); });
+		typed.addEventListener("blur", () => finish(true));
+	});
+	return {el: labelled(p, box), show};
+}
+
+// in the bar at the top: a meter as a bar
+function topMeter(p) {
+	const box = document.createElement("div");
+	box.className = "top-meter";
+	box.innerHTML = '<div class="bar"><div class="rms"></div><div class="peak"></div></div><span class="value"></span>';
+	const rms = box.querySelector(".rms"), peak = box.querySelector(".peak"), val = box.querySelector(".value");
+	const width = db => clamp01((db + 60) / 60); // -60 to 0 dB
+	return {
+		el: labelled(p, box),
+		show: () => {},
+		levels: ([pk, r]) => {
+			rms.style.clipPath = `inset(0 ${(1 - width(r)) * 100}% 0 0)`;
+			peak.style.left = `calc(${width(pk) * 100}% - 2px)`;
+			val.textContent = pk <= -119 ? "-∞" : pk.toFixed(1);
+		},
+	};
+}
 
 // a grid: patterns, rows of steps (the first field is the level: 0 is off), an inspector for the
 // fields of a cell and tools for a row
@@ -839,30 +902,36 @@ async function build() {
 		if (s.controls.some(c => c.kind === "mount")) sec.className = "mounthost";
 		const row = document.createElement("div"); row.className = "controls";
 		sec.append(h, row);
-		for (const p of s.controls) {
-			let w;
-			try { w = (builders[p.kind] || missing)(p, api); }
-			catch (e) { console.error(e); note(`${p.name}: ${e.message}`, true); w = missing(p); }
-			w.param = p;
-			widgets[p.name] = w;
-			w.el.dataset.kind = p.kind; w.el.dataset.name = p.name;
-			w.show(p.value);
-			for (const part of p.parts || []) { // values the control draws: their changes reach it by name
-				const own = w.partWidgets && w.partWidgets[part.name]; // a widget of its own (MIDI learn shows on it)
-				widgets[part.name] = own ? Object.assign(own, {param: part})
-					: {param: part, el: document.createElement("div"), show: v => w.part && w.part(part.name, v)};
-				widgets[part.name].show(part.value);
-			}
-			if (p.state !== undefined && w.update) w.update(p.state);
-			const own = ["fader", "knob", "toggle", "button", "select"].includes(p.kind);
-			if (own || (w.bindable && !["meter", "grid", "cues", "mount"].includes(p.kind))) bindable(w, p);
-			row.append(w.el);
-		}
+		for (const p of s.controls) row.append(place(p));
 		main.append(sec);
 	}
+	const top = document.getElementById("top");
+	for (const p of d.top || []) top.append(place(p));
 	presets(d.presets);
 	if (d.player) player(d.running, d.restart);
 	listen();
+}
+
+// place draws a control (in a section, or small in the bar at the top) and keeps its widget by name
+function place(p) {
+	let w;
+	const small = p.top && {fader: topSlider, knob: topSlider, meter: topMeter}[p.kind];
+	try { w = (small || builders[p.kind] || missing)(p, api); }
+	catch (e) { console.error(e); note(`${p.name}: ${e.message}`, true); w = missing(p); }
+	w.param = p;
+	widgets[p.name] = w;
+	w.el.dataset.kind = p.kind; w.el.dataset.name = p.name;
+	w.show(p.value);
+	for (const part of p.parts || []) { // values the control draws: their changes reach it by name
+		const own = w.partWidgets && w.partWidgets[part.name]; // a widget of its own (MIDI learn shows on it)
+		widgets[part.name] = own ? Object.assign(own, {param: part})
+			: {param: part, el: document.createElement("div"), show: v => w.part && w.part(part.name, v)};
+		widgets[part.name].show(part.value);
+	}
+	if (p.state !== undefined && w.update) w.update(p.state);
+	const own = ["fader", "knob", "toggle", "button", "select"].includes(p.kind);
+	if (own || (w.bindable && !["meter", "grid", "cues", "mount"].includes(p.kind))) bindable(w, p);
+	return w.el;
 }
 
 // start and stop: the whole patch stands still where it is and goes on from there

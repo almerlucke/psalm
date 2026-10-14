@@ -244,6 +244,18 @@ func (pn *Panel) CtrlTick(tick psalm.CtrlTick) {
 	}
 }
 
+// Top shows the control in the bar at the top of the page, beside Stop and Restart, and small: a
+// fader or a knob as a short slider with its value (a tap on the value types one), a meter as a
+// bar; the control of a plugin gets "top" to draw itself small. Its section loses it (a section left
+// with no controls isn't shown). Call it before the page is served:
+//
+//	ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(out, "volume"), panel.Unit("dB")).Top()
+//	ctl.Meter("Out", out).Top()
+func (par *Param) Top() *Param {
+	par.top = true
+	return par
+}
+
 // Option sets something of a control
 type Option func(par *Param)
 
@@ -289,6 +301,7 @@ type Param struct {
 	Options  []string // of a select
 
 	noDefault bool // the default isn't sent when the patch starts
+	top       bool // shown in the bar at the top of the page (Top)
 
 	target Target
 	press  func()

@@ -307,3 +307,38 @@ func TestPageCueToggles(t *testing.T) {
 		t.Fatalf("the hint should say what a tap does: %v", hint)
 	}
 }
+
+// controls in the bar at the top: small, their section gone when it has nothing else; the slider
+// sends what it is moved to, a value typed, and follows the patch
+func TestPageTop(t *testing.T) {
+	b := startBrowser(t)
+	pn, _ := newPanel()
+	pn.Section("Bar")
+	tempo := pn.Fader("Tempo", 30, 300, Linear, nil, Default(120), Step(1), Unit("bpm")).Top()
+	pn.Meter("Out", nil).Top()
+	pn.Section("Rest")
+	pn.Knob("Drive", 0, 1, Linear, nil)
+	tb := b.Open(t, serve(t, pn), built)
+	tb.WaitFor(`document.querySelector("#top .top-slider") && document.querySelector("#top .top-meter")`, "the slider and the meter at the top")
+	if names := tb.Eval(`[...document.querySelectorAll("main section h2")].map(h => h.textContent).join()`); names != "Rest" {
+		t.Errorf("sections %v: the one left with only controls at the top is not shown", names)
+	}
+	slider := `document.querySelector("#top [data-name='Tempo']")`
+	tb.Eval(`(() => { const r = ` + slider + `.querySelector("input[type=range]"); r.value = "0.5"; r.dispatchEvent(new Event("input")); })()`)
+	eventually(t, "the slider moved", func() bool { return tempo.Value() == 165 })
+
+	tb.Tap(slider + `.querySelector(".value")`)
+	tb.WaitFor(slider+`.querySelector("input.typed")`, "a value to type")
+	tb.Eval(`(() => { const i = ` + slider + `.querySelector("input.typed"); i.value = "92.4"; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true})); })()`)
+	eventually(t, "the value typed (to its step)", func() bool { return tempo.Value() == 92 })
+	tb.WaitFor(slider+`.querySelector(".value").textContent.startsWith("92")`, "the value shown")
+	tb.Tap(slider + `.querySelector(".value")`)
+	tb.Eval(`(() => { const i = ` + slider + `.querySelector("input.typed"); i.value = "200"; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true})); })()`)
+	tb.WaitFor(`!document.querySelector("#top input.typed")`, "Esc: nothing typed")
+	if tempo.Value() != 92 {
+		t.Errorf("Esc took the value typed: %v", tempo.Value())
+	}
+
+	tempo.Set(140)
+	tb.WaitFor(slider+`.querySelector(".value").textContent.startsWith("140") && Math.abs(`+slider+`.querySelector("input[type=range]").value - 110 / 270) < 0.01`, "the slider follows the patch")
+}

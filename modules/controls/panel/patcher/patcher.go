@@ -165,6 +165,7 @@ type Patcher struct {
 	*panel.Param
 	p     *psalm.Psalm
 	ctl   *panel.Panel
+	tempo *panel.Param // the tempo of the patch, in the bar at the top of the page
 	theme panel.Theme
 	kinds []Kind
 	out   *gain.Gain // the output: what the patch plays
@@ -253,12 +254,17 @@ func New(p *psalm.Psalm, ctl *panel.Panel, name string, kinds []Kind, opts ...Op
 			}
 		}))
 	ctl.Mount(d.Mount, selection{pt}).Hide() // the settings of the module chosen: in the side panel
+	pt.tempo = ctl.Fader(name+" tempo", 30, 300, panel.Linear, panel.Func(p.Env().SetBPM),
+		panel.Label("Tempo"), panel.Unit("bpm"), panel.Step(1), panel.Default(math.Round(p.BPM()))).Top()
 	go pt.worker()
 	return pt
 }
 
 // Out is what the patch plays: connect it to a mixer, or the patch's output
 func (pt *Patcher) Out() psalm.Modular { return pt.out }
+
+// Tempo is the control of the patch's tempo (in the bar at the top of the page; kept with a patch)
+func (pt *Patcher) Tempo() *panel.Param { return pt.tempo }
 
 // selection is the mount of the page of the module chosen
 type selection struct{ pt *Patcher }
@@ -877,6 +883,7 @@ type patchFile struct {
 		Texts    map[string]string  `json:"texts,omitempty"`
 	} `json:"nodes"`
 	Cables []*Cable `json:"cables"`
+	BPM    float64  `json:"bpm,omitempty"` // the tempo
 }
 
 func (pt *Patcher) file(name string) (string, error) {
@@ -932,6 +939,7 @@ func (pt *Patcher) Save(name string) error {
 		f.Nodes = append(f.Nodes, e)
 	}
 	f.Cables = pt.cables
+	f.BPM = pt.tempo.Value()
 	data, err := json.MarshalIndent(f, "", "\t")
 	pt.mu.Unlock()
 	if err != nil {
@@ -961,6 +969,9 @@ func (pt *Patcher) Load(name string) error {
 		return err
 	}
 	pt.Clear()
+	if f.BPM > 0 {
+		pt.tempo.Set(f.BPM)
+	}
 	ids := map[string]string{"out": "out"} // the ids in the file, the ids now
 	var failed []string
 	for _, n := range f.Nodes {
