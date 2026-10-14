@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -25,59 +26,221 @@ var Divisions = []string{"1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32"}
 
 var stepsPerBeat = []float64{1, 2, 3, 4, 6, 8}
 
-// Clock sends a trigger on every step of the patch's tempo: a division of the beat, swung (every
-// second step later), a step pattern ("x . x x": a hit or a rest, looping) and a chance for every
-// hit. Settings: "division" (an index of Divisions), "swing" (0.5 straight to 0.75), "chance" (0-1);
-// the pattern is a setting of text
+// Clock sends triggers on the steps of the patch's tempo: a division of the beat, swung (every
+// second step later), a step pattern (looping) and a chance for every hit. The pattern: x (or X, o,
+// 1) a hit, . (or -, _, 0) a rest, a step each; x3 a roll (3 hits in the step); [x x x] a group
+// filling a step (a triplet); *2 after a step or a group: it lasts 2 steps; ? after a hit or a
+// group: its hits by chance (50%, ?25: 25%). Spaces, bar lines and new lines are left out. A
+// trigger carries how long its hit lasts (a note of a step follows it). Settings: "division" (an
+// index of Divisions), "swing" (0.5 straight to 0.75), "chance" (0-1); the pattern is a setting of
+// text, per section of a song too
 type Clock struct {
 	*psalm.Module
 	Division int
 	Swing    float64
 	Chance   float64
-	pattern  atomic.Pointer[[]bool]
-	next     int64 // the next step to send
-	last     int64 // the tick timestamp of the last control tick
-	started  bool
-	rng      *rand.Rand
+	pattern  atomic.Pointer[patterns]
+	song     *Song
+
+	// on the audio thread: the pattern playing, where it starts, the next hit
+	playing *Pattern
+	origin  float64 // the tick its first step starts on
+	cycle   int64   // the loop of the pattern the next hit is in
+	hit     int     // the next hit in it
+	div     int     // the division it counts in
+	last    int64   // the tick timestamp of the last control tick
+	started bool
+	rng     *rand.Rand
 }
 
 // NewClock returns a clock of sixteenths, straight, every step a hit
 func NewClock() *Clock {
 	c := &Clock{Module: psalm.NewControl(), Division: 3, Swing: 0.5, Chance: 1, rng: rand.New(rand.NewPCG(rand.Uint64(), 3))}
-	all := []bool{true}
-	c.pattern.Store(&all)
+	all, _ := ParsePattern("x")
+	c.pattern.Store(&patterns{rest: all, hasRest: true})
 	c.SetSelf(c)
+	c.song = SongOf(c.Env())
 	return c
 }
 
-// ParsePattern reads a step pattern: x (or X, 1, o) a hit, . (or -, 0, _) a rest; spaces and bar
-// lines (|) are left out
-func ParsePattern(text string) ([]bool, error) {
-	var p []bool
-	for _, r := range text {
-		switch r {
-		case 'x', 'X', '1', 'o', 'O':
-			p = append(p, true)
-		case '.', '-', '0', '_':
-			p = append(p, false)
-		case ' ', '\t', '\n', '\r', '|':
-		default:
-			return nil, fmt.Errorf("%q in a pattern: x is a hit, . a rest", r)
-		}
+// Pattern is a clock's step pattern read: its hits and how many steps it lasts (then it loops)
+type Pattern struct {
+	Hits  []Hit
+	Steps float64
+}
+
+// Hit is a hit of a pattern: where it starts and how long it lasts, in steps from the start of the
+// pattern, and the chance it is played (0-1)
+type Hit struct {
+	At, Len, Chance float64
+}
+
+// ParsePattern reads a step pattern: x (or X, o, 1) a hit, . (or -, _, 0) a rest, a step each; x3
+// a roll of 3 hits in a step; [x . x] a group filling a step; *2 after a step or a group: it lasts
+// 2 steps (*1.5 too); ? after a hit or a group: its hits by chance, 50% (?25: 25%). Spaces, bar
+// lines (|) and new lines are left out
+func ParsePattern(text string) (Pattern, error) {
+	pr := &patternReader{rs: []rune(text)}
+	els, err := pr.sequence(false)
+	if err != nil {
+		return Pattern{}, err
 	}
-	if len(p) == 0 {
-		return nil, fmt.Errorf("an empty pattern")
+	if len(els) == 0 {
+		return Pattern{}, fmt.Errorf("an empty pattern")
+	}
+	var p Pattern
+	for _, e := range els {
+		for _, h := range e.hits {
+			p.Hits = append(p.Hits, Hit{At: p.Steps + h.At*e.len, Len: h.Len * e.len, Chance: h.Chance})
+		}
+		p.Steps += e.len
 	}
 	return p, nil
 }
 
+// patternReader reads a pattern, a rune at a time
+type patternReader struct {
+	rs []rune
+	i  int
+}
+
+// element is a step or a group of a pattern: how many steps it lasts, its hits within it (0-1)
+type element struct {
+	len  float64
+	hits []Hit
+}
+
+func (pr *patternReader) skip() {
+	for pr.i < len(pr.rs) && strings.ContainsRune(" \t\n\r|", pr.rs[pr.i]) {
+		pr.i++
+	}
+}
+
+// number reads a number (digits, a point); "" none
+func (pr *patternReader) number() string {
+	j := pr.i
+	for pr.i < len(pr.rs) && (pr.rs[pr.i] >= '0' && pr.rs[pr.i] <= '9' || pr.rs[pr.i] == '.' && pr.i > j) {
+		pr.i++
+	}
+	return string(pr.rs[j:pr.i])
+}
+
+// sequence reads elements until the end (or a ], in a group)
+func (pr *patternReader) sequence(inGroup bool) ([]element, error) {
+	var els []element
+	for {
+		pr.skip()
+		if pr.i >= len(pr.rs) {
+			if inGroup {
+				return nil, fmt.Errorf("a group without its ]")
+			}
+			return els, nil
+		}
+		r := pr.rs[pr.i]
+		if r == ']' {
+			if !inGroup {
+				return nil, fmt.Errorf("a ] without a group")
+			}
+			pr.i++
+			return els, nil
+		}
+		e, err := pr.element()
+		if err != nil {
+			return nil, err
+		}
+		els = append(els, e)
+	}
+}
+
+// element reads a step or a group, and what comes after it (*2, ?50)
+func (pr *patternReader) element() (element, error) {
+	r := pr.rs[pr.i]
+	pr.i++
+	var e element
+	switch {
+	case strings.ContainsRune("xXoO1", r):
+		n := 1
+		if r == '1' { // 1 and 0 a hit and a rest: 1010 is four steps, no roll
+		} else if d := pr.number(); d != "" { // a roll
+			v, err := strconv.Atoi(d)
+			if err != nil || v < 1 || v > 64 {
+				return e, fmt.Errorf("x%s: a roll of 1 to 64 hits", d)
+			}
+			n = v
+		}
+		e = element{len: 1}
+		for k := range n {
+			e.hits = append(e.hits, Hit{At: float64(k) / float64(n), Len: 1 / float64(n), Chance: 1})
+		}
+	case strings.ContainsRune(".-_0", r):
+		e = element{len: 1}
+	case r == '[':
+		inner, err := pr.sequence(true)
+		if err != nil {
+			return e, err
+		}
+		if len(inner) == 0 {
+			return e, fmt.Errorf("an empty group []")
+		}
+		total := 0.0
+		for _, in := range inner {
+			total += in.len
+		}
+		e = element{len: 1}
+		at := 0.0
+		for _, in := range inner {
+			for _, h := range in.hits {
+				e.hits = append(e.hits, Hit{At: (at + h.At*in.len) / total, Len: h.Len * in.len / total, Chance: h.Chance})
+			}
+			at += in.len
+		}
+	default:
+		return e, fmt.Errorf("%q in a pattern: x is a hit, . a rest, x3 a roll, [x x x] a group, *2 longer, ? by chance", r)
+	}
+	for pr.i < len(pr.rs) { // what comes after it
+		switch pr.rs[pr.i] {
+		case '*':
+			pr.i++
+			d := pr.number()
+			v, err := strconv.ParseFloat(d, 64)
+			if err != nil || v <= 0 || v > 64 {
+				return e, fmt.Errorf("*%s: how many steps it lasts (*2, *0.5)", d)
+			}
+			e.len = v
+		case '?':
+			pr.i++
+			chance := 0.5
+			if d := pr.number(); d != "" {
+				v, err := strconv.ParseFloat(d, 64)
+				if err != nil || v < 0 || v > 100 {
+					return e, fmt.Errorf("?%s: a chance of 0 to 100%%", d)
+				}
+				chance = v / 100
+			}
+			for k := range e.hits {
+				e.hits[k].Chance *= chance
+			}
+		default:
+			return e, nil
+		}
+	}
+	return e, nil
+}
+
 // SetPattern sets the step pattern (from any goroutine)
 func (c *Clock) SetPattern(text string) error {
-	p, err := ParsePattern(text)
+	each, rest, hasRest, err := perSection(text, ParsePattern)
 	if err == nil {
-		c.pattern.Store(&p)
+		c.pattern.Store(&patterns{each: each, rest: rest, hasRest: hasRest})
 	}
 	return err
+}
+
+// patterns are a clock's patterns: per section of the song, and for the others
+type patterns struct {
+	each    map[string]Pattern
+	rest    Pattern
+	hasRest bool
 }
 
 func (c *Clock) ReceiveMessage(msg psalm.Message) {
@@ -97,40 +260,99 @@ func (c *Clock) stepTicks() float64 {
 	return float64(c.Config().PPQ) / stepsPerBeat[c.Division]
 }
 
-// at returns the tick a step starts on: every second one later by the swing
-func (c *Clock) at(step int64) float64 {
+// tickAt returns the tick a place in the pattern falls on (in steps from where it starts): every
+// second step later by the swing, what is in a step with it
+func (c *Clock) tickAt(steps float64) float64 {
 	l := c.stepTicks()
-	t := float64(step) * l
-	if step%2 == 1 {
-		t += (c.Swing - 0.5) * 2 * l
+	pair := math.Floor(steps / 2)
+	f := steps - 2*pair
+	t := pair * 2 * l
+	if f < 1 {
+		t += f * c.Swing * 2 * l
+	} else {
+		t += c.Swing*2*l + (f-1)*(1-c.Swing)*2*l
 	}
-	return t
+	return c.origin + t
 }
 
-// CtrlTick sends the steps starting on this tick; it follows the patch's clock (a restart, a jump
-// back starts the steps over from where it is)
+// hitTick is the tick of the next hit
+func (c *Clock) hitTick() float64 {
+	p := c.playing
+	return c.tickAt(float64(c.cycle)*p.Steps + p.Hits[c.hit].At)
+}
+
+// advance moves on to the hit after the next
+func (c *Clock) advance() {
+	if c.hit++; c.hit >= len(c.playing.Hits) {
+		c.hit, c.cycle = 0, c.cycle+1
+	}
+}
+
+// seek finds the first hit at the tick or after it
+func (c *Clock) seek(t float64) {
+	p := c.playing
+	if p == nil || len(p.Hits) == 0 || p.Steps <= 0 {
+		return
+	}
+	c.cycle = max(0, int64(math.Floor((t-c.origin)/c.stepTicks()/p.Steps))-1)
+	c.hit = 0
+	for c.hitTick() < t-1e-9 {
+		c.advance()
+	}
+}
+
+// now is the pattern to play at a tick and where it starts: the section's of the song (from the
+// section's start), else the pattern (from the start of the patch); nil for none
+func (c *Clock) now(tick psalm.CtrlTick) (*Pattern, float64) {
+	ps := c.pattern.Load()
+	if pos, ok := c.song.At(tick, c.Config().PPQ); ok && !pos.Ended {
+		p, has := ps.each[pos.Section.Name]
+		if !has {
+			if !ps.hasRest {
+				return nil, 0 // the pattern says nothing for this section: it rests
+			}
+			p = ps.rest
+		}
+		bpb := c.song.Transport().Form().BeatsPerBar
+		in := (pos.Beat - float64(pos.Section.StartBar)*bpb) * float64(c.Config().PPQ)
+		return &p, math.Round(float64(tick.TickTimestamp) - in)
+	}
+	if !ps.hasRest {
+		return nil, 0
+	}
+	return &ps.rest, 0
+}
+
+// CtrlTick sends the hits falling on this tick; it follows the patch's clock (a restart, a jump
+// back, another division, pattern or section starts it over from where it is)
 func (c *Clock) CtrlTick(tick psalm.CtrlTick) {
 	t := float64(tick.TickTimestamp)
-	if !c.started || tick.TickTimestamp < c.last {
-		c.started = true
-		c.next = int64(math.Ceil(t/c.stepTicks() - 1e-9))
-		if c.next > 0 && c.at(c.next-1) >= t-1e-9 { // a swung step that is still to come
-			c.next--
-		}
+	p, origin := c.now(tick)
+	if p == nil {
+		c.playing, c.started = nil, false
+		return
+	}
+	same := c.playing != nil && c.playing.Steps == p.Steps && len(c.playing.Hits) == len(p.Hits) && slices.Equal(c.playing.Hits, p.Hits)
+	if !c.started || tick.TickTimestamp < c.last || c.Division != c.div || origin != c.origin || !same {
+		c.started, c.div, c.origin, c.playing = true, c.Division, origin, p
+		c.seek(t)
 	}
 	c.last = tick.TickTimestamp
-	for c.at(c.next) <= t+1e-9 {
-		step := c.next
-		c.next++
-		if c.at(step) < t-1 { // missed (the tempo jumped): no burst of old steps
+	if len(p.Hits) == 0 {
+		return
+	}
+	l := c.stepTicks()
+	stepSeconds := l * 60 / (c.BPM() * float64(c.Config().PPQ))
+	for at := c.hitTick(); at <= t+1e-9; at = c.hitTick() {
+		h := p.Hits[c.hit]
+		c.advance()
+		if at < t-1 { // missed (the tempo jumped): no burst of old hits
 			continue
 		}
-		p := *c.pattern.Load()
-		if !p[int(step%int64(len(p)))] || (c.Chance < 1 && c.rng.Float64() >= c.Chance) {
+		if chance := h.Chance * c.Chance; chance < 1 && c.rng.Float64() >= chance {
 			continue
 		}
-		seconds := c.stepTicks() * 60 / (c.BPM() * float64(c.Config().PPQ))
-		c.Send(Event{Tick: tick, Step: step, Seconds: seconds}, 0)
+		c.Send(Event{Tick: tick, Step: int64(math.Floor(at/l + 1e-6)), Seconds: h.Len * stepSeconds}, 0)
 	}
 }
 
@@ -154,17 +376,21 @@ var Orders = []string{"in order", "shuffled", "random", "up and down", "converge
 // (to chain modules that need the value first). Setting: "order" (an index of Orders)
 type Sequence struct {
 	*psalm.Module
-	Order  int
-	values atomic.Pointer[[]any]
-	gen    genny.Generator[any] // on the audio thread
-	built  *[]any               // the values gen was made from
-	order  int                  // the order gen was made for
+	Order   int
+	values  atomic.Pointer[seqValues]
+	song    *Song
+	gens    map[string]genny.Generator[any] // on the audio thread: per section ("" the others)
+	built   *seqValues                      // the values gens were made from
+	order   int                             // the order gens were made for
+	passing [2]int                          // the section of the song passing (its generator starts over in a new one)
+	inSong  bool
 }
 
 // NewSequence returns a sequence of values
 func NewSequence() *Sequence {
 	s := &Sequence{Module: psalm.NewModule(nil, nil), order: -1}
 	s.SetSelf(s)
+	s.song = SongOf(s.Env())
 	_ = s.SetValues("C3 Eb3 G3 Bb3")
 	return s
 }
@@ -211,44 +437,83 @@ func ParseValues(text string) ([]any, error) {
 
 // SetValues sets the values (from any goroutine)
 func (s *Sequence) SetValues(text string) error {
-	v, err := ParseValues(text)
+	each, rest, hasRest, err := perSection(text, ParseValues)
 	if err == nil {
-		s.values.Store(&v)
+		s.values.Store(&seqValues{each: each, rest: rest, hasRest: hasRest})
 	}
 	return err
+}
+
+// seqValues are a sequence's values: per section of the song, and for the others
+type seqValues struct {
+	each    map[string][]any
+	rest    []any
+	hasRest bool
 }
 
 func (s *Sequence) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("order", func(o int) { s.Order = max(0, min(o, len(Orders)-1)) })
 }
 
-// generator returns the generator of the values in the order (made again when either changed)
-func (s *Sequence) generator() genny.Generator[any] {
+// generator returns the generator of a section's values in the order ("" the others; made again
+// when the values or the order changed), nil when it has none
+func (s *Sequence) generator(section string) genny.Generator[any] {
 	vals := s.values.Load()
-	if s.gen != nil && vals == s.built && s.Order == s.order {
-		return s.gen
+	if vals != s.built || s.Order != s.order {
+		s.built, s.order, s.gens = vals, s.Order, map[string]genny.Generator[any]{}
 	}
-	s.built, s.order = vals, s.Order
-	v := *vals
+	if g, ok := s.gens[section]; ok {
+		return g
+	}
+	v, ok := vals.each[section]
+	if section == "" || !ok {
+		section, v = "", vals.rest
+		if !vals.hasRest {
+			return nil
+		}
+		if g, ok := s.gens[""]; ok {
+			return g
+		}
+	}
+	var g genny.Generator[any]
 	switch s.Order {
 	case 1:
-		s.gen = bucket.NewLoop(v...).SetMode(bucket.Indexed)
+		g = bucket.NewLoop(v...).SetMode(bucket.Indexed)
 	case 2:
-		s.gen = bucket.NewLoop(v...).SetMode(bucket.Random)
+		g = bucket.NewLoop(v...).SetMode(bucket.Random)
 	case 3:
-		s.gen = arpeggio.NewLoop(v, arpeggio.Up, arpeggio.Exclusive, false)
+		g = arpeggio.NewLoop(v, arpeggio.Up, arpeggio.Exclusive, false)
 	case 4:
-		s.gen = arpeggio.NewLoop(v, arpeggio.Converge, arpeggio.None, false)
+		g = arpeggio.NewLoop(v, arpeggio.Converge, arpeggio.None, false)
 	case 5:
-		s.gen = arpeggio.NewLoop(v, arpeggio.Alternate, arpeggio.None, false)
+		g = arpeggio.NewLoop(v, arpeggio.Alternate, arpeggio.None, false)
 	case 6:
 		back := slices.Clone(v)
 		slices.Reverse(back)
-		s.gen = sequence.NewLoop(back...)
+		g = sequence.NewLoop(back...)
 	default:
-		s.gen = sequence.NewLoop(v...)
+		g = sequence.NewLoop(v...)
 	}
-	return s.gen
+	s.gens[section] = g
+	return g
+}
+
+// current is the generator for a trigger at a tick: the section's of the song (from its first value
+// when the section starts), or the one of all values without a song
+func (s *Sequence) current(tick psalm.CtrlTick) genny.Generator[any] {
+	pos, ok := s.song.At(tick, s.Config().PPQ)
+	if !ok || pos.Ended {
+		s.inSong = false
+		return s.generator("")
+	}
+	g := s.generator(pos.Section.Name)
+	if key := sectionKey(pos); !s.inSong || key != s.passing {
+		s.inSong, s.passing = true, key
+		if g != nil {
+			g.Reset()
+		}
+	}
+	return g
 }
 
 // Receive takes a trigger (input 0: the next value), a reset (input 1) or a message (the order)
@@ -260,10 +525,16 @@ func (s *Sequence) Receive(v any, index int) {
 	switch index {
 	case 0:
 		ev, _ := v.(Event)
-		s.Send(s.generator().Generate(), 0)
+		g := s.current(ev.Tick)
+		if g == nil {
+			return // nothing for this section of the song
+		}
+		s.Send(g.Generate(), 0)
 		s.Send(ev, 1)
 	case 1:
-		s.generator().Reset()
+		for _, g := range s.gens {
+			g.Reset()
+		}
 	}
 }
 
@@ -444,9 +715,12 @@ func (q *Quantize) Describe() params.Set {
 }
 
 // PatternHelp is what to know to type a clock's pattern
-const PatternHelp = "`x` (or `X`, `1`, `o`) is a hit, `.` (or `-`, `0`, `_`) a rest: a step of the division each\n" +
-	"spaces, `|` and new lines are left out: `x . x x | x x . x`, a bar a line\n" +
-	"the pattern loops; chance and swing are below\n" +
+const PatternHelp = "`x` (or `X`, `o`) is a hit, `.` (or `-`, `_`) a rest: a step of the division each; spaces, `|` and new lines are left out\n" +
+	"`x3` a roll: 3 hits in the step; `[x x x]` a group filling one step (a triplet), `[x . x x]` with rests\n" +
+	"`*2` after a step or a group: it lasts 2 steps (`x*2`, `.*4`, `[x x x]*2` a triplet over two steps); a note of a step lasts as long\n" +
+	"`?` after a hit or a group: by chance, half the time (`x?25`: a quarter); the chance below is for every hit\n" +
+	"the pattern loops; swing (below) makes every second step later, what is in it too\n" +
+	"with a song: a pattern per section, a line `Chorus: x x x x` each (the others, the lines without one); it counts from the section's start\n" +
 	"Ctrl+Enter (or Run) takes it; one that can't be read is shown in red, the clock keeps the one before"
 
 // ValuesHelp is what to know to type a sequence's values
@@ -454,7 +728,29 @@ const ValuesHelp = "numbers or note names: `60 C3 Eb3 F#4 Bb2` (C3 is 48)\n" +
 	"a chord in brackets: `[C3 Eb3 G3]`, played together\n" +
 	"spaces, commas or new lines between them\n" +
 	"the order (in order, shuffled, up and down...) is below; a trigger on reset starts it over\n" +
+	"with a song: values per section, a line `Verse: C3 Eb3 G3` each (the others, the lines without one); a section starts them over\n" +
 	"Ctrl+Enter (or Run) takes them"
+
+// perSection reads a text that may say something per section ("Verse: ..." lines): what it says for
+// each section and for the others (rest: false when only sections are given)
+func perSection[T any](text string, parse func(string) (T, error)) (each map[string]T, rest T, hasRest bool, err error) {
+	lines, others := PerSection(text)
+	for name, t := range lines {
+		v, e := parse(t)
+		if e != nil {
+			return nil, rest, false, fmt.Errorf("%s: %v", name, e)
+		}
+		if each == nil {
+			each = map[string]T{}
+		}
+		each[name] = v
+	}
+	if strings.TrimSpace(others) == "" && len(each) > 0 {
+		return each, rest, false, nil
+	}
+	rest, err = parse(others)
+	return each, rest, err == nil, err
+}
 
 // Generators are the kinds of generator modules: a clock, a sequence of values, notes, a quantizer
 func Generators() []Kind {
@@ -481,6 +777,7 @@ func Generators() []Kind {
 				return &Made{Module: n, Describe: func(string) params.Set { return n.Describe() },
 					Notes: n.SetTargets, Late: n.late}, nil
 			}},
+		SongKind(),
 		{Name: "quantize", Group: "Generators", Ins: []Port{{Name: "in", Type: Value}}, Outs: []Port{{Name: "out", Type: Value}},
 			Make: func(string) (*Made, error) {
 				q := NewQuantize()

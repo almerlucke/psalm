@@ -843,10 +843,11 @@ are `patcher.Generators()`, built on genny:
 
 | Module | In | Out | Settings |
 |---|---|---|---|
-| clock | | trigger | division (1/4 to 1/32, triplets), swing, chance; a pattern typed in its side panel (`x . x x`: a hit or a rest, looping) |
+| clock | | trigger | division (1/4 to 1/32, triplets), swing, chance; a pattern typed in its side panel, looping: `x . x x` a hit or a rest a step, `x3` a roll in a step, `[x x x]` a group filling a step, `*2` a step (or group) lasting 2 steps, `x?` a hit by chance (`x?25`); a trigger carries how long its hit lasts |
 | sequence | trigger, reset | value, after (a trigger once the value is out) | values typed in its side panel (numbers, note names `C3 Eb3`, chords `[C3 E3 G3]`), the order: in order, shuffled, random, up and down, converge, alternate, backwards (genny's sequence, bucket, arpeggio) |
 | notes | trigger, pitch, velocity, length (steps) | notes | the pitch, velocity, length and transposition for the inputs not patched. A length is in steps of the clock that triggered the note (at 1/16 and 120 bpm a step is 125 ms: a length of 8 is a second) |
 | quantize | value | value | a key and a scale (tools/harmony): every pitch, every note of a chord, to its nearest note in it |
+| song | | bar, section (triggers), number (value), progress (mod) | its sections typed (`Intro 4, Verse 8, Chorus 8`); tiles to play a section next or switch one off, repeat, jump at, loop |
 
 A notes module plays the triggers of a control tick at its end, after every other module had its
 tick: the values feeding it are up to date whatever order the cables were drawn in. Texts (a clock's
@@ -855,6 +856,27 @@ a box of lines each, as a script: Ctrl+Enter or Run takes them, or the panel clo
 values may go over lines. One that can't be read is shown in red with what is wrong with it below,
 the module goes on with the one before. They are kept with
 the patch.
+
+**A song** gives a patch sections. A song module's sections are typed in its side panel (a name and
+a number of bars each: `Intro 4, Verse 8, Chorus 8, Outro 4`); a transport (arrange) plays them on
+the patch's clock, from the start again on a restart. Its tiles (in its side panel) play a section
+next, switch one off (skipped), with repeat (the section playing again and again), when a section
+asked for starts (the end of the section playing, or the next bar) and loop; the bar at the top of
+the page shows the section playing, its bar and the one asked for. Its outputs: a trigger every bar
+and at every section (a note of a step lasts a bar), the section's number and how far through it
+(mod). The patch follows it:
+
+- a sequence's values and a clock's pattern can be per section: a line `Verse: C3 Eb3 G3` (or
+  `Intro: x . . .`) each, the lines without a section for the others (with only sections given, the
+  others are silent). A sequence starts its values over at every section, a clock counts its
+  pattern from the section's start.
+- a script has `song` (`song.section`, `song.index`, `song.bar` in the section, `song.bars`,
+  `song.progress`, `song.loop`, `song.sections`, `song.playing`) and calls `section(name, index)`
+  when a section starts (its "song" preset: a chord a bar from the song's bar trigger, other chords
+  in the chorus).
+
+One song a patch: the last made; `patcher.SongOf(env)` is the song of a patch for modules of your
+own (`At(tick, ppq)`: where it is).
 
 **Scripts** (`patcher/script`) are modules of JavaScript (goja). A script's top level runs when it
 starts, to make its generators; then `trigger(ev)` on every trigger (`ev.step`, the step of the
@@ -887,6 +909,7 @@ function trigger(ev) {
 | `genny.combine(...gens)`, `genny.continuous(gen)`, `genny.constant(v)` | a value of each (an array); one that ends started over; always v |
 | `genny.rand(lo, hi)`, `genny.rwalk(origin, min, max, step, "clip" \| "bounce" \| "jump")` | random numbers; a random walk |
 | `genny.from(v)` | a generator of a function (called every time), a `function*` (started over on a reset), an iterator |
+| `song`, `section(name, index)` | where the song of the patch is (a song module): `song.section`, `song.bar`, `song.progress`...; called when a section starts |
 
 A generator gives `next()`, `done()`, `reset()` and `take(n)`; where one takes generators it takes
 an array (a sequence of it), a function or a `function*` too. Every script of a patch runs in one

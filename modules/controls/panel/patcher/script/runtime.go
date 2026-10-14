@@ -59,8 +59,8 @@ func NewRuntime() *Runtime {
 // header and footer wrap a script in a function of its own: its scope, the api handed in; the
 // header is on the script's first line, so the lines of errors are the script's
 const (
-	header = `(function(api, shared, genny) { const {note, send, fire, mod, log, input, pitch, scale, bpm} = api; const console = {log: log}; `
-	footer = "\n;return {trigger: typeof trigger === \"function\" ? trigger : undefined, value: typeof value === \"function\" ? value : undefined};\n})"
+	header = `(function(api, shared, genny) { const {note, send, fire, mod, log, input, pitch, scale, bpm, song} = api; const console = {log: log}; `
+	footer = "\n;return {trigger: typeof trigger === \"function\" ? trigger : undefined, value: typeof value === \"function\" ? value : undefined, section: typeof section === \"function\" ? section : undefined};\n})"
 )
 
 // Compile compiles a script (from any goroutine): its errors, with their lines

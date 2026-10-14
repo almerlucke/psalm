@@ -78,3 +78,8 @@ section:has(.pt) { flex-basis: 100%; min-width: 0; }
 	border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; tab-size: 2; white-space: pre; }
 .pt-drawer-text.bad { border-color: var(--meter-high); }
 .pt-drawer .pt-status { padding: 0; max-width: none; min-height: 1.3em; }
+/* the song in the bar at the top */
+.pt-songbar { display: inline-flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink); min-width: 110px; }
+.pt-songbar[hidden] { display: none; }
+.pt-songbar-bar { height: 3px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.pt-songbar-bar div { height: 100%; background: var(--accent); }

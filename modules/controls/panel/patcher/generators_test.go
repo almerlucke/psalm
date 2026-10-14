@@ -139,3 +139,149 @@ func TestGeneratorsKept(t *testing.T) {
 		t.Errorf("texts loaded %v", texts)
 	}
 }
+
+// a clock's division changed while it plays: its triggers go on at once, at the new division
+func TestClockDivisionChanged(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	var at []int64
+	hear := &heard{Module: psalm.NewControl(), at: map[int][]int64{}}
+	hear.SetSelf(hear)
+	kinds := append(patcher.Generators(), patcher.Kind{Name: "hear", Ins: []patcher.Port{{Name: "trigger", Type: patcher.Trigger}},
+		Make: func(string) (*patcher.Made, error) { return &patcher.Made{Module: hear}, nil }})
+	pt := patcher.New(p, panel.New(p, "Test"), "Patch", kinds)
+	clock, _ := pt.Add("clock", "", 0, 0)
+	h, _ := pt.Add("hear", "", 0, 0)
+	if _, err := pt.Connect(patcher.Cable{From: clock, To: h}); err != nil {
+		t.Fatal(err)
+	}
+	run := func(seconds float64) {
+		for range int(seconds * 44100 / 256) {
+			p.ResetRun()
+			p.Run()
+		}
+	}
+	run(4)                                                        // sixteenths
+	pt.SettingsOf(clock).Apply(map[string]float64{"division": 1}) // eighths
+	run(0.1)
+	from := len(hear.at[0])
+	run(1)
+	at = hear.at[0][from:]
+	if len(at) < 3 {
+		t.Fatalf("%d triggers in a second of eighths after the division changed (at 120 bpm: 4)", len(at))
+	}
+	for i := 1; i < len(at); i++ {
+		if d := at[i] - at[i-1]; d < 11024 || d > 11026 {
+			t.Fatalf("triggers %d samples apart, an eighth is 11025", d)
+		}
+	}
+}
+
+func TestParsePattern(t *testing.T) {
+	for _, c := range []struct {
+		text  string
+		steps float64
+		hits  []patcher.Hit
+	}{
+		{"x . x x", 4, []patcher.Hit{{At: 0, Len: 1, Chance: 1}, {At: 2, Len: 1, Chance: 1}, {At: 3, Len: 1, Chance: 1}}},
+		{"x3 .", 2, []patcher.Hit{{At: 0, Len: 1.0 / 3, Chance: 1}, {At: 1.0 / 3, Len: 1.0 / 3, Chance: 1}, {At: 2.0 / 3, Len: 1.0 / 3, Chance: 1}}},
+		{"[x x x]", 1, []patcher.Hit{{At: 0, Len: 1.0 / 3, Chance: 1}, {At: 1.0 / 3, Len: 1.0 / 3, Chance: 1}, {At: 2.0 / 3, Len: 1.0 / 3, Chance: 1}}},
+		{"[x x x]*2", 2, []patcher.Hit{{At: 0, Len: 2.0 / 3, Chance: 1}, {At: 2.0 / 3, Len: 2.0 / 3, Chance: 1}, {At: 4.0 / 3, Len: 2.0 / 3, Chance: 1}}},
+		{"x*2 x", 3, []patcher.Hit{{At: 0, Len: 2, Chance: 1}, {At: 2, Len: 1, Chance: 1}}},
+		{"x? x?25", 2, []patcher.Hit{{At: 0, Len: 1, Chance: 0.5}, {At: 1, Len: 1, Chance: 0.25}}},
+		{"[x . x2]", 1, []patcher.Hit{{At: 0, Len: 1.0 / 3, Chance: 1}, {At: 2.0 / 3, Len: 1.0 / 6, Chance: 1}, {At: 5.0 / 6, Len: 1.0 / 6, Chance: 1}}},
+		{"1010", 4, []patcher.Hit{{At: 0, Len: 1, Chance: 1}, {At: 2, Len: 1, Chance: 1}}},
+		{"x | x\nx", 3, []patcher.Hit{{At: 0, Len: 1, Chance: 1}, {At: 1, Len: 1, Chance: 1}, {At: 2, Len: 1, Chance: 1}}},
+	} {
+		p, err := patcher.ParsePattern(c.text)
+		if err != nil {
+			t.Errorf("%q: %v", c.text, err)
+			continue
+		}
+		near := func(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
+		ok := near(p.Steps, c.steps) && len(p.Hits) == len(c.hits)
+		for i := 0; ok && i < len(c.hits); i++ {
+			h, w := p.Hits[i], c.hits[i]
+			ok = near(h.At, w.At) && near(h.Len, w.Len) && near(h.Chance, w.Chance)
+		}
+		if !ok {
+			t.Errorf("%q: %v steps %v, want %v steps %v", c.text, p.Steps, p.Hits, c.steps, c.hits)
+		}
+	}
+	for _, bad := range []string{"", "x ?", "[x x", "x]", "[]", "x0", "x*", "x*0", "x?200", "y"} {
+		if _, err := patcher.ParsePattern(bad); err == nil {
+			t.Errorf("%q read", bad)
+		}
+	}
+}
+
+// triggers keeps the triggers it gets: the sample they fall on, how long they last
+type triggers struct {
+	*psalm.Module
+	at      []int64
+	seconds []float64
+}
+
+func (tr *triggers) Receive(v any, _ int) {
+	if ev, ok := v.(patcher.Event); ok {
+		tr.at = append(tr.at, ev.Tick.SampleTimestamp)
+		tr.seconds = append(tr.seconds, ev.Seconds)
+	}
+}
+
+// a clock of quarters at 120 bpm (a step: 22050 samples) playing a pattern: where its triggers fall
+func clockPlays(t *testing.T, pattern string, swing, seconds float64) *triggers {
+	t.Helper()
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	tr := &triggers{Module: psalm.NewControl()}
+	tr.SetSelf(tr)
+	kinds := append(patcher.Generators(), patcher.Kind{Name: "triggers", Ins: []patcher.Port{{Name: "trigger", Type: patcher.Trigger}},
+		Make: func(string) (*patcher.Made, error) { return &patcher.Made{Module: tr}, nil }})
+	pt := patcher.New(p, panel.New(p, "Test"), "Patch", kinds)
+	clock, _ := pt.Add("clock", "", 0, 0)
+	h, _ := pt.Add("triggers", "", 0, 0)
+	c := pt.Module(clock).(*patcher.Clock) // before it plays: its settings would come with its first tick
+	c.Division, c.Swing = 0, swing
+	if err := pt.SetText(clock, "pattern", pattern); err != nil || pt.TextError(clock, "pattern") != "" {
+		t.Fatal(err, pt.TextError(clock, "pattern"))
+	}
+	if _, err := pt.Connect(patcher.Cable{From: clock, To: h}); err != nil {
+		t.Fatal(err)
+	}
+	for range int(seconds * 44100 / 256) {
+		p.ResetRun()
+		p.Run()
+	}
+	return tr
+}
+
+// rolls, groups, longer steps, chances, swing: the triggers where they fall (to a tick: 92 samples)
+func TestClockPatterns(t *testing.T) {
+	for _, c := range []struct {
+		pattern string
+		swing   float64
+		at      []float64 // in samples
+		seconds []float64 // how long the first ones last
+	}{
+		{"x3 .", 0.5, []float64{0, 7350, 14700, 44100, 51450}, []float64{0.5 / 3}},
+		{"[x x x]*2 x", 0.5, []float64{0, 14700, 29400, 44100, 66150}, []float64{1.0 / 3, 1.0 / 3, 1.0 / 3, 0.5}},
+		{"x*2 x", 0.5, []float64{0, 44100, 66150}, []float64{1, 0.5}},
+		{"x?0 x", 0.5, []float64{22050, 66150, 110250}, nil},
+		{"x2 x2", 0.75, []float64{0, 16537.5, 33075, 38587.5, 44100}, nil}, // swung: the first step 1.5 long, the second 0.5
+	} {
+		tr := clockPlays(t, c.pattern, c.swing, 2.6)
+		ok := len(tr.at) >= len(c.at)
+		for i := 0; ok && i < len(c.at); i++ {
+			ok = math.Abs(float64(tr.at[i])-c.at[i]) <= 92
+		}
+		for i := 0; ok && i < len(c.seconds); i++ {
+			ok = math.Abs(tr.seconds[i]-c.seconds[i]) < 1e-9
+		}
+		if !ok {
+			t.Errorf("%q (swing %v): triggers at %v lasting %v, want at %v lasting %v", c.pattern, c.swing, tr.at, tr.seconds, c.at, c.seconds)
+		}
+	}
+}

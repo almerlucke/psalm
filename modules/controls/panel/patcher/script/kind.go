@@ -5,7 +5,7 @@ import (
 )
 
 // Presets are scripts to start from
-var Presets = []string{"walk", "arpeggio", "function*", "values"}
+var Presets = []string{"walk", "arpeggio", "function*", "values", "song"}
 
 var codes = map[string]string{
 	"walk": `// every trigger: a note of a random walk, in C minor
@@ -42,6 +42,21 @@ function trigger(ev) {
   note(notes.next(), ev.step % 4 === 0 ? 0.9 : 0.6, 0.8)
 }
 `,
+	"song": `// follows the song (a song module, its bar output into trigger): a chord a bar, others in the chorus
+const chords = {
+  Verse: [["C3", "Eb3", "G3"], ["Ab2", "C3", "Eb3"], ["Bb2", "D3", "F3"], ["G2", "B2", "D3"]],
+  Chorus: [["F3", "Ab3", "C4"], ["Eb3", "G3", "Bb3"]],
+}
+
+function trigger(ev) {
+  const list = chords[song.section] || chords.Verse
+  note(list[song.bar % list.length], song.section === "Chorus" ? 0.9 : 0.7, 1)
+}
+
+function section(name, index) {
+  log("now:", name)
+}
+`,
 	"values": `// to other modules: a pitch on a (to a notes' pitch), a trigger every 4th step, a wave on mod
 const walk = genny.rwalk(0.5, 0, 1, 0.1)
 
@@ -63,6 +78,7 @@ const Help = "its top level runs when it starts: make its generators there\n" +
 	"`note(pitch, velocity, steps)` (a pitch: `48`, `\"C3\"`, a chord `[48, 51]`), `send(\"a\", v)`, `fire()`, `mod(0 to 1)`, `log(...)`\n" +
 	"`pitch(\"C3\")`, `scale(\"C minor\").snap(p)`, `bpm()`, `input(\"a\")`, `shared` (every script of the patch sees it)\n" +
 	"`genny.sequence`, `bucket`, `arpeggio`, `repeat`, `and`, `or`, `rand`, `rwalk`, `from(function* ...)`: `.next()`\n" +
+	"with a song: `song.section`, `song.bar`, `song.bars`, `song.progress`, `song.sections`; `function section(name, index)` when one starts\n" +
 	"Ctrl+Enter (or Run) runs it; an error (its line) or what it logs is below; a call may take 5 ms"
 
 // Code is the code of a preset (the first, "walk", for one not known)

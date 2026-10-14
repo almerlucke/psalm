@@ -262,6 +262,13 @@ func New(p *psalm.Psalm, ctl *panel.Panel, name string, kinds []Kind, opts ...Op
 	ctl.Mount(d.Mount, selection{pt}).Hide() // the settings of the module chosen: in the side panel
 	pt.tempo = ctl.Fader(name+" tempo", 30, 300, panel.Linear, panel.Func(p.Env().SetBPM),
 		panel.Label("Tempo"), panel.Unit("bpm"), panel.Step(1), panel.Default(math.Round(p.BPM()))).Top()
+	song := SongOf(p.Env())
+	ctl.Custom("songbar", name+" song", nil, panel.NoDefault(), panel.Live(func() any { // where the song is, when the patch has one
+		if now := song.Now(); now != nil {
+			return now
+		}
+		return struct{}{}
+	})).Top()
 	go pt.worker()
 	return pt
 }
@@ -390,7 +397,9 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 	if preset == "" && len(k.Presets) > 0 {
 		preset = k.Presets[0]
 	}
-	made, err := k.Make(preset)
+	var made *Made
+	var err error
+	pt.p.Within(func() { made, err = k.Make(preset) }) // made in the patch's environment: its tempo, its song
 	if err != nil {
 		return nil, nil, err
 	}

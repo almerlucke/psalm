@@ -24,6 +24,7 @@ import (
 //	input(port)                             // the last value on "a" or "b"
 //	pitch("C3"), scale("C minor"), bpm()    // scale: snap(p), pitch(degree, octave), notes(lo, hi), contains(p), step(p, n)
 //	genny.*, shared                         // generators (see Gen), what every script of the patch sees
+//	song.section, song.bar, song.progress  // where the song of the patch is (a song module); section(name, index) when one starts
 //
 // Inputs: trigger, a, b; outputs: notes, a, b, trigger, mod
 type Script struct {
@@ -36,6 +37,11 @@ type Script struct {
 	// on the audio thread
 	api            *goja.Object
 	trigger, value goja.Callable
+	section        goja.Callable // called when a section of the song starts
+	song           *patcher.Song
+	songObj        *goja.Object // song in the script
+	passing        [2]int       // the section of the song passing
+	inSong         bool
 	stopped        bool // too long: not called again, until a new script
 	ev             patcher.Event
 	tick           psalm.CtrlTick
@@ -56,6 +62,7 @@ type queued struct {
 func New(rt *Runtime) *Script {
 	s := &Script{Module: psalm.NewModule(nil, nil), rt: rt}
 	s.SetSelf(s)
+	s.song = patcher.SongOf(s.Env())
 	s.setStatus("")
 	return s
 }
@@ -92,7 +99,7 @@ func (s *Script) start() {
 	if p == nil {
 		return
 	}
-	s.trigger, s.value, s.stopped = nil, nil, false
+	s.trigger, s.value, s.section, s.stopped, s.inSong = nil, nil, nil, false, false
 	s.setStatus("")
 	if s.api == nil {
 		s.api = s.newAPI()
@@ -111,7 +118,39 @@ func (s *Script) start() {
 	o := res.ToObject(s.rt.vm)
 	s.trigger, _ = goja.AssertFunction(o.Get("trigger"))
 	s.value, _ = goja.AssertFunction(o.Get("value"))
+	s.section, _ = goja.AssertFunction(o.Get("section"))
 }
+
+// follow moves song on to where the song is at a tick, and calls section when one starts
+func (s *Script) follow(tick psalm.CtrlTick) {
+	if s.songObj == nil {
+		return
+	}
+	pos, ok := s.song.At(tick, s.Config().PPQ)
+	o := s.songObj
+	if !ok || pos.Ended {
+		_ = o.Set("playing", false)
+		_ = o.Set("section", "")
+		_ = o.Set("index", -1)
+		s.inSong = false
+		return
+	}
+	_ = o.Set("playing", true)
+	_ = o.Set("section", pos.Section.Name)
+	_ = o.Set("index", pos.Section.Index)
+	_ = o.Set("bar", pos.SectionBar())
+	_ = o.Set("bars", pos.Section.Bars)
+	_ = o.Set("progress", pos.Progress)
+	_ = o.Set("loop", pos.Loop)
+	if key := [2]int{pos.Loop, pos.Section.Index}; !s.inSong || key != s.passing {
+		s.inSong, s.passing = true, key
+		_ = o.Set("sections", s.song.Transport().Sections())
+		s.run(s.section, s.rt.vm.ToValue(pos.Section.Name), s.rt.vm.ToValue(pos.Section.Index))
+	}
+}
+
+// Restart starts the song again with the patch (Psalm.Restart): its first section is called again
+func (s *Script) Restart() { s.inSong = false }
 
 // run calls a function of the script, within its budget
 func (s *Script) run(fn goja.Callable, args ...goja.Value) {
@@ -124,12 +163,13 @@ func (s *Script) run(fn goja.Callable, args ...goja.Value) {
 	}
 }
 
-// CtrlTick starts a new script
+// CtrlTick starts a new script, and follows the song
 func (s *Script) CtrlTick(tick psalm.CtrlTick) {
 	s.start()
 	if tick.SampleTimestamp > s.tick.SampleTimestamp {
 		s.tick = tick
 	}
+	s.follow(tick)
 }
 
 // Receive takes a trigger (input 0) and values (inputs 1 and 2: "a" and "b")
@@ -143,6 +183,7 @@ func (s *Script) Receive(v any, index int) {
 		if ev.Tick.SampleTimestamp > s.tick.SampleTimestamp {
 			s.tick = ev.Tick
 		}
+		s.follow(ev.Tick) // the section it falls in, before the trigger
 		o := vm.NewObject()
 		_ = o.Set("step", ev.Step)
 		_ = o.Set("seconds", ev.Seconds)
@@ -274,6 +315,11 @@ func (s *Script) newAPI() *goja.Object {
 		return o
 	})
 	set("bpm", func(goja.FunctionCall) goja.Value { return vm.ToValue(s.BPM()) })
+	s.songObj = vm.NewObject()
+	for k, v := range map[string]any{"playing": false, "section": "", "index": -1, "bar": 0, "bars": 0, "progress": 0.0, "loop": 0, "sections": []string{}} {
+		_ = s.songObj.Set(k, v)
+	}
+	_ = api.Set("song", s.songObj)
 	return api
 }
 

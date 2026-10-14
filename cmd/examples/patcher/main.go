@@ -83,7 +83,8 @@ func main() {
 
 	// a patch to start from: a clock of sixteenths through a sequence of C minor, up and down, playing
 	// a wavetable pluck; a script on the same clock playing an FM bass; the keyboard playing a lead;
-	// all on a mixer whose send A goes to a reverb
+	// all on a mixer whose send A goes to a reverb. A song of four sections: the clock plays sparser
+	// in the intro and the outro, the sequence other notes in the chorus
 	if len(pt.Patches()) == 0 || pt.Load(pt.Patches()[0]) != nil {
 		must := func(id string, err error) string {
 			if err != nil {
@@ -102,8 +103,10 @@ func main() {
 		rev := must(pt.Add("reverb", "", 900, 440))
 		bassLine := must(pt.Add("script", "", 460, 250))
 		bass := must(pt.Add("fm", "bass", 680, 130))
-		_ = pt.SetText(clock, "pattern", "x x . x x . x . x x . x . x x .")
-		_ = pt.SetText(seq, "values", "C3 Eb3 G3 Bb3 C4 D4")
+		song := must(pt.Add("song", "", 1150, 320)) // its sections: the clock and the sequence follow them
+		_ = pt.SetText(song, "sections", "Intro 4, Verse 8, Chorus 8, Outro 4")
+		_ = pt.SetText(clock, "pattern", "x x . x x . x . x x . x . x x .\nIntro: x . . . x . . . x . . x . . . .\nOutro: x . . . . . x . . . . . x . . .")
+		_ = pt.SetText(seq, "values", "C3 Eb3 G3 Bb3 C4 D4\nChorus: F3 Ab3 C4 Eb4 F4 G4")
 		pt.SettingsOf(seq).Apply(map[string]float64{"order": 3}) // up and down
 		pt.SettingsOf(notes).Apply(map[string]float64{"length": 0.6})
 		_ = pt.SetText(bassLine, "code", `// a bass under the pluck: a root a bar, a note on every beat, now and then its fifth

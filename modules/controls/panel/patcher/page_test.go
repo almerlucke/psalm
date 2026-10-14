@@ -394,3 +394,34 @@ func TestPageCopyPaste(t *testing.T) {
 	key("v")
 	paneltest.Eventually(t, "the cut pasted", func() bool { return len(pt.Nodes()) == 7 })
 }
+
+// a song on the page: where it is in the bar at the top, its sections and their tiles in its side
+// panel (a tap asks for a section next)
+func TestPageSong(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	if !tb.Eval(`document.querySelector(".pt-songbar").hidden`).(bool) {
+		t.Error("the song in the bar at the top without a song")
+	}
+	song, err := pt.Add("song", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = pt.SetText(song, "sections", "Intro 64, Verse 64")
+	tb.WaitFor(`!document.querySelector(".pt-songbar").hidden && document.querySelector(".pt-songbar span").textContent.startsWith("Intro ")`, "the song in the bar at the top")
+
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, song))
+	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	tb.WaitFor(`document.querySelector(".pt-drawer-text")?.value === "Intro 64, Verse 64" && `+frame+`?.querySelectorAll(".cue").length === 2`, "its sections and their tiles in the side panel")
+	tb.Eval(`[...` + frame + `.querySelectorAll(".cue")].find(c => c.textContent.includes("Verse")).click()`)
+	tb.WaitFor(`document.querySelector(".pt-songbar span").textContent.includes("→ Verse")`, "the section asked for next in the bar at the top")
+}

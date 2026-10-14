@@ -515,3 +515,25 @@ psalm.register("patcher", (p, api) => {
 		restyle: drawCables,
 	};
 });
+
+// where the song of a patch is, in the bar at the top: the section playing, its bar, the one asked
+// for next and how far it is; nothing without a song
+psalm.register("songbar", (p, api) => {
+	"use strict";
+	const box = document.createElement("div");
+	box.className = "pt-songbar"; box.hidden = true;
+	box.title = "the song: the section playing, its bar, the section asked for next (a song module's tiles)";
+	const text = document.createElement("span"), fill = document.createElement("div");
+	const bar = document.createElement("div"); bar.className = "pt-songbar-bar"; bar.append(fill);
+	box.append(text, bar);
+	return {
+		el: box,
+		show() {},
+		update(s) {
+			box.hidden = !s || !(s.section || s.ended);
+			if (box.hidden) return;
+			text.textContent = s.ended ? "the song is over" : `${s.section} ${s.bar + 1}/${s.bars}` + (s.queued ? ` → ${s.queued}` : "");
+			fill.style.width = (s.ended ? 0 : Math.max(0, Math.min(1, s.progress)) * 100) + "%";
+		},
+	};
+});
