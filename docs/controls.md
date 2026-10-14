@@ -961,6 +961,7 @@ random source (a new value at a rate, gliding to it) and a mixer of 4, 8 or 16 c
 preset): every channel at a level, panned, muted or not and sent to two buses, A and B, after its
 level; its outputs are the main mix, send A and send B (patch a send into a reverb or a delay and its
 output back into return A or B, each at a level of its own);
+a log (Tools) that shows the last 12 values and triggers sent to it, on the module and in its side panel, and sends them on;
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
 synth with its presets (the DX7 with its own editor), the drum machine (the `stepseq` grid of the
 drum machine example in its side panel, 16 patterns of up to 32 steps (16 to start with), a sample for every row chosen from the folder (kept with the patch by a number from its path), a `pattern` input (a value, from 0: a song's section number, a sequence) and a `next` input (a trigger, through the patterns in the rotation: A to D to start with) that ask for a pattern, switching when the pattern comes round (`Made.ValueIn`: the module that takes the value cables, when it isn't the one heard), a kit of samples from `Config.Drums`, "assets/sounds/drums"
