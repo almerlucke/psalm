@@ -142,7 +142,8 @@ func drumMachineKind(dir string) (patcher.Kind, bool) {
 		return patcher.Kind{}, false
 	}
 	lib := listSamples(dir)
-	return patcher.Kind{Name: "drummachine", Group: "Synths", Outs: outs, Make: func(string) (*patcher.Made, error) {
+	ins := []patcher.Port{{Name: "pattern", Type: patcher.Value}, {Name: "next", Type: patcher.Trigger, Index: 1}}
+	return patcher.Kind{Name: "drummachine", Group: "Synths", Ins: ins, Outs: outs, Make: func(string) (*patcher.Made, error) {
 		var rows []string
 		var start []sndfile.SoundFiler[float32]
 		bank := sndfile.SoundBank[float32]{}
@@ -156,13 +157,15 @@ func drumMachineKind(dir string) (patcher.Kind, bool) {
 		}
 		kit := drums.NewDrums(bank, 24, 2)
 		var added collect
+		var seq *stepseq.Sequencer
 		return &patcher.Made{Module: kit,
-			Added: func() []psalm.Modular { return added.added },
+			ValueIn: func() psalm.Modular { return seq }, // the pattern asked for, from a song or any source
+			Added:   func() []psalm.Modular { return added.added },
 			Edit: func(page *panel.Panel, name, _ string) patcher.Settings {
 				page.Section("Beat")
 				grid := stepseq.NewGrid(page, "Beat", rows, drumSteps, drumPatterns)
 				grid.DefaultSteps(16) // a pattern starts with 16, up to drumSteps
-				seq := stepseq.New(&added, grid, stepseq.Config{StepsPerBeat: 4, Swing: 0.5, Humanize: 4, HumanizeVelocity: 0.06})
+				seq = stepseq.New(&added, grid, stepseq.Config{StepsPerBeat: 4, Swing: 0.5, Humanize: 4, HumanizeVelocity: 0.06})
 				targets := map[string]*stepseq.SampleSound{}
 				for i, r := range rows {
 					var opts []stepseq.RowOption

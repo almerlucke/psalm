@@ -107,6 +107,9 @@ type Made struct {
 	// Added returns the modules its editor added to the patch (a step sequencer playing the module),
 	// asked once, right after Edit
 	Added func() []psalm.Modular
+	// ValueIn is the module that takes the value and trigger cables into the module, when it isn't
+	// Module (a drum machine's sequencer); asked when a cable is drawn
+	ValueIn func() psalm.Modular
 	// Notes plays the targets of its notes output (a keyboard), on the audio thread
 	Notes func(targets []psalm.Receiver)
 	// Mod returns what a mod output is now, 0-1 (asked on the audio thread, once a buffer)
@@ -149,6 +152,7 @@ type node struct {
 	set      params.Set        // its settings described (for modulation: their ranges)
 	texts    map[string]string // its settings of text as they are
 	textErr  map[string]string // what was wrong with one typed (it kept the one before)
+	all      []psalm.Modular   // every module it put in the patch, taken out with it
 }
 
 // Cable is a cable between two ports: the output Out of From, the input In of To (for a mod
@@ -439,6 +443,7 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 			add = append(add, made.Added()...)
 		}
 	}
+	n.all = add
 	return n, add, nil
 }
 
@@ -531,8 +536,10 @@ func (pt *Patcher) Remove(id string) error {
 	}
 	pt.do(func() {
 		pt.late.remove(n.ID)
-		for _, m := range append([]psalm.Modular{n.made.Module}, n.made.Extra...) {
-			pt.p.Remove(m)
+		for _, m := range n.all {
+			if m != psalm.Modular(n.page) { // the page is taken out below, once
+				pt.p.Remove(m)
+			}
 		}
 		if n.page != nil {
 			pt.p.Remove(n.page)
@@ -657,11 +664,15 @@ func (pt *Patcher) wire(c *Cable, on bool) {
 		pt.renote(from)
 	case Trigger, Value:
 		outIdx, inIdx := from.outPorts()[c.Out].Index, to.inPorts()[c.In].Index
+		target := to.made.Module
+		if to.made.ValueIn != nil {
+			target = to.made.ValueIn()
+		}
 		pt.do(func() {
 			if on {
-				from.made.Module.ValueConnect(outIdx, to.made.Module, inIdx)
+				from.made.Module.ValueConnect(outIdx, target, inIdx)
 			} else {
-				from.made.Module.ValueDisconnect(outIdx, to.made.Module, inIdx)
+				from.made.Module.ValueDisconnect(outIdx, target, inIdx)
 			}
 		})
 	case Mod:

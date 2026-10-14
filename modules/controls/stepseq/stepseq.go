@@ -341,6 +341,21 @@ func (s *Sequencer) Controls(ctl *panel.Panel) {
 	}
 }
 
+// Receive takes values from a patch: input 0 asks for a pattern (its number from 0, as a song's
+// section number: 0 is A), input 1 (anything, a trigger) for the next pattern, coming round to the
+// first after the last. The pattern switches when it comes round, as when asked for on the page
+func (s *Sequencer) Receive(v any, index int) {
+	switch index {
+	case 0:
+		if _, ok := v.(psalm.Message); ok {
+			return
+		}
+		s.grid.SetPattern(int(math.Round(psalm.FltVal[float64](v))))
+	case 1:
+		s.grid.SetPattern((s.grid.Pattern() + 1) % s.grid.Patterns)
+	}
+}
+
 // Restart plays the grid from its first step again, with the pattern asked for (psalm.Restarter):
 // the conditions count from the start again
 func (s *Sequencer) Restart() {

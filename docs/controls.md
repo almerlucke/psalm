@@ -963,7 +963,7 @@ level; its outputs are the main mix, send A and send B (patch a send into a reve
 output back into return A or B, each at a level of its own);
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
 synth with its presets (the DX7 with its own editor), the drum machine (the `stepseq` grid of the
-drum machine example in its side panel, 16 patterns of up to 32 steps (16 to start with), a sample for every row chosen from the folder (kept with the patch by a number from its path), a kit of samples from `Config.Drums`, "assets/sounds/drums"
+drum machine example in its side panel, 16 patterns of up to 32 steps (16 to start with), a sample for every row chosen from the folder (kept with the patch by a number from its path), a `pattern` input (a value, from 0: a song's section number, a sequence) and a `next` input (a trigger) that ask for a pattern, switching when the pattern comes round (`Made.ValueIn`: the module that takes the value cables, when it isn't the one heard), a kit of samples from `Config.Drums`, "assets/sounds/drums"
 by default; left out without them; `Made.Added` gives the patch what an editor adds, its sequencer)
 and every effect. From code: `Add`, `Connect`,
 `Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `TextError`, `Status`, `Copy`, `Paste`, `Save`, `Load`, `Clear`,

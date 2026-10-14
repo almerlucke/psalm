@@ -95,3 +95,47 @@ func TestDrumMachineSamples(t *testing.T) {
 		t.Errorf("a sample that is gone should leave the one chosen: %v", got)
 	}
 }
+
+// the pattern is asked for from the patch: by a value (a sequence, a song's section), or the next one by a trigger
+func TestDrumMachinePatternInput(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 240, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "A"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Drums: "../../../../../assets/sounds/drums"}))
+	p.Out(pt.Out())
+	drum, _ := pt.Add("drummachine", "", 0, 0)
+	clock, _ := pt.Add("clock", "", 0, 0)
+	seq, _ := pt.Add("sequence", "", 0, 0)
+	if err := pt.SetText(seq, "values", "3"); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []patcher.Cable{{From: clock, To: seq}, {From: seq, To: drum, In: 0}} {
+		if _, err := pt.Connect(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := func(seconds float64) {
+		for range int(seconds * 44100 / 256) {
+			p.ResetRun()
+			p.Run()
+		}
+	}
+	run(1)
+	if got := pt.SettingsOf(drum).Values()["Beat"]; got != 3 {
+		t.Errorf("the sequence asked for pattern D (3): %v", got)
+	}
+	pt.Clear()
+	drum, _ = pt.Add("drummachine", "", 0, 0)
+	clock, _ = pt.Add("clock", "", 0, 0)
+	if _, err := pt.Connect(patcher.Cable{From: clock, To: drum, In: 1}); err != nil {
+		t.Fatal(err)
+	}
+	run(0.3)
+	if got := pt.SettingsOf(drum).Values()["Beat"]; got < 1 {
+		t.Errorf("every trigger should ask for the next pattern: %v", got)
+	}
+	if err := pt.Remove(drum); err != nil { // its sequencer goes with it
+		t.Fatal(err)
+	}
+	run(0.2)
+}
