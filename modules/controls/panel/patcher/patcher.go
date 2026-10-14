@@ -104,6 +104,9 @@ type Made struct {
 	Describe func(preset string) params.Set
 	// Edit makes an editor of its own on its page instead (the DX7's); it returns the settings
 	Edit func(page *panel.Panel, name, preset string) Settings
+	// Added returns the modules its editor added to the patch (a step sequencer playing the module),
+	// asked once, right after Edit
+	Added func() []psalm.Modular
 	// Notes plays the targets of its notes output (a keyboard), on the audio thread
 	Notes func(targets []psalm.Receiver)
 	// Mod returns what a mod output is now, 0-1 (asked on the audio thread, once a buffer)
@@ -432,6 +435,9 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 			n.settings = ed
 		}
 		add = append(add, l.added...)
+		if made.Added != nil {
+			add = append(add, made.Added()...)
+		}
 	}
 	return n, add, nil
 }

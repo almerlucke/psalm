@@ -65,6 +65,9 @@ type Config struct {
 	IR [][]float64
 	// Voices is how many notes a synth plays at once (0 is 12)
 	Voices int
+	// Drums is the folder of the drum samples of the drum machine (see drummachine.go); "" is
+	// assets/sounds/drums. Without the samples the drum machine is left out
+	Drums string
 }
 
 var (
@@ -221,6 +224,9 @@ func Kinds(cfg Config) []patcher.Kind {
 			m := convolver.New(cfg.IR, convolver.Config{PartitionSize: 512, Mix: 0.35, Gain: 0.7})
 			return m, func() params.Set { return convolver.Describe(m.Settings()) }
 		}))
+	}
+	if k, ok := drumMachineKind(cfg.Drums); ok {
+		kinds = append(kinds, k)
 	}
 	return kinds
 }

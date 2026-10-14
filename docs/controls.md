@@ -960,7 +960,10 @@ preset): every channel at a level, panned, muted or not and sent to two buses, A
 level; its outputs are the main mix, send A and send B (patch a send into a reverb or a delay and its
 output back into return A or B, each at a level of its own);
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
-synth with its presets (the DX7 with its own editor) and every effect. From code: `Add`, `Connect`,
+synth with its presets (the DX7 with its own editor), the drum machine (the `stepseq` grid of the
+drum machine example in its side panel, a kit of samples from `Config.Drums`, "assets/sounds/drums"
+by default; left out without them; `Made.Added` gives the patch what an editor adds, its sequencer)
+and every effect. From code: `Add`, `Connect`,
 `Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `TextError`, `Status`, `Copy`, `Paste`, `Save`, `Load`, `Clear`,
 `Nodes`, `Cables`. A module's `Made.Texts` and `SetText` give it settings of text (`Help`: what to
 know to type one, shown above its box in the side panel, a point a line, `code` in backquotes), `Made.Late` a function at the end of every control tick (a notes module's),

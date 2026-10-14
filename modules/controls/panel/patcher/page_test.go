@@ -435,3 +435,25 @@ func TestPageSong(t *testing.T) {
 	tb.Eval(`[...` + frame + `.querySelectorAll(".cue")].find(c => c.textContent.includes("drums")).click()`)
 	paneltest.Eventually(t, "the gate switched off by its tile (kept with the patch)", func() bool { return pt.SettingsOf(gate).Values()["on"] == 0 })
 }
+
+// the drum machine: its grid in the side panel, the sequencer playing it with the patch
+func TestPageDrumMachine(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Drums: "../../../../assets/sounds/drums"}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("drummachine", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+frame+`?.querySelectorAll(".step, .cell").length >= 7*16`, "its grid in the side panel")
+}
