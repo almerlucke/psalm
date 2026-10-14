@@ -461,7 +461,7 @@ func Generators() []Kind {
 					Texts: []Text{{Key: "values", Label: "values", Value: "C3 Eb3 G3 Bb3"}}, SetText: func(_, v string) error { return s.SetValues(v) }}, nil
 			}},
 		{Name: "notes", Group: "Generators",
-			Ins:  []Port{trig, {Name: "pitch", Type: Value, Index: 1}, {Name: "velocity", Type: Value, Index: 2}, {Name: "length", Type: Value, Index: 3}},
+			Ins:  []Port{trig, {Name: "pitch", Type: Value, Index: 1}, {Name: "velocity", Type: Value, Index: 2}, {Name: "length (steps)", Type: Value, Index: 3}},
 			Outs: []Port{{Name: "notes", Type: Notes}},
 			Make: func(string) (*Made, error) {
 				n := NewNote()

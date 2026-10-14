@@ -584,11 +584,14 @@ the control that had it, also when one of the two listens on any channel. `Bindi
 
 **Start and stop**: a panel made for a patch that plays through a sound card has a Start/Stop
 button in the page's header (the space bar does the same). Stopping stands the whole patch still
-where it is (the song, the sequencers, a ringing note) and starting goes on from there; the meters
+where it is (the song, the sequencers, a reverb's tail) and starting goes on from there, the notes
+that were playing let go (they ring out their release, not the rest of their length); the meters
 show silence while it stands. Changes made while it is stopped are applied when it plays again.
 **Restart** next to it goes back to the start: the song, the parts, the streams and the step
 sequencers play from the beginning (a section asked for next is forgotten, the conditions of the
-steps count from the start), sounds that ring go on ringing. Pressed while stopped, the patch
+steps count from the start), the notes playing are let go and ring out their release, a reverb
+or a delay its tail. A synth lets go of its notes by `AllNotesOff()` (`psalm.NoteReleaser`: the
+poly synths, the organ and the piano have it). Pressed while stopped, the patch
 starts from the beginning when it plays again. `ctl.SetPlayer(pl)` gives the buttons to anything
 with `AudioStart`, `AudioStop` and `Running` (and `Restart` for the restart button; `nil` takes them
 away). `psalm.Psalm`'s `AudioStart` and `AudioStop` can be called from any goroutine and do nothing
@@ -809,7 +812,7 @@ are `patcher.Generators()`, built on genny:
 |---|---|---|---|
 | clock | | trigger | division (1/4 to 1/32, triplets), swing, chance; a pattern typed on it (`x . x x`: a hit or a rest, looping) |
 | sequence | trigger, reset | value, after (a trigger once the value is out) | values typed on it (numbers, note names `C3 Eb3`, chords `[C3 E3 G3]`), the order: in order, shuffled, random, up and down, converge, alternate, backwards (genny's sequence, bucket, arpeggio) |
-| notes | trigger, pitch, velocity, length | notes | the pitch, velocity, length (in steps of its clock) and transposition for the inputs not patched |
+| notes | trigger, pitch, velocity, length (steps) | notes | the pitch, velocity, length and transposition for the inputs not patched. A length is in steps of the clock that triggered the note (at 1/16 and 120 bpm a step is 125 ms: a length of 8 is a second) |
 | quantize | value | value | a key and a scale (tools/harmony): every pitch, every note of a chord, to its nearest note in it |
 
 A notes module plays the triggers of a control tick at its end, after every other module had its

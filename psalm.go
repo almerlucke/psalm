@@ -28,6 +28,7 @@ type Psalm struct {
 	audioMu sync.Mutex  // serializes starting and stopping (from the main goroutine, a panel's page)
 	running atomic.Bool // the engine is started
 	restart atomic.Bool // back to the start at the next buffer
+	letGo   atomic.Bool // let go of the notes playing at the next buffer (stopped, restarted)
 
 	// changes to make on the audio thread, between two buffers
 	doMu  sync.Mutex
@@ -88,12 +89,31 @@ type Restarter interface {
 	Restart()
 }
 
+// NoteReleaser is a module that plays notes (a synth): AllNotesOff lets go of every note it plays,
+// held or of a duration, into its release. It is called on the audio thread, when the patch stops or
+// restarts
+type NoteReleaser interface {
+	AllNotesOff()
+}
+
 // Restart sets the patch back to its start at the next buffer: the clock goes back to 0 and every
 // module that keeps time of its own (a Restarter, also in patches within the patch) starts again,
-// so the song, the parts and the sequencers play from the beginning. Sounds that ring go on
-// ringing. It can be called from any goroutine, also while the patch is stopped (it starts from the
-// beginning when it plays again)
+// so the song, the parts and the sequencers play from the beginning. The notes playing are let go
+// (a NoteReleaser's), what rings (a release, a reverb) rings out. It can be called from any
+// goroutine, also while the patch is stopped (it starts from the beginning when it plays again)
 func (p *Psalm) Restart() { p.restart.Store(true) }
+
+// releaseNotes lets go of the notes of every module that plays them, in patches within patches too
+func releaseNotes(modules []Modular) {
+	for _, m := range modules {
+		if r, ok := m.(NoteReleaser); ok {
+			r.AllNotesOff()
+		}
+		if sub, ok := m.(interface{ Modules() []Modular }); ok {
+			releaseNotes(sub.Modules())
+		}
+	}
+}
 
 // restartModules restarts the modules that keep time, in patches within patches too (a Restarter
 // restarts what it holds itself: a patch within a patch with a clock of its own, NewSub)
@@ -296,7 +316,8 @@ func (p *Psalm) AudioStart() error {
 	return nil
 }
 
-// AudioStop stops playing: the patch stands still (every module where it is) until AudioStart.
+// AudioStop stops playing: the patch stands still (every module where it is) until AudioStart,
+// when the notes that were playing are let go (they ring out their release; a reverb its tail).
 // Stopping a patch that doesn't play does nothing. It can be called from any goroutine
 func (p *Psalm) AudioStop() error {
 	if p.engine == nil {
@@ -311,6 +332,7 @@ func (p *Psalm) AudioStop() error {
 		return err
 	}
 	p.running.Store(false)
+	p.letGo.Store(true)
 	p.doPending() // the changes still waiting for a buffer are made now
 	return nil
 }
@@ -374,6 +396,10 @@ func (p *Psalm) Run() {
 	if p.restart.Swap(false) {
 		p.sampleTimestamp, p.tickTimestamp, p.sampleCnt = 0, 0, 0
 		restartModules(p.modules)
+		p.letGo.Store(true)
+	}
+	if p.letGo.Swap(false) { // stopped or restarted: no note goes on for good
+		releaseNotes(p.modules)
 	}
 	if p.delay != 0 {
 		p.sampleCnt -= p.delay

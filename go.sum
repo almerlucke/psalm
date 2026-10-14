@@ -1,11 +1,11 @@
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
-github.com/almerlucke/genny v0.0.0-20260828082210-d8ad71a1a3c6 h1:d6ETIbZyVuTrXA8yA55JuoQLcoiMyXPuaLS7M5Vj3ug=
-github.com/almerlucke/genny v0.0.0-20260828082210-d8ad71a1a3c6/go.mod h1:YwRDRT+rkPDkDJQZ1jzg3DR/AF7g9iPPCB0VgdXHA9E=
-github.com/almerlucke/go-jack v0.0.0-20260928105849-0be8f70c4b43 h1:VKLdpsEyyiyBwmOuzoe9TdGDCmnijKCfGYQsxxViBuU=
-github.com/almerlucke/go-jack v0.0.0-20260928105849-0be8f70c4b43/go.mod h1:D9fL6ck5XirIoje4X9Jjgx8kQYuYG6gH6c5d4gfZ7cw=
-github.com/almerlucke/sndfile v0.0.0-20260910090030-363c33fb6793 h1:gPOos6v6GHRfmarvyKZia18z90bCRFLeq/pmB/IghZ8=
-github.com/almerlucke/sndfile v0.0.0-20260910090030-363c33fb6793/go.mod h1:8lUQ7Q0PBX8WZQhQ3aSaKMZ0hhls0kQvQsd4svp3dVc=
+github.com/almerlucke/genny v0.0.0-20261014064337-e285bb34e03b h1:BaLMscc4PMYvHZTDcMyoXyhFj1px+C47k30hfNyblrc=
+github.com/almerlucke/genny v0.0.0-20261014064337-e285bb34e03b/go.mod h1:YwRDRT+rkPDkDJQZ1jzg3DR/AF7g9iPPCB0VgdXHA9E=
+github.com/almerlucke/go-jack v0.0.0-20260928121326-3451e862d67e h1:o1z9touuz/VSx9rNr7kzMJVsF6E3p19Q/JrcOj6zTqo=
+github.com/almerlucke/go-jack v0.0.0-20260928121326-3451e862d67e/go.mod h1:YG4N4/vbPTKiqZGFHq7+pjm6mI/Y8IS5eHyAoLev1CY=
+github.com/almerlucke/sndfile v0.0.0-20261005172134-5c26a1818b2a h1:rI/gNlKGuj0056wv/38RWgEQMO/3qBw5s5CDKcBtKRw=
+github.com/almerlucke/sndfile v0.0.0-20261005172134-5c26a1818b2a/go.mod h1:8lUQ7Q0PBX8WZQhQ3aSaKMZ0hhls0kQvQsd4svp3dVc=
 github.com/dh1tw/gosamplerate v0.1.2 h1:oyqtZk67xB9B4l+vIZCZ3F0RYV/z66W58VOah11/ktI=
 github.com/dh1tw/gosamplerate v0.1.2/go.mod h1:zooTyHpoR7hE+FLfdE3yjLHb2QA2NpMusNfuaZqEACM=
 github.com/dlclark/regexp2/v2 v2.8.1 h1:I1jbaCbXeOxdVN8z3fb55Mvtgb94/6+Dh0zjmXjKV/0=

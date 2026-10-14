@@ -23,9 +23,9 @@ type live interface {
 // player has a Restart method too (back to the start). A panel made for a psalm.Psalm that plays
 // through an audio engine has them already; nil takes the buttons away.
 //
-// Stopping stands the whole patch still where it is (the song, the sequencers, a ringing note) and
-// starting goes on from there. While it stands still the panel's changes wait: they are applied when
-// it plays again
+// Stopping stands the whole patch still where it is (the song, the sequencers, a reverb's tail) and
+// starting goes on from there, the notes that were playing let go (they ring out their release).
+// While it stands still the panel's changes wait: they are applied when it plays again
 func (pn *Panel) SetPlayer(pl Player) *Panel {
 	pn.mu.Lock()
 	defer pn.mu.Unlock()
