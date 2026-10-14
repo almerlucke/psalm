@@ -48,3 +48,18 @@ func TestFadeOnNoteOff(t *testing.T) {
 		}
 	}
 }
+
+// a message can give the sound file itself, not one of the bank by name
+func TestSoundFileMessage(t *testing.T) {
+	psalm.New(nil)
+	p := New(Config{EndOffset: 1})
+	p.NoteOn(1, psalm.Message{}, psalm.CtrlTick{}, p.Config())
+	if play(p, 2)[1] != 0 {
+		t.Fatal("no sound without a file")
+	}
+	p = New(Config{EndOffset: 1})
+	p.NoteOn(1, psalm.Message{"soundFile": sndfile.SoundFiler[float32](sndfile.MustSoundFile[float32](crash))}, psalm.CtrlTick{}, p.Config())
+	if play(p, 4)[3] < 0.01 {
+		t.Fatal("the file of the message should be sounding")
+	}
+}

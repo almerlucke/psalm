@@ -24,6 +24,7 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/sndfile"
 )
 
 // the fields of a step, in the grid
@@ -90,21 +91,43 @@ type sound struct {
 	name  string
 	n     int
 	last  string
+	file  atomic.Pointer[fileBox] // a sound file to play instead of the bank's (Sample)
 }
+
+type fileBox struct{ sf sndfile.SoundFiler[float32] }
 
 // Sound plays a sound of a drum synth (drums.NewDrums) by its name in the sound bank; pitch
 // changes its speed. A choked sound fades out quickly
 func Sound(drums psalm.Modular, name string) Target { return &sound{synth: drums, name: name} }
 
+// SampleSound is a sound of a drum synth that plays a sound file of its own, which can be
+// swapped while it plays (Set, from any goroutine; the next hit plays the new one)
+type SampleSound struct{ *sound }
+
+// Sample plays a sound file on a drum synth (drums.NewDrums, a bank of any sounds): a row's target
+// like Sound, with the sound to play given by Set
+func Sample(drums psalm.Modular, name string, sf sndfile.SoundFiler[float32]) *SampleSound {
+	s := &SampleSound{&sound{synth: drums, name: name}}
+	s.Set(sf)
+	return s
+}
+
+// Set changes the sound file played by the next hit
+func (s *SampleSound) Set(sf sndfile.SoundFiler[float32]) { s.file.Store(&fileBox{sf}) }
+
 func (s *sound) play(amp, pitch, _ float64, tick psalm.CtrlTick) {
 	s.n++
 	s.last = fmt.Sprintf("%s#%d", s.name, s.n)
+	msg := psalm.Message{"sound": s.name, "speed": math.Exp2(pitch / 12)}
+	if fb := s.file.Load(); fb != nil && fb.sf != nil {
+		msg["soundFile"] = fb.sf
+	}
 	s.synth.Receive(psalm.Message{
 		"command":   "trigger",
 		"noteOn":    s.last,
 		"tick":      tick,
 		"amplitude": amp,
-		"message":   psalm.Message{"sound": s.name, "speed": math.Exp2(pitch / 12)},
+		"message":   msg,
 	}, 0)
 }
 

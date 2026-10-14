@@ -67,3 +67,31 @@ func TestDrumMachinePlays(t *testing.T) {
 		t.Errorf("silent, peak %v", peak)
 	}
 }
+
+// the sample of a row is chosen from the folder, and kept with the patch by the sample, not its place in the list
+func TestDrumMachineSamples(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "A"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Drums: "../../../../../assets/sounds/drums"}))
+	id, err := pt.Add("drummachine", "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := pt.SettingsOf(id).Values()
+	kick, snare := v["kick sample id"], v["snare sample id"]
+	if kick == 0 || snare == 0 || kick == snare {
+		t.Fatalf("the samples of the rows should be in the settings: %v %v", kick, snare)
+	}
+	if _, ok := v["kick sample"]; ok {
+		t.Error("a sample is kept by its id, not its place in the list")
+	}
+	pt.SettingsOf(id).Apply(map[string]float64{"snare sample id": kick})
+	if got := pt.SettingsOf(id).Values()["snare sample id"]; got != kick {
+		t.Errorf("the snare should have the kick's sample now: %v, want %v", got, kick)
+	}
+	pt.SettingsOf(id).Apply(map[string]float64{"snare sample id": 12345}) // gone: it stays
+	if got := pt.SettingsOf(id).Values()["snare sample id"]; got != kick {
+		t.Errorf("a sample that is gone should leave the one chosen: %v", got)
+	}
+}

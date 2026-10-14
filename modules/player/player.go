@@ -282,6 +282,11 @@ func (p *Player) ReceiveMessage(msg psalm.Message) {
 		p.SetSound(sound)
 	}
 
+	// a sound file itself, instead of one of the bank by name
+	if sf, ok := msg["soundFile"].(sndfile.SoundFiler[float32]); ok && sf != nil {
+		p.SetSoundFile(sf)
+	}
+
 	if speed, ok := msg.FltVal("speed"); ok {
 		p.SetSpeed(speed)
 	}
