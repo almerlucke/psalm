@@ -116,6 +116,9 @@ body.learn .control.armed { outline: 2px solid var(--accent); animation: armed 1
 .cell.marked .mark { display: block; }
 .cell.head { outline: 2px solid var(--ink); outline-offset: -2px; }
 .cell.out { opacity: .3; }
+.cell[hidden] { display: none; }
+.gridhead .stepslab { display: flex; gap: 4px; align-items: center; font-size: 13px; }
+.gridhead input.stepsin { width: 4em; min-height: 32px; padding: 2px 6px; font-size: 13px; }
 .cell.selected { box-shadow: 0 0 0 2px var(--meter-mid); }
 .inspector { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; border-top: 1px solid var(--line); padding-top: 10px; min-height: 24px; font-size: 12px; color: var(--muted); }
 .inspector label { display: flex; flex-direction: column; gap: 4px; }
@@ -393,6 +396,8 @@ function grid(p) {
 	const d = p.grid, F = d.fields.length, R = d.rows.length, S = d.steps;
 	let cells = d.cells.slice(), pattern = d.pattern, playing = d.playing;
 	let heads = d.rows.map(() => -1), lengths = d.lengths || d.rows.map(() => S);
+	let psteps = d.psteps || Array(d.patterns).fill(S); // the steps of every pattern: the rest is not shown
+	const rowLen = r => Math.min(lengths[r], psteps[pattern]);
 	let selected = null, selectedRow = null;
 	const idx = (pt, r, s, f) => ((pt * R + r) * S + s) * F + f;
 	const level = d.fields[0];
@@ -444,6 +449,21 @@ function grid(p) {
 		setCells(list);
 	});
 	patTools.append(clear);
+	// how many steps the pattern on view has
+	let stepsIn = null;
+	if (S > 1) {
+		stepsIn = document.createElement("input");
+		stepsIn.type = "number"; stepsIn.min = 1; stepsIn.max = S; stepsIn.step = 1;
+		stepsIn.title = "how many steps this pattern has (1 to " + S + ")";
+		stepsIn.className = "stepsin";
+		stepsIn.addEventListener("change", () => {
+			const n = Math.max(1, Math.min(S, Math.round(Number(stepsIn.value)) || 1));
+			psteps[pattern] = n; stepsIn.value = n; render();
+			post("api/grid", {name: p.name, steps: [pattern, n]});
+		});
+		const lab = document.createElement("label"); lab.className = "stepslab"; lab.append("Steps ", stepsIn);
+		patTools.append(lab);
+	}
 	head.append(patTools);
 	const scroll = div("gridscroll"), table = div("steps");
 	table.style.gridTemplateColumns = `auto repeat(${S}, minmax(20px, 1fr))`;
@@ -555,7 +575,7 @@ function grid(p) {
 			reset.addEventListener("click", () => { setCells(d.fields.map((f, i) => cellSet(r, s, i, f.default))); inspect(); });
 			insp.append(reset);
 		} else if (selectedRow !== null) {
-			const r = selectedRow, len = lengths[r];
+			const r = selectedRow, len = rowLen(r);
 			const t = div("title"); t.textContent = d.rows[r]; insp.append(t);
 			const button = (text, f) => { const b = document.createElement("button"); b.textContent = text; b.addEventListener("click", f); insp.append(b); return b; };
 			const slider = (name, min, max, value) => {
@@ -602,6 +622,9 @@ function grid(p) {
 			Array.from(copyTo.options).forEach((o, i) => o.disabled = i === pattern);
 			if (Number(copyTo.value) === pattern) copyTo.value = (pattern + 1) % d.patterns;
 		}
+		const shown = psteps[pattern];
+		table.style.gridTemplateColumns = `auto repeat(${shown}, minmax(20px, 1fr))`;
+		if (stepsIn && document.activeElement !== stepsIn) stepsIn.value = shown;
 		for (let r = 0; r < R; r++) {
 			rowEls[r].classList.toggle("selected", selectedRow === r);
 			for (let s = 0; s < S; s++) {
@@ -617,6 +640,7 @@ function grid(p) {
 				c.classList.toggle("marked", marked && v > level.default);
 				c.title = v > level.default ? [`${level.name} ${fmt(level, v)}`, ...tip].join(", ") : "";
 				c.classList.toggle("head", heads[r] === s && playing === pattern);
+				c.hidden = s >= shown;
 				c.classList.toggle("out", s >= lengths[r]);
 				c.classList.toggle("selected", !!selected && selected.r === r && selected.s === s);
 			}
@@ -630,6 +654,7 @@ function grid(p) {
 			if (u.cells) cells = u.cells;
 			pattern = u.pattern; playing = u.playing;
 			if (u.playheads) heads = u.playheads;
+			if (u.psteps) psteps = u.psteps;
 			if (u.lengths) { const changed = String(u.lengths) !== String(lengths); lengths = u.lengths; if (changed && selectedRow !== null) inspect(); }
 			render();
 			if (u.cells) inspect(true);

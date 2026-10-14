@@ -455,5 +455,11 @@ func TestPageDrumMachine(t *testing.T) {
 	tb.Size(1300, 900)
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
 	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
-	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+frame+`?.querySelectorAll(".step, .cell").length >= 7*16`, "its grid in the side panel")
+	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+frame+`?.querySelectorAll(".cell").length === 7*32`, "its grid in the side panel")
+	shown := `[...` + frame + `.querySelectorAll(".cell")].filter(c => !c.hidden && c.offsetParent).length`
+	tb.WaitFor(shown+` === 7*16 && `+frame+`.querySelectorAll(".gridhead > button").length === 16`, "sixteen patterns of sixteen steps")
+	tb.Eval(frame + `.querySelector("input.stepsin").value = "24"; ` + frame + `.querySelector("input.stepsin").dispatchEvent(new Event("change"))`)
+	tb.WaitFor(shown+` === 7*24`, "the first pattern of 24 steps")
+	tb.Eval(`[...` + frame + `.querySelectorAll(".gridhead > button")][1].click()`)
+	tb.WaitFor(shown+` === 7*16`, "the second pattern still of 16")
 }

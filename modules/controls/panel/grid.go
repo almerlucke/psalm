@@ -51,6 +51,8 @@ type Grid struct {
 	playing  atomic.Int32    // the pattern playing (the sequencer switches at its own moment)
 	playhead []atomic.Int32  // per row the step playing, -1 none
 	lengths  []atomic.Int32  // per row how many steps it plays (rows of their own length loop apart)
+	psteps   []atomic.Int32  // per pattern how many steps it has (the page shows only those)
+	defSteps int             // the steps a pattern starts with, and goes back to when a snapshot is restored
 	version  atomic.Int64    // counts the changes of the cells and the pattern, for the page
 }
 
@@ -64,6 +66,11 @@ func (pn *Panel) Grid(name string, rows []string, steps, patterns int, fields ..
 	g.cells = make([]atomic.Uint64, patterns*len(rows)*steps*len(fields))
 	for i := range g.cells {
 		g.cells[i].Store(math.Float64bits(g.Fields[i%len(fields)].Default))
+	}
+	g.defSteps = steps
+	g.psteps = make([]atomic.Int32, patterns)
+	for i := range g.psteps {
+		g.psteps[i].Store(int32(steps))
 	}
 	g.playhead = make([]atomic.Int32, len(rows))
 	g.lengths = make([]atomic.Int32, len(rows))
@@ -168,6 +175,42 @@ func (g *Grid) Copy(from, to int) {
 	}
 }
 
+// PatternSteps returns how many steps a pattern has (up to Steps; every pattern starts with all of them)
+func (g *Grid) PatternSteps(pattern int) int {
+	if pattern < 0 || pattern >= g.Patterns {
+		return g.Steps
+	}
+	return int(g.psteps[pattern].Load())
+}
+
+// SetPatternSteps sets how many steps a pattern has: the page shows that many, a sequencer plays
+// that many before the pattern comes round
+func (g *Grid) SetPatternSteps(pattern, steps int) {
+	if pattern < 0 || pattern >= g.Patterns {
+		return
+	}
+	g.psteps[pattern].Store(int32(max(1, min(steps, g.Steps))))
+	g.version.Add(1)
+}
+
+// DefaultSteps sets how many steps every pattern has now, and goes back to when a snapshot is
+// restored without the steps of a pattern (a snapshot only keeps the patterns that differ)
+func (g *Grid) DefaultSteps(steps int) {
+	g.defSteps = max(1, min(steps, g.Steps))
+	for p := range g.Patterns {
+		g.SetPatternSteps(p, g.defSteps)
+	}
+}
+
+// allPatternSteps returns how many steps every pattern has
+func (g *Grid) allPatternSteps() []int {
+	ps := make([]int, g.Patterns)
+	for i := range ps {
+		ps[i] = g.PatternSteps(i)
+	}
+	return ps
+}
+
 // Pattern returns the pattern asked for (on the page, or with SetPattern)
 func (g *Grid) Pattern() int { return int(g.pattern.Load()) }
 
@@ -235,6 +278,9 @@ func patternName(p int) string {
 func (g *Grid) snapshot(values map[string]float64) {
 	values[g.Name] = float64(g.Pattern())
 	for p := range g.Patterns {
+		if n := g.PatternSteps(p); n != g.defSteps {
+			values[fmt.Sprintf("%s/%s/steps", g.Name, patternName(p))] = float64(n)
+		}
 		for r, row := range g.Rows {
 			for s := range g.Steps {
 				for f, field := range g.Fields {
@@ -256,6 +302,7 @@ func (g *Grid) restore(values map[string]float64) {
 	}
 	for p := range g.Patterns {
 		g.Clear(p)
+		g.SetPatternSteps(p, g.defSteps)
 	}
 	g.SetPattern(int(pattern))
 	prefix := g.Name + "/"
@@ -265,7 +312,7 @@ func (g *Grid) restore(values map[string]float64) {
 			continue
 		}
 		parts := strings.Split(rest, "/")
-		if len(parts) != 4 {
+		if len(parts) != 4 && !(len(parts) == 2 && parts[1] == "steps") {
 			continue
 		}
 		p := -1
@@ -273,6 +320,10 @@ func (g *Grid) restore(values map[string]float64) {
 			if patternName(i) == parts[0] {
 				p = i
 			}
+		}
+		if len(parts) == 2 {
+			g.SetPatternSteps(p, int(v))
+			continue
 		}
 		step, err := strconv.Atoi(parts[2])
 		if err != nil {

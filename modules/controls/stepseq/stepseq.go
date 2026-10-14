@@ -327,6 +327,12 @@ func (s *Sequencer) Restart() {
 	s.grid.SetPlaying(s.pattern)
 }
 
+// lengthOf is how many steps a row plays in a pattern: its own length, or the steps of the pattern
+// when they are fewer
+func (s *Sequencer) lengthOf(r *row, pattern int) int64 {
+	return int64(max(1, min(int(r.length.Load()), s.grid.PatternSteps(pattern))))
+}
+
 // ticksPerStep is the length of a step in ticks of the patch
 func (s *Sequencer) ticksPerStep() float64 { return float64(s.Config().PPQ) / s.cfg.StepsPerBeat }
 
@@ -348,7 +354,7 @@ func (s *Sequencer) CtrlTick(tick psalm.CtrlTick) {
 		s.grid.SetPlaying(s.headPattern)
 		for _, r := range s.rows {
 			if r != nil {
-				s.grid.SetPlayhead(r.index, int((k-s.headStart)%int64(r.length.Load())))
+				s.grid.SetPlayhead(r.index, int((k-s.headStart)%s.lengthOf(r, s.headPattern)))
 			}
 		}
 	}
@@ -396,7 +402,7 @@ func (s *Sequencer) play(t float64, tick psalm.CtrlTick) {
 // condition, the chance, the roll, and the timing (swing, nudge, humanizing)
 func (s *Sequencer) schedule(k int64) {
 	g := s.grid
-	if (k-s.start)%int64(g.Steps) == 0 {
+	if (k-s.start)%int64(g.PatternSteps(s.pattern)) == 0 {
 		if p := g.Pattern(); p != s.pattern {
 			s.pattern = p
 			s.start = k // the rows start again, the conditions count from here
@@ -416,7 +422,7 @@ func (s *Sequencer) schedule(k int64) {
 		if r == nil {
 			continue
 		}
-		length := int64(r.length.Load())
+		length := s.lengthOf(r, s.pattern)
 		step := int((k - s.start) % length)
 		loop := int((k - s.start) / length)
 		value := func(f int) float64 { return g.Value(s.pattern, r.index, step, f) }

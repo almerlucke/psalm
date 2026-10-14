@@ -218,6 +218,7 @@ func (pn *Panel) Handler() http.Handler {
 		var req struct {
 			Name    string       `json:"name"`
 			Pattern *int         `json:"pattern"`
+			Steps   *[2]int      `json:"steps"` // [pattern, how many steps it has]
 			Set     [][5]float64 `json:"set"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -231,6 +232,9 @@ func (pn *Panel) Handler() http.Handler {
 		}
 		for _, c := range req.Set {
 			g.Set(int(c[0]), int(c[1]), int(c[2]), int(c[3]), c[4])
+		}
+		if req.Steps != nil {
+			g.SetPatternSteps(req.Steps[0], req.Steps[1])
 		}
 		if req.Pattern != nil {
 			g.SetPattern(*req.Pattern)
@@ -393,6 +397,7 @@ type gridDesc struct {
 	Pattern  int       `json:"pattern"`
 	Playing  int       `json:"playing"`
 	Lengths  []int     `json:"lengths"`
+	PSteps   []int     `json:"psteps"` // the steps of every pattern
 }
 
 func (pn *Panel) describe() description {
@@ -432,7 +437,7 @@ func (pn *Panel) describe() description {
 			i := index[g.Section]
 			d.Sections[i].Controls = append(d.Sections[i].Controls, control{Kind: GridKind, Name: g.Name, Grid: &gridDesc{
 				Rows: g.Rows, Steps: g.Steps, Patterns: g.Patterns, Fields: g.Fields,
-				Cells: g.values(), Pattern: g.Pattern(), Playing: g.Playing(), Lengths: g.Lengths(),
+				Cells: g.values(), Pattern: g.Pattern(), Playing: g.Playing(), Lengths: g.Lengths(), PSteps: g.allPatternSteps(),
 			}})
 			continue
 		}
@@ -494,6 +499,7 @@ type gridUpdate struct {
 	Playing   int       `json:"playing"`
 	Playheads []int     `json:"playheads"`
 	Lengths   []int     `json:"lengths"`
+	PSteps    []int     `json:"psteps"`
 }
 
 // gridSent is what a page was sent of a grid last
@@ -568,14 +574,14 @@ func (pn *Panel) events(w http.ResponseWriter, r *http.Request) {
 				sent = &gridSent{version: -1}
 				gridsSent[g.Name] = sent
 			}
-			gu := &gridUpdate{Pattern: g.Pattern(), Playing: g.Playing(), Playheads: g.Playheads(), Lengths: g.Lengths()}
+			gu := &gridUpdate{Pattern: g.Pattern(), Playing: g.Playing(), Playheads: g.Playheads(), Lengths: g.Lengths(), PSteps: g.allPatternSteps()}
 			changed := false
 			if v := g.version.Load(); v != sent.version {
 				sent.version = v
 				gu.Cells = g.values()
 				changed = true
 			}
-			if heads := fmt.Sprint(gu.Playheads, gu.Lengths); heads != sent.playheads || gu.Pattern != sent.pattern || gu.Playing != sent.playing {
+			if heads := fmt.Sprint(gu.Playheads, gu.Lengths, gu.PSteps); heads != sent.playheads || gu.Pattern != sent.pattern || gu.Playing != sent.playing {
 				sent.playheads, sent.pattern, sent.playing = heads, gu.Pattern, gu.Playing
 				changed = true
 			}

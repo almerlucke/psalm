@@ -23,6 +23,12 @@ var drumKit = []struct{ name, file string }{
 	{"808", "808/Cymatics - Humble 808 1 - D.wav"},
 }
 
+// the drum machine has patterns of up to drumSteps steps (16 to start with), drumPatterns of them
+const (
+	drumSteps    = 32
+	drumPatterns = 16
+)
+
 // collect gathers what a step sequencer adds to a patch
 type collect struct {
 	psalm.Patcher
@@ -40,8 +46,8 @@ type pageSettings struct{ page *panel.Panel }
 func (s pageSettings) Values() map[string]float64 { return s.page.Snapshot() }
 func (s pageSettings) Apply(v map[string]float64)  { s.page.Restore(v) }
 
-// drumMachineKind is the drum machine: a kit of samples played by a step sequencer (seven rows,
-// sixteen steps, four patterns), its grid in the side panel; it follows the tempo of the patch.
+// drumMachineKind is the drum machine: a kit of samples played by a step sequencer (seven rows, sixteen
+// patterns of up to 32 steps each), its grid in the side panel; it follows the tempo of the patch.
 // It is left out (false) when the samples aren't in the folder
 func drumMachineKind(dir string) (patcher.Kind, bool) {
 	if dir == "" {
@@ -67,7 +73,8 @@ func drumMachineKind(dir string) (patcher.Kind, bool) {
 			Added: func() []psalm.Modular { return added.added },
 			Edit: func(page *panel.Panel, name, _ string) patcher.Settings {
 				page.Section("Beat")
-				grid := stepseq.NewGrid(page, "Beat", rows, 16, 4)
+				grid := stepseq.NewGrid(page, "Beat", rows, drumSteps, drumPatterns)
+				grid.DefaultSteps(16) // a pattern starts with 16, up to drumSteps
 				seq := stepseq.New(&added, grid, stepseq.Config{StepsPerBeat: 4, Swing: 0.5, Humanize: 4, HumanizeVelocity: 0.06})
 				for _, r := range rows {
 					var opts []stepseq.RowOption

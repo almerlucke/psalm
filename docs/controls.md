@@ -519,7 +519,9 @@ cell to switch it, drag to paint, right click (long press, shift click) to edit 
 tap a row name for its tools (clear, shift, Euclid, random), pattern tabs on top with Copy (the
 pattern on view to another) and Clear. `grid.Value`, `grid.Set`, `grid.Clear`, `grid.Copy(from,
 to)`, `grid.SetPattern` work from any goroutine;
-whatever plays the grid tells the page `SetPlaying`, `SetPlayhead` and `SetLength` (per row). Grids
+whatever plays the grid tells the page `SetPlaying`, `SetPlayhead` and `SetLength` (per row). A pattern can have fewer steps than the grid
+(`SetPatternSteps`, `DefaultSteps`; the page has a Steps box, a snapshot keeps them as
+"Grid/B/steps", the sequencer comes round and switches patterns there). Grids
 are in snapshots (as `name/pattern/row/step/field`, the cells away from their defaults). The step
 sequencer below plays one.
 
@@ -961,7 +963,7 @@ level; its outputs are the main mix, send A and send B (patch a send into a reve
 output back into return A or B, each at a level of its own);
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
 synth with its presets (the DX7 with its own editor), the drum machine (the `stepseq` grid of the
-drum machine example in its side panel, a kit of samples from `Config.Drums`, "assets/sounds/drums"
+drum machine example in its side panel, 16 patterns of up to 32 steps (16 to start with), a kit of samples from `Config.Drums`, "assets/sounds/drums"
 by default; left out without them; `Made.Added` gives the patch what an editor adds, its sequencer)
 and every effect. From code: `Add`, `Connect`,
 `Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `TextError`, `Status`, `Copy`, `Paste`, `Save`, `Load`, `Clear`,

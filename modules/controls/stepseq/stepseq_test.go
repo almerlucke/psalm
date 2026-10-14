@@ -278,3 +278,21 @@ func TestRestart(t *testing.T) {
 		t.Fatal("after a restart the conditions count from the start: the first time round again")
 	}
 }
+
+// a pattern of fewer steps comes round sooner, and switches patterns there
+func TestPatternSteps(t *testing.T) {
+	r := newRig(t, Config{}, "a")
+	r.grid.SetPatternSteps(0, 6)
+	r.grid.Set(0, 0, 0, Velocity, 0.5)
+	r.grid.Set(1, 0, 1, Velocity, 0.9)
+	r.run(8)
+	rec := r.recs["a"]
+	if len(rec.times) != 2 || !near(rec.times[1], 6*r.tps) {
+		t.Fatalf("a pattern of 6 steps should come round every 6: %v", rec.times)
+	}
+	r.grid.SetPattern(1)
+	r.run(8) // pattern A comes round at step 12, then B plays: its second step is step 13
+	if r.grid.Playing() != 1 || len(rec.times) != 3 || !near(rec.times[2], 13*r.tps) {
+		t.Fatalf("pattern B should play from step 12: playing %d, %v", r.grid.Playing(), rec.times)
+	}
+}

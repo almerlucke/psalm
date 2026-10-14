@@ -134,3 +134,25 @@ func TestGridWeb(t *testing.T) {
 		t.Fatal("a changed cell should send the cells")
 	}
 }
+
+// the steps of a pattern are kept in a snapshot (when they aren't the default), and come back
+func TestGridPatternSteps(t *testing.T) {
+	pn, _ := newPanel()
+	g := pn.Grid("Drums", []string{"kick"}, 8, 3, testFields...)
+	g.DefaultSteps(4)
+	g.SetPatternSteps(1, 7)
+	g.SetPatternSteps(2, 99) // no more than the grid has
+	if g.PatternSteps(0) != 4 || g.PatternSteps(1) != 7 || g.PatternSteps(2) != 8 {
+		t.Fatalf("steps %d %d %d", g.PatternSteps(0), g.PatternSteps(1), g.PatternSteps(2))
+	}
+	snap := pn.Snapshot()
+	if snap["Drums/B/steps"] != 7 || snap["Drums/C/steps"] != 8 || snap["Drums/A/steps"] != 0 {
+		t.Fatalf("the snapshot should hold the steps away from the default: %v", snap)
+	}
+	g.SetPatternSteps(0, 2)
+	g.SetPatternSteps(1, 3)
+	pn.Restore(snap)
+	if g.PatternSteps(0) != 4 || g.PatternSteps(1) != 7 || g.PatternSteps(2) != 8 {
+		t.Fatalf("restored steps %d %d %d", g.PatternSteps(0), g.PatternSteps(1), g.PatternSteps(2))
+	}
+}
