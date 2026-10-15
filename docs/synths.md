@@ -1030,6 +1030,19 @@ over, leave headroom or use the mixer's limiter.
 
 **Messages**: `pitch`, `frequency`, `velocity`, `level`, the pedals `sustain`, `sostenuto`, `soft`, and the voicing: `hardness`, `strikePosition`, `velocitySens`, `variation`, `body`, `bark`, `treble`, `soundboard`, `resonance`, `stiffness`, `stretch`, `decay`, `damping`, `damperTime`, `unison`, `strings`, `mechanics`, `position`, `width`.
 
+### The action
+
+The piano is a physical model of a grand: every key has one to three strings (a waveguide with a loss
+filter, dispersion for the inharmonicity of its register and a tuning allpass), slightly detuned and
+sharing a bridge, so a note falls fast and then lingers (double decay) and beats. A felt hammer is
+simulated at the velocity of the key (stiffness k * x^p), so a harder strike is shorter, peakier and
+brighter and can re-contact the string in the treble. The soft pedal strikes one string less; the
+dampers, the sustain pedal (half pedalling), the sostenuto pedal and the sympathetic resonance are
+modelled; the bass barks when played hard (phantom partials at sums of partials); octaves are stretch
+tuned (`stretch`, `stiffness`). `mechanics` is the noise of the action: the dampers landing at release
+(not with the pedal down), the key coming up, the pedal, and `keyBed` (0-1), the thud of a key struck
+hard landing on the keybed.
+
 ## drums
 
 `synths/drums`
@@ -1357,6 +1370,28 @@ The matrix has LFO 2, a plain sine from the strike at `lfo2Rate` Hz (default 1),
 it. The pitch from the matrix is followed every 8 samples (re-tuning the modes only when pitch is a
 destination), so a fast LFO on pitch is a smooth vibrato.
 
+### Instruments: bars, bells and plates
+
+The modal synth can ring in a physical model of its body instead of a hand-written mode list: the
+`instrument` choice picks a uniform bar (1 : 2.756 : 5.404 : 8.933 ...), an undercut marimba or
+vibraphone bar tuned 1 : 4 : 10, a xylophone bar (1 : 3 : 6), a glockenspiel bar, a clamped tine
+(kalimba), a tubular bell (modes 2 : 3 : 4 : 5 : 6 over a strike tone that is not itself sounding), a
+church bell, a handbell, a singing bowl, a free circular plate, a gong, a cymbal or a steel pan. Each
+mode dies at a rate that grows with the square of its frequency, and the mallet wakes each mode by the
+mode shape at the strike `position` (along the bar from its end, from the centre of a plate to its
+rim, from the crown to the lip of a bell), so hitting the node of a mode silences it.
+
+The mallet is a Hertz contact: it touches for a time that grows with its `mass` and shrinks with the
+velocity, `contact` sets how strongly a harder blow brightens the sound, and `hardness` still picks the
+mallet. `resonator` adds the tube under a marimba or vibraphone bar, which strengthens and lengthens
+the fundamental, and the vibraphone tremolo swings the tube; the mod wheel deepens the tremolo. Bells,
+bowls and plates have pairs of near-equal modes: `spread` splits them so they beat, and `drift` makes
+each note a little different (the pairs turn, the split and the pitch vary); it is off by default and
+draws random numbers only when on. Presets reworked onto the models: marimba, vibraphone, xylophone,
+glockenspiel, tubularBells (now pitched at the strike tone), churchBell, singingBowl, kalimba,
+spaceTine, metalPlate, steelPan, wood, metal; new: handbell, gong, cymbal, celesta. The handbell, gong
+and cymbal ratios are approximations; the nonlinear pitch glide of real gongs is not modelled.
+
 ## drumsynth
 
 `synths/drumsynth`
@@ -1465,6 +1500,25 @@ syllable, a held note goes on to the next syllables on the tempo. In a Poly the 
 in the word, so a note sings the next syllable whichever voice it lands on. `syllable` (alias
 `wordStep`) sets the next syllable to sing. `formantShift` scales every formant: below 1 is a bigger
 throat (a giant), above 1 a smaller one (a child). Presets: `chant`, `giant` and `child`.
+
+### A glottal source, a vocal tract, twelve vowels
+
+The voice sings with a glottal source: a Rosenberg-Klatt flow pulse whose open quotient, speed
+quotient and return phase come from `brightness` (breathy, modal, pressed) or are set directly
+(`openQuotient`, `speedQuotient`, `returnPhase`). `jitter` (cycle length) and `shimmer` (cycle
+loudness) are off until set, and the breath noise swells with the open folds. The pulse runs through a
+cascade of five formants from Peterson-Barney data for `bass`, `tenor`, `alto`, `soprano` and `child`
+voices (`Range`). Sing the old scale with `vowel` (0-4: a e i o u) or pick one of twelve vowels
+(i ɪ e ɛ æ a ɔ o ʊ u ʌ ɜ) with `phoneme`. `phonemeTo`, `diphthongTime` and `diphthongHold` glide to a
+second vowel inside a note (`diphthong` sets a named pair). `formantTuning` lets F1 follow a high
+pitch up, as a soprano's does; `training` gathers F3-F5 near 3 kHz (the singer's formant); `nasal`
+opens the nose.
+
+Words take `m n ng l r w y` as well as `t k s sh f`, and the diphthongs `ai au ei ou oi`, so
+"mai la ro ne yu" speaks (the `speak` preset). Each consonant starts the formants at its locus, a nasal
+also with a pole and zero pair, and they glide into the vowel over `coarticulation` seconds. The
+glottal model is the Rosenberg-Klatt approximation, not a true LF fit, and bass, alto and soprano are
+scaled from the male and female data. All presets are re-voiced with a little jitter and shimmer.
 
 ## pd
 
