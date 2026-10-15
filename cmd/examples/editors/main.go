@@ -57,7 +57,6 @@ import (
 	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
@@ -193,9 +192,6 @@ func main() {
 	add("subtractive", presetsOf(subtractive.Presets), "lead",
 		func(n string) psalm.Modular { return subtractive.NewPoly(subtractive.Presets[n](), 12) },
 		func(n string) params.Set { return subtractive.Describe(subtractive.Presets[n]()) })
-	add("fm", presetsOf(fm.Presets), "ePiano",
-		func(n string) psalm.Modular { return fm.NewPoly(fm.Presets[n](), 12) },
-		func(n string) params.Set { return fm.Describe(fm.Presets[n]()) })
 	add("dx", presetsOf(dx.Presets), "bellPad",
 		func(n string) psalm.Modular { return dx.NewPoly(dx.Presets[n](), 12, 2) }, nil)
 	add("wavetable", presetsOf(wavetable.Presets), "pad",

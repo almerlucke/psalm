@@ -277,6 +277,7 @@ psalm.register("dx7", (p, api) => {
 			num(`op${op}Wave`, v => waveNames[v], "the wave of the operator"),
 			num(`op${op}LeftDepth`, v => "left " + v), num(`op${op}LeftCurve`, v => curves[v]),
 			num(`op${op}RightDepth`, v => "right " + v), num(`op${op}RightCurve`, v => curves[v]));
+		ks.append(flag(`op${op}Exact`, "exact", "plays the exact values of the operator (its ratio, level and envelope) instead of the 0 to 99 ones shown"));
 		detail.append(eg, ks);
 		const big = document.createElement("canvas");
 		big.className = "dx-eg big";

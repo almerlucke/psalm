@@ -34,7 +34,7 @@ import (
 	"github.com/almerlucke/psalm/modules/filters"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/modules/player"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
 	"github.com/almerlucke/psalm/tools/harmony"
@@ -58,7 +58,7 @@ func main() {
 	form := arrange.NewForm(arrange.Section{Name: "Loop", Bars: 4})
 	chords := harmony.MustKey("C major").MustProgression("I vi IV V")
 	pad := wavetable.NewPoly(wavetable.PadPreset(gen.Brightness(32)), 8).AddTo(p)
-	keys := fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)
 	bells := player.New(player.Config{SndFile: sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-sleigh-bells-584.wav", 4), Speed: 1, Amp: 0.5})
 	bells.AddTo(p)
 

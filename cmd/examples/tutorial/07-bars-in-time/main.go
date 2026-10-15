@@ -21,13 +21,14 @@
 package main
 
 import (
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/filters/ladder"
 	"github.com/almerlucke/psalm/cmd/examples/tutorial/tutorial"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/filters"
 	"github.com/almerlucke/psalm/modules/mixer"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
@@ -44,7 +45,7 @@ func main() {
 	chords := harmony.MustKey("C major").MustProgression("I vi IV V")
 
 	felt := piano.NewPoly(piano.FeltPreset(), 16).AddTo(p)
-	keys := fm.NewPoly(fm.EPianoPreset(), 8).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 8, psalm.Stereo).AddTo(p)
 	pad := wavetable.NewPoly(wavetable.PadPreset(gen.Brightness(32)), 8).AddTo(p)
 
 	// the piano: a chord on every beat, short; the pedal (below) lets them ring through the bar

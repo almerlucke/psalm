@@ -102,7 +102,7 @@ func main() {
 		mix := must(pt.Add("mixer", "4 channels", 900, 140))
 		rev := must(pt.Add("reverb", "", 900, 440))
 		bassLine := must(pt.Add("script", "", 460, 250))
-		bass := must(pt.Add("fm", "bass", 680, 130))
+		bass := must(pt.Add("dx", "bass", 680, 130))
 		song := must(pt.Add("song", "", 1150, 320)) // its sections: the clock and the sequence follow them
 		_ = pt.SetText(song, "sections", "Intro 4, Verse 8, Chorus 8, Outro 4")
 		_ = pt.SetText(clock, "pattern", "x x . x x . x . x x . x . x x .\nIntro: x . . . x . . . x . . x . . . .\nOutro: x . . . . . x . . . . . x . . .")

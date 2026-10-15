@@ -30,7 +30,7 @@ import (
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/modules/controls/score"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/tools/render"
 )
 
@@ -51,7 +51,7 @@ func main() {
 
 	// a synth with 8 voices (8 notes can sound at once). Every preset of every synth is calibrated
 	// to the same loudness at amplitude 1, so the amplitudes below set the balance
-	keys := fm.NewPoly(fm.EPianoPreset(), 8).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 8, psalm.Stereo).AddTo(p)
 
 	// --- notes written in Go: a chord per bar of 4 beats ---
 

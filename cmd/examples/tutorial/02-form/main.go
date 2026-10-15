@@ -22,11 +22,12 @@ package main
 import (
 	"fmt"
 
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/cmd/examples/tutorial/tutorial"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/mixer"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/subtractive"
 )
 
@@ -40,7 +41,7 @@ func main() {
 		arrange.Section{Name: "Outro", Bars: 2},
 	)
 
-	keys := fm.NewPoly(fm.EPianoPreset(), 8).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 8, psalm.Stereo).AddTo(p)
 	bass := subtractive.NewPoly(subtractive.BassPreset(), 2).AddTo(p)
 
 	// the chords of the song, a bar each: C Am F G

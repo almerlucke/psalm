@@ -47,7 +47,7 @@ an LFO or a stream (plain numbers) are on inputs from 1:
 | Module | Value inputs |
 |---|---|
 | `subtractive` | 1 cutoff, 2 resonance, 3 pulse width, 4 vowel |
-| `fm` | 1 mod depth, 2 feedback |
+| `dx` | 1 modulator scale (brightness), 5 to 8 the matrix's Ext 1 to 4 |
 | `grains` | 1 position, 2 density, 3 scan, 4 spray, 5 grain size |
 | `pulsar` | 1 formant, 2 duty, 3 masking, 4 second formant |
 | `wavetable` | 1 position, 2 cutoff, 3 resonance |

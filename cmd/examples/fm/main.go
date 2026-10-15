@@ -16,10 +16,10 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
 	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 )
 
-// An FM jam followed by a tour of the FM presets, every section showing settings that change from
+// An FM jam followed by a tour of the FM presets (the dx synth's), every section showing settings that change from
 // note to note. The whole tour loops, the schedule is printed at start
 
 const (
@@ -134,7 +134,7 @@ func chordNotes(beats float64, chords ...[]float64) []note {
 // and step through their values note by note
 type section struct {
 	name   string
-	cfg    fm.Config
+	cfg    dx.Patch
 	voices int
 	amp    float64
 	legato float64
@@ -175,7 +175,7 @@ func (s *section) build(p *psalm.Psalm, startBeats float64, totalBeats float64) 
 		panic(fmt.Sprintf("section %q lasts %v beats, expected %v", s.name, total, s.length()))
 	}
 
-	synth := fm.NewPoly(s.cfg, s.voices).AddTo(p)
+	synth := dx.NewPoly(s.cfg, s.voices, psalm.Stereo).AddTo(p)
 
 	msg := template.Template{"pitch": seq(pitches...)}
 	for key, values := range s.params {
@@ -287,7 +287,7 @@ func paradeSections() []*section {
 		}
 		sections = append(sections, &section{
 			name:   fmt.Sprintf("Parade (%s): %s", e.family, e.preset),
-			cfg:    fm.Presets[e.preset](),
+			cfg:    dx.Presets[e.preset](),
 			voices: voices, amp: ph.amp * gain, legato: ph.legato,
 			notes: transpose(ph.notes, e.transpose),
 			beats: paradeBeats,
@@ -313,7 +313,7 @@ func main() {
 	sections := []*section{
 		{
 			name: "Electric piano: velocity rising from soft to hard, harder is brighter",
-			cfg:  fm.EPianoPreset(), voices: 16, amp: 0.106, legato: 0.9,
+			cfg:  dx.EPianoPreset(), voices: 16, amp: 0.106, legato: 0.9,
 			notes: chordNotes(2,
 				[]float64{62, 65, 69, 72}, []float64{62, 65, 69, 72},
 				[]float64{59, 62, 65, 67}, []float64{59, 62, 65, 67},
@@ -324,13 +324,13 @@ func main() {
 		},
 		{
 			name: "Bell: the ratio of operator 2 changes the color (3.5, 2, 1.41, 5)",
-			cfg:  fm.BellPreset(), voices: 6, amp: 0.359, legato: 0.5,
+			cfg:  dx.BellPreset(), voices: 6, amp: 0.359, legato: 0.5,
 			notes:  notes(4, 72, 79, 76, 72),
 			params: map[string][]float64{"op2Ratio": {3.5, 2.0, 1.41, 5.0}},
 		},
 		{
 			name: "Bass: mod depth (brightness) rising note by note",
-			cfg:  fm.BassPreset(), voices: 2, amp: 0.874, legato: 0.7,
+			cfg:  dx.BassPreset(), voices: 2, amp: 0.874, legato: 0.7,
 			notes: notes(1, 36, 36, 48, 36, 43, 43, 55, 43, 41, 41, 53, 41, 43, 43, 55, 47),
 			params: map[string][]float64{"modDepth": {
 				0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7,
@@ -338,25 +338,25 @@ func main() {
 		},
 		{
 			name: "Brass: swelling chords with delayed vibrato",
-			cfg:  fm.BrassPreset(), voices: 12, amp: 0.367, legato: 0.9,
+			cfg:  dx.BrassPreset(), voices: 12, amp: 0.367, legato: 0.9,
 			notes: chordNotes(4,
 				[]float64{60, 64, 67}, []float64{58, 62, 65}, []float64{57, 60, 65}, []float64{55, 60, 64},
 			),
 		},
 		{
 			name: "Organ: pulling out drawbars (the levels of operators 3 and 4) chord by chord",
-			cfg:  fm.OrganPreset(), voices: 16, amp: 0.182, legato: 0.95,
+			cfg:  dx.OrganPreset(), voices: 16, amp: 0.182, legato: 0.95,
 			notes: chordNotes(4,
 				[]float64{48, 60, 64, 67}, []float64{48, 60, 64, 67}, []float64{53, 60, 65, 69}, []float64{55, 59, 62, 67},
 			),
 			params: map[string][]float64{
-				"op3Level": {0.0, 0.6, 0.6, 0.9},
-				"op4Level": {0.0, 0.0, 0.4, 0.8},
+				"op3Gain": {0.0, 0.6, 0.6, 0.9},
+				"op4Gain": {0.0, 0.0, 0.4, 0.8},
 			},
 		},
 		{
 			name: "Mallet: an arpeggio with accents (velocity)",
-			cfg:  fm.MalletPreset(), voices: 8, amp: 0.237, legato: 0.5,
+			cfg:  dx.MalletPreset(), voices: 8, amp: 0.237, legato: 0.5,
 			notes: notes(1, 60, 64, 67, 72, 76, 72, 67, 64, 62, 65, 69, 74, 77, 74, 69, 65),
 			params: map[string][]float64{"velocity": {
 				1.0, 0.4, 0.6, 0.4, 1.0, 0.4, 0.6, 0.4, 1.0, 0.4, 0.6, 0.4, 1.0, 0.5, 0.7, 0.5,
@@ -364,7 +364,7 @@ func main() {
 		},
 		{
 			name: "Pad: an LFO on value input 1 sweeps the mod depth",
-			cfg:  fm.PadPreset(), voices: 12, amp: 0.178, legato: 1.0,
+			cfg:  dx.PadPreset(), voices: 12, amp: 0.178, legato: 1.0,
 			notes: chordNotes(8, []float64{57, 60, 64, 69}, []float64{53, 57, 60, 65}),
 			patch: func(p *psalm.Psalm, synth psalm.Modular) {
 				synth.ValueIn(lfo.New(true, 0.3, 0.1, 2.0, lfo.Sine).AddTo(p), 0, 1)
@@ -372,23 +372,23 @@ func main() {
 		},
 		{
 			name: "Pluck: feedback rising note by note, from round to buzzing",
-			cfg:  fm.PluckPreset(), voices: 8, amp: 0.537, legato: 0.6,
+			cfg:  dx.PluckPreset(), voices: 8, amp: 0.537, legato: 0.6,
 			notes: notes(1, 64, 67, 71, 72, 64, 67, 71, 74, 64, 67, 71, 76, 64, 67, 71, 72),
-			params: map[string][]float64{"feedback": {
+			params: map[string][]float64{"freeFeedback": {
 				0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.7, 0.8, 0.9,
 			}},
 		},
 		{
 			name: "Algorithms: the metallic preset's operators through all 8 routings",
-			cfg:  fm.MetallicPreset(), voices: 4, amp: 0.81, legato: 0.6,
+			cfg:  dx.MetallicPreset(), voices: 4, amp: 0.81, legato: 0.6,
 			notes:  notes(2, 48, 48, 48, 48, 48, 48, 48, 48),
-			params: map[string][]float64{"algorithm": {0, 1, 2, 3, 4, 5, 6, 7}},
+			params: map[string][]float64{"fmAlgorithm": {0, 1, 2, 3, 4, 5, 6, 7}},
 		},
 		{
 			name: "Lead (mono): glide and vibrato, feedback rising per phrase",
-			cfg:  fm.LeadPreset(), voices: 1, amp: 0.734, legato: 1.0,
+			cfg:  dx.LeadPreset(), voices: 1, amp: 0.734, legato: 1.0,
 			notes:  line(72, 2, 74, 1, 76, 1, 79, 3, 76, 1, 74, 2, 72, 2, 69, 3, rest, 1),
-			params: map[string][]float64{"feedback": {0.2, 0.2, 0.4, 0.4, 0.6, 0.6, 0.85, 0.85}},
+			params: map[string][]float64{"freeFeedback": {0.2, 0.2, 0.4, 0.4, 0.6, 0.6, 0.85, 0.85}},
 		},
 	}
 
@@ -405,7 +405,7 @@ func main() {
 
 	// Electric piano: a ii-V-I-vi progression in C (Dm7 G7 Cmaj7 Am7), each chord played twice per
 	// bar with a little syncopation. Random velocities make some chords brighter than others
-	epiano := fm.NewPoly(fm.EPianoPreset(), 16).AddTo(p)
+	epiano := dx.NewPoly(dx.EPianoPreset(), 16, psalm.Stereo).AddTo(p)
 
 	chords := seq(
 		[]float64{62, 65, 69, 72}, []float64{62, 65, 69, 72}, // Dm7
@@ -422,7 +422,7 @@ func main() {
 	}).ValueIn(timer.New(inSlot(jamPattern(), 0, introBeats, totalBeats)).AddTo(p)))
 
 	// Bass: roots and fifths on the FM bass
-	bass := fm.NewPoly(fm.BassPreset(), 2).AddTo(p)
+	bass := dx.NewPoly(dx.BassPreset(), 2, psalm.Stereo).AddTo(p)
 
 	bass.ValueIn(templ.NewDurationTrigger(0.8*beatSec, 0.753, template.Template{
 		"pitch":    seq(38.0, 45.0, 43.0, 50.0, 36.0, 43.0, 45.0, 40.0),
@@ -430,7 +430,7 @@ func main() {
 	}).ValueIn(timer.New(inSlot(jamPattern(), 0, introBeats, totalBeats)).AddTo(p)))
 
 	// Bells: sparse, random notes from the C major pentatonic, high up
-	bells := fm.NewPoly(fm.BellPreset(), 8).AddTo(p)
+	bells := dx.NewPoly(dx.BellPreset(), 8, psalm.Stereo).AddTo(p)
 
 	bells.ValueIn(templ.NewDurationTrigger(0.5, random(0.0714, 0.1, 0.129), template.Template{
 		"pitch":    random(84.0, 86.0, 88.0, 91.0, 93.0, 96.0),

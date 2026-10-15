@@ -15,7 +15,6 @@ import (
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/modules/player"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
@@ -134,36 +133,36 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	o.celli = subtractive.NewPoly(subtractive.StringsPreset(), 8).AddTo(p)
 	channel("celli", o.celli, mixer.StripConfig{Pan: 0.35, Sends: sends{"hall": 0.4}})
 
-	o.pizz = fm.NewPoly(fm.PizzicatoPreset(), 4).AddTo(p)
+	o.pizz = dx.NewPoly(dx.PizzicatoPreset(), 4, psalm.Stereo).AddTo(p)
 	channel("pizzicato", o.pizz, mixer.StripConfig{Pan: 0.45, Sends: sends{"hall": 0.3}})
 
-	o.harp = fm.NewPoly(fm.HarpPreset(), 12).AddTo(p)
+	o.harp = dx.NewPoly(dx.HarpPreset(), 12, psalm.Stereo).AddTo(p)
 	channel("harp", o.harp, mixer.StripConfig{Pan: 0.55, Sends: sends{"hall": 0.5}})
 
-	o.timpani = fm.NewPoly(fm.TimpaniPreset(), 4).AddTo(p)
+	o.timpani = dx.NewPoly(dx.TimpaniPreset(), 4, psalm.Stereo).AddTo(p)
 	channel("timpani", o.timpani, mixer.StripConfig{Pan: -0.1, Sends: sends{"hall": 0.45}})
 
 	// --- winds and brass ---
 
-	o.flute = fm.NewPoly(fm.FlutePreset(), 4).AddTo(p)
+	o.flute = dx.NewPoly(dx.FlutePreset(), 4, psalm.Stereo).AddTo(p)
 	piccolo := pitchshift.New(12, 60, 0.15).AddTo(p).In(o.flute) // on the fifth day, the birds an octave above
 	channel("flute", piccolo, mixer.StripConfig{Pan: -0.15, Sends: sends{"hall": 0.4, "heavens": 0.1}})
 
-	o.oboe = fm.NewPoly(fm.OboePreset(), 2).AddTo(p)
+	o.oboe = dx.NewPoly(dx.OboePreset(), 2, psalm.Stereo).AddTo(p)
 	channel("oboe", o.oboe, mixer.StripConfig{Pan: 0.2, Sends: sends{"hall": 0.4}})
 
-	o.clarinet = fm.NewPoly(fm.ClarinetPreset(), 2).AddTo(p)
+	o.clarinet = dx.NewPoly(dx.ClarinetPreset(), 2, psalm.Stereo).AddTo(p)
 	channel("clarinet", o.clarinet, mixer.StripConfig{Pan: -0.4, Sends: sends{"hall": 0.4}})
 
 	o.horns = dx.NewPoly(dx.SoftBrass(), 12, psalm.Stereo).AddTo(p)
 	channel("horns", o.horns, mixer.StripConfig{Pan: -0.2, Sends: sends{"hall": 0.45}})
 
-	o.horn = fm.NewPoly(fm.FrenchHornPreset(), 2).AddTo(p)
+	o.horn = dx.NewPoly(dx.FrenchHornPreset(), 2, psalm.Stereo).AddTo(p)
 	channel("horn", o.horn, mixer.StripConfig{Pan: 0.25, Sends: sends{"hall": 0.4}})
 
 	// --- the lights: celesta and bells, stars in the heavens ---
 
-	o.celesta = fm.NewPoly(fm.CelestaPreset(), 8).AddTo(p)
+	o.celesta = dx.NewPoly(dx.CelestaPreset(), 8, psalm.Stereo).AddTo(p)
 	celestaEcho := pingpong.New(pingpong.Config{Time: 0.833, Feedback: 0.35, Mix: 0.25, HighCut: 6000, LowCut: 250}).AddTo(p).In(o.celesta)
 	channel("celesta", celestaEcho, mixer.StripConfig{Pan: 0.3, Sends: sends{"heavens": 0.8}})
 
@@ -172,13 +171,13 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 
 	// tuned bells: every partial a whole number times the note (the 1, 2 and 4 of the music box, the
 	// 7 of its modulator only adding harmonics), ringing long and soft
-	bellCfg := fm.MusicBoxPreset()
-	bellCfg.Ops[0].Env = *adsr.NewSetting(1.0, 4.0, 0.0, 6000.0, 1.0, 3000.0)
-	bellCfg.Ops[1].Env = *adsr.NewSetting(1.0, 4.0, 0.0, 3500.0, 1.0, 2000.0)
-	bellCfg.Ops[2].Env = *adsr.NewSetting(1.0, 4.0, 0.0, 1800.0, 1.0, 1000.0)
-	bellCfg.Ops[3].Level = 0.1
-	bellCfg.Ops[3].Env = *adsr.NewSetting(1.0, 4.0, 0.0, 300.0, 1.0, 200.0)
-	o.bells = fm.NewPoly(bellCfg, 4).AddTo(p)
+	bellCfg := dx.MusicBoxPreset()
+	bellCfg.Ops[0].Free.Env = *adsr.NewSetting(1.0, 4.0, 0.0, 6000.0, 1.0, 3000.0)
+	bellCfg.Ops[1].Free.Env = *adsr.NewSetting(1.0, 4.0, 0.0, 3500.0, 1.0, 2000.0)
+	bellCfg.Ops[2].Free.Env = *adsr.NewSetting(1.0, 4.0, 0.0, 1800.0, 1.0, 1000.0)
+	bellCfg.Ops[3].Free.Level = 0.1
+	bellCfg.Ops[3].Free.Env = *adsr.NewSetting(1.0, 4.0, 0.0, 300.0, 1.0, 200.0)
+	o.bells = dx.NewPoly(bellCfg, 4, psalm.Stereo).AddTo(p)
 	channel("bells", o.bells, mixer.StripConfig{Pan: 0.15, Sends: sends{"hall": 0.5, "heavens": 0.3}})
 
 	// --- the living: the creatures of the sea, mankind ---
@@ -196,7 +195,7 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	o.choir = grains.NewPoly(grains.ChoirPad(choirRec, 60), 12).AddTo(p)
 	channel("choir", o.choir, mixer.StripConfig{Group: "church"})
 
-	o.organ = fm.NewPoly(fm.ChurchOrganPreset(), 12).AddTo(p)
+	o.organ = dx.NewPoly(dx.ChurchOrganPreset(), 12, psalm.Stereo).AddTo(p)
 	channel("organ", o.organ, mixer.StripConfig{Group: "church"})
 
 	return o

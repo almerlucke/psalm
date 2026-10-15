@@ -20,12 +20,13 @@
 package main
 
 import (
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/cmd/examples/tutorial/tutorial"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
 	"github.com/almerlucke/psalm/modules/mixer"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/tools/harmony"
 )
 
@@ -39,7 +40,7 @@ func main() {
 	key := harmony.MustKey("C major")
 	chords := key.MustProgression("I IV V I")
 
-	organ := fm.NewPoly(fm.ChurchOrganPreset(), 12).AddTo(p)
+	organ := dx.NewPoly(dx.ChurchOrganPreset(), 12, psalm.Stereo).AddTo(p)
 
 	// long chords: a low root and a close chord, a bar each
 	chordsOf := func(s arrange.Section, bar int) []score.Note {

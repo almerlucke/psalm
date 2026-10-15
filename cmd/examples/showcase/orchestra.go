@@ -19,7 +19,6 @@ import (
 	"github.com/almerlucke/psalm/modules/oscillators/lfo"
 	"github.com/almerlucke/psalm/modules/player"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
@@ -90,12 +89,12 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	celli := subtractive.NewPoly(subtractive.StringsPreset(), 8).AddTo(p)
 	mix.Channel("celli", celli, mixer.StripConfig{Pan: 0.35, Group: "strings"})
 
-	pizz := fm.NewPoly(fm.UprightBassPreset(), 2).AddTo(p)
+	pizz := dx.NewPoly(dx.UprightBassPreset(), 2, psalm.Stereo).AddTo(p)
 	mix.Channel("pizzicato", pizz, mixer.StripConfig{Volume: -3, Pan: 0.45, Sends: sends{"hall": 0.25}})
 
 	// --- harp: freeverb, then the granulator ---
 
-	harp := fm.NewPoly(fm.HarpPreset(), 12).AddTo(p)
+	harp := dx.NewPoly(dx.HarpPreset(), 12, psalm.Stereo).AddTo(p)
 	harpRoom := freeverb.New(0.5, 0.4, 1.0, 0.25, 0.9).AddTo(p).In(harp)
 	gcfg := granulator.DefaultConfig()
 	gcfg.Mix = 0
@@ -111,14 +110,14 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 
 	// --- winds and brass ---
 
-	flute := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
+	flute := dx.NewPoly(dx.FlutePreset(), 2, psalm.Stereo).AddTo(p)
 	piccolo := pitchshift.New(12, 60, 0.11).AddTo(p).In(flute) // an octave shadow above
 	mix.Channel("flute", piccolo, mixer.StripConfig{Volume: -4.3, Pan: -0.1, Sends: sends{"hall": 0.4, "sky": 0.1}})
 
 	horns := dx.NewPoly(dx.SoftBrass(), 12, psalm.Stereo).AddTo(p)
 	mix.Channel("horns", horns, mixer.StripConfig{Volume: -3, Pan: -0.2, Sends: sends{"hall": 0.45}})
 
-	hornSolo := fm.NewPoly(fm.FrenchHornPreset(), 2).AddTo(p)
+	hornSolo := dx.NewPoly(dx.FrenchHornPreset(), 2, psalm.Stereo).AddTo(p)
 	mix.Channel("horn solo", hornSolo, mixer.StripConfig{Volume: -3, Pan: 0.25, Sends: sends{"hall": 0.4}})
 
 	// --- choir: grains on a choir recording, a pulsar choir and the soprano ---
@@ -133,7 +132,7 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 
 	// --- interlude colours: celesta, bell pad, vocoder, droplets ---
 
-	celesta := fm.NewPoly(fm.CelestaPreset(), 8).AddTo(p)
+	celesta := dx.NewPoly(dx.CelestaPreset(), 8, psalm.Stereo).AddTo(p)
 	celestaEcho := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.35, Mix: 0.26, HighCut: 5000, LowCut: 200}).AddTo(p).In(celesta)
 	mix.Channel("celesta", celestaEcho, mixer.StripConfig{Volume: -7.4, Pan: 0.3, Sends: sends{"sky": 0.8}})
 

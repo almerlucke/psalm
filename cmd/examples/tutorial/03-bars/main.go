@@ -23,11 +23,12 @@
 package main
 
 import (
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/cmd/examples/tutorial/tutorial"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/mixer"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
@@ -54,7 +55,7 @@ func main() {
 
 	pad := wavetable.NewPoly(wavetable.PadPreset(gen.Brightness(32)), 8).AddTo(p)
 	bass := subtractive.NewPoly(subtractive.BassPreset(), 2).AddTo(p)
-	keys := fm.NewPoly(fm.EPianoPreset(), 8).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 8, psalm.Stereo).AddTo(p)
 
 	// the pad holds a voice led chord in every bar of every section
 	form.Part(p, pad, "pad", score.Config{Amp: 0.12, Legato: 1}, func(s arrange.Section) []score.Note {

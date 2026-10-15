@@ -166,3 +166,25 @@ func TestEditorFilter(t *testing.T) {
 		t.Errorf("the voice plays filter %+v (set %v)", got.Filter, got.FilterSet)
 	}
 }
+
+// a patch of exact operators loaded: the synth plays its exact values, not only the 0-99 ones
+func TestEditorLoadsExactOperators(t *testing.T) {
+	p := psalm.New(nil)
+	start := dx.Presets["bellPad"]()
+	synth := dx.NewPoly(start, 1, 2)
+	synth.AddTo(p)
+	ctl := panel.New(p, "Test")
+	e := Add(ctl, "DX", synth, start)
+	flute := dx.Presets["flute"]()
+	e.Load(flute)
+	var ts int64
+	for range 4 {
+		ts += int64(synth.Config().BufferSize)
+		ctl.CtrlTick(psalm.CtrlTick{SampleTimestamp: ts})
+	}
+	var got dx.Patch
+	synth.CallVoices(func(v *dx.Voice) { got = v.Patch() })
+	if !got.Ops[0].FreeOn || got.Ops[0].Free != flute.Ops[0].Free || got.Level != flute.Level || got.VibratoDepth != flute.VibratoDepth {
+		t.Errorf("the synth plays %+v (level %v), want the flute's exact values", got.Ops[0], got.Level)
+	}
+}

@@ -46,7 +46,8 @@ type Editor struct {
 	bank         []dx.Patch
 	parts        map[string]*panel.Param // by setting name ("op3Coarse", "custom", "mod42")
 	mu           sync.Mutex
-	name         string // of the patch loaded last
+	name         string    // of the patch loaded last
+	loaded       *dx.Patch // a patch loaded, whose values beyond the 0-99 ones the next buffer takes
 	store        *editor.Store
 }
 
@@ -229,6 +230,18 @@ func (e *Editor) routing() *dx.Algorithm {
 
 // apply gives the synth the patch edited (on the audio thread, once a buffer when it changed)
 func (e *Editor) apply() {
+	e.mu.Lock()
+	from := e.loaded
+	e.loaded = nil
+	e.mu.Unlock()
+	if from != nil { // the exact values of the operators, the glide, vibrato and level of the patch loaded
+		for i := range e.patch.Ops {
+			e.patch.Ops[i].Free, e.patch.Ops[i].FreeOn = from.Ops[i].Free, from.Ops[i].FreeOn
+		}
+		e.patch.Glide, e.patch.VibratoRate, e.patch.VibratoDepth, e.patch.VibratoDelay = from.Glide, from.VibratoRate, from.VibratoDepth, from.VibratoDelay
+		e.patch.FreeFeedback, e.patch.ModDepth, e.patch.Level = from.FreeFeedback, from.ModDepth, from.Level
+		e.dirty = true
+	}
 	if !e.dirty {
 		return
 	}
@@ -241,6 +254,7 @@ func (e *Editor) apply() {
 func (e *Editor) Load(p dx.Patch) {
 	e.mu.Lock()
 	e.name = p.Name
+	e.loaded = &p
 	e.mu.Unlock()
 	e.Set(float64(p.Algorithm + 1))
 	for _, s := range dx.Settings {

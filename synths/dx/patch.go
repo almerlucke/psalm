@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/almerlucke/genny/float/envelopes/adsr"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 )
 
 // Operator holds the parameters of one operator, all in the classic 0-99 style ranges
@@ -25,6 +28,23 @@ type Operator struct {
 	Fine         int    // 0-99
 	Detune       int    // 0-14, 7 is centered
 	Wave         int    // 0-7, the wave of the operator (see WaveNames): the sine of the DX7, or one of the TX81Z's; not part of the SysEx data
+
+	// Free is the operator set by values of its own instead of the 0-99 ones above (when FreeOn,
+	// the setting "op1Exact"): a frequency ratio, cents of detune, a level and an ADSR envelope of
+	// any size. The patches of the FM synth that dx took over are made of these. Not part of the
+	// SysEx data (a patch is sent with the 0-99 values beside them)
+	Free   FreeOp
+	FreeOn bool
+}
+
+// FreeOp is an operator beyond the DX7: values of any size, in sound's own units
+type FreeOp struct {
+	Ratio        float64      // frequency ratio to the note (0 is 1)
+	Fixed        float64      // a fixed frequency in Hz instead of the ratio, when above 0
+	Detune       float64      // cents
+	Level        float64      // a carrier's output level, a modulator's index in cycles (1 is 2*pi radians)
+	VelocitySens float64      // 0-1: how much the velocity scales the level (louder or brighter when played harder)
+	Env          adsr.Setting // milliseconds; the amplitude of the operator over the note
 }
 
 // Patch is a complete 6 operator voice
@@ -50,6 +70,22 @@ type Patch struct {
 	// modulates which, the carriers, the feedback loop (see Algorithm.Check). It isn't part of the
 	// SysEx data: a patch with one is sent as its Algorithm
 	Routing *Algorithm
+
+	// Beyond the DX7, for the operators that are Free (and any other): portamento, a vibrato of
+	// its own, the strength of the feedback of a free operator and a scale for the free modulators.
+	// Not part of the SysEx data
+	Glide        float64 // milliseconds from the pitch of the voice's last note
+	VibratoRate  float64 // Hz
+	VibratoDepth float64 // semitones
+	VibratoDelay float64 // milliseconds before it comes in
+	FreeFeedback float64 // 0-1: the strength of the feedback of a free operator (the last of the loop)
+	ModDepth     float64 // scales the free modulators (0 is 1)
+
+	// the modulation matrix of the voice (see Dests), the values of its Ext sources and the rate
+	// of the second LFO it can use
+	Mods     [modmatrix.Slots]modmatrix.Slot
+	Ext      [modmatrix.Exts]float64
+	LFO2Rate float64 // Hz (0 is still)
 
 	// Filter is a filter after the operators (the DX7 has none), set by the "filter..." settings.
 	// Like the routing it isn't part of the SysEx data. FilterSet says it has been set (a patch

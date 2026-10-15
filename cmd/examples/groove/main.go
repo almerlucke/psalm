@@ -20,7 +20,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/drums"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/tools/harmony"
 	"github.com/almerlucke/sndfile"
@@ -103,7 +103,7 @@ func main() {
 	}
 	drumKit := drums.NewDrums(kit, 16, 2).AddTo(p)
 	bass := subtractive.NewPoly(subtractive.BassPreset(), 2).AddTo(p)
-	keys := fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)
 
 	// every part plays its loop in every section
 	loop := func(notes []score.Note) arrange.Score {

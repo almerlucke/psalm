@@ -15,7 +15,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/gain"
 	"github.com/almerlucke/psalm/modules/effects/granulator"
 	"github.com/almerlucke/psalm/synths/drums"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -80,7 +80,7 @@ func main() {
 	// --- the music: electric piano chords, a mallet arpeggio and light drums ---
 	chords := [][]float64{{57, 60, 64}, {53, 57, 60}, {48, 55, 64}, {55, 59, 62}} // Am F C G
 
-	epiano := fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)
+	epiano := dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)
 	epiano.ValueIn(templ.NewDurationTrigger(seq(1.2*beatSec, 2.2*beatSec), 0.132, template.Template{
 		"pitch":    seq(chords[0], chords[0], chords[1], chords[1], chords[2], chords[2], chords[3], chords[3]),
 		"velocity": random(0.6, 0.8, 1.0),
@@ -91,7 +91,7 @@ func main() {
 		up := []float64{c[0] + 12, c[1] + 12, c[2] + 12, c[1] + 12}
 		arp = append(arp, append(up, up...)...)
 	}
-	mallet := fm.NewPoly(fm.MalletPreset(), 8).AddTo(p)
+	mallet := dx.NewPoly(dx.MalletPreset(), 8, psalm.Stereo).AddTo(p)
 	mallet.ValueIn(templ.NewDurationTrigger(0.3, 0.157, template.Template{
 		"pitch":    seq(arp...),
 		"velocity": seq(1.0, 0.6, 0.8, 0.6),

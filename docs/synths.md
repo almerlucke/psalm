@@ -1,6 +1,6 @@
 # Synths
 
-Synths: [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [fm](#fm), [dx](#dx) (6 operator, SysEx), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
+Synths: [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [dx](#dx) (6 operator FM, SysEx, and the 4 operator FM presets), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
 
 Every synth describes its settings: `<synth>.Describe(cfg)` (`params`: each message key it takes,
 its range, unit and group, where it is in the config, and its envelopes), so an editor on the panel
@@ -25,7 +25,6 @@ map[int]string{midi.CCModWheel: "modWheel"}}`.
 | Synth | The mod wheel |
 |---|---|
 | subtractive | opens the filter, two octaves |
-| fm | brightens (more modulation); a vibrato on patches without modulators |
 | dx | a vibrato (as on a DX7) |
 | wavetable | moves through the table, opens the filter |
 | pulsar | lifts the formant |
@@ -55,7 +54,7 @@ while the key is down (0-1). A change takes effect from the next note.
 | wavetable | `amp`, `filter`, `position` |
 | pulsar | `amp`, `formant` |
 | pd | `amp` (the loudness of both lines), `dcw` (their brightness) |
-| fm | `amp` (the carriers: the operators heard), `op1` to `op4` (each operator) |
+| dx (exact operators) | `amp` (the carriers: the operators heard), `op1` to `op6` (each operator) |
 | grains | `amp` |
 | sampler | `amp`: over the envelopes of the regions (each part set replaces theirs) |
 | vocal | `ampAttack`, `ampRelease` |
@@ -76,7 +75,7 @@ synth.ReceiveMessage(psalm.Message{"ampAttack": 400.0, "ampRelease": 2500.0, "fi
 `blocks/voicefilter`
 
 A filter after the oscillators of a voice, the same on the synths that have no filter of their own
-(fm, dx, and more as they get it): state variable (low, band, high, notch) or a ladder (24 or 12 dB),
+(dx, and more as they get it): state variable (low, band, high, notch) or a ladder (24 or 12 dB),
 with its own envelope, key tracking and drive. It is off until its type is set.
 
 | Message | |
@@ -327,146 +326,6 @@ All presets are functions returning a `Config`, also available by name in `subtr
 | `riser` | `RiserPreset` | Noise and saw sweep that rises over a few seconds |
 | `wind` | `WindPreset` | Noise through a resonant bandpass |
 
-## fm
-
-`synths/fm`
-
-A 4 operator FM synth voice: four sine operators that phase modulate each other in one of 8
-classic routings (algorithms). FM is great for bright, glassy and metallic sounds that are hard
-to get with subtractive synthesis: electric pianos, bells, mallets, brass, punchy basses.
-
-```go
-epiano := fm.NewPoly(fm.EPianoPreset(), 16).AddTo(p)
-
-cfg := fm.Presets["bell"]()
-cfg.ModDepth = 0.7 // a bit darker
-bells := fm.NewPoly(cfg, 8).AddTo(p)
-```
-
-`fm.New(cfg)` creates a single voice, `fm.NewPoly(cfg, n)` a `poly` synth with `n` voices.
-
-### Filter and modulation matrix
-
-`Config.Filter` is the [voice filter](#the-voice-filter) after the operators. `Config.Mods` is an 8 slot
-matrix like the subtractive synth's ([modulation matrix](#modulation-matrix)); the sources are the
-filter and carrier envelopes, two plain LFOs (`LFO1Rate`, `LFO2Rate`, Hz), velocity, key, random,
-wheel and `Ext1`...`Ext4` (value inputs 5 to 8, `fm.InExt1`). Destinations: `modDepth`, `feedback`,
-`op1Level`...`op4Level`, `pitch`, `level`, `cutoff` and `resonance` (of the filter), `lfo1Rate`,
-`lfo2Rate` (`fm.Dests`).
-
-### How FM works here
-
-Every operator is a sine oscillator with its own envelope. A **carrier** is heard, a
-**modulator** bends the phase of the operator it is connected to, which adds partials
-(sidebands) around it at the carrier frequency plus and minus multiples of the modulator
-frequency. The modulator level sets how many sidebands appear (the modulation index), so a
-modulator envelope that decays makes the sound go from bright to mellow, like a struck string.
-
-- Whole number ratios between operators give harmonic sounds, other ratios inharmonic (bell,
-  metal) sounds.
-- Velocity makes modulators louder, so harder notes are brighter.
-
-### Algorithms
-
-Operators are numbered 1-4, `a>b` means a modulates b. Operator 4 can also modulate itself
-(`Feedback`).
-
-| Algorithm | Routing | Carriers | Typical use |
-|---|---|---|---|
-| 0 | 4>3>2>1 | 1 | Basses, leads, complex evolving tones |
-| 1 | (4+3)>2>1 | 1 | Brass, metallic sounds |
-| 2 | (4 + 3>2)>1 | 1 | Plucks |
-| 3 | (4>3 + 2)>1 | 1 | Variations of the above |
-| 4 | 4>3, 2>1 | 1, 3 | Two layered tones: electric piano, bells, mallets |
-| 5 | 4>(3, 2, 1) | 1, 2, 3 | Pads and ensembles |
-| 6 | 4>3, 2, 1 | 1, 2, 3 | One modulated tone plus two sines |
-| 7 | 4, 3, 2, 1 | all | Additive: organs |
-
-`fm.Algorithms` holds them (`Name`, `Mods` and `Carriers`).
-
-### Settings
-
-Per operator (`cfg.Ops[0]` is operator 1):
-
-| Setting | Meaning |
-|---|---|
-| `Ratio` | Frequency ratio to the note (1 unison, 2 an octave up, 3.5 inharmonic) |
-| `Fixed` | Fixed frequency in Hz instead of a ratio (when > 0), for pitch independent tones |
-| `Detune` | Cents |
-| `Level` | Carrier: output level. Modulator: modulation index (1 is 2*pi radians) |
-| `VelocitySens` | 0-1, how much the note velocity scales the level |
-| `Env` | ADSR (`adsr.NewSetting(...)`, durations in ms) |
-
-Voice:
-
-| Setting | Default | Meaning |
-|---|---|---|
-| `Algorithm` | 0 | Operator routing, see above |
-| `Feedback` | 0 | 0-1, operator 4 modulates itself (towards a saw, then noise) |
-| `ModDepth` | 1 | Scales all modulator levels: overall brightness |
-| `Glide` | 0 | Portamento in ms from the previous note of the voice |
-| `VibratoRate`, `VibratoDepth`, `VibratoDelay` | 0 | Vibrato in Hz, semitones, and fade in time in ms |
-| `Level` | 1 | Output level |
-
-The note amplitude sets the volume. A separate `velocity` (0-1, default 1) in the note message
-drives the velocity sensitivity:
-
-```go
-synth.ValueIn(templ.NewDurationTrigger(0.5, 0.2, template.Template{
-	"pitch":    sequence.NewLoop(60.0, 64.0, 67.0),
-	"velocity": bucket.NewLoop(0.5, 0.8, 1.0).SetMode(bucket.Random),
-}).ValueIn(timer.WithTicks(float64(psalm.PPQ())).AddTo(p)))
-```
-
-**Value inputs**: 1 mod depth (connect an LFO for timbre sweeps), 2 feedback.
-
-**Messages**: `pitch`, `frequency`, `velocity`, `algorithm`, `feedback`, `modDepth`, `glide`,
-`vibratoRate`, `vibratoDepth`, `vibratoDelay`, `level`, and per operator `op1Ratio`,
-`op1Fixed`, `op1Detune`, `op1Level`, `op1VelocitySens` (and the same for `op2`-`op4`).
-
-### Presets
-
-| Name | Function | Sound |
-|---|---|---|
-| `ePiano` | `EPianoPreset` | Tine electric piano, brighter when played harder |
-| `bell` | `BellPreset` | Clear bell with inharmonic partials |
-| `bass` | `BassPreset` | Punchy bass with a snappy attack |
-| `brass` | `BrassPreset` | Brass section with a swelling attack and vibrato |
-| `organ` | `OrganPreset` | Additive organ (sub, unison, octave, octave and fifth) |
-| `mallet` | `MalletPreset` | Woody marimba like mallet |
-| `pad` | `PadPreset` | Warm, slowly evolving pad |
-| `pluck` | `PluckPreset` | Bright plucked string |
-| `metallic` | `MetallicPreset` | Gong / metal plate |
-| `lead` | `LeadPreset` | Bright lead with feedback edge, glide and vibrato |
-
-More presets cover the instrument families of General MIDI. They are original FM designs, use
-them as starting points:
-
-| Family | Presets |
-|---|---|
-| Pianos and keys | `grandPiano`, `honkyTonk` (detuned second string), `harpsichord`, `clavinet` |
-| Chromatic percussion | `celesta`, `glockenspiel`, `musicBox`, `xylophone`, `tubularBells` |
-| Organs | `percussiveOrgan` (with a decaying third harmonic click), `churchOrgan`, `accordion` |
-| Guitars | `nylonGuitar`, `steelGuitar`, `overdriveGuitar` |
-| Basses | `uprightBass`, `slapBass`, `fretlessBass` (with glide) |
-| Strings | `strings`, `pizzicato`, `harp` |
-| Brass | `trumpet`, `frenchHorn` |
-| Reeds and pipes | `saxophone`, `clarinet` and `oboe`, `flute` and `panFlute` (breath from a feedback noise operator) |
-| Synth leads and pads | `squareLead`, `sawLead`, `warmPad`, `sweepPad` (brightens over a few seconds) |
-| Ethnic | `sitar`, `kalimba`, `steelDrum`, `koto` |
-| Percussion | `timpani`, `woodblock`, `taiko` |
-
-The function names follow the preset names (`GrandPianoPreset`, `TubularBellsPreset`, ...). They
-use the classic FM building blocks, handy when designing your own:
-
-- A modulator at ratio 1 gives all harmonics (strings, brass, saw like), at ratio 2 only odd
-  harmonics (`clarinet`, `squareLead`).
-- A high ratio modulator with a very fast decay gives the attack of a hammer, pick or mallet
-  (`grandPiano`, `xylophone`).
-- Inharmonic ratios (1.41, 2.76, 3.5, ...) give bells, bars and drums.
-- Feedback gives buzz (`sitar`, `overdriveGuitar`), a saw (`sawLead`), or at its maximum noise
-  (breath in `flute`, the skin hit of `taiko`).
-
 ## dx
 
 `synths/dx`
@@ -494,6 +353,113 @@ Two things the DX7 doesn't have, kept in the patch beside the SysEx data (they a
 a **wave per operator** (`op1Wave`...`op6Wave`, 0-7: sine, half sine, abs sine, pulse sine, even sine,
 even abs, square, log saw: the TX81Z's eight, `dx.WaveNames`), and the [voice filter](#the-voice-filter)
 (`filterType`...`filterRelease`, 0-99). The editor has both.
+
+### The FM presets: exact operators
+
+dx took over the 4 operator FM synth (`synths/fm`, gone now). Its presets are dx patches with
+**exact operators** (`Operator.Free`, switched on by `FreeOn`, the setting `op1Exact` in the editor): a
+sine operator with a frequency ratio of any size, cents of detune, a level and an ADSR envelope in
+milliseconds, instead of the 0-99 values of the DX7, and the same sound as before. Their routing is
+a `Routing` of your own (the four operators, feedback on the fourth), and the 0-99 values beside it
+are the nearest to the exact ones, for the editor and the SysEx. Not part of the SysEx data.
+
+```go
+epiano := dx.NewPoly(dx.EPianoPreset(), 16, psalm.Stereo).AddTo(p)
+
+patch := dx.Presets["bell"]()
+patch.ModDepth = 0.7                                  // a bit darker
+patch.Ops[1].Free.Ratio = 5                           // the ratio of operator 2
+patch.Ops[0].Free.Env = *adsr.NewSetting(1.0, 4.0, 0.0, 6000.0, 1.0, 3000.0)
+bells := dx.NewPoly(patch, 8, psalm.Stereo).AddTo(p)
+```
+
+Per operator (`patch.Ops[0].Free` is operator 1; a patch from the presets has the first four):
+
+| Field | Meaning |
+|---|---|
+| `Ratio` | Frequency ratio to the note (1 unison, 2 an octave up, 3.5 inharmonic) |
+| `Fixed` | Fixed frequency in Hz instead of a ratio (when > 0), for pitch independent tones |
+| `Detune` | Cents |
+| `Level` | Carrier: output level. Modulator: modulation index (1 is 2*pi radians) |
+| `VelocitySens` | 0-1, how much the note velocity scales the level |
+| `Env` | ADSR (`adsr.NewSetting(...)`, durations in ms) |
+
+For the patch: `FreeFeedback` (0-1, the fourth operator modulates itself: towards a saw, then
+noise), `ModDepth` (scales the exact modulators: overall brightness, 0 is 1), `Glide` (portamento in
+ms from the previous note of the voice), `VibratoRate`, `VibratoDepth`, `VibratoDelay` (Hz,
+semitones, ms), `Level` (the output level). The note amplitude sets the volume; `velocity` (0-1) in
+the note message drives the velocity sensitivity.
+
+**Messages** (from the next note on): `op1Ratio`, `op1FixedHz`, `op1Cents`, `op1Gain` (and the same
+for `op2`...`op6`), the envelopes `op1Attack`, `op1Decay`, `op1Sustain`, `op1Release` (ms) and `amp...`
+(`ampRelease`: the envelope of the carriers), `modDepth`, `freeFeedback`, `glide`, `vibratoRate`,
+`vibratoDepth`, `vibratoDelay`, and `fmAlgorithm` (0-7, one of the routings below). Value input 1
+scales the modulators (an LFO for timbre sweeps).
+
+The routings of the four operators (`a>b`: a modulates b):
+
+| `fmAlgorithm` | Routing | Carriers | Typical use |
+|---|---|---|---|
+| 0 | 4>3>2>1 | 1 | Basses, leads, complex evolving tones |
+| 1 | (4+3)>2>1 | 1 | Brass, metallic sounds |
+| 2 | (4 + 3>2)>1 | 1 | Plucks |
+| 3 | (4>3 + 2)>1 | 1 | Variations of the above |
+| 4 | 4>3, 2>1 | 1, 3 | Two layered tones: electric piano, bells, mallets |
+| 5 | 4>(3, 2, 1) | 1, 2, 3 | Pads and ensembles |
+| 6 | 4>3, 2, 1 | 1, 2, 3 | One modulated tone plus two sines |
+| 7 | 4, 3, 2, 1 | all | Additive: organs |
+
+**Modulation matrix**: `Patch.Mods` is an 8 slot [modulation matrix](#modulation-matrix) like the
+subtractive synth's, with the filter and carrier envelopes, the LFO, a second LFO (`LFO2Rate`),
+velocity, key, random, wheel and `Ext1`...`Ext4` (value inputs 5 to 8, `dx.InExt1`) as sources, and
+`modDepth`, `freeFeedback` (the feedback), `op1Gain`...`op6Gain`, `pitch`, `level`, `cutoff` and
+`resonance` (of the filter) and `lfo2Rate` as destinations (`dx.Dests`).
+
+How FM works here: every operator is a sine oscillator with its own envelope. A **carrier** is
+heard, a **modulator** bends the phase of the operator it is connected to, which adds partials
+(sidebands) around it at the carrier frequency plus and minus multiples of the modulator frequency.
+The modulator level sets how many sidebands appear (the modulation index), so a modulator envelope
+that decays makes the sound go from bright to mellow, like a struck string. Whole number ratios give
+harmonic sounds, other ratios inharmonic (bell, metal) ones; velocity makes modulators louder.
+
+#### Presets
+
+| Name | Function | Sound |
+|---|---|---|
+| `ePiano` | `EPianoPreset` | Tine electric piano, brighter when played harder |
+| `bell` | `BellPreset` | Clear bell with inharmonic partials |
+| `bass` | `BassPreset` | Punchy bass with a snappy attack |
+| `brass` | `BrassPreset` | Brass section with a swelling attack and vibrato |
+| `organ` | `OrganPreset` | Additive organ (sub, unison, octave, octave and fifth) |
+| `mallet` | `MalletPreset` | Woody marimba like mallet |
+| `pad` | `PadPreset` | Warm, slowly evolving pad |
+| `pluck` | `PluckPreset` | Bright plucked string |
+| `metallic` | `MetallicPreset` | Gong / metal plate |
+| `lead` | `LeadPreset` | Bright lead with feedback edge, glide and vibrato |
+
+More presets cover the instrument families of General MIDI:
+
+| Family | Presets |
+|---|---|
+| Pianos and keys | `grandPiano`, `honkyTonk` (detuned second string), `harpsichord`, `clavinet` |
+| Chromatic percussion | `celesta`, `glockenspiel`, `musicBox`, `xylophone`, `tubularBells` |
+| Organs | `percussiveOrgan` (with a decaying third harmonic click), `churchOrgan`, `accordion` |
+| Guitars | `nylonGuitar`, `steelGuitar`, `overdriveGuitar` |
+| Basses | `uprightBass`, `slapBass`, `fretlessBass` (with glide) |
+| Strings | `strings`, `pizzicato`, `harp` |
+| Brass | `trumpet`, `frenchHorn` |
+| Reeds and pipes | `saxophone`, `clarinet` and `oboe`, `flute` and `panFlute` (breath from a feedback noise operator) |
+| Synth leads and pads | `squareLead`, `sawLead`, `warmPad`, `sweepPad` (brightens over a few seconds) |
+| Ethnic | `sitar`, `kalimba`, `steelDrum`, `koto` |
+| Percussion | `timpani`, `woodblock`, `taiko` |
+
+The function names follow the preset names (`GrandPianoPreset`, `TubularBellsPreset`, ...). The classic
+FM building blocks, handy when designing your own: a modulator at ratio 1 gives all harmonics
+(strings, brass, saw like), at ratio 2 only odd harmonics (`clarinet`, `squareLead`); a high ratio
+modulator with a very fast decay gives the attack of a hammer, pick or mallet (`grandPiano`,
+`xylophone`); inharmonic ratios (1.41, 2.76, 3.5, ...) give bells, bars and drums; feedback gives
+buzz (`sitar`, `overdriveGuitar`), a saw (`sawLead`), or at its maximum noise (breath in `flute`,
+the skin hit of `taiko`).
 
 ### Patches
 

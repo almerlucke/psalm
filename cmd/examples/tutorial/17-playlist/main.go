@@ -48,7 +48,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/modules/playlist"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
@@ -116,7 +116,7 @@ func morning(p *psalm.Psalm) playlist.Built {
 	form := arrange.NewForm(S{Name: "Verse", Bars: 3}, S{Name: "End", Bars: 1})
 	chords := harmony.MustKey("G major").MustProgression("I V vi IV")
 	keys := piano.NewPoly(piano.WarmPreset(), 16).AddTo(p)
-	flute := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
+	flute := dx.NewPoly(dx.FlutePreset(), 2, psalm.Stereo).AddTo(p)
 	form.Part(p, keys, "piano", score.Config{Velocity: 0.5, Feel: played}, func(s S) []N {
 		return arrange.PerBar(s, func(bar int) []N {
 			if s.Name == "End" {
@@ -144,7 +144,7 @@ func groove(p *psalm.Psalm) playlist.Built {
 	form := arrange.NewForm(S{Name: "Groove", Bars: 4})
 	chords := harmony.MustKey("C minor").MustProgression("i VI III VII")
 	bass := subtractive.NewPoly(subtractive.BassPreset(), 2).AddTo(p)
-	keys := fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)
 	form.Part(p, bass, "bass", score.Config{Velocity: 0.7, Feel: played}, func(s S) []N {
 		return arrange.PerBar(s, func(bar int) []N {
 			r := chords[bar].BassPitch(36)

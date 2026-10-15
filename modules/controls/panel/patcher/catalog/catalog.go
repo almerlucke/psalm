@@ -42,7 +42,6 @@ import (
 	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
 	"github.com/almerlucke/psalm/synths/pd"
@@ -110,8 +109,6 @@ func Kinds(cfg Config) []patcher.Kind {
 	kinds = append(kinds,
 		synth("subtractive", sorted(subtractive.Presets), func(n string, v int) psalm.Modular { return subtractive.NewPoly(subtractive.Presets[n](), v) },
 			func(n string) params.Set { return subtractive.Describe(subtractive.Presets[n]()) }, v),
-		synth("fm", sorted(fm.Presets), func(n string, v int) psalm.Modular { return fm.NewPoly(fm.Presets[n](), v) },
-			func(n string) params.Set { return fm.Describe(fm.Presets[n]()) }, v),
 		dxKind(v),
 		synth("wavetable", sorted(wavetable.Presets), func(n string, v int) psalm.Modular { return wavetable.NewPoly(wavetable.Presets[n](table), v) },
 			func(n string) params.Set { return wavetable.Describe(wavetable.Presets[n](table)) }, v),

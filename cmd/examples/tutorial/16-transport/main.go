@@ -46,6 +46,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/cmd/examples/tutorial/tutorial"
 	"github.com/almerlucke/psalm/midi"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
@@ -54,7 +55,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
 	"github.com/almerlucke/psalm/modules/mixer"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
@@ -98,7 +99,7 @@ func main() {
 	keys := piano.NewPoly(piano.WarmPreset(), 16).AddTo(p)
 	pad := wavetable.NewPoly(wavetable.PadPreset(gen.Brightness(32)), 8).AddTo(p)
 	bass := subtractive.NewPoly(subtractive.BassPreset(), 2).AddTo(p)
-	lead := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
+	lead := dx.NewPoly(dx.FlutePreset(), 2, psalm.Stereo).AddTo(p)
 	cfg := score.Config{Velocity: 0.6, Feel: score.Feel{Timing: 8, Velocity: 0.08}}
 
 	form.Part(p, keys, "piano", cfg, func(s S) []N {

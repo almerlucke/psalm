@@ -40,7 +40,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/widener"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/drums"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
@@ -141,13 +141,13 @@ func main() {
 	// --- the instruments ---
 
 	bass := subtractive.NewPoly(subtractive.BassPreset(), 2).AddTo(p)
-	organ := fm.NewPoly(fm.OrganPreset(), 8).AddTo(p)
-	keys := fm.NewPoly(fm.EPianoPreset(), 8).AddTo(p)
-	clav := fm.NewPoly(fm.ClavinetPreset(), 6).AddTo(p)
+	organ := dx.NewPoly(dx.OrganPreset(), 8, psalm.Stereo).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 8, psalm.Stereo).AddTo(p)
+	clav := dx.NewPoly(dx.ClavinetPreset(), 6, psalm.Stereo).AddTo(p)
 	pad := wavetable.NewPoly(wavetable.PadPreset(gen.Brightness(32)), 8).AddTo(p)
 	gated := wavetable.NewPoly(wavetable.PadPreset(gen.Brightness(40)), 8).AddTo(p)
-	bells := fm.NewPoly(fm.BellPreset(), 6).AddTo(p)
-	lead := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
+	bells := dx.NewPoly(dx.BellPreset(), 6, psalm.Stereo).AddTo(p)
+	lead := dx.NewPoly(dx.FlutePreset(), 2, psalm.Stereo).AddTo(p)
 	played := score.Feel{Timing: 6, Velocity: 0.08}
 
 	form.Part(p, bass, "bass", score.Config{Velocity: 0.8, Feel: played}, func(s S) []N {

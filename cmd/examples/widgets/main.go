@@ -22,7 +22,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/drumsynth"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/subtractive"
@@ -100,7 +100,7 @@ func main() {
 		{"subtractive pad", subtractive.NewPoly(subtractive.PadPreset(), 12).AddTo(p)},
 		{"supersaw lead", supersaw.NewPoly(supersaw.Lead(), 12).AddTo(p)},
 		{"wavetable pad", wavetable.NewPoly(wavetable.PadPreset(table), 12).AddTo(p)},
-		{"fm electric piano", fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)},
+		{"dx electric piano", dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)},
 		{"pd brass", pd.NewPoly(pd.Brass(), 12).AddTo(p)},
 		{"pulsar vowel lead", pulsar.NewPoly(pulsar.VowelLeadPreset(), 12).AddTo(p)},
 		{"vocal choir", vocal.NewPoly(vocal.Choir(), 8).AddTo(p)},

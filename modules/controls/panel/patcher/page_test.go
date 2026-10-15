@@ -572,5 +572,5 @@ func TestPageArp(t *testing.T) {
 	tb.WaitFor(node+`.querySelectorAll(".pt-port").length >= 3`, "its ports: notes and clock in, notes out")
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
 	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
-	tb.WaitFor(`!!`+frame+` && `+frame+`.body.innerText.includes("octaves")`, "its settings in the side panel")
+	tb.WaitFor(`!!`+frame+` && !!`+frame+`.body && `+frame+`.body.innerText.includes("octaves")`, "its settings in the side panel")
 }

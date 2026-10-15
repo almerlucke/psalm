@@ -70,7 +70,6 @@ import (
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
@@ -631,9 +630,6 @@ func newInstruments(p *psalm.Psalm) []*instrument {
 		build("wavetable", slices.Collect(maps.Keys(wavetable.Presets)), func(n string) psalm.Modular {
 			return wavetable.NewPoly(wavetable.Presets[n](table), 12).AddTo(p)
 		}, synthKeys, 0.3),
-		build("fm", slices.Collect(maps.Keys(fm.Presets)), func(n string) psalm.Modular {
-			return fm.NewPoly(fm.Presets[n](), 12).AddTo(p)
-		}, velocityKeys, 0.3),
 		build("dx", slices.Collect(maps.Keys(dx.Presets)), func(n string) psalm.Modular {
 			return dx.NewPoly(dx.Presets[n](), 12, 2).AddTo(p)
 		}, velocityKeys, 0.3),

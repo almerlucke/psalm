@@ -10,7 +10,6 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
@@ -52,7 +51,7 @@ func expressives(t *testing.T) []expressive {
 	inst := sampler.MustInstrument(region)
 	list := []expressive{
 		{"subtractive", func() played { return subtractive.New(subtractive.LeadPreset()) }, a4},
-		{"fm", func() played { return fm.New(fm.OrganPreset()) }, a4},
+		{"dx free operators", func() played { return dx.New(dx.OrganPreset(), 2) }, a4},
 		{"dx", func() played { return dx.New(dx.Presets["softBrass"](), 2) }, a4},
 		{"wavetable", func() played { return wavetable.New(wavetable.LeadPreset(gen.Brightness(32))) }, a4},
 		{"pulsar", func() played { return pulsar.New(pulsar.DefaultConfig()) }, a4},

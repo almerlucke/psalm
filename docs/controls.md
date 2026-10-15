@@ -156,7 +156,7 @@ part, instead of a timer, a template and sequences of pitches and durations kept
 
 ```go
 melody := score.MustParse("A4:2 F4:1 E4 | D4:3 F4:1 | [D4 F4 A4]:4")
-lead := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
+lead := dx.NewPoly(dx.FlutePreset(), 2, psalm.Stereo).AddTo(p)
 lead.ValueIn(score.NewSequencer(melody, score.Config{Amp: 0.3, Loop: true}).AddTo(p))
 ```
 

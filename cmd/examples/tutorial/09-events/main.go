@@ -22,12 +22,13 @@ package main
 import (
 	"fmt"
 
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/cmd/examples/tutorial/tutorial"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/modules/player"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/tools/harmony"
 	"github.com/almerlucke/sndfile"
 )
@@ -41,8 +42,8 @@ func main() {
 	)
 	chords := harmony.MustKey("C major").MustProgression("I vi IV V")
 
-	keys := fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)
-	lead := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)
+	lead := dx.NewPoly(dx.FlutePreset(), 2, psalm.Stereo).AddTo(p)
 	// a recording, played once from its start every time it gets a bang
 	bells := player.New(player.Config{SndFile: sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/mixkit-sleigh-bells-584.wav", 4), Speed: 1, Amp: 0.5})
 	bells.AddTo(p)

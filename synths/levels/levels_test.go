@@ -7,7 +7,6 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/meter"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
@@ -75,13 +74,6 @@ func TestSubtractive(t *testing.T) {
 	for n, f := range subtractive.Presets {
 		fresh()
 		check(t, n, subtractive.New(f()), note)
-	}
-}
-
-func TestFM(t *testing.T) {
-	for n, f := range fm.Presets {
-		fresh()
-		check(t, n, fm.New(f()), note)
 	}
 }
 

@@ -28,11 +28,12 @@
 package main
 
 import (
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/cmd/examples/tutorial/tutorial"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/mixer"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/tools/harmony"
 )
@@ -48,7 +49,7 @@ func main() {
 	)
 
 	chords := harmony.MustKey("C major").MustProgression("I vi IV V")
-	keys := fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)
 	bass := subtractive.NewPoly(subtractive.BassPreset(), 2).AddTo(p)
 
 	// the groove: a chord on every 8th, accented on the beats (strong, weak, medium, weak ...),

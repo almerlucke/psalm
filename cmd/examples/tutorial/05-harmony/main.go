@@ -25,11 +25,12 @@ package main
 import (
 	"fmt"
 
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/cmd/examples/tutorial/tutorial"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/mixer"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/tools/harmony"
 )
 
@@ -43,8 +44,8 @@ func main() {
 	chords := harmony.MustKey("C major").MustProgression("I vi IV V") // C Am F G, a bar each
 	timeline := harmony.Timeline(4, chords...)                        // repeats when the song is longer
 
-	keys := fm.NewPoly(fm.EPianoPreset(), 8).AddTo(p)
-	lead := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 8, psalm.Stereo).AddTo(p)
+	lead := dx.NewPoly(dx.FlutePreset(), 2, psalm.Stereo).AddTo(p)
 
 	form.Part(p, keys, "chords", score.Config{Amp: 0.2, Velocity: 0.45, Legato: 1}, func(s arrange.Section) []score.Note {
 		return arrange.PerBar(s, func(bar int) []score.Note {

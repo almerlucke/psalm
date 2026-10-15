@@ -24,6 +24,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/cmd/examples/tutorial/tutorial"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/score"
@@ -32,7 +33,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/modules/player"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
@@ -52,10 +53,10 @@ func main() {
 	)
 	chords := harmony.MustKey("C major").MustProgression("I vi IV V")
 
-	keys := fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)
+	keys := dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)
 	bass := subtractive.NewPoly(subtractive.BassPreset(), 2).AddTo(p)
 	pad := wavetable.NewPoly(wavetable.PadPreset(gen.Brightness(32)), 8).AddTo(p)
-	lead := fm.NewPoly(fm.FlutePreset(), 2).AddTo(p)
+	lead := dx.NewPoly(dx.FlutePreset(), 2, psalm.Stereo).AddTo(p)
 	waves := player.New(player.Config{SndFile: sndfile.MustMipMapSoundFile[float32]("assets/sounds/various/boat_waves-6099.wav", 4), Loop: true, Speed: 1, Amp: 1})
 	waves.AddTo(p)
 

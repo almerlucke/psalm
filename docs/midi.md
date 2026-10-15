@@ -217,7 +217,7 @@ All of these can be called from any goroutine, while it plays.
 ## Example
 
 `cmd/examples/keyboard` plays the synths live from a MIDI keyboard, in the Musikverein: the piano,
-subtractive, pulsar, wavetable, fm, dx and grains, each with all its presets:
+subtractive, pulsar, wavetable, dx and grains, each with all its presets:
 
 ```
 go run ./cmd/examples/keyboard -list                    # the MIDI devices
@@ -232,7 +232,7 @@ go run ./cmd/examples/keyboard -demo                    # no keyboard: a phrase 
 Bank select (controller 0) chooses the synth the next program change switches to, in the order
 above, and the program change chooses its preset, in alphabetical order. Typed in the terminal, a
 synth name, a preset name or both (`wavetable glass`) switch too, and `list` shows them all. The
-piano takes the velocity itself and has its pedals, fm and dx take it too; the other synths play
+piano takes the velocity itself and has its pedals, dx takes it too; the other synths play
 the velocity as the amplitude, and the sustain pedal holds their notes (`HoldNotes`).
 `-monitor` prints every event.
 

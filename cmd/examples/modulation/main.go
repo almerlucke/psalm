@@ -20,7 +20,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/flanger"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/drums"
-	"github.com/almerlucke/psalm/synths/fm"
+	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
@@ -116,11 +116,11 @@ func main() {
 
 	// --- instruments ---
 
-	epiano := fm.NewPoly(fm.EPianoPreset(), 12).AddTo(p)
+	epiano := dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)
 	strings := wavetable.NewPoly(wavetable.StringsPreset(gen.Brightness(32)), 12).AddTo(p)
-	guitar := fm.NewPoly(fm.NylonGuitarPreset(), 8).AddTo(p)
+	guitar := dx.NewPoly(dx.NylonGuitarPreset(), 8, psalm.Stereo).AddTo(p)
 	saw := subtractive.NewPoly(subtractive.PWMPadPreset(), 8).AddTo(p)
-	bass := fm.NewPoly(fm.BassPreset(), 2).AddTo(p)
+	bass := dx.NewPoly(dx.BassPreset(), 2, psalm.Stereo).AddTo(p)
 	kit := drums.NewDrums(sndfile.SoundBank[float32]{
 		"kick":  sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/kick/Cymatics - Humble Sit Down Kick - D.wav", 4),
 		"snare": sndfile.MustMipMapSoundFile[float32]("assets/sounds/drums/snare/Cymatics - Humble Adequate Snare - E.wav", 4),

@@ -1,7 +1,7 @@
 // Midifile: play a MIDI file on the synths, in the Musikverein.
 //
 // Every channel of the file gets a synth of its own, chosen by the General MIDI program it plays: a
-// piano for the pianos, fm for the electric pianos, the harpsichord and the brass and reeds, the
+// piano for the pianos, dx for the electric pianos, the harpsichord and the brass and reeds, the
 // organ for the organs, waveguide for the guitars and the bowed strings, modal for the mallets and
 // bells, vocal for the choirs, subtractive, supersaw, wavetable and pd for the synth leads and
 // pads, pulsar and westcoast for the effects; channel 10 plays the drumsynth (-kit). A program
@@ -57,7 +57,6 @@ import (
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
 	"github.com/almerlucke/psalm/synths/pd"
@@ -78,25 +77,25 @@ import (
 // generalMIDI is the synth and preset that plays each General MIDI program
 var generalMIDI = [128]string{
 	// piano
-	"piano/grand", "piano/bright", "piano/vintage", "piano/honkyTonk", "fm/ePiano", "dx/glassKeys", "fm/harpsichord", "fm/clavinet",
+	"piano/grand", "piano/bright", "piano/vintage", "piano/honkyTonk", "dx/ePiano", "dx/glassKeys", "dx/harpsichord", "dx/clavinet",
 	// chromatic percussion
-	"fm/celesta", "modal/glockenspiel", "fm/musicBox", "modal/vibraphone", "modal/marimba", "modal/xylophone", "modal/tubularBells", "waveguide/steel",
+	"dx/celesta", "modal/glockenspiel", "dx/musicBox", "modal/vibraphone", "modal/marimba", "modal/xylophone", "modal/tubularBells", "waveguide/steel",
 	// organ
-	"organ/jazz", "organ/gospel", "organ/rock", "organ/full", "organ/reed", "fm/accordion", "organ/reed", "fm/accordion",
+	"organ/jazz", "organ/gospel", "organ/rock", "organ/full", "organ/reed", "dx/accordion", "organ/reed", "dx/accordion",
 	// guitar
-	"waveguide/guitar", "waveguide/steel", "waveguide/muted", "waveguide/steel", "waveguide/muted", "fm/overdriveGuitar", "fm/overdriveGuitar", "waveguide/harp",
+	"waveguide/guitar", "waveguide/steel", "waveguide/muted", "waveguide/steel", "waveguide/muted", "dx/overdriveGuitar", "dx/overdriveGuitar", "waveguide/harp",
 	// bass
-	"waveguide/bass", "waveguide/bass", "fm/bass", "fm/fretlessBass", "fm/slapBass", "fm/slapBass", "subtractive/bass", "pd/resoBass",
+	"waveguide/bass", "waveguide/bass", "dx/bass", "dx/fretlessBass", "dx/slapBass", "dx/slapBass", "subtractive/bass", "pd/resoBass",
 	// strings
-	"waveguide/violin", "waveguide/violin", "waveguide/cello", "waveguide/cello", "waveguide/slowStrings", "waveguide/pizzicato", "waveguide/harp", "fm/timpani",
+	"waveguide/violin", "waveguide/violin", "waveguide/cello", "waveguide/cello", "waveguide/slowStrings", "waveguide/pizzicato", "waveguide/harp", "dx/timpani",
 	// ensemble
-	"fm/strings", "waveguide/slowStrings", "subtractive/strings", "pd/strings", "vocal/aah", "vocal/ooh", "vocal/choir", "supersaw/stab",
+	"dx/strings", "waveguide/slowStrings", "subtractive/strings", "pd/strings", "vocal/aah", "vocal/ooh", "vocal/choir", "supersaw/stab",
 	// brass
-	"fm/trumpet", "pd/brass", "pd/brass", "fm/trumpet", "fm/frenchHorn", "dx/softBrass", "subtractive/brass", "wavetable/brass",
+	"dx/trumpet", "pd/brass", "pd/brass", "dx/trumpet", "dx/frenchHorn", "dx/softBrass", "subtractive/brass", "wavetable/brass",
 	// reed
-	"fm/saxophone", "fm/saxophone", "fm/saxophone", "fm/saxophone", "fm/oboe", "fm/oboe", "fm/clarinet", "fm/clarinet",
+	"dx/saxophone", "dx/saxophone", "dx/saxophone", "dx/saxophone", "dx/oboe", "dx/oboe", "dx/clarinet", "dx/clarinet",
 	// pipe
-	"fm/flute", "fm/flute", "organ/flute", "fm/panFlute", "subtractive/wind", "subtractive/flute", "organ/whistle", "subtractive/flute",
+	"dx/flute", "dx/flute", "organ/flute", "dx/panFlute", "subtractive/wind", "subtractive/flute", "organ/whistle", "subtractive/flute",
 	// synth lead
 	"subtractive/chipLead", "supersaw/lead", "organ/flute", "subtractive/lead", "pd/lead", "vocal/solo", "wavetable/lead", "subtractive/ladderLead",
 	// synth pad
@@ -104,9 +103,9 @@ var generalMIDI = [128]string{
 	// synth effects
 	"pulsar/raindrops", "wavetable/drone", "modal/crystal", "subtractive/hollowPad", "wavetable/glass", "pulsar/insects", "modal/spaceTine", "westcoast/laserPing",
 	// ethnic
-	"fm/sitar", "waveguide/steel", "fm/koto", "fm/koto", "modal/kalimba", "organ/reed", "waveguide/violin", "fm/oboe",
+	"dx/sitar", "waveguide/steel", "dx/koto", "dx/koto", "modal/kalimba", "organ/reed", "waveguide/violin", "dx/oboe",
 	// percussive
-	"modal/glockenspiel", "westcoast/bell", "modal/steelPan", "modal/woodBlock", "fm/taiko", "westcoast/bongo", "subtractive/synthTom", "subtractive/riser",
+	"modal/glockenspiel", "westcoast/bell", "modal/steelPan", "modal/woodBlock", "dx/taiko", "westcoast/bongo", "subtractive/synthTom", "subtractive/riser",
 	// sound effects
 	"waveguide/scrape", "vocal/whisper", "westcoast/livingDrone", "pulsar/insects", "westcoast/laserPing", "pulsar/motor", "pulsar/crackle", "westcoast/metal",
 }
@@ -157,7 +156,7 @@ func synthKeys(cfg keyboard.Config) keyboard.Config {
 	return cfg
 }
 
-// fm, dx and the physical models take the velocity themselves
+// dx and the physical models take the velocity themselves
 func velocityKeys(cfg keyboard.Config) keyboard.Config {
 	cfg.Dynamics, cfg.Controls, cfg.HoldNotes, cfg.PitchBend, cfg.Pressure, cfg.PolyPressure = 0, expressive, true, "pitchBend", "pressure", "pressure"
 	return cfg
@@ -214,12 +213,6 @@ func newSound(name string) (*sound, error) {
 			return nil, missing(slices.Collect(maps.Keys(piano.Presets)))
 		}
 		s.synth, s.keys, s.hall = piano.NewPoly(f(), 32), pianoKeys, 0.4
-	case "fm":
-		f, ok := fm.Presets[preset]
-		if !ok {
-			return nil, missing(slices.Collect(maps.Keys(fm.Presets)))
-		}
-		s.synth = fm.NewPoly(f(), 16)
 	case "dx":
 		f, ok := dx.Presets[preset]
 		if !ok {
@@ -715,7 +708,6 @@ func soundNames() []string {
 		}
 	}
 	add("piano", slices.Collect(maps.Keys(piano.Presets)))
-	add("fm", slices.Collect(maps.Keys(fm.Presets)))
 	add("dx", slices.Collect(maps.Keys(dx.Presets)))
 	add("organ", slices.Collect(maps.Keys(organ.Presets)))
 	add("waveguide", slices.Collect(maps.Keys(waveguide.Presets)))

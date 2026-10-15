@@ -15,7 +15,6 @@ import (
 	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/fm"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
 	"github.com/almerlucke/psalm/synths/pd"
@@ -43,7 +42,6 @@ func describing[T any](presets map[string]T, describe func(preset string) params
 // describers are the synths the editor of a channel describes (the DX7 has its own editor)
 var describers = map[string]describer{
 	"piano":       describing(piano.Presets, func(n string) params.Set { return piano.Describe(piano.Presets[n]()) }),
-	"fm":          describing(fm.Presets, func(n string) params.Set { return fm.Describe(fm.Presets[n]()) }),
 	"organ":       describing(organ.Presets, func(n string) params.Set { return organ.Describe(organ.Presets[n]()) }),
 	"waveguide":   describing(waveguide.Presets, func(n string) params.Set { return waveguide.Describe(waveguide.Presets[n]()) }),
 	"modal":       describing(modal.Presets, func(n string) params.Set { return modal.Describe(modal.Presets[n]()) }),
