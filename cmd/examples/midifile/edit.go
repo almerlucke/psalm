@@ -46,8 +46,10 @@ func describing[T any](presets map[string]T, describe func(preset string) params
 
 // describers are the synths the editor of a channel describes (the DX7 has its own editor)
 var describers = map[string]describer{
-	"piano": describing(piano.Presets, func(n string) params.Set { return piano.Describe(piano.Presets[n]()) }),
-	"organ": describing(organ.Presets, func(n string) params.Set { return organ.Describe(organ.Presets[n]()) }),
+	"piano": describing(piano.Presets, func(n string) params.Set { return piano.Describe(piano.Presets[n]()) },
+		func(n string) psalm.Modular { return piano.NewPoly(piano.Presets[n](), 32) }),
+	"organ": describing(organ.Presets, func(n string) params.Set { return organ.Describe(organ.Presets[n]()) },
+		func(n string) psalm.Modular { return organ.New(organ.Presets[n]()) }),
 	"waveguide": describing(waveguide.Presets, func(n string) params.Set { return waveguide.Describe(waveguide.Presets[n]()) },
 		func(n string) psalm.Modular { return waveguide.NewPoly(waveguide.Presets[n](), 12) }),
 	"modal": describing(modal.Presets, func(n string) params.Set { return modal.Describe(modal.Presets[n]()) },

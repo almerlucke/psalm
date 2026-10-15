@@ -28,6 +28,8 @@ type Piano struct {
 	mixed           psalm.Channels
 	fadeOut         psalm.Channels
 	fading          bool
+	tail            psalm.Channels // the sound of a piano adopted over, fading out over the buffer after it
+	tailing         bool
 	bank            []*sympathetic
 	br              *bridge // the bridge the voices share
 	active          []*Voice
@@ -110,6 +112,7 @@ func NewPoly(cfg Config, numVoices int) *Piano {
 	p.idle = idleSamples + 1   // silent until the first note
 	p.mixed = psalm.NewChannels(cfg.NumChannels, p.Config().BufferSize)
 	p.fadeOut = psalm.NewChannels(cfg.NumChannels, p.Config().BufferSize)
+	p.tail = psalm.NewChannels(cfg.NumChannels, p.Config().BufferSize)
 	ir := cfg.SoundboardIR
 	if len(ir) == 0 {
 		ir = boardResponse(p.Config().SampleRate)
@@ -337,6 +340,54 @@ func (p *Piano) allocate(note psalm.Message) (*Voice, bool) {
 }
 
 func (p *Piano) Synthesize() {
+	p.synthesize()
+	if p.tailing { // what sounded before an Adopt, fading out
+		for c, ch := range p.Output(0).Channels {
+			for i, x := range p.tail[c] {
+				ch[i] += x
+			}
+		}
+		p.tail.Clear()
+		p.tailing = false
+	}
+}
+
+// Adopt takes over the whole inner state of another piano in place of its own: what a piano made at
+// a preset is (the voices with their strings and hammers, the strings of the bank that ring along,
+// the bridge, the soundboard's convolution and the listener), handed to the piano already in a patch
+// (its cables stay). What sounds is faded out over the next buffer (no click); the keys held, the
+// pedals and the notes to come are let go (a pedal held down on the keyboard has to go down again).
+// It returns false (and changes nothing) when other isn't a piano with the same number of channels.
+// Call it on the audio thread (patch.Do): it makes nothing, so it doesn't allocate once the other is
+// made. The other must not be used afterwards: they share what it was made of
+func (p *Piano) Adopt(other psalm.Modular) bool {
+	x, ok := other.(*Piano)
+	if !ok || x == p || len(x.Output(0).Channels) != len(p.Output(0).Channels) ||
+		len(x.tail) != len(p.tail) || len(x.tail[0]) != len(p.tail[0]) {
+		return false
+	}
+	if p.idle <= idleSamples || p.fading || p.tailing {
+		p.synthesize() // one more buffer of what sounds, ramped down
+		inv := 1.0 / float32(len(p.tail[0]))
+		for c, ch := range p.Output(0).Channels {
+			for i, v := range ch {
+				p.tail[c][i] += v * (1 - inv*float32(i))
+			}
+		}
+		p.tailing = true
+	}
+	mod, mixed, fadeOut, tail, tailing := p.Module, p.mixed, p.fadeOut, p.tail, p.tailing
+	*p = *x
+	p.Module, p.mixed, p.fadeOut, p.tail, p.tailing = mod, mixed, fadeOut, tail, tailing
+	p.fadeOut.Clear()
+	p.fading = false
+	for _, v := range p.voices {
+		v.sostenuto = &p.caught // the voices look at the sostenuto of the piano they are in
+	}
+	return true
+}
+
+func (p *Piano) synthesize() {
 	// the voices, and a voice taken while sounding fading out
 	faded := p.fading
 	if p.fading {

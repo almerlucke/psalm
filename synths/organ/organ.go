@@ -187,6 +187,8 @@ type Organ struct {
 	lfo2Phase float64
 	silent    int                   // samples it has been silent: it rests once the scanner's delay is empty
 	expr      expression.Expression // the pitch bend (all the wheels); the mod wheel brings in the scanner vibrato
+	fadeOut   psalm.Channels        // the sound of an organ adopted over, fading out over the buffer after it
+	fading    bool
 }
 
 // New returns an organ
@@ -205,6 +207,7 @@ func New(cfg Config) *Organ {
 		delay:     make([]float64, 1024),
 	}
 	sr := o.Config().SampleRate
+	o.fadeOut = psalm.NewChannels(cfg.NumChannels, o.Config().BufferSize)
 	for w := range numWheels {
 		o.phase[w] = math.Mod(float64(w)*0.618034, 1) // the wheels are not in phase
 	}
@@ -222,6 +225,41 @@ func New(cfg Config) *Organ {
 	}
 	o.SetSelf(o)
 	return o
+}
+
+// Adopt takes over the whole inner state of another organ in place of its own: what an organ made at
+// a preset is (the wheels' phases and tuning, the scanner's line, the Leslie, the preamp, the
+// percussion, the filter and the matrix), handed to the organ already in a patch (its cables stay;
+// the pitch bend and mod wheel stay as they were). What sounds is faded out over the next buffer
+// (no click), the keys held, the sustain pedal and the notes to come are let go. It returns false
+// (and changes nothing) when other isn't an organ with the same number of channels. Call it on
+// the audio thread (patch.Do): it makes nothing, so it doesn't allocate once the other is made.
+// The other must not be used afterwards: they share what it was made of
+func (o *Organ) Adopt(other psalm.Modular) bool {
+	x, ok := other.(*Organ)
+	if !ok || x == o || len(x.Output(0).Channels) != len(o.Output(0).Channels) ||
+		len(x.fadeOut) != len(o.fadeOut) || len(x.fadeOut[0]) != len(o.fadeOut[0]) {
+		return false
+	}
+	if o.sounding() {
+		o.synthesize() // one more buffer of what sounds, ramped down
+		inv := 1.0 / float32(len(o.fadeOut[0]))
+		for c, ch := range o.Output(0).Channels {
+			for i, v := range ch {
+				o.fadeOut[c][i] += v * (1 - inv*float32(i))
+			}
+		}
+		o.fading = true
+	}
+	mod, fade, fading, expr := o.Module, o.fadeOut, o.fading, o.expr
+	*o = *x
+	o.Module, o.fadeOut, o.fading, o.expr = mod, fade, fading, expr
+	return true
+}
+
+// sounding says whether anything of the organ is heard: a key, its click, the scanner's delay
+func (o *Organ) sounding() bool {
+	return len(o.keys) > 0 || len(o.events) > 0 || len(o.timers) > 0 || o.click.env > 1e-5 || o.silent <= len(o.delay)
 }
 
 // retune sets the speeds of the wheels: the gears' frequencies, or equal temperament, or between
@@ -485,6 +523,19 @@ func (o *Organ) clickLevel() float64 {
 }
 
 func (o *Organ) Synthesize() {
+	o.synthesize()
+	if o.fading { // what sounded before an Adopt, fading out
+		for c, ch := range o.Output(0).Channels {
+			for i, x := range o.fadeOut[c] {
+				ch[i] += x
+			}
+		}
+		o.fadeOut.Clear()
+		o.fading = false
+	}
+}
+
+func (o *Organ) synthesize() {
 	out := o.Output(0).Channels
 	n := o.Config().BufferSize
 	sr := o.Config().SampleRate

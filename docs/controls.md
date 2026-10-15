@@ -796,8 +796,13 @@ the synth made at that preset. Notes sounding fade out, and mono and legato stay
 `Editor.Base()` is the preset chosen last. The patcher does this for every polyphonic synth in its
 catalog (`Made.Rebuild`) and records the chosen preset on the node, so a saved patch keeps it. Presets of
 your own still go through `Apply` (their settings on the synth as it is). The organ and the piano are
-single modules with no voices to swap and keep the settings-only load (a few of their presets differ
-by up to 6 dB or a few percent in pitch when chosen on a page). In code:
+single modules with no voices, so they take over the whole inner state of an instrument built from the
+preset (`Organ.Adopt`: the tonewheels, scanner and Leslie; `Piano.Adopt`: the string bank, bridge,
+soundboard convolution and pedals). `poly.Swap` takes any `poly.Adopter` (`Adopt(other) bool`): the new
+instrument is built off the audio thread and swapped in between two buffers through `Psalm.Do`, without
+allocating; what was sounding fades out over one buffer, and held keys and pedals come back up (a
+pedal held on the keyboard has to be pressed again). The instrument handed to `Adopt` shares its
+internals with the adopter afterwards and must not be used again. In code:
 
 ```go
 swap := poly.NewSwap(p.Do, synth, func(name string) psalm.Modular { return waveguide.NewPoly(waveguide.Presets[name](), 12) })

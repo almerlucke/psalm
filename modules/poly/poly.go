@@ -122,6 +122,9 @@ func (p *Poly[T]) AdoptVoices(other psalm.Modular) bool {
 	return true
 }
 
+// Adopt is AdoptVoices, for an Adopter
+func (p *Poly[T]) Adopt(other psalm.Modular) bool { return p.AdoptVoices(other) }
+
 // Mono returns whether it plays one note at a time, and legato
 func (p *Poly[T]) Mono() (mono, legato bool) { return p.mono, p.legato }
 

@@ -166,21 +166,15 @@ func TestFactoryPresetsAreThePresetsMade(t *testing.T) {
 				for _, w := range windows {
 					worst = math.Max(worst, math.Abs(dB(rmsWin(got, w[0], w[1]), rmsWin(want0, w[0], w[1]))))
 				}
-				// a synth that takes voices is the preset made; organ and piano (one module each, no
-				// voices to swap) take the settings of the preset: not the same sound (their Leslie,
-				// their strings and soundboard keep what they were), only as near as to be the preset
-				// and not another (up to 6 dB, a pitch within a semitone)
+				// every synth is held to the preset made: the same level in the windows, the same pitch
 				tol, slack := 1.0, 0.03
-				if ed.Base() == "" {
-					tol, slack = 7, 0.06
-				}
 				if worst > tol {
 					bad = append(bad, fmt.Sprintf("%s(%.1fdB)", pr, worst))
 				}
 				if lg, lw := period(got), period(want0); lg != 0 && lw != 0 && math.Abs(float64(lg-lw)) > slack*float64(lw) {
 					bad = append(bad, fmt.Sprintf("%s(period %d against %d)", pr, lg, lw))
 				}
-				if ed.Base() != pr && ed.Base() != "" {
+				if ed.Base() != pr {
 					t.Errorf("%s: the editor's base is %q", pr, ed.Base())
 				}
 			}

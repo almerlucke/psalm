@@ -361,8 +361,8 @@ func main() {
 		} else {
 			// its presets above the controls: the synth's own, and yours, kept in a folder of its own
 			ed := editor.Add(in.page, in.name, in.synth, in.describe(in.start), panel.NoDefault())
-			// a factory preset is the synth made at it, its voices swapped in (organ and piano, with no
-			// voices to swap, move to its settings)
+			// a factory preset is the synth made at it, swapped in (the voices of a Poly, the
+			// whole state of the organ and the piano)
 			if sw := poly.NewSwap(p.Do, in.synth, func(n string) psalm.Modular {
 				var m psalm.Modular
 				p.Within(func() { m = in.make(n) })

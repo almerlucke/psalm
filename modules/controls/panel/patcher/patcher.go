@@ -104,9 +104,9 @@ type Made struct {
 	// presets of the kind are its factory presets in its editor
 	Describe func(preset string) params.Set
 	// Rebuild makes another module of the kind at a preset (off the audio thread; nil: none): choosing a
-	// factory preset in the editor swaps its voices into Module (poly.Swap), so Module is what the
-	// preset makes and not Module as the settings of the preset move it; a Module that takes no voices
-	// (organ, piano) keeps the settings moving
+	// factory preset in the editor swaps what it made into Module (poly.Swap: the voices of a Poly,
+	// the state of the organ and the piano), so Module is what the preset makes and not Module as the
+	// settings of the preset move it; a Module that is no poly.Adopter keeps the settings moving
 	Rebuild func(preset string) psalm.Modular
 	// Edit makes an editor of its own on its page instead (the DX7's); it returns the settings
 	Edit func(page *panel.Panel, name, preset string) Settings

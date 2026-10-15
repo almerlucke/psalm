@@ -7,10 +7,13 @@ import (
 	"github.com/almerlucke/psalm"
 )
 
-// Adopter is a synth that can take the voices of another one made like it (a Poly: AdoptVoices)
+// Adopter is a synth that can take over what another one made like it has made: a Poly takes its
+// voices (AdoptVoices), the organ and the piano, which are one module each, their whole inner
+// state. Adopt returns false (and changes nothing) when other isn't made like it; it is called on
+// the audio thread, between two buffers, and doesn't allocate
 type Adopter interface {
 	psalm.Modular
-	AdoptVoices(other psalm.Modular) bool
+	Adopt(other psalm.Modular) bool
 }
 
 // Swap changes a synth in a patch into the synth made at a preset: the new one is made off the
@@ -34,7 +37,7 @@ func NewSwap(do func(func()), target psalm.Modular, build func(name string) psal
 	return &Swap{do: do, target: a, build: build}
 }
 
-// Can tells whether the target takes voices (organ and piano don't: a Swap of them does nothing)
+// Can tells whether the target can adopt another (a synth that can't: a Swap of it does nothing)
 func (s *Swap) Can() bool { return s.target != nil }
 
 // Load makes the synth at a preset and swaps it in; it returns at once (Wait for it to be in)
@@ -48,7 +51,7 @@ func (s *Swap) Load(name string) {
 		m := s.build(name)
 		in := func() {
 			if m != nil && s.seq.Load() == id {
-				s.target.AdoptVoices(m)
+				s.target.Adopt(m)
 			}
 			s.wg.Done()
 		}
