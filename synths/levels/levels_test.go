@@ -78,7 +78,10 @@ func TestSubtractive(t *testing.T) {
 }
 
 func TestPulsar(t *testing.T) {
-	low := map[string]float64{"rhythm": 6, "crackle": 50, "insects": 45, "raindrops": 12, "motor": 25}
+	low := map[string]float64{"rhythm": 6, "crackle": 50, "insects": 45, "raindrops": 12, "motor": 25,
+		"grainCloud": 40, "shimmerDust": 60, "lowCloud": 25, "scatterBells": 20, "swarmCloud": 80,
+		"stutterTick": 12, "gallop": 10, "clavePulse": 8, "machineGun": 18,
+		"fireCrackle": 45, "crickets": 40, "drizzle": 15, "geigerTicks": 30}
 	for n, f := range pulsar.Presets {
 		fresh()
 		msg := note
