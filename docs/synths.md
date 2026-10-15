@@ -1,6 +1,6 @@
 # Synths
 
-Synths: [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [dx](#dx) (6 operator FM, SysEx, and the 4 operator FM presets), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
+Synths (the presets of each are listed in [presets](presets.md)): [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [dx](#dx) (6 operator FM, SysEx, and the 4 operator FM presets), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
 
 Every synth describes its settings: `<synth>.Describe(cfg)` (`params`: each message key it takes,
 its range, unit and group, where it is in the config, and its envelopes), so an editor on the panel
@@ -1043,6 +1043,21 @@ tuned (`stretch`, `stiffness`). `mechanics` is the noise of the action: the damp
 (not with the pedal down), the key coming up, the pedal, and `keyBed` (0-1), the thud of a key struck
 hard landing on the keybed.
 
+### Bridge and wound strings
+
+The strings of all keys end on one bridge. Its admittance is a shared bank of about 60 soundboard
+modes, sparse in the bass and denser above, damped like wood. Every string puts its force on the bridge
+each sample, and the bridge's motion goes back into every string: a partial that meets a mode drains
+fast and one between modes keeps its energy. A chord is therefore not the sum of its notes, and with
+the sustain pedal down the washed tail is longer. `bridge` (0-1, default 0.6) blends from each key
+draining on its own (0) to full coupling (1); the mean drain per key stays what it was. `wound` (0-1,
+default 1) makes the keys below the second string break (key 44) wound strings: much less inharmonic
+than plain strings, with a step at the break about a key wide, and their copper wrap damps the highs
+and loads the bridge more. `precursor` (0-1, default 0.5) adds the short burst of longitudinal waves that
+outruns a hard-struck bass note (velocity cubed, gone in the treble). `strikeRegister` (0-1, default 1)
+moves the hammer strike point from 1/8 in the bass towards 1/12 in the treble. The mode bank is generic,
+not measured soundboard data.
+
 ## drums
 
 `synths/drums`
@@ -1220,6 +1235,25 @@ LFO 1 (the scanner's), velocity and key of the last note, a random value per phr
 The matrix has a second LFO: `lfo2Rate` (Hz, default 1) is a plain sine, available as the source LFO 2
 next to the scanner's, running only when a slot uses it.
 
+### The tonewheel generator, scanner and Leslie
+
+The organ models the Hammond tonewheel generator. The 91 wheels turn at the frequencies of the gear
+ratios (a 20 Hz shaft, twelve gear pairs, exact octaves), so the semitones are slightly off equal
+temperament, and each wheel is a sine with a little second and third harmonic (`tonewheel` 0-1; the gear
+table is from memory: check it against Hammond documentation if exact tuning matters). Each key has nine
+contacts, one per drawbar bus, that close a few milliseconds apart (`contactSpread`), so the attack is
+percussive; `click` sets how sharply they close. `leakage` bleeds the neighbouring wheels and the
+wheels an octave and a twelfth up into the bus, at -40 dB or less.
+
+The scanner is a nine-section line swept at 6.87 Hz: V1/V2/V3 use 3/6/9 sections (about +-4, +-8 and
++-12 cents), the C modes mix the dry sound with it, and `vibratoScale` makes it deeper. A tube preamp has
+two asymmetric stages (`drive`) and a tone tilt (`tone`). `leslie` (0-1) puts the sound through a
+built-in rotary speaker: an 800 Hz Linkwitz-Riley split, a horn and a drum that each have Doppler and
+amplitude modulation, and two microphones (`lesliePosition`). `leslieSpeed` runs from 0 (stopped)
+through 0.5 (slow, 0.8 Hz horn) to 1 (fast, 6.7 Hz), and the rotors speed up and slow down at their own
+pace (the horn in about 1.2 s, the drum in about 3 s). `leslie`, `leslieSpeed` and `tone` are matrix
+destinations.
+
 ## waveguide
 
 `synths/waveguide`
@@ -1326,6 +1360,30 @@ with `bowSpeed` as its partner; the force has to fit the speed: too light is air
 round. `bowForce` and `bowSpeed` are matrix destinations. New presets: `uprightBass`, `harmonics`,
 `rosin` (the friction-curve violin); the plucked presets are re-voiced with the new parts.
 
+### Stiff strings, the friction bow, harmonics, fret contact
+
+Stiff strings (`inharmonicity` up to about 2e-3 at 220 Hz: a wound bass or a piano string) use a chain of
+up to 40 first-order allpass sections whose coefficient is searched against the loop's exact phase, so
+the first twelve partials sit within a few cents of f0 * n * sqrt(1 + B * n^2) with the fundamental in
+tune; gentle strings keep the cheap fit.
+
+The bow has a switch, `bowModel`: 0 is the table (`pressure`), 1 the friction curve with stick-slip and a
+rosin memory (`bowForce`, `bowSpeed`, `bowNoise`, `bowReverse`). The violin, cello, slowStrings,
+ponticello, flautando, ghostBow and rosin presets use friction, with a weight that follows the speed,
+which follows the velocity. Its pitch is held to within about 6 cents from pitch 36 to 96: when a note
+starts the bow looks up a tuning for its pitch, force, position and speed, found by running the bow loop
+on a background worker (the cache warms about 1-2 s after the synth is made; `waveguide.WarmBow(cfg)`
+and `WaitBow()` let a test or patch wait for it). A first note at a pitch not yet in the cache plays on
+an interpolated estimate (within about 20 cents) and is exact from the next. If no weight holds the
+string's motion (the highest notes), the note falls back to the table bow. The cello and the others
+swing in loudness between pitches (about -12 LUFS at pitch 57, louder at 69).
+
+Slide also works in mono legato: a pitch message to a sounding string glides over `slide` seconds
+without a new attack, for plucked and bowed strings. `harmonic` puts a finger on the node, a comb in the
+loop that damps the other partials, also on a string that is already ringing. `fretBuzz` is a stiff
+spring and damper at `fretPosition` (0.05 to 0.98 of the string, default the fret beside the finger): it
+buzzes only when the action is low (`fretBuzz` high) and the pluck is hard.
+
 ## modal
 
 `synths/modal`
@@ -1412,6 +1470,22 @@ draws random numbers only when on. Presets reworked onto the models: marimba, vi
 glockenspiel, tubularBells (now pitched at the strike tone), churchBell, singingBowl, kalimba,
 spaceTine, metalPlate, steelPan, wood, metal; new: handbell, gong, cymbal, celesta. The handbell, gong
 and cymbal ratios are approximations; the nonlinear pitch glide of real gongs is not modelled.
+
+### Undercut bars, nonlinear gongs
+
+Undercut bars are no longer uniform beams. At first use the marimba, vibraphone and xylophone solve
+an Euler-Bernoulli beam with an arched thickness profile (40 finite elements, subspace iteration) and
+tune the arch so the modes sit at 1:4:10 (marimba, vibraphone) or 1:3:6 (xylophone), within 0.2 cents.
+The strike position reads the solved mode shapes. `undercut` (0.01-1, default 1) blends from a uniform
+bar to the tuned arch.
+
+Gongs and cymbals have `nonlinearity` (0-1; 0.6 and 0.8 in their presets, off elsewhere): a hard blow
+starts up to 5% sharp and glides down as the modes decay, each mode passes energy up to the modes above
+it over a few tenths of a second (a crash blooms from the low modes into the high ones), and the modes
+shimmer with a slow random detuning; all of it scales with the blow's velocity squared. The church
+bell uses ratios after Rossing and Perrin (hum 0.5, prime 1, tierce 1.2, quint 1.5, nominal 2, ...) with
+beating pairs; the handbell, gong and cymbal ratios are approximations. New instruments and presets:
+`woodBlock` (re-voiced), `templeBlock` and `bottle`, a Helmholtz cavity at the pitch plus the wall's modes.
 
 ## drumsynth
 
@@ -1540,6 +1614,21 @@ Words take `m n ng l r w y` as well as `t k s sh f`, and the diphthongs `ai au e
 also with a pole and zero pair, and they glide into the vowel over `coarticulation` seconds. The
 glottal model is the Rosenberg-Klatt approximation, not a true LF fit, and bass, alto and soprano are
 scaled from the male and female data. All presets are re-voiced with a little jitter and shimmer.
+
+### The LF source, whisper and more consonants
+
+`source` chooses the glottal model: 0 is the Rosenberg-Klatt pulse, 1 the Liljencrants-Fant model, with
+one voice-quality parameter `rd` from 0.3 (pressed, bright) to 2.7 (breathy, soft); brightness sets it
+unless `rd` is set. Rd gives tp, te and ta, and the growth rate is solved so the flow derivative
+integrates to zero. The presets Breathy, Ooh, Monks and Angels use LF; the others keep Rosenberg-Klatt.
+`whisper` (0-1) cross-fades the voice into turbulence at the glottis, shaped by the same formants, with
+independent noise per ear; at 1 it has no pitch (the `Whisper` preset).
+
+p, t and k are aspirated and keep the voice out for 50 to 65 ms; b, d and g start it within 15 ms; s, sh
+and f hold it back through the noise; z, zh and v hum through it with a voice bar (new letters
+p b d g z zh v). `subglottal` adds a faint windpipe pole and zero at 600 and 1500 Hz. `naturalVibrato`
+makes the vibrato rate 5 to 6.5 Hz, rising with pitch and wandering slowly, with a wandering extent
+and a late onset. The new features use a private noise stream.
 
 ## pd
 
