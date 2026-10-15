@@ -7,12 +7,15 @@ var Presets = map[string]func() Config{
 	"muted":       Muted,
 	"harp":        Harp,
 	"bass":        Bass,
+	"uprightBass": UprightBass,
+	"harmonics":   Harmonics,
 	"pizzicato":   Pizzicato,
 	"violin":      Violin,
 	"cello":       Cello,
 	"slowStrings": SlowStrings,
 	"ponticello":  Ponticello,
 	"flautando":   Flautando,
+	"rosin":       Rosin,
 
 	"glassHarp": GlassHarp,
 	"wire":      Wire,
@@ -43,22 +46,70 @@ func bowed(pressure, position, attack, release, vibRate, vibDepth, vibDelay floa
 }
 
 // Guitar is a nylon string guitar, plucked with the fingers
-func Guitar() Config { return plucked(3, 0.35, 0.45, 0.17, 0.25, GuitarBody, 0.45, 1.6) }
+func Guitar() Config {
+	c := plucked(3, 0.35, 0.45, 0.17, 0.25, GuitarBody, 0.45, 1.209)
+	c.Inharmonicity, c.PluckWidth, c.Plectrum = 3e-5, 0.07, 0.1 // nylon, a fingertip
+	c.Polarization, c.BodyCoupling, c.FretNoise = 0.3, 0.5, 0.15
+	return c
+}
 
 // Steel is a steel string guitar played with a pick: bright and long
-func Steel() Config { return plucked(5, 0.12, 0.8, 0.1, 0.3, GuitarBody, 0.35, 1.45) }
+func Steel() Config {
+	c := plucked(5, 0.12, 0.8, 0.1, 0.3, GuitarBody, 0.35, 1.078)
+	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1.2e-4, 0.025, 0.9 // steel, a pick
+	c.Polarization, c.BodyCoupling, c.TensionMod, c.FretNoise = 0.4, 0.4, 0.5, 0.1
+	return c
+}
 
 // Muted is a palm muted guitar: a short, dull pluck
-func Muted() Config { return plucked(0.25, 0.6, 0.6, 0.12, 0.05, GuitarBody, 0.4, 1.5) }
+func Muted() Config {
+	c := plucked(0.25, 0.6, 0.6, 0.12, 0.05, GuitarBody, 0.4, 1.5)
+	c.Inharmonicity, c.PluckWidth, c.Plectrum, c.FretNoise = 1e-4, 0.03, 0.6, 0.1
+	return c
+}
 
 // Harp is plucked near the middle and rings on after the note
-func Harp() Config { return plucked(5, 0.3, 0.35, 0.33, 0, HarpBody, 0.4, 1.5) }
+func Harp() Config {
+	c := plucked(5, 0.3, 0.35, 0.33, 0, HarpBody, 0.4, 1.37)
+	c.Inharmonicity, c.PluckWidth = 2e-5, 0.05 // gut, a fingertip
+	c.Polarization, c.BodyCoupling = 0.2, 0.3
+	return c
+}
 
-// Bass is an electric bass, fingered: round, no body
-func Bass() Config { return plucked(2.5, 0.5, 0.3, 0.2, 0.12, NoBody, 0, 1) }
+// Bass is an electric bass, fingered: round, no body, a wound string that is stiff and a bit
+// of tension modulation when it is dug into
+func Bass() Config {
+	c := plucked(2.5, 0.5, 0.3, 0.2, 0.12, NoBody, 0, 0.875)
+	c.Inharmonicity, c.PluckWidth, c.Plectrum = 3e-4, 0.08, 0.1
+	c.Polarization, c.TensionMod, c.FretNoise = 0.5, 0.3, 0.1
+	return c
+}
+
+// UprightBass is a double bass plucked with the finger: the long thick gut or steel string, the
+// large body that gives way under it, the string slapping the fingerboard a little
+func UprightBass() Config {
+	c := plucked(1.6, 0.45, 0.3, 0.2, 0.2, BassBody, 0.55, 1.366)
+	c.Inharmonicity, c.PluckWidth, c.Plectrum = 2e-4, 0.09, 0
+	c.Polarization, c.BodyCoupling, c.TensionMod, c.FretBuzz, c.FretNoise = 0.35, 0.7, 0.4, 0.15, 0.2
+	return c
+}
+
+// Harmonics are the natural harmonics of a guitar string, a finger laid on its middle and
+// the string plucked beside it: a bell an octave above the open string
+func Harmonics() Config {
+	c := plucked(4, 0.15, 0.7, 0.14, 0.2, GuitarBody, 0.35, 1.19)
+	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1e-4, 0.03, 0.6
+	c.Harmonic, c.Polarization, c.BodyCoupling = 0.5, 0.3, 0.3
+	return c
+}
 
 // Pizzicato is a violin plucked: short, through its body
-func Pizzicato() Config { return plucked(0.5, 0.4, 0.4, 0.25, 0.1, ViolinBody, 0.6, 1.6) }
+func Pizzicato() Config {
+	c := plucked(0.5, 0.4, 0.4, 0.25, 0.1, ViolinBody, 0.6, 1.6)
+	c.Inharmonicity, c.PluckWidth, c.Plectrum = 6e-5, 0.04, 0.4
+	c.BodyCoupling, c.TensionMod, c.FretBuzz = 0.5, 0.5, 0.1
+	return c
+}
 
 // Violin is bowed, with a vibrato that comes in after the start
 func Violin() Config { return bowed(0.55, 0.127, 0.08, 0.15, 5.5, 0.12, 0.25, ViolinBody, 0.6, 1.1) }
@@ -72,15 +123,31 @@ func SlowStrings() Config { return bowed(0.5, 0.13, 0.6, 0.9, 5, 0.1, 0.4, Violi
 // Ponticello is bowed close to the bridge: glassy, with the high partials
 func Ponticello() Config { return bowed(0.6, 0.08, 0.1, 0.2, 0, 0, 0, ViolinBody, 0.5, 1) }
 
+// Rosin is a violin bowed by the physics of the thing: a friction curve with a memory, a bow
+// that has a weight and a speed, the grain of the rosin, and a bow that turns round
+func Rosin() Config {
+	c := bowed(0, 0.127, 0.08, 0.15, 5.5, 0.1, 0.25, ViolinBody, 0.6, 0.933)
+	c.BowForce, c.BowSpeed, c.BowNoise, c.BowReverse = 0.3, 0.5, 0.3, 1.6
+	return c
+}
+
 // Flautando is bowed lightly over the fingerboard: soft and airy, like a flute
 func Flautando() Config { return bowed(0.25, 0.4, 0.15, 0.2, 5, 0.08, 0.3, ViolinBody, 0.5, 1.2) }
 
 // GlassHarp is a string with no losses to speak of, plucked near its end: it shimmers for many
 // seconds, its overtones dying no faster than the note
-func GlassHarp() Config { return plucked(14, 0, 0.9, 0.06, 0, HarpBody, 0.2, 1.12) }
+func GlassHarp() Config {
+	c := plucked(14, 0, 0.9, 0.06, 0, HarpBody, 0.2, 1.12)
+	c.Inharmonicity = 2e-4 // a hint of bell
+	return c
+}
 
 // Wire is a bright steel wire picked right at its end, no body: thin, jangling, metallic
-func Wire() Config { return plucked(6, 0.02, 1, 0.015, 0.4, NoBody, 0, 0.915) }
+func Wire() Config {
+	c := plucked(6, 0.02, 1, 0.015, 0.4, NoBody, 0, 1.03)
+	c.Inharmonicity, c.Plectrum, c.TensionMod, c.FretBuzz = 5e-4, 0.5, 0.6, 0.25
+	return c
+}
 
 // EBow is a string kept singing by a steady bow near its end, swelling in, no vibrato, no body: the
 // endless sustain of an electric guitar under an EBow

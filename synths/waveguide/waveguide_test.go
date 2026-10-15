@@ -80,12 +80,20 @@ func dry(cfg Config) Config {
 	return cfg
 }
 
+// plain is a string without the refinements (stiffness, two polarizations, the give of the bridge,
+// the tension, the shape of the pluck, the fret): the Karplus-Strong string of the basics
+func plain(cfg Config) Config {
+	cfg.Inharmonicity, cfg.Polarization, cfg.BodyCoupling, cfg.TensionMod = 0, 0, 0, 0
+	cfg.PluckWidth, cfg.Plectrum, cfg.FretNoise, cfg.FretBuzz, cfg.Harmonic, cfg.Slide = 0, 0, 0, 0, 0, 0
+	return cfg
+}
+
 func TestPluckInTune(t *testing.T) {
 	// every pluck the same (a random burst can fool the pitch measure an octave up)
 	psalm.Seed(1)
 	psalm.SetCurrentEnv(psalm.NewEnv(psalm.CurrentStackConfig()))
 	for _, p := range []float64{28, 40, 52, 64, 76, 88, 96} {
-		_, x := play(dry(Steel()), p, 0.5)
+		_, x := play(dry(plain(Steel())), p, 0.5)
 		if c := cents(pitchOf(x[int(0.1*sr()):]), hz(p)); math.Abs(c) > 3 {
 			t.Errorf("pitch %g: %.1f cents out", p, c)
 		}
@@ -94,7 +102,7 @@ func TestPluckInTune(t *testing.T) {
 
 func TestPluckDecay(t *testing.T) {
 	// the fundamental falls 60 dB in Decay at 220 Hz: 20 dB in a third of it
-	cfg := dry(Guitar())
+	cfg := dry(plain(Guitar()))
 	cfg.Decay = 1.5
 	_, x := play(cfg, 57, 1.2)
 	win := int(0.1 * sr())
@@ -111,7 +119,7 @@ func TestPluckDecay(t *testing.T) {
 	if v.IsActive() {
 		t.Errorf("a string let go still rings")
 	}
-	v, _ = play(dry(Harp()), 57, 0.2)
+	v, _ = play(dry(plain(Harp())), 57, 0.2)
 	v.NoteOff()
 	if x := run(v, 0.3); amplitude(x[len(x)-4096:], 220) < 0.01 {
 		t.Errorf("a harp string stops when let go")
@@ -130,7 +138,7 @@ func band(x []float64, f float64, partials ...int) float64 {
 func TestPickPosition(t *testing.T) {
 	// plucked in the middle, the even partials have a node there: they are missing
 	ratio := func(pick float64) float64 {
-		cfg := dry(Steel())
+		cfg := dry(plain(Steel()))
 		cfg.PickPosition = pick
 		_, x := play(cfg, 45, 0.5)
 		y := x[int(0.05*sr()) : int(0.05*sr())+8192]
@@ -143,7 +151,7 @@ func TestPickPosition(t *testing.T) {
 
 func TestBrightness(t *testing.T) {
 	high := func(b float64) float64 {
-		cfg := dry(Guitar())
+		cfg := dry(plain(Guitar()))
 		cfg.Brightness = b
 		r := 0.0
 		for range 4 { // plucks differ: an average
