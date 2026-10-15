@@ -37,6 +37,7 @@ type Config struct {
 	Body           float64     // 0-1, how much of the sound comes through the soundboard
 	Bark           float64     // 0-1, the metallic bark of the bass strings played hard (phantom partials)
 	Mechanics      float64     // 0-1, the noise of the action: dampers, keys, the pedal
+	KeyBed         float64     // 0-1, the thud of the key hitting the keybed when struck hard (scaled by Mechanics)
 	Stretch        float64     // how much of the stretch tuning of a piano, 1 is what a tuner does, 0 is equal temperament
 	Variation      float64     // 0-1, how different the keys are (hammers, levels, ring times) and every strike
 	Treble         float64     // dB, the top octave louder or softer than voiced (0 is as voiced)
@@ -64,6 +65,7 @@ func DefaultConfig() Config {
 		Body:           0.6,
 		Bark:           0.5,
 		Mechanics:      0.5,
+		KeyBed:         0.5,
 		Stretch:        1,
 		Variation:      0.5,
 		Position:       Player,
@@ -195,7 +197,9 @@ type Voice struct {
 	noiseLP, noiseHP   float64
 	thumpRe, thumpIm   float64 // the key landing, a short low thud
 	thumpRot           complex128
-	quiet              int // buffers the voice has been silent, after the strike
+	bedIn              int     // samples until the key reaches the keybed, -1 is none
+	bedLevel           float64 // how hard it lands, in the units of the strings
+	quiet              int     // buffers the voice has been silent, after the strike
 	active             bool
 }
 
@@ -240,6 +244,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("position", func(i int) { cfg.Position = Position(i) })
 	msg.IfFltVal("bark", func(f float64) { cfg.Bark = f })
 	msg.IfFltVal("mechanics", func(f float64) { cfg.Mechanics = f })
+	msg.IfFltVal("keyBed", func(f float64) { cfg.KeyBed = f })
 	msg.IfFltVal("resonance", func(f float64) { cfg.Resonance = f })
 	msg.IfFltVal("sustain", v.SetSustain)
 	msg.IfFltVal("soft", func(f float64) { v.soft = f > 0.5 })
@@ -425,6 +430,14 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	}
 	v.wasDown, v.wasDamped = true, false
 
+	// the key bottoms out on the keybed (a loud strike lands sooner and harder, a soft one is let
+	// down slowly and hardly heard); the action, not the strings, so the voicing leaves it alone
+	v.bedIn = -1
+	if bed := math.Max(0, math.Min(cfg.KeyBed, 1)) * math.Max(0, math.Min(cfg.Mechanics, 1)); bed > 0 {
+		v.bedLevel = bed * keyBedNoise * amplitude * math.Pow(speed, keyBedPower) * v.knockAmp / v.amp
+		v.bedIn = int((0.004+0.016*(1-speed))*sr) + tick.SampleOffset
+	}
+
 	// the strike: the velocity sets the speed of the hammer, the level goes with a power of it (a
 	// recorded grand is some 24 dB louder at fortissimo than at pianissimo), VelocitySens of it;
 	// velocity 0.8 is the level the presets are calibrated at
@@ -570,6 +583,15 @@ func (v *Voice) Synthesize() {
 			t += v.barkLevel * (0.7*bp + 0.3*hp)
 		}
 
+		// the key landing on the keybed: a low thud and a dull knock of wood
+		if v.bedIn >= 0 {
+			if v.bedIn == 0 {
+				v.noise += v.bedLevel * 0.5
+				v.thumpRe += v.bedLevel
+			}
+			v.bedIn--
+		}
+
 		// the action: the dampers landing on the vibrating strings, the key coming up
 		v.env += envCoef * (math.Abs(t) - v.env)
 		if v.keyDown != v.wasDown || damped != v.wasDamped {
@@ -636,7 +658,11 @@ func (v *Voice) Synthesize() {
 // the strings (as loud as the strings still are)
 const (
 	keyNoise    = 0.00013
-	damperNoise = 0.05
+	damperNoise = 0.3
+	// the key landing on the keybed at full velocity, and how fast that falls off with the speed of
+	// the hammer
+	keyBedNoise = 0.02
+	keyBedPower = 3
 )
 
 // damperTargets returns the loop gain the dampers leave every string at a contact

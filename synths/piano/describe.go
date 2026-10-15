@@ -38,6 +38,7 @@ func Describe(cfg Config) params.Set {
 		params.K("Body", "soundboard", 0, 1, cfg.Soundboard),
 		params.K("Body", "body", 0, 1, cfg.Body),
 		params.K("Body", "mechanics", 0, 1, cfg.Mechanics),
+		params.K("Body", "keyBed", 0, 1, cfg.KeyBed, params.Label("key bed")),
 
 		params.C("Output", "position", Positions, int(cfg.Position), params.Label("heard from")),
 		params.K("Output", "width", 0, 1, cfg.Width),

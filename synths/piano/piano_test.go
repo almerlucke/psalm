@@ -341,8 +341,8 @@ func TestBark(t *testing.T) {
 	bark := func(pitch, vel float64) float64 {
 		none := grand()
 		none.Bark = 0
-		a := playPiano(grand(), []psalm.Message{{"pitch": pitch, "velocity": vel}}, 2, 0.6, nil)
-		b := playPiano(none, []psalm.Message{{"pitch": pitch, "velocity": vel}}, 2, 0.6, nil)
+		a := seeded(grand(), []psalm.Message{{"pitch": pitch, "velocity": vel}}, 2, 0.6, nil)
+		b := seeded(none, []psalm.Message{{"pitch": pitch, "velocity": vel}}, 2, 0.6, nil)
 		return rmsDB(difference(a, b), 0, 0.5) - rmsDB(b, 0, 0.5)
 	}
 	soft, hard := bark(40, 0.4), bark(40, 1)
