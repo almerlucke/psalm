@@ -9,6 +9,9 @@ import (
 // Ranges are the names of the voice ranges, by number
 var Ranges = []string{"auto", "bass", "tenor", "alto", "soprano", "child"}
 
+// Sources are the names of the glottal models, by number
+var Sources = []string{"rosenberg-klatt", "lf"}
+
 // Describe describes the settings of a voice set as cfg: every message that changes one, its range,
 // and where it is in cfg (see params)
 func Describe(cfg Config) params.Set {
@@ -46,6 +49,10 @@ func Describe(cfg Config) params.Set {
 		params.K("Diphthong", "diphthongTime", 0, 2, cfg.DiphthongTime, params.Unit("s"), params.Label("time")),
 		params.K("Diphthong", "diphthongHold", 0, 2, cfg.DiphthongHold, params.Unit("s"), params.Label("hold")),
 
+		params.C("Source", "source", Sources, cfg.Source),
+		params.K("Source", "rd", 0, 2.7, cfg.Rd, params.Label("Rd (LF)")),
+		params.K("Source", "whisper", 0, 1, cfg.Whisper),
+		params.K("Source", "subglottal", 0, 1, cfg.Subglottal),
 		params.K("Source", "openQuotient", 0, 0.95, cfg.OpenQuotient, params.Label("open quotient")),
 		params.K("Source", "speedQuotient", 0, 4, cfg.SpeedQuotient, params.Label("speed quotient")),
 		params.K("Source", "returnPhase", 0, 1, cfg.ReturnPhase, params.Label("return phase")),
@@ -54,6 +61,7 @@ func Describe(cfg Config) params.Set {
 
 		params.K("Vibrato", "vibratoRate", 0, 12, cfg.VibratoRate, params.Unit("Hz"), params.Label("rate")),
 		params.K("Vibrato", "vibratoDepth", 0, 2, cfg.VibratoDepth, params.Unit("st"), params.Label("depth")),
+		params.K("Vibrato", "naturalVibrato", 0, 1, cfg.NaturalVibrato, params.Label("natural")),
 
 		params.C("Consonant", "consonant", ConsonantNames, int(cfg.Consonant)),
 		params.K("Consonant", "consonantLevel", 0, 1, clevel, params.Label("level")),

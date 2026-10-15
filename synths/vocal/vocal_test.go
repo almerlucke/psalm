@@ -134,7 +134,7 @@ func TestChoirIsWide(t *testing.T) {
 	}
 	_, l, r = sing(Solo(), psalm.Message{"pitch": 57.0}, 0.5)
 	for i := range l {
-		if l[i] != r[i] {
+		if math.Abs(l[i]-r[i]) > 1e-6*(1+math.Abs(l[i])) { // the two pan gains differ in the last bit
 			t.Fatalf("a solo voice is not in the middle")
 		}
 	}

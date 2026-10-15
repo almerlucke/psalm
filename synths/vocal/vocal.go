@@ -6,7 +6,10 @@
 // the scale a e i o u, glides from one vowel to another within a note (a diphthong), and speaks words
 // of vowels and consonants (stops, fricatives, nasals, liquids and glides) whose formants move from
 // the consonant into the vowel. A choir is a voice sung by several singers at once, each a little
-// out of tune and time, spread over the stereo field.
+// out of tune and time, spread over the stereo field. The source is a Rosenberg-Klatt pulse or the
+// Liljencrants-Fant model (one parameter, Rd, for the quality of the voice); the tone can be taken out
+// for a whisper of noise shaped by the same tract; p t k are aspirated and b d g voiced; and the
+// vibrato can be a singer's, wandering in rate and extent.
 //
 //	choir := vocal.NewPoly(vocal.Choir(), 8).AddTo(p)
 //	choir.Receive(psalm.Message{"vowel": 3.0}, 0) // all sing "o"
@@ -65,6 +68,21 @@ type Config struct {
 	VowelDepth float64
 	VowelSteps bool
 	Level      float64 // output level (0 is treated as 1)
+
+	// Source is the glottal model: 0 the Rosenberg-Klatt pulse (OpenQuotient, SpeedQuotient and
+	// ReturnPhase shape it), 1 the Liljencrants-Fant model, which has the one parameter Rd for the
+	// quality of the voice: 0.3 pressed and bright to 2.7 breathy and soft (0 is made from Brightness)
+	Source int
+	Rd     float64
+	// Whisper (0-1) takes the tone out of the voice for turbulent noise that the same throat and mouth
+	// shape: 0 is the voice (with Breath for a breathy one), 1 a whisper with no pitch
+	Whisper float64
+	// NaturalVibrato (0-1) makes the vibrato a singer's: the rate 5 to 6.5 Hz, rising a little with the
+	// pitch and wandering slowly, the extent wandering too and wider on high notes, late to come in
+	NaturalVibrato float64
+	// Subglottal (0-1) lets in the resonance of the windpipe below the folds: a faint pole near 600 Hz
+	// and zero near 1500 Hz
+	Subglottal float64
 
 	// Phoneme sings one of the twelve vowels of Vowels (1 to 12) instead of Vowel (0): the vowel
 	// moves along that list, so the steps of the matrix and the wheel go to the neighbours
@@ -125,6 +143,7 @@ const (
 	dPitch
 	dLevel
 	dCutoff
+	dWhisper
 )
 
 // Dests are the settings the matrix of a voice moves: by their keys, as described (Describe), with
@@ -140,6 +159,7 @@ var Dests = []modmatrix.Dest{
 	dPitch:        {Key: "pitch", Label: "pitch", Span: 12},
 	dLevel:        {Key: "level", Label: "level", Span: 1},
 	dCutoff:       {Key: "cutoff", Label: "cutoff", Span: 4},
+	dWhisper:      {Key: "whisper", Label: "whisper", Span: 1},
 }
 
 // Syllable is a vowel position (0-4: a e i o u, fractions morph) and a consonant before it. A
@@ -182,11 +202,18 @@ const (
 	R
 	W
 	Y
+	P // the voiceless p t k are aspirated; the voiced b d g start their voice soon after the burst
+	B
+	D
+	G
+	Z // the voiced fricatives hum through the noise (the voice bar)
+	Zh
+	V
 	numConsonants
 )
 
 // ConsonantNames are the names of the consonants, by number
-var ConsonantNames = []string{"none", "t", "k", "s", "sh", "f", "m", "n", "ng", "l", "r", "w", "y"}
+var ConsonantNames = []string{"none", "t", "k", "s", "sh", "f", "m", "n", "ng", "l", "r", "w", "y", "p", "b", "d", "g", "z", "zh", "v"}
 
 // locus is where the formants of a consonant stand: the first three (and their widths) at the start,
 // held for hold seconds, then moving into the vowel in trans seconds. A nasal opens the nose (with a
@@ -205,18 +232,22 @@ type consonantShape struct {
 	freq, q, dur, tau, gain float64
 	plosive                 bool
 	loc                     locus
+	// vot is the seconds after the start until the voice does (the voice onset time: a voiceless
+	// consonant keeps it out, with aspiration of the level asp through the throat, a voiced stop starts it
+	// soon); bar is how far a voiced fricative hums, through the noise, in a murmur of low partials
+	vot, asp, bar float64
 }
 
 var consonants = [...]consonantShape{
-	T: {freq: 5200, q: 1.2, dur: 0.05, tau: 0.01, gain: 3, plosive: true,
+	T: {freq: 5200, q: 1.2, dur: 0.05, tau: 0.01, gain: 3, plosive: true, vot: 0.055, asp: 0.5,
 		loc: locus{f: [3]float64{300, 1800, 2900}, bw: [3]float64{100, 150, 200}, trans: 0.045, amp: 1}},
-	K: {freq: 2000, q: 2, dur: 0.07, tau: 0.018, gain: 3, plosive: true,
+	K: {freq: 2000, q: 2, dur: 0.07, tau: 0.018, gain: 3, plosive: true, vot: 0.065, asp: 0.5,
 		loc: locus{f: [3]float64{300, 1500, 2500}, bw: [3]float64{100, 150, 200}, trans: 0.045, amp: 1}},
-	S: {freq: 7500, q: 1.5, dur: 0.12, gain: 2.5,
+	S: {freq: 7500, q: 1.5, dur: 0.12, gain: 2.5, vot: 0.1,
 		loc: locus{f: [3]float64{350, 1700, 2700}, bw: [3]float64{100, 150, 200}, trans: 0.05, amp: 1}},
-	Sh: {freq: 3500, q: 1, dur: 0.14, gain: 2.5,
+	Sh: {freq: 3500, q: 1, dur: 0.14, gain: 2.5, vot: 0.12,
 		loc: locus{f: [3]float64{350, 1900, 2400}, bw: [3]float64{100, 150, 200}, trans: 0.05, amp: 1}},
-	F: {freq: 4500, q: 0.4, dur: 0.1, gain: 1.8,
+	F: {freq: 4500, q: 0.4, dur: 0.1, gain: 1.8, vot: 0.08,
 		loc: locus{f: [3]float64{350, 1100, 2300}, bw: [3]float64{100, 150, 200}, trans: 0.05, amp: 1}},
 	M: {loc: locus{f: [3]float64{250, 1000, 2200}, bw: [3]float64{90, 200, 250}, hold: 0.04, trans: 0.055,
 		nasal: 1, zero: 1000, amp: 0.55}},
@@ -228,6 +259,20 @@ var consonants = [...]consonantShape{
 	R: {loc: locus{f: [3]float64{400, 1300, 1650}, bw: [3]float64{90, 110, 100}, hold: 0.03, trans: 0.06, amp: 0.85}},
 	W: {loc: locus{f: [3]float64{300, 700, 2300}, bw: [3]float64{70, 90, 130}, hold: 0.015, trans: 0.07, amp: 0.8}},
 	Y: {loc: locus{f: [3]float64{290, 2250, 3000}, bw: [3]float64{60, 90, 130}, hold: 0.015, trans: 0.065, amp: 0.85}},
+	P: {freq: 1200, q: 0.7, dur: 0.04, tau: 0.008, gain: 2.4, plosive: true, vot: 0.05, asp: 0.5,
+		loc: locus{f: [3]float64{300, 900, 2200}, bw: [3]float64{100, 150, 200}, trans: 0.045, amp: 1}},
+	B: {freq: 800, q: 0.7, dur: 0.03, tau: 0.006, gain: 1.2, plosive: true, vot: 0.012,
+		loc: locus{f: [3]float64{300, 900, 2200}, bw: [3]float64{100, 150, 200}, trans: 0.045, amp: 1}},
+	D: {freq: 4500, q: 1.2, dur: 0.04, tau: 0.008, gain: 1.5, plosive: true, vot: 0.012,
+		loc: locus{f: [3]float64{300, 1800, 2900}, bw: [3]float64{100, 150, 200}, trans: 0.045, amp: 1}},
+	G: {freq: 2000, q: 2, dur: 0.05, tau: 0.012, gain: 1.5, plosive: true, vot: 0.015,
+		loc: locus{f: [3]float64{300, 1500, 2500}, bw: [3]float64{100, 150, 200}, trans: 0.045, amp: 1}},
+	Z: {freq: 7500, q: 1.5, dur: 0.11, gain: 2, bar: 1,
+		loc: locus{f: [3]float64{350, 1700, 2700}, bw: [3]float64{100, 150, 200}, trans: 0.05, amp: 0.8}},
+	Zh: {freq: 3500, q: 1, dur: 0.12, gain: 2, bar: 1,
+		loc: locus{f: [3]float64{350, 1900, 2400}, bw: [3]float64{100, 150, 200}, trans: 0.05, amp: 0.8}},
+	V: {freq: 4500, q: 0.4, dur: 0.09, gain: 1.3, bar: 1,
+		loc: locus{f: [3]float64{350, 1100, 2300}, bw: [3]float64{100, 150, 200}, trans: 0.05, amp: 0.8}},
 }
 
 // DefaultConfig is a solo voice
@@ -251,6 +296,26 @@ func rangeOf(pitch float64) Range {
 // maxSingers is the most singers of a voice
 const maxSingers = 16
 
+// the noise: the level of a whisper and of the aspiration of p, t, k at the throat, how much of a
+// consonant's noise excites the tract too, and how loud the voice bar hums
+const (
+	whisperGain = 3.2
+	aspGain     = 0.5
+	fricFeed    = 0.25
+	barGain     = 2.5
+)
+
+// softClip is the last resort against a level that runs away: the sound passes untouched up to 0.9 and
+// bends towards 1.5 above it, which it never reaches
+func softClip(x float64) float64 {
+	const knee, limit = 0.9, 1.5
+	a := math.Abs(x)
+	if a <= knee {
+		return x
+	}
+	return math.Copysign(knee+(limit-knee)*math.Tanh((a-knee)/(limit-knee)), x)
+}
+
 // outScale brings the cascade of formants to the level the voice had before
 const outScale = 0.12
 
@@ -267,6 +332,8 @@ type singer struct {
 	gainR   float64
 	pos     float64 // -1 to 1, where it stands in the choir
 	jitter  float64 // its own detune, as a fraction of the detune
+	// the natural vibrato: the rate and extent now, and their slow wander
+	natRate, natExt, rateDev, extDev float64
 }
 
 // Voice sings one note
@@ -306,6 +373,10 @@ type Voice struct {
 	consNow   Consonant
 	artT      int // samples since the consonant began moving the formants (-1 over)
 	artGain   float64
+	tuneGain  float64 // the gain that keeps a tuned tract at the level of the untuned one (<= 1)
+	tuneNow   float64 // the same, smoothed
+	compSnap  bool    // the next gain found is taken at once (a note begins)
+	compN     int     // how often the formants were set (the gain is found every eighth time)
 	artTarget float64
 	syllT0    int // the sample the syllable (or the note) began
 	place     *wordPlace
@@ -315,6 +386,39 @@ type Voice struct {
 	sylPh     int     // its vowel as a phoneme (0 none), and the one it glides to
 	sylTo     int
 	fnow      [5]float64 // the formants now (Hz)
+	lf        lfPulse    // the Liljencrants-Fant pulse now
+	lfRd      float64    // the Rd and the closing time it was solved for
+	lfTa      float64
+	harm      [harmN]float64 // the power of the harmonics of the pulse now
+	harmKey   [4]float64     // what they were found for
+	nrng      randSource     // the noise of the whisper and the aspiration, and the natural vibrato: a stream of its own
+	nPrev     [2]float64     // the last noise of each channel (the lips differentiate it)
+	bar       [2][2]float64  // the low-pass of the voice bar
+	gateEnd   int            // samples into the syllable the voicing of the consonant is over
+}
+
+// gauss is a random value of mean 0 and spread 1
+func (r *randSource) gauss() float64 {
+	return (r.float() + r.float() + r.float() + r.float() - 2) * math.Sqrt(3)
+}
+
+// wander moves the vibrato of a singer a step on (every 64 samples): a rate of 5 to 6.5 Hz, higher on
+// high notes, and an extent that is wider on high notes, each wandering slowly around that. key is the
+// pitch, -1 to 1 over two octaves around middle C, and amount how far the voice is natural (0-1)
+func (s *singer) wander(r *randSource, amount, key, sr float64, step bool) {
+	if step {
+		dt := 64 / sr
+		k := dt / 2.0
+		s.rateDev += -s.rateDev*k + 0.3*math.Sqrt(2*k)*r.gauss()
+		k = dt / 3.0
+		s.extDev += -s.extDev*k + 0.15*math.Sqrt(2*k)*r.gauss()
+	}
+	rate := math.Max(5, math.Min(5.75+0.35*key+s.rateDev, 6.5))
+	s.natRate = s.vibRate*(1-amount) + rate*amount
+	if s.vibRate == 0 {
+		s.natRate = rate
+	}
+	s.natExt = math.Max(0.4, math.Min(1+amount*(0.3*key+s.extDev), 1.8))
 }
 
 // randSource is a small fast random generator
@@ -338,6 +442,7 @@ func New(cfg Config) *Voice {
 	v := &Voice{Module: psalm.NewModule(nil, []int{cfg.NumChannels}), cfg: cfg, pitch: 60, vowel: cfg.Vowel, place: &wordPlace{}, sylNow: -1}
 	sr := v.Config().SampleRate
 	v.rng = &randSource{s: v.Rand().Uint64() | 1}
+	v.nrng.s = (v.rng.s ^ 0xD1B54A32D192ED03) | 1
 	for i := range v.singers {
 		// the irregularities of each source have a stream of their own, so they never move the others
 		v.singers[i].g.rng.s = (v.rng.s ^ uint64(i+1)*0xBF58476D1CE4E5B9) | 1
@@ -345,6 +450,7 @@ func New(cfg Config) *Voice {
 	v.filter = voicefilter.New(cfg.Filter, sr, cfg.NumChannels)
 	v.cons = svf.New(1000, 0, sr)
 	v.consT, v.artT, v.artGain, v.artTarget = -1, -1, 1, 1
+	v.tuneGain, v.tuneNow, v.compSnap = 1, 1, true
 	v.mods = modmatrix.New(Dests)
 	for i, sl := range cfg.Mods {
 		v.mods.Set(i, sl)
@@ -397,6 +503,11 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("openQuotient", func(f float64) { cfg.OpenQuotient = zeroOr(f, 0.2, 0.95) })
 	msg.IfFltVal("speedQuotient", func(f float64) { cfg.SpeedQuotient = zeroOr(f, 0.8, 4) })
 	msg.IfFltVal("returnPhase", func(f float64) { cfg.ReturnPhase = zeroOr(f, 0.02, 1) })
+	msg.IfIntVal("source", func(i int) { cfg.Source = max(0, min(i, 1)) })
+	msg.IfFltVal("rd", func(f float64) { cfg.Rd = zeroOr(f, 0.3, 2.7) })
+	msg.IfFltVal("whisper", func(f float64) { cfg.Whisper = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("naturalVibrato", func(f float64) { cfg.NaturalVibrato = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("subglottal", func(f float64) { cfg.Subglottal = math.Max(0, math.Min(f, 1)) })
 	msg.IfFltVal("jitter", func(f float64) { cfg.Jitter = math.Max(0, math.Min(f, 0.05)) })
 	msg.IfFltVal("shimmer", func(f float64) { cfg.Shimmer = math.Max(0, math.Min(f, 0.3)) })
 	msg.IfFltVal("formantTuning", func(f float64) {
@@ -498,6 +609,7 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 		v.env = 0
 		ph, _, pos := v.vowelBase()
 		v.mode, v.vowel = ph, pos
+		v.compN, v.compSnap = 0, true
 		for c := range v.tract {
 			v.tract[c].clear()
 			v.tilt[c], v.breathLP[c] = 0, 0
@@ -520,6 +632,10 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 		s.vibRate = math.Max(0, cfg.VibratoRate) * (1 + (v.rng.float()-0.5)*0.15)
 		s.vibPh = v.rng.float()
 		s.drift, s.driftTo = 0, 0
+		if nat := cfg.NaturalVibrato; nat > 0 {
+			s.rateDev, s.extDev = 0.3*v.nrng.gauss(), 0.15*v.nrng.gauss()
+			s.wander(&v.nrng, nat, math.Max(-1, math.Min(math.Log2(pitchHz(v.pitch)/middleC)/2, 1)), sr, false)
+		}
 		s.delay = 0
 		if v.n > 1 {
 			s.delay = int(v.rng.float() * 0.03 * sr) // they don't all start at once
@@ -535,6 +651,8 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 	v.update = 0
 	v.active = true
 }
+
+func pitchHz(pitch float64) float64 { return 440 * math.Exp2((pitch-69)/12) }
 
 // setSyllable makes the syllable i of the word the one sung now
 func (v *Voice) setSyllable(i int) {
@@ -580,7 +698,7 @@ func (v *Voice) diphFrac(sr float64) float64 {
 // setFormants tunes the tract to the vowel, the diphthong, the consonant the syllable began with, the
 // pitch (the first formant follows it up when it is higher, as sopranos tune it), the singer's
 // formant and the nose
-func (v *Voice) setFormants(f0 float64) {
+func (v *Voice) setFormants(f0, wh float64) {
 	cfg := &v.cfg
 	sr := v.Config().SampleRate
 	shift := cfg.FormantShift
@@ -601,11 +719,6 @@ func (v *Voice) setFormants(f0 float64) {
 		f[k] *= shift
 		bw[k] *= shift
 	}
-	// formant tuning: the first formant rises towards the pitch (a soft maximum, so it bends)
-	if tn := tuningOf(cfg.Tuning); tn > 0 {
-		const p = 6.0
-		f[0] = math.Pow(math.Pow(f[0], p)+math.Pow(tn*f0*1.08, p), 1/p)
-	}
 	// the singer's formant: the third to fifth formants gather
 	if tr := math.Max(0, math.Min(cfg.Training, 1)); tr > 0 {
 		fs := voiceTypes[v.rangeNow].singerForm * shift
@@ -614,6 +727,20 @@ func (v *Voice) setFormants(f0 float64) {
 		f[4] += tr * (fs*1.2 - f[4])
 		for k := 2; k < 5; k++ {
 			bw[k] *= 1 - 0.3*tr
+		}
+	}
+	ref, bwRef := f, bw // the tract as it is before it is tuned to the pitch
+	// formant tuning: the first formant rises towards the pitch (a soft maximum, so it bends)
+	if tn := tuningOf(cfg.Tuning); tn > 0 {
+		const p = 6.0
+		f[0] = math.Pow(math.Pow(f[0], p)+math.Pow(tn*f0*1.08, p), 1/p)
+		bw[0] = math.Max(bw[0], 0.07*f[0]) // a high first formant is not a narrow one
+		// it never climbs past the second formant (it would pile its gain on it): the upper ones make room
+		for k := 1; k < 5; k++ {
+			if f[k] < f[k-1]*1.12 {
+				f[k] = f[k-1] * 1.12
+				bw[k] = math.Max(bw[k], 0.07*f[k])
+			}
 		}
 	}
 	nasal := math.Max(0, math.Min(cfg.Nasal, 1))
@@ -635,6 +762,8 @@ func (v *Voice) setFormants(f0 float64) {
 		for k := range 3 {
 			f[k] = l.f[k]*shift + (f[k]-l.f[k]*shift)*u
 			bw[k] = l.bw[k]*shift + (bw[k]-l.bw[k]*shift)*u
+			ref[k] = l.f[k]*shift + (ref[k]-l.f[k]*shift)*u
+			bwRef[k] = l.bw[k]*shift + (bwRef[k]-l.bw[k]*shift)*u
 		}
 		if l.nasal > 0 {
 			nasal = l.nasal*(1-u) + nasal*u
@@ -654,6 +783,39 @@ func (v *Voice) setFormants(f0 float64) {
 	t.np.set(270*shift, 100*shift, sr)
 	t.nz.set(zero, 120*shift, sr)
 	t.nasal = nasal
+	t.sub = math.Max(0, math.Min(cfg.Subglottal, 1))
+	if t.sub > 0 {
+		t.sp.set(600, 160, sr)
+		t.sz.set(1500, 250, sr)
+	}
+	key := [4]float64{float64(cfg.Source), v.oq, v.sq, v.lfTa + v.lfRd}
+	if key != v.harmKey {
+		v.harmKey = key
+		if cfg.Source == 1 {
+			v.harm = sourceHarmonics(0, 0, &v.lf)
+		} else {
+			v.harm = sourceHarmonics(v.oq, v.sq, nil)
+		}
+	}
+	// the level of the tract as tuned at this pitch against the untuned one at the middle pitch
+	v.compN++
+	if f == ref && bw == bwRef && t.nasal <= 0 {
+		v.tuneGain = 1
+		if v.compSnap {
+			v.tuneNow, v.compSnap = 1, false
+		}
+	} else if v.compN%8 == 1 {
+		tilt := 0.0
+		if v.tiltCoef > 0 && v.tiltCoef < 1 {
+			tilt = -math.Log(v.tiltCoef) * sr / (2 * math.Pi)
+		}
+		tu := newCascade(&f, &bw, t, tilt, &v.harm, sr)
+		un := newCascade(&ref, &bwRef, t, tilt, &v.harm, sr)
+		v.tuneGain = levelCompensation(un, tu, f0, sr, wh, cfg.Breath)
+		if v.compSnap {
+			v.tuneNow, v.compSnap = v.tuneGain, false
+		}
+	}
 	for c := 1; c < chans; c++ {
 		u := &v.tract[c]
 		for k := range f {
@@ -662,6 +824,9 @@ func (v *Voice) setFormants(f0 float64) {
 		u.np.a, u.np.b, u.np.c = t.np.a, t.np.b, t.np.c
 		u.nz.a, u.nz.b, u.nz.c = t.nz.a, t.nz.b, t.nz.c
 		u.nasal = nasal
+		u.sub = t.sub
+		u.sp.a, u.sp.b, u.sp.c = t.sp.a, t.sp.b, t.sp.c
+		u.sz.a, u.sz.b, u.sz.c = t.sz.a, t.sz.b, t.sz.c
 	}
 }
 
@@ -678,9 +843,26 @@ func tuningOf(t float64) float64 {
 
 // shape sets the glottal pulse and the tilt from the brightness of the voice: a soft voice is breathy
 // (the folds open long, close slowly and the high partials fall away); a pressed one is bright
-func (v *Voice) shape(bright float64) {
+func (v *Voice) shape(bright, f0 float64) {
 	cfg := &v.cfg
 	sr := v.Config().SampleRate
+	if cfg.Source == 1 {
+		// Liljencrants-Fant: Rd from the brightness (a soft voice is breathy, 2.7; a pressed one 0.3), the
+		// return time at least two samples so the closing never aliases; solved again only when it moves
+		rd := cfg.Rd
+		if rd <= 0 {
+			rd = 0.3 + 2.4*math.Pow(1-bright, 1.6)
+		}
+		rd = math.Max(0.3, math.Min(rd, 2.7))
+		tp, te, ta := lfRd(rd)
+		ta = math.Max(ta, 2*f0/sr)
+		if !v.lf.ok || math.Abs(rd-v.lfRd) > 1e-3 || math.Abs(ta-v.lfTa) > 0.02*ta {
+			v.lf = lfSolve(tp, te, ta)
+			v.lfRd, v.lfTa = rd, ta
+		}
+		v.tiltCoef = 0
+		return
+	}
 	oq := cfg.OpenQuotient
 	if oq <= 0 {
 		oq = 0.85 - 0.5*bright
@@ -724,12 +906,52 @@ func (v *Voice) startConsonant() {
 	}
 	v.artT = 0
 	sh := consonants[c]
+	v.gateEnd = 0
+	if sh.vot > 0 || sh.bar > 0 {
+		v.gateEnd = int((math.Max(sh.vot+0.08, sh.dur+0.01)) * v.Config().SampleRate)
+	}
 	if sh.gain == 0 {
 		return
 	}
 	v.cons.Clear()
 	v.cons.SetFrequencyQ(math.Min(sh.freq, v.Config().SampleRate*0.45), sh.q)
 	v.consT = 0
+}
+
+func smooth01(u float64) float64 {
+	switch {
+	case u <= 0:
+		return 0
+	case u >= 1:
+		return 1
+	}
+	return u * u * (3 - 2*u)
+}
+
+// gate returns how the consonant shapes the voice at this instant: how much of the voicing sounds (a
+// voiceless consonant keeps it out until its voice onset time), how far the voice bar of a voiced
+// fricative hums in its place, and the level of the aspiration through the throat
+func (v *Voice) gate(sr float64) (voicing, bar, asp float64) {
+	voicing = 1
+	el := v.t - v.syllT0
+	if v.consNow <= NoConsonant || el < 0 || el >= v.gateEnd {
+		return
+	}
+	sh := &consonants[v.consNow]
+	t := float64(el) / sr
+	if sh.vot > 0 {
+		voicing = smooth01((t - sh.vot) / 0.008)
+		if sh.asp > 0 {
+			asp = sh.asp * math.Min(1, t/0.006)
+			if t > sh.vot {
+				asp *= math.Exp(-(t - sh.vot) / 0.02)
+			}
+		}
+	}
+	if sh.bar > 0 && t < sh.dur {
+		bar = sh.bar * math.Min(1, t/0.01) * math.Min(1, (sh.dur-t)/0.03)
+	}
+	return
 }
 
 // consonant returns the next sample of the burst (0 once it is over)
@@ -831,6 +1053,25 @@ func (v *Voice) Synthesize() {
 		chans = 2
 	}
 	jitter, shimmer := cfg.Jitter, cfg.Shimmer
+	// the natural vibrato, the whisper (voice and noise cross-fade with equal power), the voice bar
+	nat := cfg.NaturalVibrato
+	natKey := math.Max(-1, math.Min(math.Log2(f0/middleC)/2, 1))
+	depth0 := cfg.VibratoDepth
+	vibDelay2, vibRamp := vibDelay, 0.5*sr
+	if nat > 0 {
+		if depth0 <= 0 {
+			depth0 = 0.35 * nat
+		}
+		if cfg.VibratoDelay <= 0 {
+			vibDelay2 = int(0.25 * nat * sr)
+		}
+		vibRamp = (0.5 + 0.5*nat) * sr
+	}
+	whisperModded := modded && mods.Targets(dWhisper)
+	wh := math.Max(0, math.Min(cfg.Whisper, 1))
+	whPrev := -1.0
+	gv, gn := 1.0, 0.0
+	barK := 1 - math.Exp(-2*math.Pi*350/sr)
 	for i := v.waitSamps; i < n; i++ {
 		// the vowel glides; the formants follow every 32 samples
 		v.expr.Tick(sr)
@@ -846,7 +1087,7 @@ func (v *Voice) Synthesize() {
 		}
 		ph, phTo, base := v.vowelBase()
 		off := 2 * v.expr.Wheel() // the vowel's movement, in steps
-		vib0 := cfg.VibratoDepth
+		vib0 := depth0
 		breathNow := breath
 		pitchMul := 1.0
 		bnow := bright
@@ -868,6 +1109,9 @@ func (v *Voice) Synthesize() {
 			}
 			mods.Eval(sr)
 			off += mods.Mod(dVowel)
+			if whisperModded {
+				wh = math.Max(0, math.Min(cfg.Whisper+mods.Mod(dWhisper), 1))
+			}
 			vib0 += mods.Mod(dVibratoDepth)
 			breathNow = math.Max(0, breath+mods.Mod(dBreath))
 			pitchMul = math.Exp2(mods.Mod(dPitch) / 12)
@@ -896,8 +1140,8 @@ func (v *Voice) Synthesize() {
 		v.phTo = phTo
 		v.vowel += (target - v.vowel) * glide
 		if v.update == 0 {
-			v.shape(bnow)
-			v.setFormants(f0)
+			v.shape(bnow, f0)
+			v.setFormants(f0, wh)
 			if reshape {
 				v.reshape()
 			}
@@ -907,20 +1151,40 @@ func (v *Voice) Synthesize() {
 			v.artT++
 		}
 		v.artGain += (v.artTarget - v.artGain) * 0.003
+		if v.tuneGain < v.tuneNow {
+			v.tuneNow = v.tuneGain // a tract that swells is held down at once
+		} else {
+			v.tuneNow += (v.tuneGain - v.tuneNow) * 0.001
+		}
 
+		if wh != whPrev {
+			whPrev = wh
+			gv, gn = math.Cos(wh*math.Pi/2), math.Sin(wh*math.Pi/2)
+		}
 		// the vibrato comes in gently after its delay
 		vib := 0.0
-		if v.t > vibDelay {
-			vib = vib0 * math.Min(1, float64(v.t-vibDelay)/(0.5*sr))
+		if v.t > vibDelay2 {
+			vib = vib0 * math.Min(1, float64(v.t-vibDelay2)/vibRamp)
 		}
 		var src [2]float64
 		flow, sung := 0.0, 0
-		for k := range v.n {
+		voices := v.n
+		if gv < 1e-6 {
+			voices = 0 // a whisper has no voice to sing
+		}
+		for k := range voices {
 			s := &v.singers[k]
 			if v.t < s.delay {
 				continue
 			}
-			s.vibPh += s.vibRate / sr
+			rate, ext := s.vibRate, 1.0
+			if nat > 0 {
+				if (v.t+k*37)&63 == 0 {
+					s.wander(&v.nrng, nat, natKey, sr, true)
+				}
+				rate, ext = s.natRate, s.natExt
+			}
+			s.vibPh += rate / sr
 			if s.vibPh >= 1 {
 				s.vibPh--
 			}
@@ -929,9 +1193,14 @@ func (v *Voice) Synthesize() {
 				s.driftTo = (v.rng.float() - 0.5) * 0.1
 			}
 			s.drift += (s.driftTo - s.drift) * driftCoef
-			semis := vib*math.Sin(2*math.Pi*s.vibPh) + s.drift
+			semis := vib*ext*math.Sin(2*math.Pi*s.vibPh) + s.drift
 			inc := f0 * bend * pitchMul * s.detune * (1 + semis*0.05776) / sr // 2^(x/12) for small x
-			x, fl := s.g.tick(inc, v.oq, v.sq, jitter, shimmer)
+			var x, fl float64
+			if cfg.Source == 1 {
+				x, fl = s.g.tickLF(inc, &v.lf, jitter, shimmer)
+			} else {
+				x, fl = s.g.tick(inc, v.oq, v.sq, jitter, shimmer)
+			}
 			flow += fl
 			sung++
 			if stereo {
@@ -956,14 +1225,33 @@ func (v *Voice) Synthesize() {
 			// the breath is one, in the middle, and swells with the open folds
 			air = (v.rng.float() - 0.5) * (0.42 + 0.98*flow)
 		}
+		// the consonant gates the voice (a voiceless one keeps it out until its voice onset time), may
+		// hum it low (the voice bar of z, zh, v), and breathes aspiration through the throat; its
+		// noise excites the throat too, and a whisper is turbulence at the glottis
+		cn := v.consonant(sr)
+		vg, barAmt, aspC := v.gate(sr)
+		flowGate := (1-wh)*flow + wh*0.5
 		for c := range chans {
-			v.tilt[c] = (1-v.tiltCoef)*src[c] + v.tiltCoef*v.tilt[c]
+			v.tilt[c] = (1-v.tiltCoef)*src[c]*(gv*vg) + v.tiltCoef*v.tilt[c]
 			x := v.tilt[c]
+			if barAmt > 0 {
+				b := &v.bar[c]
+				b[0] += barK * (x - b[0])
+				b[1] += barK * (b[0] - b[1])
+				x += barAmt * (b[1]*barGain - x)
+			}
 			if breathNow > 0 {
 				v.breathLP[c] += (air - v.breathLP[c]) * 0.5
 				x += v.breathLP[c] * breathNow * 0.6
 			}
-			y[c] = v.tract[c].tick(x) * outScale * v.artGain
+			if gn > 0 || aspC > 0 {
+				nz := v.nrng.float()*2 - 1
+				d := nz - 0.6*v.nPrev[c] // the lips radiate: the noise is differentiated too
+				v.nPrev[c] = nz
+				x += d * (gn*whisperGain*(0.35+0.65*flowGate) + aspC*aspGain)
+			}
+			x += cn * fricFeed
+			y[c] = v.tract[c].tick(x) * outScale * v.artGain * v.tuneNow
 		}
 		g := gain
 		if modded && mods.Targets(dLevel) {
@@ -976,21 +1264,21 @@ func (v *Voice) Synthesize() {
 			}
 			v.filter.Tick(f0*bend*pitchMul, extra, 0)
 		}
-		cons := v.consonant(sr) * gain
+		cons := cn * gain
 		if stereo {
 			if filtered {
 				y[0], y[1] = v.filter.Process(0, y[0]*v.env*g), v.filter.Process(1, y[1]*v.env*g)
 			} else {
 				y[0], y[1] = y[0]*v.env*g, y[1]*v.env*g
 			}
-			channels[0][i] = float32(y[0] + cons)
-			channels[1][i] = float32(y[1] + cons)
+			channels[0][i] = float32(softClip(y[0] + cons))
+			channels[1][i] = float32(softClip(y[1] + cons))
 		} else {
 			x := y[0] * v.env * g
 			if filtered {
 				x = v.filter.Process(0, x)
 			}
-			channels[0][i] = float32(x + cons)
+			channels[0][i] = float32(softClip(x + cons))
 		}
 		v.t++
 	}
@@ -1023,9 +1311,10 @@ func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 }
 
 // ParseWord turns a text into syllables: words split by spaces, dashes or commas, each a consonant
-// (t k s sh f m n ng l r w y, or none) and a vowel (a e i o u, or a diphthong: ai au ei ou oi), so
-// "ta ke so" is three syllables, "sha-fu" two and "mai" one that glides. A lone consonant or an
-// unknown letter is an error
+// (t k s sh f m n ng l r w y p b d g z zh v, or none) and a vowel (a e i o u, or a diphthong: ai au ei
+// ou oi), so "ta ke so" is three syllables, "sha-fu" two and "mai" one that glides. The voiceless
+// p t k are aspirated and s sh f keep the voice out; b d g start the voice at once and z zh v hum
+// through their noise. A lone consonant or an unknown letter is an error
 func ParseWord(text string) ([]Syllable, error) {
 	vowels := map[string]float64{"a": 0, "e": 1, "i": 2, "o": 3, "u": 4}
 	var word []Syllable

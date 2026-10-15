@@ -39,7 +39,8 @@ func Choir() Config {
 func Ooh() Config {
 	cfg := Choir()
 	cfg.Vowel, cfg.Brightness, cfg.Attack, cfg.Release = 4, 0.2, 0.4, 0.8
-	cfg.Level = 2.09
+	cfg.Source = 1
+	cfg.Level = 1.88
 	return cfg
 }
 
@@ -51,24 +52,25 @@ func Aah() Config {
 	return cfg
 }
 
-// Breathy is a close, airy solo voice on "o"
+// Breathy is a close, airy solo voice on "o", an LF source of a high Rd
 func Breathy() Config {
 	cfg := Solo()
 	cfg.Vowel, cfg.Brightness, cfg.Breath, cfg.VibratoDepth = 3, 0.15, 0.35, 0.15
-	cfg.Level = 1.39
+	cfg.Source, cfg.NaturalVibrato = 1, 0.5
+	cfg.Level = 1.32
 	return cfg
 }
 
 // Monks are low men's voices on "o", without vibrato
 func Monks() Config {
 	return Config{Range: Bass, Vowel: 3, VowelGlide: 0.4, Brightness: 0.35, Breath: 0.05, Attack: 0.3, Release: 0.8,
-		Singers: 6, Detune: 12, Spread: 0.6, Jitter: 0.004, Shimmer: 0.03, Training: 0.3, Level: 1.02}
+		Source: 1, Singers: 6, Detune: 12, Spread: 0.6, Jitter: 0.004, Shimmer: 0.03, Training: 0.3, Level: 1.46}
 }
 
 // Angels are high voices on "i" morphing slowly, wide and airy
 func Angels() Config {
 	return Config{Range: Soprano, Vowel: 2, VowelGlide: 0.8, Brightness: 0.3, Breath: 0.15, Attack: 0.6, Release: 1.2,
-		VibratoRate: 5, VibratoDepth: 0.12, VibratoDelay: 0.4, Singers: 8, Detune: 14, Spread: 1, Jitter: 0.004, Shimmer: 0.02, Training: 0.3, Level: 2.56}
+		VibratoRate: 5, VibratoDepth: 0.12, VibratoDelay: 0.4, Singers: 8, Detune: 14, Spread: 1, Jitter: 0.004, Shimmer: 0.02, Training: 0.3, Source: 1, NaturalVibrato: 0.5, Level: 2.85}
 }
 
 // Robot is a steady, bright voice with no vibrato and no drift: a vocoder's voice
@@ -97,10 +99,10 @@ func ThroatDrone() Config {
 		Breath: 0.05, Attack: 1.2, Release: 2, Singers: 16, Detune: 35, Spread: 1, Level: 2.09}
 }
 
-// Whisper is all air: four voices breathing an "e", no tone of their own to speak of
+// Whisper is a true whisper of an "e": no voicing at all, turbulent noise at the glottis shaped by the
+// throat and mouth, a different noise in each ear
 func Whisper() Config {
-	return Config{Vowel: 1, VowelGlide: 0.2, Brightness: 0, Breath: 1, Attack: 0.15, Release: 0.5, Singers: 4,
-		Detune: 20, Spread: 0.8, Steady: true, Level: 3.45}
+	return Config{Vowel: 1, VowelGlide: 0.2, Whisper: 1, Attack: 0.15, Release: 0.5, Singers: 1, Steady: true, Level: 3.05}
 }
 
 // Alien sings with a soprano's throat whatever the note, a fast wide vibrato, three voices far apart
@@ -140,7 +142,7 @@ func Giant() Config {
 	cfg.FormantShift = 0.75
 	cfg.Singers, cfg.Detune = 3, 8
 	cfg.WordSync = 1
-	cfg.Level = 0.71
+	cfg.Level = 0.76
 	return cfg
 }
 

@@ -148,19 +148,158 @@ type tractFilter struct {
 	nz    anti
 	f     [5]reson
 	nasal float64 // how much the nose is in the path (0-1)
+	// the windpipe below the glottis: a faint pole near 600 Hz and zero near 1500 Hz, sub (0-1) deep
+	sp  reson
+	sz  anti
+	sub float64
 }
 
 func (t *tractFilter) clear() {
 	t.np.y1, t.np.y2, t.nz.x1, t.nz.x2 = 0, 0, 0, 0
+	t.sp.y1, t.sp.y2, t.sz.x1, t.sz.x2 = 0, 0, 0, 0
 	for k := range t.f {
 		t.f[k].y1, t.f[k].y2 = 0, 0
 	}
 }
 
 func (t *tractFilter) tick(x float64) float64 {
+	if t.sub > 0 {
+		x += t.sub * (t.sz.tick(t.sp.tick(x)) - x)
+	}
 	x += t.nasal * (t.nz.tick(t.np.tick(x)) - x) // always run, so it is warm when the nose opens
 	for k := range t.f {
 		x = t.f[k].tick(x)
 	}
 	return x
+}
+
+// cascade is the coefficients of the nose and the five formants, to find the gain of the tract at
+// many frequencies
+type cascade struct {
+	f     [5]reson
+	np    reson
+	nz    anti
+	nasal float64
+	tilt  float64         // the cut-off (Hz) of the source's own low-pass, 0 for none
+	harm  *[harmN]float64 // the power of the source's harmonics
+	sp    reson
+	sz    anti
+	sub   float64
+}
+
+func newCascade(f, bw *[5]float64, t *tractFilter, tilt float64, harm *[harmN]float64, sr float64) *cascade {
+	np, nz, nasal := &t.np, &t.nz, t.nasal
+	var c cascade
+	for k := range c.f {
+		c.f[k].set(f[k], bw[k], sr)
+	}
+	c.np, c.nz, c.nasal, c.tilt, c.harm = *np, *nz, nasal, tilt, harm
+	c.sp, c.sz, c.sub = t.sp, t.sz, t.sub
+	return &c
+}
+
+// gainSq is the squared gain of the tract at a frequency (Hz)
+func (c *cascade) gainSq(hz, sr float64) float64 {
+	w := 2 * math.Pi * hz / sr
+	c1, s1 := math.Cos(w), math.Sin(w)
+	c2, s2 := c1*c1-s1*s1, 2*s1*c1
+	g := 1.0
+	for k := range c.f {
+		r := &c.f[k]
+		re, im := 1-r.b*c1-r.c*c2, r.b*s1+r.c*s2 // 1 - b z^-1 - c z^-2 on the unit circle
+		g *= r.a * r.a / (re*re + im*im)
+	}
+	if c.nasal <= 0 && c.sub <= 0 {
+		return g
+	}
+	z1 := complex(c1, -s1)
+	z2 := z1 * z1
+	if c.sub > 0 {
+		p := complex(c.sp.a, 0) / (1 - complex(c.sp.b, 0)*z1 - complex(c.sp.c, 0)*z2)
+		z := complex(c.sz.a, 0) + complex(c.sz.b, 0)*z1 + complex(c.sz.c, 0)*z2
+		h := 1 + complex(c.sub, 0)*(z*p-1)
+		g *= real(h)*real(h) + imag(h)*imag(h)
+	}
+	if c.nasal > 0 {
+		p := complex(c.np.a, 0) / (1 - complex(c.np.b, 0)*z1 - complex(c.np.c, 0)*z2)
+		z := complex(c.nz.a, 0) + complex(c.nz.b, 0)*z1 + complex(c.nz.c, 0)*z2
+		h := 1 + complex(c.nasal, 0)*(z*p-1)
+		g *= real(h)*real(h) + imag(h)*imag(h)
+	}
+	return g
+}
+
+// level is the level of a tract for a voice of the pitch f0: the power over its harmonics (each of the
+// same strength, the source tilting down a little), at the worst of some pitches around f0, so a
+// harmonic landing right on a narrow peak counts. With f0 0 it is the level for noise: the mean power
+// over the whole spectrum
+func (c *cascade) level(f0, sr float64) float64 {
+	const top = 7000.0
+	if f0 <= 0 {
+		sum, n := 0.0, 0
+		for hz := 40.0; hz < top; hz += 80 {
+			sum += c.gainSq(hz, sr) / (1 + hz/3000)
+			n++
+		}
+		return math.Sqrt(sum / float64(n))
+	}
+	worst, total := 0.0, 0.0
+	for _, m := range [5]float64{0.94, 0.97, 1, 1.03, 1.06} {
+		f := f0 * m
+		sum := 0.0
+		for h := 1; float64(h)*f < top; h++ {
+			hz := float64(h) * f
+			sum += c.gainSq(hz, sr) * c.source(h, hz)
+		}
+		worst = math.Max(worst, sum)
+		total += sum / 5
+	}
+	if c.nasal > 0.3 {
+		return math.Sqrt(total) // a nose has notches, that the harmonics sit in or out of
+	}
+	return math.Sqrt(math.Sqrt(worst * total)) // between the worst alignment and the average one
+}
+
+// source is the power of the h-th harmonic of the source, at a frequency: the pulse's own spectrum, and
+// the low-pass of a soft voice
+func (c *cascade) source(h int, hz float64) float64 {
+	var p float64
+	if h <= harmN {
+		p = c.harm[h-1]
+	} else {
+		r := float64(harmN) / float64(h)
+		p = c.harm[harmN-1] * r * r // falling like the square of the number beyond the table
+	}
+	if c.tilt > 0 {
+		p /= 1 + hz*hz/(c.tilt*c.tilt)
+	}
+	return p
+}
+
+// refPitch is the pitch (Hz, MIDI 57) whose level the voice keeps at every pitch
+const refPitch = 220.0
+
+// levelCompensation is the gain that keeps the level of the tract the same wherever the pitch is: a
+// tract with a narrow peak lands it on the few harmonics of a high voice and would swell far beyond
+// (or, with the nose in the path, fall away to nothing). The level of the tract as it is tuned to f0
+// is set against the level the untuned tract has at refPitch, and for noise (a whisper) against the
+// untuned tract's
+func levelCompensation(ref, tuned *cascade, f0, sr, wh, breath float64) float64 {
+	boost := 2.0 // a tract that comes out low is lifted a little; the nose, which lets little through, a lot
+	if tuned.nasal > 0.3 {
+		boost = 40
+	}
+	voiced, noise := 1.0, 1.0
+	wh = math.Max(wh, math.Min(0.5, breath)) // the breath is noise through the tract too
+	if wh < 1 {
+		if l := tuned.level(f0, sr); l > 1e-9 {
+			voiced = math.Max(0.01, math.Min(ref.level(refPitch, sr)/l, boost))
+		}
+	}
+	if wh > 0 {
+		if l := tuned.level(0, sr); l > 1e-9 {
+			noise = math.Max(0.01, math.Min(ref.level(0, sr)/l, 10))
+		}
+	}
+	return voiced*(1-wh) + noise*wh
 }

@@ -413,10 +413,11 @@ func TestFormantTuning(t *testing.T) {
 	if math.Abs(vl.fnow[0]-nat[0]) > 0.01*nat[0] {
 		t.Errorf("a low note moves F1 to %g (from %g)", vl.fnow[0], nat[0])
 	}
-	// and the fundamental is stronger for it
+	// and the fundamental is stronger for it through the tract (the level stage after it keeps the overall
+	// level the same at every pitch, so its gain is taken out)
 	level := func(c Config) float64 {
-		_, x, _ := sing(c, psalm.Message{"pitch": pitch}, 0.8)
-		return amplitude(x[int(0.4*sr()):], f)
+		v, x, _ := sing(c, psalm.Message{"pitch": pitch}, 0.8)
+		return amplitude(x[int(0.4*sr()):], f) / v.tuneNow
 	}
 	if level(cfg) < 1.5*level(off) {
 		t.Errorf("tuning doesn't bring out the fundamental")

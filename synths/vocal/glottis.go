@@ -40,6 +40,7 @@ type glottis struct {
 	rng    randSource
 	cycle  float64 // the length in samples of the cycle that began last
 	cycles int     // the cycles begun
+	fl     float64 // the flow of the Liljencrants-Fant pulse so far this cycle
 }
 
 // polyBLEP is the correction of a unit step at t = 0 (phase 0-1, dt the step per sample)
@@ -82,6 +83,13 @@ func (g *glottis) tick(inc, oq, sq, jitter, shimmer float64) (dv, flow float64) 
 	}
 	dv += glottalScale * math.Pi / (2 * tn) / 2 * polyBLEP(t, dt)
 	dv *= g.amp
+	g.advance(dt, inc, jitter, shimmer)
+	return dv, flow
+}
+
+// advance moves the phase on by dt and, at the end of a cycle, draws the length and the loudness of the
+// next one
+func (g *glottis) advance(dt, inc, jitter, shimmer float64) {
 	g.phase += dt
 	if g.phase >= 1 {
 		g.phase--
@@ -89,6 +97,7 @@ func (g *glottis) tick(inc, oq, sq, jitter, shimmer float64) (dv, flow float64) 
 			g.phase = 0
 		}
 		g.cycles++
+		g.fl = 0
 		g.mul, g.amp = 1, 1
 		if jitter > 0 {
 			g.mul = math.Max(0.5, math.Min(1+jitter*math.Sqrt(3)*(g.rng.float()*2-1), 1.5))
@@ -98,5 +107,175 @@ func (g *glottis) tick(inc, oq, sq, jitter, shimmer float64) (dv, flow float64) 
 		}
 		g.cycle = g.mul / math.Max(inc, 1e-9)
 	}
+}
+
+// tickLF is tick for the Liljencrants-Fant pulse p
+func (g *glottis) tickLF(inc float64, p *lfPulse, jitter, shimmer float64) (dv, flow float64) {
+	if g.mul == 0 {
+		g.mul, g.amp = 1, 1
+	}
+	dt := math.Min(inc/g.mul, 0.45)
+	d := p.at(g.phase)
+	g.fl += d * dt
+	flow = math.Max(0, math.Min(g.fl, 1))
+	dv = d * p.out * g.amp
+	g.advance(dt, inc, jitter, shimmer)
 	return dv, flow
+}
+
+// The Liljencrants-Fant model of the flow's derivative over one cycle (time in cycles, the period 1):
+// from the opening to the instant te the folds close at, an exponentially growing sine (growth alpha,
+// half a period of it in tp, so the flow peaks at tp); then a return of the flow to zero, an
+// exponential of time constant 1/eps that ends in the cycle's end, with ta its effective length. The
+// negative peak at te is Ee = 1, and alpha is solved so the derivative integrates to zero: the flow
+// ends where it began. The pulse is kept at a flow peak of 1 (for the breath that follows it), and the voice sings it with the
+// closing peak, the excitation, at the same strength whatever the quality: a breathy voice has more of the
+// fundamental, the loudness above it stays.
+type lfPulse struct {
+	tp, te, ta float64
+	alpha, eps float64
+	e0, ret    float64 // the amplitudes of the two parts
+	tb, ebt    float64 // 1-te and exp(-eps tb)
+	out        float64 // brings the closing peak to 1
+	ok         bool
+}
+
+// lfRd derives tp, te and ta (in periods) from the single voice-quality parameter Rd (0.3 pressed to
+// 2.7 breathy), by Fant's regression of Ra, Rk and Rg on Rd
+func lfRd(rd float64) (tp, te, ta float64) {
+	rd = math.Max(0.3, math.Min(rd, 2.7))
+	ra := (-1 + 4.8*rd) / 100
+	rk := (22.4 + 11.8*rd) / 100
+	rg := rk / (4 * (0.11*rd/(0.5+1.2*rk) - ra))
+	tp = 1 / (2 * rg)
+	return tp, tp * (rk + 1), ra
+}
+
+// lfSolve solves the pulse of the times tp < te < 1 and the return time ta
+func lfSolve(tp, te, ta float64) lfPulse {
+	tp = math.Max(0.05, math.Min(tp, 0.9))
+	te = math.Max(tp+0.02, math.Min(te, 0.98))
+	tb := 1 - te
+	ta = math.Max(1e-4, math.Min(ta, 0.9*tb))
+	p := lfPulse{tp: tp, te: te, ta: ta, tb: tb}
+	// eps: eps ta = 1 - exp(-eps tb), by Newton from 1/ta
+	eps := 1 / ta
+	for range 40 {
+		e := math.Exp(-eps * tb)
+		f := eps*ta - 1 + e
+		df := ta - tb*e
+		if df == 0 {
+			break
+		}
+		next := eps - f/df
+		if next <= 0 {
+			next = eps / 2
+		}
+		if math.Abs(next-eps) < 1e-12*eps {
+			eps = next
+			break
+		}
+		eps = next
+	}
+	p.eps = eps
+	p.ebt = math.Exp(-eps * tb)
+	w := math.Pi / tp
+	sw, cw := math.Sincos(w * te)
+	// the integral of the derivative over the cycle, for Ee = 1, as a function of alpha
+	ret := -(1 / (eps * ta)) * ((1-p.ebt)/eps - tb*p.ebt)
+	g := func(a float64) float64 {
+		open := -((a*sw - w*cw) + w*math.Exp(-a*te)) / (sw * (a*a + w*w))
+		return open + ret
+	}
+	a, ok := 0.0, false
+	// Newton from a typical value, with a numerical slope
+	a = 4
+	for range 30 {
+		f := g(a)
+		if math.Abs(f) < 1e-12 {
+			ok = true
+			break
+		}
+		h := 1e-5 * math.Max(1, math.Abs(a))
+		df := (g(a+h) - g(a-h)) / (2 * h)
+		if df == 0 || math.IsNaN(df) {
+			break
+		}
+		a -= f / df
+		if a < -60 || a > 400 || math.IsNaN(a) {
+			break
+		}
+	}
+	if !ok || math.Abs(g(a)) > 1e-8 {
+		// a scan for the sign change, then bisection
+		lo, flo := -60.0, g(-60)
+		for x := -59.0; x <= 400; x += 1 {
+			fx := g(x)
+			if flo*fx <= 0 {
+				l, h := lo, x
+				for range 60 {
+					m := (l + h) / 2
+					if g(l)*g(m) <= 0 {
+						h = m
+					} else {
+						l = m
+					}
+				}
+				a, ok = (l+h)/2, true
+				break
+			}
+			lo, flo = x, fx
+		}
+	}
+	p.alpha = a
+	p.ok = ok || math.Abs(g(a)) < 1e-6
+	p.ret = -1 / (eps * ta)
+	p.e0 = -1 / (math.Exp(a*te) * sw)
+	// scale to a flow peak of 1 (at tp the derivative crosses zero)
+	peak := p.e0 * w * (math.Exp(a*tp) + 1) / (a*a + w*w)
+	if peak > 1e-9 {
+		p.e0 /= peak
+		p.ret /= peak
+	}
+	if ee := -p.ret * (1 - p.ebt); ee > 1e-9 {
+		p.out = 1 / ee
+	}
+	return p
+}
+
+// at is the derivative of the flow at time t of the cycle (0-1)
+func (p *lfPulse) at(t float64) float64 {
+	if t < p.te {
+		return p.e0 * math.Exp(p.alpha*t) * sinTurn(t/(2*p.tp))
+	}
+	return p.ret * (math.Exp(-p.eps*(t-p.te)) - p.ebt)
+}
+
+// harmN is how many harmonics of the source's spectrum are tabulated
+const harmN = 64
+
+// sourceHarmonics is the power of the first harmonics of the pulse the voice sings (one cycle of the
+// derivative of the flow, the same for every pitch: what changes with the pitch is only where in Hz the
+// harmonics stand). lf is nil for the Rosenberg-Klatt pulse
+func sourceHarmonics(oq, sq float64, lf *lfPulse) (p [harmN]float64) {
+	const n = 512
+	var g glottis
+	x := make([]float64, n)
+	for i := range x {
+		if lf != nil {
+			x[i], _ = g.tickLF(1.0/n, lf, 0, 0)
+		} else {
+			x[i], _ = g.tick(1.0/n, oq, sq, 0, 0)
+		}
+	}
+	for h := 1; h <= harmN; h++ {
+		var re, im float64
+		for i, v := range x {
+			a := 2 * math.Pi * float64(h*i) / n
+			re += v * math.Cos(a)
+			im += v * math.Sin(a)
+		}
+		p[h-1] = (re*re + im*im) / (n * n)
+	}
+	return
 }
