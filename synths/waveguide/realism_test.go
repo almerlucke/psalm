@@ -339,19 +339,51 @@ func TestFretNoiseAndBuzz(t *testing.T) {
 	if b := rms(diff[int(0.1*sr()):]); b > 1e-6 {
 		t.Errorf("the fret noise goes on: %g", b)
 	}
-	// the fret buzz hits a loud string and not a quiet one: more high partials from the same pluck
-	buzz := func(b, vel float64) float64 {
+	// the fret buzz hits a loud string and not a quiet one: a rattle of high frequencies from the same
+	// pluck (the second difference is what a hiss is), and nothing at all from a high action
+	buzz := func(b, vel float64) []float64 {
 		sameNoise()
 		c := dry(plain(Steel()))
 		c.FretBuzz, c.Brightness = b, 0
 		v := New(c)
 		v.NoteOn(1, psalm.Message{"pitch": 45.0, "velocity": vel}, psalm.CtrlTick{}, v.Config())
-		x := run(v, 0.5)
-		y := x[int(0.05*sr()) : int(0.05*sr())+8192]
-		return band(y, hz(45), 16, 17, 18, 19, 20, 21, 22) / band(y, hz(45), 1, 2, 3)
+		return run(v, 0.5)
 	}
-	if clean, buzzing := buzz(0, 1), buzz(1, 1); buzzing < 2*clean {
-		t.Errorf("a buzzing string has %.4f of high partials, a clean one %.4f", buzzing, clean)
+	rattle := func(x []float64) float64 {
+		d := make([]float64, 10000)
+		for i := range d {
+			j := 2000 + i
+			d[i] = x[j+2] - 2*x[j+1] + x[j]
+		}
+		return rms(d) / rms(x[2000:12000])
+	}
+	if clean, buzzing := rattle(buzz(0, 1)), rattle(buzz(1, 1)); buzzing < 2*clean {
+		t.Errorf("a buzzing string rattles %.4f, a clean one %.4f", buzzing, clean)
+	}
+	// a high action (a little FretBuzz) and a soft pluck never touch the fret: the string is as it was
+	a, b := buzz(0, 0.1), buzz(0.05, 0.1)
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("a high action buzzes at %d", i)
+		}
+	}
+	// the harder pluck of the same string does buzz, and the fret it hits is where FretPosition says
+	if c, d := buzz(0.15, 1), buzz(0, 1); rattle(c) < 1.1*rattle(d) {
+		t.Errorf("a hard pluck of a low-ish action doesn't touch: %.4f vs %.4f", rattle(c), rattle(d))
+	}
+	sameNoise()
+	cfg = dry(plain(Steel()))
+	cfg.FretBuzz, cfg.Brightness = 1, 0
+	_, near := play(cfg, 45, 0.3)
+	sameNoise()
+	cfg.FretPosition = 0.4
+	_, far := play(cfg, 45, 0.3)
+	moved := 0.0
+	for i := range near {
+		moved += math.Abs(near[i] - far[i])
+	}
+	if moved < 1 {
+		t.Errorf("the fret position changes nothing")
 	}
 }
 
@@ -375,7 +407,7 @@ func bowedWith(force, speed float64, pitch float64) (*Voice, []float64) {
 	sameNoise()
 	cfg := dry(Violin())
 	cfg.VibratoDepth = 0
-	cfg.BowForce, cfg.BowSpeed = force, speed
+	cfg.BowModel, cfg.BowForce, cfg.BowSpeed = 1, force, speed
 	return play(cfg, pitch, 1.5)
 }
 
@@ -420,10 +452,10 @@ func TestBowStickSlip(t *testing.T) {
 	// without BowForce the pressure plays as it did
 	sameNoise()
 	cfg := dry(Violin())
-	cfg.VibratoDepth = 0
+	cfg.VibratoDepth, cfg.BowModel = 0, 0
 	_, a := play(cfg, 55, 0.5)
 	sameNoise()
-	cfg.BowSpeed, cfg.BowNoise, cfg.BowReverse = 0.9, 0.5, 0.1
+	cfg.BowForce, cfg.BowSpeed, cfg.BowNoise, cfg.BowReverse = 0.9, 0.9, 0.5, 0.1
 	_, b := play(cfg, 55, 0.5)
 	for i := range a {
 		if a[i] != b[i] {

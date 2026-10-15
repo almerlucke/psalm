@@ -57,6 +57,7 @@ func Describe(cfg Config) params.Set {
 			params.K("Pluck", "harmonic", 0, 0.5, cfg.Harmonic),
 			params.K("Pluck", "fretNoise", 0, 1, cfg.FretNoise, params.Label("fret noise")),
 			params.K("Pluck", "fretBuzz", 0, 1, cfg.FretBuzz, params.Label("fret buzz")),
+			params.K("Pluck", "fretPosition", 0.05, 0.98, fretPosition(cfg), params.Label("fret position")),
 			params.K("Pluck", "slide", 0, 2, cfg.Slide, params.Unit("s")),
 
 			params.K("String", "inharmonicity", 0, 0.005, cfg.Inharmonicity),
@@ -64,6 +65,7 @@ func Describe(cfg Config) params.Set {
 			params.K("String", "tensionMod", 0, 1, cfg.TensionMod, params.Label("tension")),
 			params.K("String", "bodyCoupling", 0, 1, cfg.BodyCoupling, params.Label("body coupling")),
 
+			params.C("Bow", "bowModel", []string{"table", "friction"}, min(1, max(0, cfg.BowModel)), params.Label("model")),
 			params.K("Bow", "bowPressure", 0, 1, cfg.Pressure, params.Label("pressure")),
 			params.K("Bow", "bowPosition", 0.02, 0.5, max(0.02, min(cfg.BowPosition, 0.5)), params.Label("position")),
 			params.K("Bow", "bowForce", 0, 1, cfg.BowForce, params.Label("force")),

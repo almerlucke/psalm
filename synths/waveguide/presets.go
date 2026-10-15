@@ -111,28 +111,47 @@ func Pizzicato() Config {
 	return c
 }
 
+// rubbed makes a bowed string a friction curve (BowModel 1): a bow of a weight (BowForce, 0-1: from
+// 0.06, a light bow, to 0.16 a heavy one that holds the string at the lower notes), the speed
+// following the velocity and the weight following the speed. The grain of the rosin (BowNoise) is
+// left to Rosin: it makes a bow that holds on one string slip to another on the next
+func rubbed(c Config, force float64) Config {
+	c.BowModel, c.BowForce = 1, force
+	return c
+}
+
 // Violin is bowed, with a vibrato that comes in after the start
-func Violin() Config { return bowed(0.55, 0.127, 0.08, 0.15, 5.5, 0.12, 0.25, ViolinBody, 0.6, 1.1) }
+func Violin() Config {
+	return rubbed(bowed(0.55, 0.127, 0.08, 0.15, 5.5, 0.12, 0.25, ViolinBody, 0.6, 1.315), 0.14)
+}
 
 // Cello is bowed lower on the string, slower, through the large body
-func Cello() Config { return bowed(0.6, 0.15, 0.12, 0.25, 5, 0.12, 0.3, CelloBody, 0.6, 0.85) }
+func Cello() Config {
+	return rubbed(bowed(0.6, 0.15, 0.12, 0.25, 5, 0.12, 0.3, CelloBody, 0.6, 1.348), 0.1)
+}
 
 // SlowStrings swell in and fade out slowly
-func SlowStrings() Config { return bowed(0.5, 0.13, 0.6, 0.9, 5, 0.1, 0.4, ViolinBody, 0.6, 1.2) }
+func SlowStrings() Config {
+	return rubbed(bowed(0.5, 0.13, 0.6, 0.9, 5, 0.1, 0.4, ViolinBody, 0.6, 1.576), 0.12)
+}
 
 // Ponticello is bowed close to the bridge: glassy, with the high partials
-func Ponticello() Config { return bowed(0.6, 0.08, 0.1, 0.2, 0, 0, 0, ViolinBody, 0.5, 1) }
+func Ponticello() Config {
+	return rubbed(bowed(0.6, 0.08, 0.1, 0.2, 0, 0, 0, ViolinBody, 0.5, 1.98), 0.12)
+}
 
 // Rosin is a violin bowed by the physics of the thing: a friction curve with a memory, a bow
 // that has a weight and a speed, the grain of the rosin, and a bow that turns round
 func Rosin() Config {
-	c := bowed(0, 0.127, 0.08, 0.15, 5.5, 0.1, 0.25, ViolinBody, 0.6, 0.933)
-	c.BowForce, c.BowSpeed, c.BowNoise, c.BowReverse = 0.3, 0.5, 0.3, 1.6
+	c := bowed(0.55, 0.127, 0.08, 0.15, 5.5, 0.1, 0.25, ViolinBody, 0.6, 0.933) // the pressure is that of the table bow, for the highest notes
+	c.BowModel, c.BowForce, c.BowSpeed, c.BowNoise, c.BowReverse = 1, 0.3, 0.5, 0.3, 1.6
 	return c
 }
 
 // Flautando is bowed lightly over the fingerboard: soft and airy, like a flute
-func Flautando() Config { return bowed(0.25, 0.4, 0.15, 0.2, 5, 0.08, 0.3, ViolinBody, 0.5, 1.2) }
+func Flautando() Config {
+	return rubbed(bowed(0.25, 0.4, 0.15, 0.2, 5, 0.08, 0.3, ViolinBody, 0.5, 1.126), 0.12)
+}
 
 // GlassHarp is a string with no losses to speak of, plucked near its end: it shimmers for many
 // seconds, its overtones dying no faster than the note
@@ -154,7 +173,9 @@ func Wire() Config {
 func EBow() Config { return bowed(0.5, 0.1, 0.8, 0.4, 0, 0, 0, NoBody, 0, 0.618) }
 
 // GhostBow is a cello bowed so lightly the note floats, swelling in, a slow wide vibrato
-func GhostBow() Config { return bowed(0.18, 0.35, 1.2, 1.5, 3, 0.35, 0.2, CelloBody, 0.5, 1.79) }
+func GhostBow() Config {
+	return rubbed(bowed(0.18, 0.35, 1.2, 1.5, 3, 0.35, 0.2, CelloBody, 0.5, 1.327), 0.14)
+}
 
 // Scrape is a bow pressed hard close to the bridge: gritty, metallic, on the edge of breaking
 func Scrape() Config { return bowed(0.95, 0.1, 0.05, 0.1, 0, 0, 0, NoBody, 0, 0.556) }
