@@ -7,6 +7,7 @@ import (
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/fft"
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -238,5 +239,37 @@ func TestModulatedSettingsDontClick(t *testing.T) {
 
 	if modDepth > 1.1 || feedback > 1.1 {
 		t.Fatalf("parameter changes click at buffer boundaries: mod depth %.2f, feedback %.2f", modDepth, feedback)
+	}
+}
+
+// roughness is the energy of what changes fast: the difference of neighbouring samples
+func roughness(cfg Config) float64 {
+	v := New(cfg)
+	v.NoteOn(0.8, psalm.Message{"pitch": 60.0}, psalm.CtrlTick{}, v.Config())
+	var e, prev float64
+	for range 30 {
+		v.Synthesize()
+		for _, s := range v.Output(0).Channels[0] {
+			d := float64(s) - prev
+			e += d * d
+			prev = float64(s)
+		}
+	}
+	return e
+}
+
+func TestFilterDarkens(t *testing.T) {
+	open := DefaultConfig()
+	open.Ops[1].Level = 1.5
+	closed := open
+	closed.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 600, KeyTrack: 0}
+	o, c := roughness(open), roughness(closed)
+	if o == 0 || c > o*0.5 {
+		t.Errorf("roughness %g without a filter, %g with a low pass at 600 Hz", o, c)
+	}
+	v := New(open)
+	v.ReceiveMessage(psalm.Message{"filterType": int(voicefilter.Ladder24), "cutoff": 500.0})
+	if v.cfg.Filter.Type != voicefilter.Ladder24 || v.cfg.Filter.Cutoff != 500 {
+		t.Errorf("filter settings %+v", v.cfg.Filter)
 	}
 }

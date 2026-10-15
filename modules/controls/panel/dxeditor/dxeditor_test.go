@@ -139,3 +139,30 @@ func TestPatchesOfYourOwn(t *testing.T) {
 		t.Errorf("loaded back: coarse %d, algorithm %d, routing %v, name %q", v.Ops[2].Coarse, v.Algorithm+1, v.Routing != nil, e.patchName())
 	}
 }
+
+// the filter after the operators is set like the other settings
+func TestEditorFilter(t *testing.T) {
+	p := psalm.New(nil)
+	start := dx.Presets["bellPad"]()
+	synth := dx.NewPoly(start, 1, 2)
+	synth.AddTo(p)
+	ctl := panel.New(p, "Test")
+	e := Add(ctl, "DX", synth, start)
+	for _, k := range []string{"filterType", "filterCutoff", "filterResonance", "filterEnvAmount", "filterKeyTrack", "filterAttack", "filterDecay", "filterSustain", "filterRelease"} {
+		if e.Setting(k) == nil {
+			t.Errorf("no %s", k)
+		}
+	}
+	e.Setting("filterType").Set(1)
+	e.Setting("filterCutoff").Set(40)
+	var ts int64
+	for range 2 {
+		ts += int64(synth.Config().BufferSize)
+		ctl.CtrlTick(psalm.CtrlTick{SampleTimestamp: ts})
+	}
+	var got dx.Patch
+	synth.CallVoices(func(v *dx.Voice) { got = v.Patch() })
+	if !got.FilterSet || got.Filter.Type != 1 || got.Filter.Cutoff != 40 {
+		t.Errorf("the voice plays filter %+v (set %v)", got.Filter, got.FilterSet)
+	}
+}

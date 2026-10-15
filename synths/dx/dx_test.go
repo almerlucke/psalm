@@ -408,3 +408,36 @@ func TestRoutingOfYourOwn(t *testing.T) {
 		t.Errorf("settings by message: coarse %d, carriers %v", own.patch.Ops[1].Coarse, own.alg.Carriers)
 	}
 }
+
+// the filter darkens the sound: its settings by name, the sound with less of what changes fast
+func TestFilterDarkens(t *testing.T) {
+	rough := func(p Patch) float64 {
+		v := New(p, 2)
+		v.NoteOn(0.8, psalm.Message{"pitch": 60.0}, psalm.CtrlTick{}, v.Config())
+		var e, prev float64
+		for range 30 {
+			v.Synthesize()
+			for _, s := range v.Output(0).Channels[0] {
+				d := float64(s) - prev
+				e += d * d
+				prev = float64(s)
+			}
+		}
+		return e
+	}
+	open := Presets["bellPad"]()
+	closed := open
+	closed.Set("filterType", 1)
+	closed.Set("filterCutoff", 10)
+	closed.Set("filterKeyTrack", 0)
+	closed.Set("filterEnvAmount", 0)
+	if v, _ := open.Get("filterType"); v != 0 {
+		t.Errorf("a patch without a filter has type %v", v)
+	}
+	if v, _ := closed.Get("filterCutoff"); v != 10 {
+		t.Errorf("cutoff %v", v)
+	}
+	if o, c := rough(open), rough(closed); o == 0 || c > o*0.5 {
+		t.Errorf("roughness %g without a filter, %g through a low pass", o, c)
+	}
+}

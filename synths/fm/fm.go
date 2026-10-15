@@ -9,6 +9,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -27,13 +28,14 @@ type Config struct {
 	NumChannels  int
 	Algorithm    int // index in Algorithms
 	Ops          [NumOperators]OperatorConfig
-	Feedback     float64 // 0-1, operator 4 modulates itself (towards a saw, then noise)
-	ModDepth     float64 // scales the level of all modulators (brightness), 0 is treated as 1
-	Glide        float64 // portamento in milliseconds from the previous note of the voice
-	VibratoRate  float64 // Hz
-	VibratoDepth float64 // semitones
-	VibratoDelay float64 // fade in time in milliseconds after note on
-	Level        float64 // output level (0 is treated as 1)
+	Feedback     float64            // 0-1, operator 4 modulates itself (towards a saw, then noise)
+	ModDepth     float64            // scales the level of all modulators (brightness), 0 is treated as 1
+	Glide        float64            // portamento in milliseconds from the previous note of the voice
+	VibratoRate  float64            // Hz
+	VibratoDepth float64            // semitones
+	VibratoDelay float64            // fade in time in milliseconds after note on
+	Level        float64            // output level (0 is treated as 1)
+	Filter       voicefilter.Config // a filter after the operators (off unless its Type is set)
 }
 
 func DefaultConfig() Config {
@@ -77,6 +79,7 @@ type Voice struct {
 	vibFade    float64
 	vibFadeInc float64
 	waitSamps  int
+	filter     *voicefilter.Filter
 
 	// operator levels and feedback glide over a buffer to their new values, so changing them (for
 	// example the mod depth from an LFO) doesn't step and click
@@ -105,6 +108,7 @@ func New(cfg Config) *Voice {
 		v.envs[i] = adsr.New(&v.cfg.Ops[i].Env, adsr.NoteOff, sr)
 	}
 
+	v.filter = voicefilter.New(cfg.Filter, sr, cfg.NumChannels)
 	v.setAlgorithm(cfg.Algorithm)
 	v.SetSelf(v)
 
@@ -141,6 +145,8 @@ func (v *Voice) SetPitch(pitch float64) {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	v.filter.Receive(msg)
+	v.cfg.Filter = v.filter.Config()
 	// "amp" is the envelope of the carriers (the operators heard), "op1".."op4" each operator's
 	for _, c := range Algorithms[v.cfg.Algorithm%len(Algorithms)].Carriers {
 		envelope.Receive(msg, "amp", &v.cfg.Ops[c].Env)
@@ -214,6 +220,8 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 		v.vibFadeInc = 1.0 / (v.cfg.VibratoDelay * 0.001 * v.Config().SampleRate)
 	}
 
+	v.filter.Trigger(duration*1000.0, mode)
+
 	// carriers get the note amplitude, modulators shape the timbre
 	for i, env := range v.envs {
 		level := 1.0
@@ -228,12 +236,14 @@ func (v *Voice) NoteOff() {
 	for _, env := range v.envs {
 		env.Release()
 	}
+	v.filter.Release()
 }
 
 func (v *Voice) Clear() {
 	for _, env := range v.envs {
 		env.Clear()
 	}
+	v.filter.Clear()
 	v.Output(0).Clear()
 }
 
@@ -312,6 +322,7 @@ func (v *Voice) Synthesize() {
 		glideCoef = 1.0 - math.Exp(-1.0/(cfg.Glide*0.001*sr))
 	}
 
+	filtered := v.filter.On()
 	carrierScale := level / float64(len(alg.Carriers))
 	hasMod := false // whether any operator modulates another (the wheel brightens), or all are carriers
 	for op := range v.modTargets {
@@ -377,9 +388,16 @@ func (v *Voice) Synthesize() {
 			}
 		}
 
-		val := float32(sample * carrierScale)
-		for _, ch := range outs {
-			ch[i] = val
+		val := sample * carrierScale
+		if filtered {
+			v.filter.Tick(freq, 1.5*v.expr.Wheel(), 0)
+			for c, ch := range outs {
+				ch[i] = float32(v.filter.Process(c, val))
+			}
+		} else {
+			for _, ch := range outs {
+				ch[i] = float32(val)
+			}
 		}
 	}
 

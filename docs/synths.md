@@ -71,6 +71,29 @@ levels of the DX7.
 synth.ReceiveMessage(psalm.Message{"ampAttack": 400.0, "ampRelease": 2500.0, "filterSustain": 0.2})
 ```
 
+## The voice filter
+
+`blocks/voicefilter`
+
+A filter after the oscillators of a voice, the same on the synths that have no filter of their own
+(fm, dx, and more as they get it): state variable (low, band, high, notch) or a ladder (24 or 12 dB),
+with its own envelope, key tracking and drive. It is off until its type is set.
+
+| Message | |
+|---|---|
+| `filterType` | 0 off, 1 low pass, 2 band pass, 3 high pass, 4 notch, 5 ladder 24, 6 ladder 12 |
+| `cutoff`, `resonance` | Hz, 0-1 |
+| `filterEnvAmount` | octaves the envelope opens the cutoff |
+| `keyTrack` | 0-1, the cutoff follows the note |
+| `filterDrive` | ladder input saturation |
+| `filterAttack`, `filterDecay`, `filterSustain`, `filterRelease` | the envelope (ms, sustain 0-1) |
+
+In a config it is `Config.Filter` (a `voicefilter.Config`): `cfg.Filter = voicefilter.Config{Type:
+voicefilter.LowPass, Cutoff: 1200, Resonance: 0.3, EnvAmount: 2}`. The dx synth keeps it in the patch,
+the way the DX7's own settings are, 0 to 99: `filterType`, `filterCutoff`, `filterResonance`,
+`filterEnvAmount`, `filterKeyTrack`, `filterAttack`, `filterDecay`, `filterSustain`, `filterRelease`
+(`Patch.Filter`, not part of the SysEx data), with a row in the dx editor.
+
 ## poly
 
 `modules/poly`

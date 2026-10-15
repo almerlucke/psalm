@@ -49,6 +49,12 @@ type Patch struct {
 	// modulates which, the carriers, the feedback loop (see Algorithm.Check). It isn't part of the
 	// SysEx data: a patch with one is sent as its Algorithm
 	Routing *Algorithm
+
+	// Filter is a filter after the operators (the DX7 has none), set by the "filter..." settings.
+	// Like the routing it isn't part of the SysEx data. FilterSet says it has been set (a patch
+	// without plays no filter)
+	Filter    Filter
+	FilterSet bool
 }
 
 // Routed returns the algorithm the patch plays: its own Routing, or one of the 32

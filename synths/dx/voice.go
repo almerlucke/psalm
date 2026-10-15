@@ -1,11 +1,13 @@
 package dx
 
 import (
+	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/expression"
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -55,6 +57,8 @@ type Voice struct {
 	// original hardware removes that offset in its analog output stage
 	dcX, dcY float64
 	dcCoef   float64
+
+	filter *voicefilter.Filter // after the operators, set by the patch (its Filter)
 }
 
 func New(patch Patch, numChannels int) *Voice {
@@ -75,6 +79,7 @@ func New(patch Patch, numChannels int) *Voice {
 	}
 	v.pitchEnv.reset()
 	v.dcCoef = 1.0 - 2.0*math.Pi*10.0/v.Config().SampleRate // 10 Hz high pass
+	v.filter = voicefilter.New(voicefilter.Config{}, v.Config().SampleRate, numChannels)
 	v.SetPatch(patch)
 	v.SetSelf(v)
 
@@ -88,6 +93,7 @@ func (v *Voice) SetPatch(patch Patch) {
 	}
 	v.patch = patch
 	v.alg = patch.Routed()
+	v.filter.SetConfig(patch.filter().Config())
 
 	v.isCarrier = [NumOperators]bool{}
 	for _, c := range v.alg.Carriers {
@@ -198,6 +204,7 @@ func (v *Voice) start(duration float64, amplitude float64, message psalm.Message
 	}
 
 	v.pitchEnv.keyOn(p.PitchEGRates, p.PitchEGLevels, 0.0, sr)
+	v.filter.Trigger(0, adsr.NoteOff)
 
 	// carriers add up, scale by their summed level so several loud carriers don't clip, while a
 	// single carrier (or carriers that are turned down) keeps its full level
@@ -235,6 +242,7 @@ func (v *Voice) NoteOff() {
 		v.envs[i].keyOff()
 	}
 	v.pitchEnv.keyOff()
+	v.filter.Release()
 }
 
 func (v *Voice) Clear() {
@@ -244,6 +252,7 @@ func (v *Voice) Clear() {
 	v.opAmp = [NumOperators]float64{}
 	v.ampCount = 0
 	v.pitchEnv.reset()
+	v.filter.Clear()
 	v.Output(0).Clear()
 }
 
@@ -303,6 +312,7 @@ func (v *Voice) Synthesize() {
 		modInc   = (v.modScale - v.curModScale) / float64(bufSize-v.waitSamps)
 	)
 
+	filtered := v.filter.On()
 	for i := v.waitSamps; i < bufSize; i++ {
 		if v.noteOffSamps > 0 {
 			v.noteOffSamps--
@@ -381,9 +391,16 @@ func (v *Voice) Synthesize() {
 		v.dcY = x - v.dcX + v.dcCoef*v.dcY
 		v.dcX = x
 
-		val := float32(v.dcY)
-		for _, ch := range outs {
-			ch[i] = val
+		if filtered {
+			v.filter.Tick(freq, 0, 0)
+			for c, ch := range outs {
+				ch[i] = float32(v.filter.Process(c, v.dcY))
+			}
+		} else {
+			val := float32(v.dcY)
+			for _, ch := range outs {
+				ch[i] = val
+			}
 		}
 	}
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"strings"
+
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 )
 
 // Setting is a setting of a patch by name: its range (the DX7's own) and where it is
@@ -13,6 +15,8 @@ type Setting struct {
 	Op   int // the operator (1-6), 0 for the voice
 	get  func(p *Patch) *int
 	flag func(p *Patch) *bool
+	// filter says it is a setting of the filter: set, it starts from DefaultFilter
+	filter bool
 }
 
 // Settings are the settings of a patch by name, in the order of the DX7's own edit buttons: the
@@ -43,6 +47,19 @@ var Settings = func() []Setting {
 	for i := range 4 {
 		s = append(s, ints(fmt.Sprintf("pitchLevel%d", i+1), 99, func(p *Patch) *int { return &p.PitchEGLevels[i] }))
 	}
+	// the filter, after the operators
+	fl := func(name string, max int, get func(f *Filter) *int) {
+		s = append(s, Setting{Name: name, Max: max, filter: true, get: func(p *Patch) *int { return get(&p.Filter) }})
+	}
+	fl("filterType", int(voicefilter.Ladder12), func(f *Filter) *int { return &f.Type })
+	fl("filterCutoff", 99, func(f *Filter) *int { return &f.Cutoff })
+	fl("filterResonance", 99, func(f *Filter) *int { return &f.Resonance })
+	fl("filterEnvAmount", 99, func(f *Filter) *int { return &f.EnvAmount })
+	fl("filterKeyTrack", 99, func(f *Filter) *int { return &f.KeyTrack })
+	fl("filterAttack", 99, func(f *Filter) *int { return &f.Attack })
+	fl("filterDecay", 99, func(f *Filter) *int { return &f.Decay })
+	fl("filterSustain", 99, func(f *Filter) *int { return &f.Sustain })
+	fl("filterRelease", 99, func(f *Filter) *int { return &f.Release })
 	for o := range NumOperators {
 		op := func(p *Patch) *Operator { return &p.Ops[o] }
 		add := func(name string, max int, get func(op *Operator) *int) {
@@ -91,6 +108,9 @@ func (p *Patch) Set(name string, value float64) bool {
 		return false
 	}
 	v := max(0, min(int(math.Round(value)), s.Max))
+	if s.filter && !p.FilterSet {
+		p.Filter, p.FilterSet = DefaultFilter(), true
+	}
 	if s.flag != nil {
 		*s.flag(p) = v > 0
 	} else {
@@ -107,6 +127,11 @@ func (p *Patch) Get(name string) (float64, bool) {
 	s, ok := settingsByName[strings.ToLower(name)]
 	if !ok {
 		return 0, false
+	}
+	if s.filter && !p.FilterSet {
+		q := *p
+		q.Filter = DefaultFilter()
+		p = &q
 	}
 	if s.flag != nil {
 		if *s.flag(p) {

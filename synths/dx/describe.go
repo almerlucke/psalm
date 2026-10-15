@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/params"
 )
 
@@ -21,6 +22,13 @@ func Describe(p Patch) params.Set {
 		}
 		if strings.HasPrefix(st.Name, "pitchRate") || strings.HasPrefix(st.Name, "pitchLevel") {
 			group = "Pitch envelope"
+		}
+		if st.Name == "filterType" {
+			s.Params = append(s.Params, params.C("Filter", st.Name, voicefilter.TypeNames, int(v), params.Label("type")))
+			continue
+		}
+		if strings.HasPrefix(st.Name, "filter") {
+			group, label = "Filter", strings.ToLower(st.Name[6:7])+st.Name[7:]
 		}
 		if st.Op > 0 {
 			group = fmt.Sprintf("Operator %d", st.Op)

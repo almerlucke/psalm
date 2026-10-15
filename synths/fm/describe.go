@@ -3,6 +3,7 @@ package fm
 import (
 	"fmt"
 
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/params"
 )
 
@@ -37,6 +38,9 @@ func Describe(cfg Config) params.Set {
 		s.Envelopes = append(s.Envelopes, params.E(g, fmt.Sprintf("op %d", i+1), k,
 			op.Env.AttackDuration, op.Env.DecayDuration, op.Env.DecayLevel, op.Env.ReleaseDuration))
 	}
+	fp, fe := voicefilter.Describe(cfg.Filter, "Filter")
+	s.Params = append(s.Params, fp...)
+	s.Envelopes = append(s.Envelopes, fe)
 	return s
 }
 

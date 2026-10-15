@@ -299,7 +299,14 @@ psalm.register("dx7", (p, api) => {
 	for (let i = 1; i <= 4; i++) pitch.append(num(`pitchRate${i}`, v => `R${i} ${v}`));
 	for (let i = 1; i <= 4; i++) pitch.append(num(`pitchLevel${i}`, v => `L${i} ${v - 50 > 0 ? "+" : ""}${v - 50}`));
 	pitch.append(labelled("transpose", num("transpose", v => (v > 24 ? "+" : "") + (v - 24))), flag("oscSync", "osc sync", "restart the operators at every note"));
-	voice.append(lfo, pitch);
+	const types = ["off", "low", "band", "high", "notch", "ladder 24", "ladder 12"];
+	const filter = el("div", "dx-row");
+	filter.append(el("span", "dx-label dx-group", "filter"), num("filterType", v => types[v], "the filter after the operators"),
+		labelled("cutoff", num("filterCutoff")), labelled("res", num("filterResonance")),
+		labelled("env", num("filterEnvAmount", String, "how far the envelope opens the cutoff, 0 to 6 octaves")),
+		labelled("key", num("filterKeyTrack", String, "how much the cutoff follows the note")));
+	for (const [k, l] of [["Attack", "A"], ["Decay", "D"], ["Sustain", "S"], ["Release", "R"]]) filter.append(num("filter" + k, v => `${l} ${v}`, "filter envelope"));
+	voice.append(lfo, pitch, filter);
 	root.append(voice);
 
 	// the envelopes, small in the rows and big in the details
