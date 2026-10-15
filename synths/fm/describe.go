@@ -3,6 +3,7 @@ package fm
 import (
 	"fmt"
 
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/params"
 )
@@ -38,6 +39,17 @@ func Describe(cfg Config) params.Set {
 		s.Envelopes = append(s.Envelopes, params.E(g, fmt.Sprintf("op %d", i+1), k,
 			op.Env.AttackDuration, op.Env.DecayDuration, op.Env.DecayLevel, op.Env.ReleaseDuration))
 	}
+	m := modmatrix.New(Dests)
+	for i, sl := range cfg.Mods {
+		m.Set(i, sl)
+	}
+	for i, e := range cfg.Ext {
+		m.SetExt(i, e)
+	}
+	s.Params = append(s.Params,
+		params.K("Modulation", "lfo1Rate", 0, 40, cfg.LFO1Rate, params.Unit("Hz"), params.Label("lfo 1 rate")),
+		params.K("Modulation", "lfo2Rate", 0, 40, cfg.LFO2Rate, params.Unit("Hz"), params.Label("lfo 2 rate")))
+	s.Params = append(s.Params, m.Describe("Modulation")...)
 	fp, fe := voicefilter.Describe(cfg.Filter, "Filter")
 	s.Params = append(s.Params, fp...)
 	s.Envelopes = append(s.Envelopes, fe)

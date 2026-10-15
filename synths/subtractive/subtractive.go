@@ -55,6 +55,9 @@ type Config struct {
 	Sync         bool    // hard sync osc 2 to osc 1
 	FMAmount     float64 // osc 1 modulates the phase of osc 2
 	Drive        float64 // pre filter saturation, 1.0 is unity
+	Unison       int     // oscillator pairs per voice, 1-7 (0 is 1): detuned copies of both oscillators
+	UnisonDetune float64 // cents between the lowest and the highest of them
+	Drift        float64 // cents, a slow random wander of the pitch (an analog oscillator is never still)
 
 	// Pitch
 	Glide            float64 // portamento time in milliseconds from the previous note of this voice
@@ -109,6 +112,9 @@ func DefaultConfig() Config {
 
 const middleC = 261.6255653005986
 
+// maxUnison is the most oscillator pairs a voice plays
+const maxUnison = 7
+
 // The destinations of the matrix (see Dests), by number
 const (
 	dPitch = iota
@@ -126,27 +132,29 @@ const (
 	dLevel
 	dLFO1Rate
 	dLFO2Rate
+	dUnisonDetune
 	numDests
 )
 
 // Dests are the settings the matrix of a voice moves: by their keys, as described (Describe), with
 // how far a full source moves them (semitones, octaves, or the setting itself)
 var Dests = []modmatrix.Dest{
-	dPitch:      {Key: "pitch", Label: "pitch", Span: 24},
-	dCutoff:     {Key: "cutoff", Label: "cutoff", Span: 6},
-	dResonance:  {Key: "resonance", Label: "resonance", Span: 1},
-	dPulseWidth: {Key: "pulseWidth", Label: "pulse width", Span: 0.45},
-	dOsc1Level:  {Key: "osc1Level", Label: "level 1", Span: 1},
-	dOsc2Level:  {Key: "osc2Level", Label: "level 2", Span: 1},
-	dSubLevel:   {Key: "subLevel", Label: "sub", Span: 1},
-	dNoiseLevel: {Key: "noiseLevel", Label: "noise", Span: 1},
-	dOsc2Detune: {Key: "osc2Detune", Label: "detune 2", Span: 12},
-	dFM:         {Key: "fmAmount", Label: "fm", Span: 5},
-	dDrive:      {Key: "drive", Label: "drive", Span: 3},
-	dVowel:      {Key: "vowel", Label: "vowel", Span: 4},
-	dLevel:      {Key: "level", Label: "level", Span: 1},
-	dLFO1Rate:   {Key: "lfo1Rate", Label: "lfo 1 rate", Span: 3},
-	dLFO2Rate:   {Key: "lfo2Rate", Label: "lfo 2 rate", Span: 3},
+	dPitch:        {Key: "pitch", Label: "pitch", Span: 24},
+	dCutoff:       {Key: "cutoff", Label: "cutoff", Span: 6},
+	dResonance:    {Key: "resonance", Label: "resonance", Span: 1},
+	dPulseWidth:   {Key: "pulseWidth", Label: "pulse width", Span: 0.45},
+	dOsc1Level:    {Key: "osc1Level", Label: "level 1", Span: 1},
+	dOsc2Level:    {Key: "osc2Level", Label: "level 2", Span: 1},
+	dSubLevel:     {Key: "subLevel", Label: "sub", Span: 1},
+	dNoiseLevel:   {Key: "noiseLevel", Label: "noise", Span: 1},
+	dOsc2Detune:   {Key: "osc2Detune", Label: "detune 2", Span: 12},
+	dFM:           {Key: "fmAmount", Label: "fm", Span: 5},
+	dDrive:        {Key: "drive", Label: "drive", Span: 3},
+	dVowel:        {Key: "vowel", Label: "vowel", Span: 4},
+	dLevel:        {Key: "level", Label: "level", Span: 1},
+	dLFO1Rate:     {Key: "lfo1Rate", Label: "lfo 1 rate", Span: 3},
+	dLFO2Rate:     {Key: "lfo2Rate", Label: "lfo 2 rate", Span: 3},
+	dUnisonDetune: {Key: "unisonDetune", Label: "unison detune", Span: 50},
 }
 
 // The value inputs of a voice: 1 to 4 set the cutoff, the resonance, the pulse width and the vowel,
@@ -184,6 +192,11 @@ type Voice struct {
 	waitSamps int
 	expr      expression.Expression // the pitch bend; the mod wheel opens the filter
 	mods      *modmatrix.Matrix
+	uni1      [maxUnison - 1]*blosc.Blosc // the extra oscillators of unison
+	uni2      [maxUnison - 1]*blosc.Blosc
+	drift     float64 // -1 to 1, wanders
+	driftTo   float64
+	driftLeft int
 	velocity  float64 // the amplitude of the note
 	random    float64 // a random value for the note, -1 to 1
 }
@@ -208,6 +221,10 @@ func New(cfg Config) *Voice {
 	v.osc1 = blosc.New(v.frequency, sr, 0.0, cfg.PulseWidth, 1.0, cfg.Osc1Waveform)
 	v.osc2 = blosc.New(v.frequency*v.osc2Ratio(), sr, 0.0, cfg.PulseWidth, 1.0, cfg.Osc2Waveform)
 	v.sub = blosc.New(v.frequency*0.5, sr, 0.0, 0.5, 1.0, blosc.Square)
+	for k := range v.uni1 {
+		v.uni1[k] = blosc.New(v.frequency, sr, v.Rand().Float64(), cfg.PulseWidth, 1.0, cfg.Osc1Waveform)
+		v.uni2[k] = blosc.New(v.frequency, sr, v.Rand().Float64(), cfg.PulseWidth, 1.0, cfg.Osc2Waveform)
+	}
 	v.svf = svf.New(cfg.Cutoff, cfg.Resonance, sr)
 	v.ladder = ladder.New(cfg.Cutoff, cfg.Resonance, sr)
 	v.formant = formant.New(cfg.Vowel, formantQ(cfg.Resonance), sr)
@@ -267,10 +284,16 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("osc1Waveform", func(wf int) {
 		v.cfg.Osc1Waveform = blosc.Waveform(wf)
 		v.osc1.SetWaveform(v.cfg.Osc1Waveform)
+		for _, u := range v.uni1 {
+			u.SetWaveform(v.cfg.Osc1Waveform)
+		}
 	})
 	msg.IfIntVal("osc2Waveform", func(wf int) {
 		v.cfg.Osc2Waveform = blosc.Waveform(wf)
 		v.osc2.SetWaveform(v.cfg.Osc2Waveform)
+		for _, u := range v.uni2 {
+			u.SetWaveform(v.cfg.Osc2Waveform)
+		}
 	})
 	msg.IfFltVal("osc1Level", func(f float64) { v.cfg.Osc1Level = f })
 	msg.IfFltVal("osc2Level", func(f float64) { v.cfg.Osc2Level = f })
@@ -285,6 +308,9 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfBoolVal("sync", func(b bool) { v.cfg.Sync = b })
 	msg.IfFltVal("fmAmount", func(f float64) { v.cfg.FMAmount = f })
 	msg.IfFltVal("drive", func(f float64) { v.cfg.Drive = f })
+	msg.IfIntVal("unison", func(n int) { v.cfg.Unison = max(1, min(n, maxUnison)) })
+	msg.IfFltVal("unisonDetune", func(f float64) { v.cfg.UnisonDetune = math.Max(0, f) })
+	msg.IfFltVal("drift", func(f float64) { v.cfg.Drift = math.Max(0, f) })
 	msg.IfFltVal("glide", func(f float64) { v.cfg.Glide = f })
 	msg.IfFltVal("filterEnvToPitch", func(f float64) { v.cfg.FilterEnvToPitch = f })
 	receiveLFOMessage(msg, "lfo1", &v.cfg.LFO1)
@@ -410,6 +436,20 @@ func (v *Voice) Synthesize() {
 	pwModded := modded && mods.Targets(dPulseWidth)
 	detuneModded := modded && mods.Targets(dOsc2Detune)
 	driveModded := modded && mods.Targets(dDrive)
+	unison := max(1, min(cfg.Unison, maxUnison))
+	uniDetune := cfg.UnisonDetune
+	if modded {
+		uniDetune = math.Max(0, uniDetune+mods.Mod(dUnisonDetune))
+	}
+	var uniMul [maxUnison - 1]float64
+	for k := range unison - 1 { // alternately above and below, evenly over the detune
+		off := float64(k/2+1) / float64(unison/2)
+		if k%2 == 1 {
+			off = -off
+		}
+		uniMul[k] = math.Exp2(off * uniDetune / 2 / 1200)
+	}
+	uniGain := 1 / math.Sqrt(float64(unison))
 	drive := cfg.Drive
 	if drive <= 0.0 {
 		drive = 1.0
@@ -455,7 +495,7 @@ func (v *Voice) Synthesize() {
 		// Pitch: glide, LFO vibrato and filter envelope pitch sweep
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
 		freq := v.glideFreq
-		if semis := cfg.LFO1.Pitch*l1 + cfg.LFO2.Pitch*l2 + cfg.FilterEnvToPitch*fenv + v.expr.Semitones() + mods.Mod(dPitch); semis != 0.0 {
+		if semis := cfg.LFO1.Pitch*l1 + cfg.LFO2.Pitch*l2 + cfg.FilterEnvToPitch*fenv + v.expr.Semitones() + mods.Mod(dPitch) + v.wander(cfg.Drift, sr); semis != 0.0 {
 			freq *= math.Pow(2.0, semis/12.0)
 		}
 
@@ -471,6 +511,10 @@ func (v *Voice) Synthesize() {
 			pw := math.Max(0.02, math.Min(0.98, cfg.PulseWidth+cfg.LFO1.PulseWidth*l1+cfg.LFO2.PulseWidth*l2+mods.Mod(dPulseWidth)))
 			v.osc1.SetPulseWidth(pw)
 			v.osc2.SetPulseWidth(pw)
+			for k := range unison - 1 {
+				v.uni1[k].SetPulseWidth(pw)
+				v.uni2[k].SetPulseWidth(pw)
+			}
 		}
 
 		// Oscillators: osc 2 can be phase modulated by and hard synced to osc 1
@@ -492,7 +536,19 @@ func (v *Voice) Synthesize() {
 
 		o2 := v.osc2.Tick(fm, cfg.Sync && wrapped, syncPhase)
 
-		s := o1*math.Max(0, cfg.Osc1Level+mods.Mod(dOsc1Level)) + o2*math.Max(0, cfg.Osc2Level+mods.Mod(dOsc2Level))
+		// unison: detuned copies of both oscillators (free running), summed with the pair
+		m1, m2 := o1, o2
+		if unison > 1 {
+			for k := range unison - 1 {
+				v.uni1[k].SetFrequency(freq*uniMul[k], sr)
+				v.uni2[k].SetFrequency(freq*ratio*uniMul[k], sr)
+				m1 += v.uni1[k].Tick(0, false, 0)
+				m2 += v.uni2[k].Tick(0, false, 0)
+			}
+			m1, m2 = m1*uniGain, m2*uniGain
+		}
+
+		s := m1*math.Max(0, cfg.Osc1Level+mods.Mod(dOsc1Level)) + m2*math.Max(0, cfg.Osc2Level+mods.Mod(dOsc2Level))
 
 		if sub := cfg.SubLevel + mods.Mod(dSubLevel); sub > 0.0 {
 			v.sub.SetFrequency(freq*0.5, sr)
@@ -546,6 +602,21 @@ func (v *Voice) Synthesize() {
 	// land exactly on the targets, no rounding drift
 	v.resetSmoothing()
 	v.waitSamps = 0
+}
+
+// wander moves the drift: a new place to go to every quarter second, gliding there; it returns the
+// semitones it moves the pitch (cents of drift)
+func (v *Voice) wander(cents, sr float64) float64 {
+	if cents <= 0 {
+		return 0
+	}
+	if v.driftLeft <= 0 {
+		v.driftTo = v.Rand().Float64()*2 - 1
+		v.driftLeft = int(0.25 * sr)
+	}
+	v.driftLeft--
+	v.drift += (v.driftTo - v.drift) * (1 / (0.2 * sr))
+	return v.drift * cents / 100
 }
 
 // resetSmoothing sets the smoothed filter settings to their targets

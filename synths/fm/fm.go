@@ -9,6 +9,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -36,7 +37,48 @@ type Config struct {
 	VibratoDelay float64            // fade in time in milliseconds after note on
 	Level        float64            // output level (0 is treated as 1)
 	Filter       voicefilter.Config // a filter after the operators (off unless its Type is set)
+
+	// the matrix: a source to a destination (Dests) over an amount; the two LFOs it can use
+	Mods     [modmatrix.Slots]modmatrix.Slot
+	Ext      [modmatrix.Exts]float64 // the values of Ext 1 to 4 (cabled in on InExt1...)
+	LFO1Rate float64                 // Hz (0 is still)
+	LFO2Rate float64
 }
+
+// The destinations of the matrix (see Dests), by number
+const (
+	dModDepth = iota
+	dFeedback
+	dOp1Level // to dOp1Level+3: the levels of the operators (the modulation index of a modulator)
+	_
+	_
+	_
+	dPitch
+	dLevel
+	dCutoff
+	dResonance
+	dLFO1Rate
+	dLFO2Rate
+)
+
+// Dests are the settings the matrix of a voice moves, by their keys, with how far a full source moves them
+var Dests = []modmatrix.Dest{
+	dModDepth:     {Key: "modDepth", Label: "mod depth", Span: 2},
+	dFeedback:     {Key: "feedback", Label: "feedback", Span: 1},
+	dOp1Level:     {Key: "op1Level", Label: "op 1 level", Span: 1},
+	dOp1Level + 1: {Key: "op2Level", Label: "op 2 level", Span: 1},
+	dOp1Level + 2: {Key: "op3Level", Label: "op 3 level", Span: 1},
+	dOp1Level + 3: {Key: "op4Level", Label: "op 4 level", Span: 1},
+	dPitch:        {Key: "pitch", Label: "pitch", Span: 24},
+	dLevel:        {Key: "level", Label: "level", Span: 1},
+	dCutoff:       {Key: "cutoff", Label: "cutoff (filter)", Span: 6},
+	dResonance:    {Key: "resonance", Label: "resonance (filter)", Span: 1},
+	dLFO1Rate:     {Key: "lfo1Rate", Label: "lfo 1 rate", Span: 3},
+	dLFO2Rate:     {Key: "lfo2Rate", Label: "lfo 2 rate", Span: 3},
+}
+
+// The value inputs of a voice: 1 the mod depth, 2 the feedback; 5 to 8 the values of the matrix (Ext 1 to 4)
+const InExt1 = 5
 
 func DefaultConfig() Config {
 	cfg := Config{
@@ -80,6 +122,10 @@ type Voice struct {
 	vibFadeInc float64
 	waitSamps  int
 	filter     *voicefilter.Filter
+	mods       *modmatrix.Matrix
+	random     float64 // for the note, -1 to 1
+	lfoPhase   [2]float64
+	ampLast    float64 // the carriers' envelopes at the last sample
 
 	// operator levels and feedback glide over a buffer to their new values, so changing them (for
 	// example the mod depth from an LFO) doesn't step and click
@@ -109,6 +155,13 @@ func New(cfg Config) *Voice {
 	}
 
 	v.filter = voicefilter.New(cfg.Filter, sr, cfg.NumChannels)
+	v.mods = modmatrix.New(Dests)
+	for i, sl := range cfg.Mods {
+		v.mods.Set(i, sl)
+	}
+	for i, e := range cfg.Ext {
+		v.mods.SetExt(i, e)
+	}
 	v.setAlgorithm(cfg.Algorithm)
 	v.SetSelf(v)
 
@@ -147,6 +200,15 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
 	v.filter.Receive(msg)
 	v.cfg.Filter = v.filter.Config()
+	v.mods.Receive(msg)
+	for i := range v.cfg.Mods {
+		v.cfg.Mods[i] = v.mods.Slot(i)
+	}
+	for i := range v.cfg.Ext {
+		v.cfg.Ext[i] = v.mods.Ext(i)
+	}
+	msg.IfFltVal("lfo1Rate", func(f float64) { v.cfg.LFO1Rate = math.Max(0, f) })
+	msg.IfFltVal("lfo2Rate", func(f float64) { v.cfg.LFO2Rate = math.Max(0, f) })
 	// "amp" is the envelope of the carriers (the operators heard), "op1".."op4" each operator's
 	for _, c := range Algorithms[v.cfg.Algorithm%len(Algorithms)].Carriers {
 		envelope.Receive(msg, "amp", &v.cfg.Ops[c].Env)
@@ -187,6 +249,9 @@ func (v *Voice) Receive(value any, index int) {
 		v.cfg.ModDepth = psalm.FltVal[float64](value)
 	case 2:
 		v.cfg.Feedback = psalm.FltVal[float64](value)
+	case InExt1, InExt1 + 1, InExt1 + 2, InExt1 + 3:
+		v.mods.SetExt(index-InExt1, psalm.FltVal[float64](value))
+		v.cfg.Ext[index-InExt1] = v.mods.Ext(index - InExt1)
 	}
 }
 
@@ -202,6 +267,7 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 	wasActive := v.IsActive()
 
 	v.velocity = 1.0
+	v.random = v.Rand().Float64()*2 - 1
 	v.ReceiveMessage(message)
 
 	v.waitSamps = tick.SampleOffset
@@ -323,6 +389,13 @@ func (v *Voice) Synthesize() {
 	}
 
 	filtered := v.filter.On()
+	mods := v.mods
+	modded := mods.Active()
+	if modded {
+		mods.Values[modmatrix.Velocity] = v.velocity
+		mods.Values[modmatrix.Random] = v.random
+		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.glideFreq/middleC)/5, 1))
+	}
 	carrierScale := level / float64(len(alg.Carriers))
 	hasMod := false // whether any operator modulates another (the wheel brightens), or all are carriers
 	for op := range v.modTargets {
@@ -336,7 +409,24 @@ func (v *Voice) Synthesize() {
 		v.expr.Tick(sr)
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
 		freq := v.glideFreq
-		bright := 1 + 1.5*v.expr.Wheel()
+		if modded {
+			mv := &mods.Values
+			for n := range v.lfoPhase {
+				rate := cfg.LFO1Rate
+				if n == 1 {
+					rate = cfg.LFO2Rate
+				}
+				rate *= math.Exp2(mods.Mod(dLFO1Rate + n))
+				mv[modmatrix.LFO1+modmatrix.Source(n)] = sine.Cycle(v.lfoPhase[n])
+				v.lfoPhase[n] += rate / sr
+				v.lfoPhase[n] -= math.Floor(v.lfoPhase[n])
+			}
+			mv[modmatrix.FilterEnv], mv[modmatrix.AmpEnv] = v.filter.Env(), v.ampLast
+			mv[modmatrix.Wheel] = v.expr.Wheel()
+			mods.Eval(sr)
+			freq *= math.Exp2(mods.Mod(dPitch) / 12)
+		}
+		bright := math.Max(0, 1+1.5*v.expr.Wheel()+mods.Mod(dModDepth))
 		if hasMod {
 			freq *= v.expr.Ratio()
 		} else {
@@ -353,18 +443,20 @@ func (v *Voice) Synthesize() {
 			v.curLevels[op] += levelInc[op]
 		}
 		v.curFeedback += feedbackInc
+		feedback := math.Max(0, v.curFeedback+mods.Mod(dFeedback))
 
 		// operators from 4 down to 1, modulators always have a higher number than their targets
 		sample := 0.0
+		ampNow := 0.0
 		for op := NumOperators - 1; op >= 0; op-- {
 			pm := 0.0
 			for _, m := range v.modTargets[op] {
 				pm += v.out[m]
 			}
 			pm *= bright
-			if op == NumOperators-1 && v.curFeedback > 0.0 {
+			if op == NumOperators-1 && feedback > 0.0 {
 				// averaging the last two outputs keeps strong feedback from oscillating
-				pm += (v.fb[0] + v.fb[1]) * 0.5 * v.curFeedback
+				pm += (v.fb[0] + v.fb[1]) * 0.5 * feedback
 			}
 
 			s := sine.Cycle(v.phase[op] + pm)
@@ -374,7 +466,7 @@ func (v *Voice) Synthesize() {
 				v.fb[1], v.fb[0] = v.fb[0], s*env
 			}
 
-			v.out[op] = s * env * v.curLevels[op]
+			v.out[op] = s * env * math.Max(0, v.curLevels[op]+mods.Mod(dOp1Level+op))
 
 			f := fixed[op]
 			if f == 0.0 {
@@ -385,12 +477,17 @@ func (v *Voice) Synthesize() {
 
 			if v.isCarrier[op] {
 				sample += v.out[op]
+				ampNow = math.Max(ampNow, env)
 			}
 		}
 
+		v.ampLast = ampNow
 		val := sample * carrierScale
+		if modded {
+			val *= math.Max(0, 1+mods.Mod(dLevel))
+		}
 		if filtered {
-			v.filter.Tick(freq, 1.5*v.expr.Wheel(), 0)
+			v.filter.Tick(freq, 1.5*v.expr.Wheel()+mods.Mod(dCutoff), mods.Mod(dResonance))
 			for c, ch := range outs {
 				ch[i] = float32(v.filter.Process(c, val))
 			}

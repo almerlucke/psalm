@@ -32,6 +32,9 @@ func Describe(cfg Config) params.Set {
 		params.S("Oscillators", "sync", cfg.Sync, params.Label("sync")),
 		params.K("Oscillators", "fmAmount", 0, 5, cfg.FMAmount, params.Label("fm")),
 		params.K("Oscillators", "drive", 0.5, 8, max(0.5, cfg.Drive), params.Exp()),
+		params.K("Oscillators", "unison", 1, 7, float64(max(1, cfg.Unison)), params.Step(1)),
+		params.K("Oscillators", "unisonDetune", 0, 100, cfg.UnisonDetune, params.Unit("ct"), params.Label("unison detune")),
+		params.K("Oscillators", "drift", 0, 50, cfg.Drift, params.Unit("ct")),
 
 		params.C("Filter", "filterType", []string{"state variable", "ladder", "formant"}, int(cfg.FilterType), params.Label("type")),
 		params.C("Filter", "filterMode", []string{"low pass", "band pass", "high pass", "notch", "peak", "all pass"}, int(cfg.FilterMode), params.Label("mode")),

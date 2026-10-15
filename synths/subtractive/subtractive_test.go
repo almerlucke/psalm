@@ -418,3 +418,54 @@ func TestMatrixEverything(t *testing.T) {
 		t.Errorf("slot %+v", s)
 	}
 }
+
+// render plays a note and returns what it sounded
+func render(cfg Config, blocks int) []float32 {
+	v := New(cfg)
+	v.NoteOn(0.8, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, v.Config())
+	var out []float32
+	for range blocks {
+		v.Synthesize()
+		out = append(out, v.Output(0).Channels[0]...)
+	}
+	return out
+}
+
+func TestUnison(t *testing.T) {
+	one := DefaultConfig()
+	many := one
+	many.Unison, many.UnisonDetune = 5, 30
+	a, b := render(one, 40), render(many, 40)
+	var ea, eb, diff float64
+	for i := range a {
+		ea += float64(a[i]) * float64(a[i])
+		eb += float64(b[i]) * float64(b[i])
+		d := float64(a[i]) - float64(b[i])
+		diff += d * d
+	}
+	if diff < ea*0.1 {
+		t.Errorf("unison sounds the same as one pair: difference %g of %g", diff, ea)
+	}
+	if eb < ea*0.3 || eb > ea*3 || math.IsNaN(eb) {
+		t.Errorf("unison energy %g against %g for one pair: gain not kept in check", eb, ea)
+	}
+	v := New(one)
+	v.ReceiveMessage(psalm.Message{"unison": 4, "unisonDetune": 20.0, "drift": 10.0})
+	if v.cfg.Unison != 4 || v.cfg.UnisonDetune != 20 || v.cfg.Drift != 10 {
+		t.Errorf("settings %d %g %g", v.cfg.Unison, v.cfg.UnisonDetune, v.cfg.Drift)
+	}
+}
+
+func TestDriftWanders(t *testing.T) {
+	still := DefaultConfig()
+	drifting := still
+	drifting.Drift = 50
+	a, b := render(still, 400), render(drifting, 400)
+	var diff float64
+	for i := range a {
+		diff += math.Abs(float64(a[i]) - float64(b[i]))
+	}
+	if diff == 0 {
+		t.Error("drift doesn't change the sound")
+	}
+}

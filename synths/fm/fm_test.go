@@ -7,6 +7,7 @@ import (
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/fft"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -271,5 +272,61 @@ func TestFilterDarkens(t *testing.T) {
 	v.ReceiveMessage(psalm.Message{"filterType": int(voicefilter.Ladder24), "cutoff": 500.0})
 	if v.cfg.Filter.Type != voicefilter.Ladder24 || v.cfg.Filter.Cutoff != 500 {
 		t.Errorf("filter settings %+v", v.cfg.Filter)
+	}
+}
+
+func fmEnergy(v *Voice, blocks int) float64 {
+	v.NoteOn(0.8, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, v.Config())
+	var e float64
+	for range blocks {
+		v.Synthesize()
+		for _, s := range v.Output(0).Channels[0] {
+			e += float64(s) * float64(s)
+		}
+	}
+	return e
+}
+
+// a value cabled in moves any setting a slot joins it to
+func TestMatrixExtMovesLevel(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "level", Amount: -1}
+	loud, quiet := New(cfg), New(cfg)
+	quiet.Receive(1.0, InExt1)
+	if el, eq := fmEnergy(loud, 40), fmEnergy(quiet, 40); el < 1 || eq > el*0.02 || quiet.cfg.Ext[0] != 1 {
+		t.Errorf("energy %g with the value at 0, %g at 1", el, eq)
+	}
+}
+
+// an LFO through the matrix moves the modulation index, so the sound changes
+func TestMatrixLFOToModDepth(t *testing.T) {
+	plain := fmEnergy(New(DefaultConfig()), 40)
+	cfg := DefaultConfig()
+	cfg.LFO1Rate = 6
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.LFO1, Dest: "op2Level", Amount: 1}
+	if e := fmEnergy(New(cfg), 40); e == plain || math.IsNaN(e) {
+		t.Errorf("energy %g, as without (%g)", e, plain)
+	}
+}
+
+func TestMatrixEverything(t *testing.T) {
+	for src := modmatrix.FilterEnv; src < modmatrix.NumSources; src++ {
+		for _, d := range Dests {
+			cfg := DefaultConfig()
+			cfg.LFO1Rate, cfg.LFO2Rate = 3, 4
+			cfg.Filter = voicefilter.Config{Type: voicefilter.Ladder24, Cutoff: 2000}
+			cfg.Mods[0] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: 1}
+			cfg.Mods[1] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: -1}
+			v := New(cfg)
+			v.NoteOn(1, psalm.Message{"pitch": 36.0}, psalm.CtrlTick{}, v.Config())
+			for range 20 {
+				v.Synthesize()
+				for _, s := range v.Output(0).Channels[0] {
+					if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) || math.Abs(float64(s)) > 20 {
+						t.Fatalf("%s to %s: sample %v", modmatrix.SourceNames[src], d.Key, s)
+					}
+				}
+			}
+		}
 	}
 }

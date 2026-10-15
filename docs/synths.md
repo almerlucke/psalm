@@ -179,6 +179,11 @@ Signal flow: `osc 1 + osc 2 + sub + ring mod + noise -> drive -> filter -> amp (
 | `FMAmount` | 0 | Osc 1 frequency modulates osc 2 |
 | `Drive` | 1 | Saturation before the filter (1 is clean) |
 
+`Unison` (1-7) plays that many detuned copies of both oscillators per voice (free running, `UnisonDetune`
+cents between the lowest and the highest, the level kept in check); `Drift` (cents) lets the pitch of a
+voice wander slowly, as an analog oscillator does. Messages `unison`, `unisonDetune`, `drift`; the matrix
+reaches `unisonDetune` too.
+
 ### Pitch
 
 | Setting | Default | Meaning |
@@ -339,6 +344,15 @@ bells := fm.NewPoly(cfg, 8).AddTo(p)
 ```
 
 `fm.New(cfg)` creates a single voice, `fm.NewPoly(cfg, n)` a `poly` synth with `n` voices.
+
+### Filter and modulation matrix
+
+`Config.Filter` is the [voice filter](#the-voice-filter) after the operators. `Config.Mods` is an 8 slot
+matrix like the subtractive synth's ([modulation matrix](#modulation-matrix)); the sources are the
+filter and carrier envelopes, two plain LFOs (`LFO1Rate`, `LFO2Rate`, Hz), velocity, key, random,
+wheel and `Ext1`...`Ext4` (value inputs 5 to 8, `fm.InExt1`). Destinations: `modDepth`, `feedback`,
+`op1Level`...`op4Level`, `pitch`, `level`, `cutoff` and `resonance` (of the filter), `lfo1Rate`,
+`lfo2Rate` (`fm.Dests`).
 
 ### How FM works here
 
