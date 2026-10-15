@@ -27,10 +27,18 @@ func Describe(cfg Config) params.Set {
 		lfo2Rate = 1
 	}
 	s := params.Set{Name: "modal", Params: []params.Param{
+		params.C("Instrument", "instrument", Instruments, int(cfg.Instrument)),
+		params.K("Instrument", "resonator", 0, 1, cfg.Resonator),
+		params.K("Instrument", "spread", 0, 4, cfg.Spread),
+		params.K("Instrument", "drift", 0, 1, cfg.Drift),
+
 		params.C("Mallet", "excitation", Excitations, int(cfg.Excitation)),
 		params.K("Mallet", "hardness", 0, 1, cfg.Hardness),
 		params.K("Mallet", "position", 0.01, 1, pos),
 		params.K("Mallet", "noise", 0, 1, cfg.Noise),
+
+		params.K("Contact", "contact", 0, 1, cfg.Contact),
+		params.K("Contact", "mass", 0, 1, cfg.Mass),
 
 		params.K("Body", "highDamping", 0, 2, cfg.HighDamping, params.Label("high damping")),
 		params.K("Body", "inharmonicity", 0, 1, cfg.Inharmonicity),

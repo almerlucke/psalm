@@ -58,12 +58,12 @@ func TestMatrixMovesDestinations(t *testing.T) {
 
 	// level from ext 1, cabled in
 	cfg := base
-	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "level", Amount: -0.5}
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "level", Amount: -0.25}
 	v := New(cfg)
 	v.Receive(1.0, InExt1)
 	v.NoteOn(1, psalm.Message{"pitch": 60.0}, psalm.CtrlTick{}, v.Config())
 	x := run(v, 0.3)
-	if r := rms(x) / rms(plain); math.Abs(r-0.6/1.1) > 0.08 {
+	if r := rms(x) / rms(plain); math.Abs(r-(base.Level-0.25)/base.Level) > 0.08 {
 		t.Errorf("level moved to %g of the plain", r)
 	}
 	if v.cfg.Ext[0] != 1 {

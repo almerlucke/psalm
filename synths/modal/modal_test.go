@@ -52,12 +52,12 @@ func db(a float64) float64 { return 20 * math.Log10(a) }
 
 func TestModesRingAtTheirRatios(t *testing.T) {
 	cfg := Marimba()
-	cfg.Noise = 0
+	cfg.Noise, cfg.Hardness, cfg.Position = 0, 1, 0.3
 	_, x := strike(cfg, 57, 0.5)
 	y := window(x, 0.005, 0.1)
 	f := hz(57)
 	ref := amplitude(y, f)
-	for _, r := range []float64{3.99, 9.2} {
+	for _, r := range []float64{4, 10} {
 		if a := amplitude(y, r*f); a < ref*0.003 {
 			t.Errorf("the mode at %g is %.1f dB down", r, db(a/ref))
 		}
@@ -125,14 +125,25 @@ func TestReleaseAndTremolo(t *testing.T) {
 	// the motor: the loudness swings 5 times a second
 	cfg := Vibraphone()
 	cfg.Decay, cfg.HighDamping = 100, 0 // hardly decaying, to see the tremolo
+	cfg.Noise = 0
 	_, x := strike(cfg, 69, 1.2)
 	env := func(at float64) float64 { return amplitude(window(x, at, 0.02), 440) }
 	lo, hi := math.Inf(1), 0.0
 	for at := 0.2; at < 1.1; at += 0.01 {
 		lo, hi = math.Min(lo, env(at)), math.Max(hi, env(at))
 	}
-	if d := db(hi / lo); d < 3 || d > 6 {
-		t.Errorf("the tremolo swings %.1f dB, want 3.7 (depth 0.35)", d)
+	// the fans swing the resonator tube, the bar rings on: a smaller swing than the whole sound's
+	if d := db(hi / lo); d < 2 || d > 8 {
+		t.Errorf("the tremolo swings %.1f dB, want about 3 (depth 0.6 on the tube)", d)
+	}
+	cfg.Resonator = 0
+	_, x = strike(cfg, 69, 1.2)
+	lo, hi = math.Inf(1), 0.0
+	for at := 0.2; at < 1.1; at += 0.01 {
+		lo, hi = math.Min(lo, env(at)), math.Max(hi, env(at))
+	}
+	if d := db(hi / lo); d < 5 || d > 9 {
+		t.Errorf("without a tube the tremolo swings %.1f dB, want 8 (depth 0.6)", d)
 	}
 }
 

@@ -53,10 +53,18 @@ type Config struct {
 	Noise        float64 // 0-1: the knock of the mallet
 	Level        float64 // output level (0 is treated as 1)
 
-	Excitation    Excitation // what rings the modes (Strike is 0)
-	Inharmonicity float64    // 0-1: stretches the modes' ratios, the higher ones more (stiff metal, glass)
-	LFORate       float64    // Hz of the matrix's LFO 1 (0 is 5)
-	LFO2Rate      float64    // Hz of the matrix's LFO 2, a plain sine from the strike (0 is 1), running only when a slot uses it
+	Excitation Excitation // what rings the modes (Strike is 0)
+	// Instrument is a physical model of the body (see Instrument): its modes, damping and mode shapes
+	// replace Modes; Custom (0) rings in Modes
+	Instrument    Instrument
+	Resonator     float64 // 0-1: a resonator tube tuned to the lowest mode (marimba, vibraphone): it adds energy there and lets it ring longer; the tremolo then swings the tube
+	Spread        float64 // 0-4: the degenerate pairs of the instrument (bells, bowls, plates) split apart, 1 as the instrument does, 0 not (beating)
+	Drift         float64 // 0-1: each note a little different: the pairs turn, the split and the pitch vary (draws from the random stream only when above 0)
+	Contact       float64 // 0-1: how much the strike's velocity shortens the mallet's touch (the Hertz contact), so a harder blow is brighter
+	Mass          float64 // 0-1: the mallet's weight, a heavier one touches longer
+	Inharmonicity float64 // 0-1: stretches the modes' ratios, the higher ones more (stiff metal, glass)
+	LFORate       float64 // Hz of the matrix's LFO 1 (0 is 5)
+	LFO2Rate      float64 // Hz of the matrix's LFO 2, a plain sine from the strike (0 is 1), running only when a slot uses it
 	// Filter is a filter after the modes, its envelope starting at the strike (off unless its Type is set)
 	Filter voicefilter.Config
 	Mods   [modmatrix.Slots]modmatrix.Slot // the matrix: a source to a destination (see Dests) over an amount
@@ -69,7 +77,7 @@ func DefaultConfig() Config {
 }
 
 // maxModes is the most resonators a voice rings (beating modes take two)
-const maxModes = 32
+const maxModes = 96
 
 // resonator is a decaying sine: a complex pole, rung by the mallet
 type resonator struct {
@@ -78,6 +86,7 @@ type resonator struct {
 	gain   float64 // per unit of force
 	fast   float64 // the decay per sample once let go
 	r, w   float64 // the decay and the angle per sample, unbent
+	tube   bool    // the resonator tube, which the tremolo swings
 }
 
 // Voice is one struck note
@@ -112,6 +121,7 @@ type Voice struct {
 	bowLP     float64
 	bowSigma  float64
 	pitchMod  float64 // the semitones the matrix bends the modes by
+	hasTube   bool
 }
 
 // New returns a voice
@@ -145,6 +155,12 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 		v.cfg.Ext[i] = v.mods.Ext(i)
 	}
 	msg.IfIntVal("excitation", func(i int) { v.cfg.Excitation = Excitation(max(0, min(i, int(Burst)))) })
+	msg.IfIntVal("instrument", func(i int) { v.cfg.Instrument = Instrument(max(0, min(i, len(Instruments)-1))) })
+	msg.IfFltVal("resonator", func(f float64) { v.cfg.Resonator = f })
+	msg.IfFltVal("spread", func(f float64) { v.cfg.Spread = f })
+	msg.IfFltVal("drift", func(f float64) { v.cfg.Drift = f })
+	msg.IfFltVal("contact", func(f float64) { v.cfg.Contact = f })
+	msg.IfFltVal("mass", func(f float64) { v.cfg.Mass = f })
 	msg.IfFltVal("inharmonicity", func(f float64) { v.cfg.Inharmonicity = f })
 	msg.IfFltVal("lfoRate", func(f float64) { v.cfg.LFORate = f })
 	msg.IfFltVal("lfo2Rate", func(f float64) { v.cfg.LFO2Rate = f })
@@ -224,9 +240,15 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 	decay := math.Max(0.005, cfg.Decay*math.Exp2(mods.Mod(dDecay)))
 	release := math.Max(0.005, cfg.Release)
 	v.n = 0
-	add := func(f, amp, t60 float64) {
+	v.hasTube = false
+	first := true
+	var f0, amp0, t0 float64
+	add := func(f, amp, t60 float64, tube bool) {
 		if v.n >= maxModes || f >= sr*0.48 || amp == 0 {
 			return
+		}
+		if first && !tube {
+			first, f0, amp0, t0 = false, f, amp, t60
 		}
 		r := math.Pow(10, -3/(t60*sr))
 		w := 2 * math.Pi * f / sr
@@ -234,36 +256,52 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 		if !v.active {
 			m.re, m.im = 0, 0
 		}
-		m.r, m.w = r, w
+		m.r, m.w, m.tube = r, w, tube
 		m.c, m.s = r*math.Cos(w), r*math.Sin(w)
 		m.gain = amp
 		m.fast = math.Pow(10, -3/(math.Min(t60, release)*sr)) / r
 		v.n++
 	}
-	for k, mode := range cfg.Modes {
-		f := v.freq * mode.Ratio
-		if inharm > 0 && cfg.Modes[0].Ratio > 0 {
-			// stiffness stretches the partials: relative to the first mode, the higher the sharper
-			x := mode.Ratio / cfg.Modes[0].Ratio
-			f = v.freq * cfg.Modes[0].Ratio * x * math.Sqrt(math.Max(0.1, 1+0.02*inharm*(x*x-1)))
-		}
-		rel := mode.Decay
-		if rel <= 0 {
-			rel = 1
-		}
-		t60 := decay * rel * math.Pow(cfg.Modes[0].Ratio*v.freq/f, highDamping)
-		// where it is struck: the modes with a node there sound less
-		amp := mode.Amp * (0.2 + 0.8*math.Abs(math.Sin(math.Pi*pos*float64(k+1))))
-		if beat > 0 {
-			add(f*(1-beat/2), amp/2, t60)
-			add(f*(1+beat/2), amp/2, t60)
-		} else {
-			add(f, amp, t60)
+	tubeOn := math.Max(0, math.Min(cfg.Resonator, 1))
+	if md := modelOf(cfg.Instrument); md != nil {
+		v.instrument(md, pos, beat, highDamping, inharm, decay, tubeOn, add)
+	} else {
+		for k, mode := range cfg.Modes {
+			f := v.freq * mode.Ratio
+			if inharm > 0 && cfg.Modes[0].Ratio > 0 {
+				// stiffness stretches the partials: relative to the first mode, the higher the sharper
+				x := mode.Ratio / cfg.Modes[0].Ratio
+				f = v.freq * cfg.Modes[0].Ratio * x * math.Sqrt(math.Max(0.1, 1+0.02*inharm*(x*x-1)))
+			}
+			rel := mode.Decay
+			if rel <= 0 {
+				rel = 1
+			}
+			t60 := decay * rel * math.Pow(cfg.Modes[0].Ratio*v.freq/f, highDamping)
+			// where it is struck: the modes with a node there sound less
+			amp := mode.Amp * (0.2 + 0.8*math.Abs(math.Sin(math.Pi*pos*float64(k+1))))
+			if k == 0 && tubeOn > 0 {
+				t60 *= 1 + 0.3*tubeOn
+			}
+			if beat > 0 {
+				add(f*(1-beat/2), amp/2, t60, false)
+				add(f*(1+beat/2), amp/2, t60, false)
+			} else {
+				add(f, amp, t60, false)
+			}
 		}
 	}
+	if tubeOn > 0 && !first {
+		// the tube: tuned to the lowest mode, driven by it, ringing longer than the bar
+		v.hasTube = true
+		add(f0*1.0005, 1.2*tubeOn*amp0, t0*(1+0.6*tubeOn), true)
+	}
 	// the mallet: a half sine force, as long as it touches (3 ms soft, 0.2 ms hard); its area is 1
-	hard := math.Max(0, math.Min(cfg.Hardness+mods.Mod(dHardness)+0.5*(v.velocity-0.5), 1))
-	touch := 0.003 * math.Pow(0.2/3, hard)
+	// the Hertz contact: the touch lasts as (mass/velocity)^(1/5), so a harder blow is shorter and brighter
+	contact := math.Max(0, math.Min(cfg.Contact, 1))
+	hard := math.Max(0, math.Min(cfg.Hardness+mods.Mod(dHardness)+(0.5+0.5*contact)*(v.velocity-0.5), 1))
+	touch := 0.003 * math.Pow(0.2/3, hard) * math.Pow(0.8/math.Max(v.velocity, 0.1), 0.2+0.3*contact) *
+		math.Pow(3, math.Max(0, math.Min(cfg.Mass, 1)))
 	n := max(1, int(touch*sr))
 	if cfg.Excitation == Burst {
 		n = max(1, int((0.01+0.04*(1-hard))*sr))
@@ -286,9 +324,14 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 			r0 = v.modes[0].r
 		}
 		v.bowSigma = 0.5 * math.Sqrt(2*(1-r0))
-	default:
+	default: // the Hertz force: a pulse of sin^1.5, its area 1
+		sum := 0.0
 		for i := range v.pulse {
-			v.pulse[i] = math.Sin(math.Pi*(float64(i)+0.5)/float64(n)) * math.Pi / (2 * float64(n))
+			v.pulse[i] = math.Pow(math.Sin(math.Pi*(float64(i)+0.5)/float64(n)), 1.5)
+			sum += v.pulse[i]
+		}
+		for i := range v.pulse {
+			v.pulse[i] /= sum
 		}
 	}
 	v.pulsePos = 0
@@ -402,8 +445,8 @@ func (v *Voice) Synthesize() {
 	// the tremolo: the motor's, or the wheel's
 	tremolo := cfg.Tremolo
 	depth := math.Max(0, math.Min(cfg.TremoloDepth, 1))
-	if wheel := 0.6 * v.expr.Wheel(); wheel > depth {
-		depth = wheel
+	if wheel := 0.9 * v.expr.Wheel(); wheel > 0 { // the wheel deepens the motor's tremolo, or brings one in
+		depth += (1 - depth) * wheel
 		if tremolo <= 0 {
 			tremolo = 5.5
 		}
@@ -463,7 +506,7 @@ func (v *Voice) Synthesize() {
 				}
 			}
 		}
-		s := 0.0
+		s, sTube := 0.0, 0.0
 		for k := range v.n {
 			m := &v.modes[k]
 			re := m.c*m.re - m.s*m.im + force*m.gain
@@ -473,7 +516,11 @@ func (v *Voice) Synthesize() {
 				im *= m.fast
 			}
 			m.re, m.im = re, im
-			s += im
+			if m.tube {
+				sTube += im
+			} else {
+				s += im
+			}
 		}
 		if v.knock > 1e-5 {
 			v.rng = v.rng*1664525 + 1013904223
@@ -481,12 +528,18 @@ func (v *Voice) Synthesize() {
 			s += v.knockLP * v.knock * 0.3
 			v.knock *= knockCoef
 		}
+		swing := 1.0
 		if d := math.Max(0, math.Min(depth+dTrem, 1)); tremolo > 0 && d > 0 {
-			s *= 1 - d*0.5*(1-math.Cos(2*math.Pi*v.tremPhase))
+			swing = 1 - d*0.5*(1-math.Cos(2*math.Pi*v.tremPhase))
 			v.tremPhase += tremInc
 			if v.tremPhase >= 1 {
 				v.tremPhase--
 			}
+		}
+		if v.hasTube {
+			s += sTube * swing // the motor's fans open and close the tubes, the bar rings on
+		} else {
+			s *= swing
 		}
 		if filtered || envUsed {
 			var cut, res float64
