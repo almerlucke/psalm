@@ -72,7 +72,7 @@ func TestMatrixMovesDestinations(t *testing.T) {
 	l, r := sung(cfg, psalm.Message{"pitch": 57.0}, 0.5)
 	same := true
 	for i := range l {
-		if l[i] != r[i] {
+		if math.Abs(l[i]-r[i]) > 1e-9 { // the same up to the rounding of the pan law
 			same = false
 		}
 	}

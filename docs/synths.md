@@ -1305,6 +1305,27 @@ A pitch keeper trims the tube so it plays in tune whatever the blowing. Presets:
 `panpipe`. Both take the voice filter, the body, and the matrix (new destinations `breath` and
 `embouchure`; the membrane's `decay`, `damping` and `pitch`).
 
+### Real strings
+
+The waveguide string can be made more real, each part off at 0. `inharmonicity` is the stiffness B at
+220 Hz: allpass sections stretch the partials to f0 * n * sqrt(1 + B * n^2) while the fundamental stays
+in tune, and low strings are stiffer (nylon about 3e-5, steel 1e-4, wound bass 3e-4; the fit is
+accurate to a few cents up to B = 5e-4 at 220 Hz). `polarization` adds a sideways string slightly lower
+in pitch and weaker in damping, giving a prompt sound, an aftersound and beats. `bodyCoupling` lets the
+bridge give way to the body's modes: notes on a body resonance die faster and the body hands energy
+back. `tensionMod` makes a hard pluck start sharp and glide down (the twang), scaled by velocity.
+
+`pluckWidth` pulls the string aside like a finger or pick, `plectrum` goes from soft finger to hard
+pick, and `fretNoise` and `fretBuzz` add the finger rustle and the string hitting the fret. `harmonic`
+puts a finger on a node (0.5 sounds the octave, 1/3 the twelfth), and `slide` glides a still-ringing
+string to the next pitch for legato (only when the same voice gets the next note).
+
+For the bow, `bowForce` switches to a friction curve with stick-slip and a memory of the rosin's heat,
+with `bowSpeed` as its partner; the force has to fit the speed: too light is airy, too heavy scratches.
+`bowNoise` adds the rosin's grain and `bowReverse` sets the seconds per stroke before the bow turns
+round. `bowForce` and `bowSpeed` are matrix destinations. New presets: `uprightBass`, `harmonics`,
+`rosin` (the friction-curve violin); the plucked presets are re-voiced with the new parts.
+
 ## modal
 
 `synths/modal`
