@@ -85,7 +85,7 @@ func TestInharmonicity(t *testing.T) {
 	p := 45.0
 	x, _ := play(single(), psalm.Message{"pitch": p}, 2, 1.5)
 	f0 := 440 * math.Exp2((p-69)/12)
-	b := inharmonicity(p)
+	b := inharmonicityAt(p, single().Wound)
 	seg := x[int(0.3*sr):int(1.3*sr)]
 	f1 := peakFrequency(seg, f0, 0.01)
 	f7 := peakFrequency(seg, 7*f1, 0.01)

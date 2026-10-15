@@ -84,7 +84,7 @@ func TestPartialsInharmonic(t *testing.T) {
 		seg := x[int(0.3*sr):int(1.5*sr)]
 		cfg := single()
 		f0 := 440 * math.Exp2((stretched(p, &cfg)-69)/12)
-		b := inharmonicity(p)
+		b := inharmonicityAt(p, cfg.Wound)
 		f1 := peakFrequency(seg, f0, 0.01)
 		for n := 2.0; n <= 8; n++ {
 			want := n * f1 * math.Sqrt((1+b*n*n)/(1+b))
@@ -138,7 +138,7 @@ func TestLongitudinalSums(t *testing.T) {
 	d := difference(a, b)[int(0.1*sr):int(1.1*sr)]
 	plain := b[int(0.1*sr):int(1.1*sr)]
 	f0 := 440 * math.Exp2((stretched(36, &cfg)-69)/12)
-	bb := inharmonicity(36)
+	bb := inharmonicityAt(36, cfg.Wound)
 	pn := func(n float64) float64 { return f0 * n * math.Sqrt((1+bb*n*n)/(1+bb)) }
 	level := func(x []float64, f float64) float64 {
 		s := spectrum(x, 65536)

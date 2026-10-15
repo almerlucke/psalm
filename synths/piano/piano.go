@@ -9,7 +9,10 @@
 // harmonics the strike position doesn't excite. Dampers stop the strings when the key is released,
 // the sustain pedal lifts them, the highest keys have none; the soft pedal shifts the hammers so
 // they strike one string less. The voices sound through a soundboard, and the strings whose
-// dampers are up ring along with what is played (sympathetic resonance), see Piano
+// dampers are up ring along with what is played (sympathetic resonance), see Piano. The strings of
+// all keys end on one bridge, a bank of soundboard modes every voice loads and is loaded by (see
+// bridge.go), so a chord is more than its notes; the bass strings are wound (less inharmonic, a
+// step at the break) and a hard struck bass note has a longitudinal precursor
 package piano
 
 import (
@@ -44,6 +47,10 @@ type Config struct {
 	Position       Position    // where the piano is heard from
 	SoundboardIR   [][]float64 // a measured soundboard response (per side) instead of the modelled one
 	Resonance      float64     // 0-1, sympathetic resonance of the strings whose dampers are up
+	Bridge         float64     // 0-1, how much the strings of all keys are coupled through the shared bridge and soundboard modes (0 is each key draining on its own)
+	Wound          float64     // 0-1, the wound bass strings: less inharmonic, the copper damps the highs, with a step at the break (0 is plain strings all over)
+	Precursor      float64     // 0-1, the burst of longitudinal waves ahead of a hard struck bass note
+	StrikeRegister float64     // 0-1, how much the strike point moves with the register (the setting in the bass, towards 2/3 of it in the top)
 	Level          float64     // output level (0 is treated as 1)
 }
 
@@ -70,6 +77,10 @@ func DefaultConfig() Config {
 		Variation:      0.5,
 		Position:       Player,
 		Resonance:      0.5,
+		Bridge:         0.6,
+		Wound:          1,
+		Precursor:      0.5,
+		StrikeRegister: 1,
 		Level:          1,
 	}
 }
@@ -135,6 +146,13 @@ const (
 	barkTop           = 66.0
 )
 
+// the precursor: a burst of longitudinal waves ahead of the note, in the bass struck hard
+const (
+	precursorGain = 0.0006
+	precursorFrom = 45.0 // keys up to here have all of it
+	precursorTop  = 72.0 // and none above this
+)
+
 // velocityPower is how the level goes with the speed of the hammer at VelocitySens 1, fitted to
 // the dynamics of a recorded grand (at the default 0.7, about 1.5: pianissimo to fortissimo about 25 dB)
 const velocityPower = 2.1
@@ -176,6 +194,21 @@ type Voice struct {
 	gainL    float64
 	gainR    float64
 
+	// the buffer being rendered, and the bridge the voice is loaded by (shared by the instrument)
+	run       runState
+	bridge    *bridge
+	own       *bridge // of a voice on its own
+	bridgeAmt float64
+	bridgeOff bool // the voice is rendered alone for a buffer (faded out), outside the bridge
+
+	// the precursor: a burst of longitudinal waves
+	pre      [3]complex128
+	preRot   [3]complex128
+	preAmp   [3]float64
+	preLevel float64
+	preOn    bool
+	preN     int
+
 	keyDown   bool
 	pedal     float64    // the sustain pedal, 0 up to 1 down
 	sostenuto *[128]bool // the keys the sostenuto pedal keeps undamped (of the instrument)
@@ -203,6 +236,18 @@ type Voice struct {
 	active             bool
 }
 
+// runState is what a voice keeps between the halves of the samples of a buffer
+type runState struct {
+	contact, glide, period, coupling, g, cross, mech float64
+	drainCoef, dcCoef, envCoef                       float64
+	noiseLPCoef, noiseHPCoef, noiseDecay             float64
+	damped                                           bool
+	targets                                          []float64
+	peak                                             float64
+	t, bridge, kn                                    float64
+	pos                                              int
+}
+
 // New creates a piano voice
 func New(cfg Config) *Voice {
 	if cfg.NumChannels == 0 {
@@ -215,7 +260,7 @@ func New(cfg Config) *Voice {
 		velocity:  0.8,
 		releaseIn: -1,
 	}
-	dispersion(v.Config().SampleRate, math.Max(0, cfg.Stiffness)) // fit the strings now, not at the first note
+	dispersion(v.Config().SampleRate, math.Max(0, cfg.Stiffness), math.Max(0, math.Min(cfg.Wound, 1))) // fit the strings now, not at the first note
 	v.SetSelf(v)
 	return v
 }
@@ -246,6 +291,10 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("mechanics", func(f float64) { cfg.Mechanics = f })
 	msg.IfFltVal("keyBed", func(f float64) { cfg.KeyBed = f })
 	msg.IfFltVal("resonance", func(f float64) { cfg.Resonance = f })
+	msg.IfFltVal("bridge", func(f float64) { cfg.Bridge = f })
+	msg.IfFltVal("wound", func(f float64) { cfg.Wound = f })
+	msg.IfFltVal("precursor", func(f float64) { cfg.Precursor = f })
+	msg.IfFltVal("strikeRegister", func(f float64) { cfg.StrikeRegister = f })
 	msg.IfFltVal("sustain", v.SetSustain)
 	msg.IfFltVal("soft", func(f float64) { v.soft = f > 0.5 })
 }
@@ -326,13 +375,14 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 
 	f0 := 440 * math.Exp2((stretched(v.pitch, cfg)-69)/12) // tuned like a piano: the octaves stretched
 	n := numStrings(v.pitch, cfg.Strings)
-	disp := dispersion(sr, math.Max(0, cfg.Stiffness))[max(0, min(int(math.Round(v.pitch)), 127))]
+	disp := dispersion(sr, math.Max(0, cfg.Stiffness), math.Max(0, math.Min(cfg.Wound, 1)))[max(0, min(int(math.Round(v.pitch)), 127))]
+	woundRingF, woundDampF, _ := woundTraits(v.pitch, cfg)
 	design := stringDesign{
 		sr:      sr,
 		stages:  disp.stages,
 		ad:      disp.ad,
-		t60:     ringTime(v.pitch) * math.Max(0.05, cfg.Decay),
-		damping: highDamping * math.Max(0, cfg.Damping),
+		t60:     ringTime(v.pitch) * woundRingF * math.Max(0.05, cfg.Decay),
+		damping: highDamping * woundDampF * math.Max(0, cfg.Damping),
 		// the dampers on the long bass strings take longer to stop them
 		damperTime: math.Max(0.02, cfg.DamperTime) * (1 + math.Max(0, (48-v.pitch)/24)),
 	}
@@ -430,6 +480,24 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	}
 	v.wasDown, v.wasDamped = true, false
 
+	// the precursor: the hammer pulls the string along its length, a short burst of longitudinal
+	// waves (their own high resonances, no transverse partials) in the bass struck hard
+	v.preOn, v.preN = false, 0
+	v.preLevel = 0
+	if cfg.Precursor > 0 {
+		low := math.Max(0, math.Min(1, (precursorTop-v.pitch)/(precursorTop-precursorFrom)))
+		// in the units of the output (the balance of the keys keeps it as loud against the note)
+		v.preLevel = precursorGain * level / v.amp * math.Min(cfg.Precursor, 1) * low * speed * speed * speed
+		fl := math.Min(math.Max(longitudinalRatio*f0, 400), 3000)
+		for j := range v.pre {
+			// the longitudinal modes and the sums of transverse partials they carry (2x-ish)
+			fj := math.Min(fl*[...]float64{1, 1.62, 2.4}[j], 0.4*sr)
+			tau := 0.012 / (1 + fj/2500)
+			v.preRot[j] = cmplx.Rect(math.Exp(-1/(tau*sr)), 2*math.Pi*fj/sr)
+			v.preAmp[j] = 1 / float64(j+1)
+		}
+	}
+
 	// the key bottoms out on the keybed (a loud strike lands sooner and harder, a soft one is let
 	// down slowly and hardly heard); the action, not the strings, so the voicing leaves it alone
 	v.bedIn = -1
@@ -447,6 +515,7 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	if v.soft {
 		v.force *= softLevel
 	}
+	v.preLevel *= v.force
 
 	// what is left of a strike still playing joins the new one
 	for k, b := range [2][]float64{v.exc, v.knock} {
@@ -471,173 +540,261 @@ func (v *Voice) strike(amplitude float64, message psalm.Message, tick psalm.Ctrl
 	v.excPos = -tick.SampleOffset // the strike starts at its sample, the strings keep sounding
 }
 
+// Synthesize renders a buffer of the voice alone (in an instrument the voices step together, see
+// Piano.Synthesize, so they share the bridge)
 func (v *Voice) Synthesize() {
+	if !v.begin() {
+		return
+	}
+	solo := v.bridge == nil && v.bridgeAmt > 0
+	if solo {
+		// the voice alone is loaded by a bridge of its own
+		if v.own == nil {
+			v.own = newBridge(v.Config().SampleRate)
+		}
+		v.bridge = v.own
+	}
+	for i := range v.Config().BufferSize {
+		v.stringsStep(i)
+		if solo {
+			v.bridge.tick()
+		}
+		v.outStep(i)
+	}
+	if solo {
+		v.bridge = nil
+	}
+	v.end()
+}
+
+// begin sets up a buffer, returns whether the voice sounds
+func (v *Voice) begin() bool {
 	out := v.Output(0)
 	out.Clear()
 	if !v.active {
-		return
+		return false
 	}
 
 	var (
-		sr   = v.Config().SampleRate
-		outs = out.Channels
-		bs   = v.Config().BufferSize
+		sr = v.Config().SampleRate
+		r  = &v.run
 	)
-
 	// the dampers: lifted while the key is down or a pedal holds them, on the strings they lose
 	// enough per loop to fall 60 dB in DamperTime, touching them lightly (half pedaling) less
-	contact := v.contact()
-	damped := contact > 0.5
-	targets := v.damperTargets(contact)
-	glide := 1 - math.Exp(-1/(0.01*sr))
-	peak := 0.0
-	period := sr / (440 * math.Exp2((stretched(v.pitch, &v.cfg)-69)/12))
-	coupling := bridgeDrain(v.pitch) * period / sr / float64(len(v.strings)/2) // per loop
-	drainCoef := 1 - math.Exp(-2*math.Pi*drainHz/sr)
-	cross := crossCoupling * period / sr
-	mech := math.Max(0, math.Min(v.cfg.Mechanics, 1))
-	dcCoef := 1 - math.Exp(-2*math.Pi*20/sr)
-	envCoef := 1 - math.Exp(-1/(0.005*sr))
-	noiseLPCoef := 1 - math.Exp(-2*math.Pi*2500/sr)
-	noiseHPCoef := 1 - math.Exp(-2*math.Pi*300/sr)
-	noiseDecay := math.Exp(-1 / (0.035 * sr))
+	r.contact = v.contact()
+	r.damped = r.contact > 0.5
+	r.targets = v.damperTargets(r.contact)
+	r.glide = 1 - math.Exp(-1/(0.01*sr))
+	r.peak = 0
+	r.period = sr / (440 * math.Exp2((stretched(v.pitch, &v.cfg)-69)/12))
+	_, _, mass := woundTraits(v.pitch, &v.cfg)
+	r.coupling = bridgeDrain(v.pitch) * mass * r.period / sr / float64(len(v.strings)/2) // per loop
+	r.g = math.Sqrt(r.coupling)
+	r.drainCoef = 1 - math.Exp(-2*math.Pi*drainHz/sr)
+	r.cross = crossCoupling * r.period / sr
+	r.mech = math.Max(0, math.Min(v.cfg.Mechanics, 1))
+	r.dcCoef = 1 - math.Exp(-2*math.Pi*20/sr)
+	r.envCoef = 1 - math.Exp(-1/(0.005*sr))
+	r.noiseLPCoef = 1 - math.Exp(-2*math.Pi*2500/sr)
+	r.noiseHPCoef = 1 - math.Exp(-2*math.Pi*300/sr)
+	r.noiseDecay = math.Exp(-1 / (0.035 * sr))
 	v.thumpRot = cmplx.Rect(math.Exp(-1/(0.02*sr)), 2*math.Pi*90/sr)
+	v.bridgeAmt = 0
+	if !v.bridgeOff {
+		v.bridgeAmt = math.Max(0, math.Min(v.cfg.Bridge, 1))
+	}
+	return true
+}
 
-	for i := range bs {
-		if v.releaseIn >= 0 {
-			if v.releaseIn == 0 {
-				v.keyDown = false
-				contact = v.contact()
-				damped = contact > 0.5
-				targets = v.damperTargets(contact)
-			}
-			v.releaseIn--
+// stringsStep is the first half of a sample: the strike, what comes around the loop of every string,
+// and what the strings put on the bridge. The bridge moves, then outStep follows
+func (v *Voice) stringsStep(i int) {
+	r := &v.run
+	if v.releaseIn >= 0 {
+		if v.releaseIn == 0 {
+			v.keyDown = false
+			r.contact = v.contact()
+			r.damped = r.contact > 0.5
+			r.targets = v.damperTargets(r.contact)
 		}
+		v.releaseIn--
+	}
 
-		// the strike: every string gets it a little later or earlier (the hammer doesn't reach
-		// the strings of a key at exactly the same moment)
-		pos := v.excPos
-		kn := 0.0
-		if pos >= 0 && pos < len(v.knock) {
-			kn = v.knock[pos] * v.knockAmp
-		}
-		if pos < len(v.exc)+maxStrikeSpread {
-			v.excPos++
-		}
+	// the strike: every string gets it a little later or earlier (the hammer doesn't reach
+	// the strings of a key at exactly the same moment)
+	pos := v.excPos
+	r.kn = 0
+	if pos >= 0 && pos < len(v.knock) {
+		r.kn = v.knock[pos] * v.knockAmp
+	}
+	if pos < len(v.exc)+maxStrikeSpread {
+		v.excPos++
+	}
+	r.pos = pos
 
-		// settling: the loops a little shorter while the strings are still stretched
-		if v.settle > 1e-3 {
-			v.settle *= v.settleDecay
-			shift := period * v.settle * (math.Ln2 / 1200)
-			for _, s := range v.strings {
-				s.shift = shift
-			}
-		} else if v.settle > 0 {
-			v.settle = 0
-			for _, s := range v.strings {
-				s.shift = 0
-			}
+	// settling: the loops a little shorter while the strings are still stretched
+	if v.settle > 1e-3 {
+		v.settle *= v.settleDecay
+		shift := r.period * v.settle * (math.Ln2 / 1200)
+		for _, s := range v.strings {
+			s.shift = shift
 		}
-
-		// the strings: what comes around every loop reaches the bridge
-		t, bridge := 0.0, 0.0
-		for k, s := range v.strings {
-			s.damper += (targets[k] - s.damper) * glide
-			s.y = s.next()
-			t += s.y
-			if k%2 == 0 {
-				bridge += s.y
-			}
-		}
-		// the soundboard takes the low frequencies of the bridge more than the highs (its low modes
-		// move most), so the fundamental and the low partials fade first and a bass note gets
-		// brighter as it rings
-		v.drainLP += drainCoef * (bridge - v.drainLP)
-		drain := drainLow*v.drainLP + drainHigh*(bridge-v.drainLP)
-
-		// the bridge: the vertical polarizations moving together lose to the soundboard, a
-		// little passes to the horizontal ones
-		for k, s := range v.strings {
-			x := 0.0
-			if i := pos - s.delay; i >= 0 && i < len(v.exc) {
-				x = v.exc[i]
-			}
-			if k%2 == 0 {
-				s.push(x*s.in + s.y - coupling*drain)
-			} else {
-				s.push(x*s.in + s.y + cross*bridge)
-			}
-		}
-
-		// the bark: phantom partials from the square of the motion, in the longitudinal mode
-		if v.barkLevel > 0 && v.force > 0 {
-			// the stretch goes with the square of the motion: relative to the strike (the speed
-			// of the hammer is in barkLevel), so it doesn't depend on the level of the note
-			tn := t / v.force
-			sq := tn * tn * v.force
-			v.barkDC += dcCoef * (sq - v.barkDC)
-			hp := sq - v.barkDC
-			bp := v.b0*(hp-v.bx2) - v.a1*v.by1 - v.a2*v.by2
-			v.bx2, v.bx1 = v.bx1, hp
-			v.by2, v.by1 = v.by1, bp
-			t += v.barkLevel * (0.7*bp + 0.3*hp)
-		}
-
-		// the key landing on the keybed: a low thud and a dull knock of wood
-		if v.bedIn >= 0 {
-			if v.bedIn == 0 {
-				v.noise += v.bedLevel * 0.5
-				v.thumpRe += v.bedLevel
-			}
-			v.bedIn--
-		}
-
-		// the action: the dampers landing on the vibrating strings, the key coming up
-		v.env += envCoef * (math.Abs(t) - v.env)
-		if v.keyDown != v.wasDown || damped != v.wasDamped {
-			if !v.keyDown && v.wasDown {
-				// as loud as what is left of the note: a key held while the note died away is let go
-				// in a quiet room, and comes up gently
-				left := 1.0
-				if v.loudest > 0 {
-					left = math.Min(v.peak/v.loudest, 1)
-				}
-				v.noise += mech * v.keyNoise * left
-				v.thumpRe += mech * v.keyNoise * left * 2
-			}
-			if damped && !v.wasDamped {
-				v.noise += mech * damperNoise * v.env
-			}
-			v.wasDown, v.wasDamped = v.keyDown, damped
-		}
-		if v.noise > 1e-7 || math.Abs(v.thumpRe) > 1e-7 {
-			n := (v.Rand().Float64()*2 - 1) * v.noise
-			v.noiseLP += noiseLPCoef * (n - v.noiseLP)
-			v.noiseHP += noiseHPCoef * (v.noiseLP - v.noiseHP)
-			t += v.noiseLP - v.noiseHP
-			v.noise *= noiseDecay
-			c := complex(v.thumpRe, v.thumpIm) * v.thumpRot
-			v.thumpRe, v.thumpIm = real(c), imag(c)
-			t += v.thumpRe
-		}
-
-		y := t * v.amp
-		peak = math.Max(peak, math.Max(math.Abs(y), math.Abs(kn)))
-		// the knock is the soundboard already: in an instrument it is heard beside the soundboard,
-		// not through it again
-		if v.knockOut != nil {
-			v.knockOut[i] = kn
-		} else {
-			y += kn
-		}
-
-		if len(outs) == 1 {
-			outs[0][i] = float32(y)
-		} else {
-			outs[0][i] = float32(y * v.gainL)
-			outs[1][i] = float32(y * v.gainR)
+	} else if v.settle > 0 {
+		v.settle = 0
+		for _, s := range v.strings {
+			s.shift = 0
 		}
 	}
+
+	// the strings: what comes around every loop reaches the bridge
+	t, bridge := 0.0, 0.0
+	for k, s := range v.strings {
+		s.damper += (r.targets[k] - s.damper) * r.glide
+		s.y = s.next()
+		t += s.y
+		if k%2 == 0 {
+			bridge += s.y
+		}
+	}
+	r.t, r.bridge = t, bridge
+	if v.bridgeAmt > 0 {
+		v.bridge.f += r.g * bridge
+	}
+}
+
+// outStep is the second half of a sample: the strings take what the bridge gives back, the bark,
+// the precursor and the noise of the action are added, and the voice is written out
+func (v *Voice) outStep(i int) {
+	var (
+		r      = &v.run
+		sr     = v.Config().SampleRate
+		outs   = v.Output(0).Channels
+		t      = r.t
+		bridge = r.bridge
+		pos    = r.pos
+	)
+
+	// the soundboard takes the low frequencies of the bridge more than the highs (its low modes
+	// move most), so the fundamental and the low partials fade first and a bass note gets
+	// brighter as it rings
+	v.drainLP += r.drainCoef * (bridge - v.drainLP)
+	drain := drainLow*v.drainLP + drainHigh*(bridge-v.drainLP)
+	// the loss of the vertical polarizations: the drain of the key on its own, or the bridge the
+	// strings of all keys share (the admittance of the board and what the other strings put on it)
+	loss := r.coupling * drain
+	if v.bridgeAmt > 0 {
+		loss = (1-v.bridgeAmt)*loss + v.bridgeAmt*r.g*v.bridge.v
+	}
+
+	// the bridge: the vertical polarizations moving together lose to the soundboard, a
+	// little passes to the horizontal ones
+	for k, s := range v.strings {
+		x := 0.0
+		if i := pos - s.delay; i >= 0 && i < len(v.exc) {
+			x = v.exc[i]
+		}
+		if k%2 == 0 {
+			s.push(x*s.in + s.y - loss)
+		} else {
+			s.push(x*s.in + s.y + r.cross*bridge)
+		}
+	}
+
+	// the bark: phantom partials from the square of the motion, in the longitudinal mode
+	if v.barkLevel > 0 && v.force > 0 {
+		// the stretch goes with the square of the motion: relative to the strike (the speed
+		// of the hammer is in barkLevel), so it doesn't depend on the level of the note
+		tn := t / v.force
+		sq := tn * tn * v.force
+		v.barkDC += r.dcCoef * (sq - v.barkDC)
+		hp := sq - v.barkDC
+		bp := v.b0*(hp-v.bx2) - v.a1*v.by1 - v.a2*v.by2
+		v.bx2, v.bx1 = v.bx1, hp
+		v.by2, v.by1 = v.by1, bp
+		t += v.barkLevel * (0.7*bp + 0.3*hp)
+	}
+
+	// the precursor: the burst of longitudinal waves that outruns the transverse note
+	if v.preLevel > 0 {
+		if pos == 0 {
+			v.preOn = true
+			for j := range v.pre {
+				v.pre[j] = cmplx.Rect(1, math.Pi*keyRandom(v.key, 10+float64(j)))
+			}
+		}
+		if v.preOn {
+			x := 0.0
+			for j := range v.pre {
+				x += v.preAmp[j] * real(v.pre[j])
+				v.pre[j] *= v.preRot[j]
+			}
+			t += v.preLevel * x
+			if v.preN++; v.preN > int(0.08*sr) {
+				v.preOn = false
+			}
+		}
+	}
+
+	// the key landing on the keybed: a low thud and a dull knock of wood
+	if v.bedIn >= 0 {
+		if v.bedIn == 0 {
+			v.noise += v.bedLevel * 0.5
+			v.thumpRe += v.bedLevel
+		}
+		v.bedIn--
+	}
+
+	// the action: the dampers landing on the vibrating strings, the key coming up
+	v.env += r.envCoef * (math.Abs(t) - v.env)
+	if v.keyDown != v.wasDown || r.damped != v.wasDamped {
+		if !v.keyDown && v.wasDown {
+			// as loud as what is left of the note: a key held while the note died away is let go
+			// in a quiet room, and comes up gently
+			left := 1.0
+			if v.loudest > 0 {
+				left = math.Min(v.peak/v.loudest, 1)
+			}
+			v.noise += r.mech * v.keyNoise * left
+			v.thumpRe += r.mech * v.keyNoise * left * 2
+		}
+		if r.damped && !v.wasDamped {
+			v.noise += r.mech * damperNoise * v.env
+		}
+		v.wasDown, v.wasDamped = v.keyDown, r.damped
+	}
+	if v.noise > 1e-7 || math.Abs(v.thumpRe) > 1e-7 {
+		n := (v.Rand().Float64()*2 - 1) * v.noise
+		v.noiseLP += r.noiseLPCoef * (n - v.noiseLP)
+		v.noiseHP += r.noiseHPCoef * (v.noiseLP - v.noiseHP)
+		t += v.noiseLP - v.noiseHP
+		v.noise *= r.noiseDecay
+		c := complex(v.thumpRe, v.thumpIm) * v.thumpRot
+		v.thumpRe, v.thumpIm = real(c), imag(c)
+		t += v.thumpRe
+	}
+
+	y := t * v.amp
+	kn := r.kn
+	r.peak = math.Max(r.peak, math.Max(math.Abs(y), math.Abs(kn)))
+	// the knock is the soundboard already: in an instrument it is heard beside the soundboard,
+	// not through it again
+	if v.knockOut != nil {
+		v.knockOut[i] = kn
+	} else {
+		y += kn
+	}
+
+	if len(outs) == 1 {
+		outs[0][i] = float32(y)
+	} else {
+		outs[0][i] = float32(y * v.gainL)
+		outs[1][i] = float32(y * v.gainR)
+	}
+}
+
+// end closes a buffer: the voice rests when it has died away
+func (v *Voice) end() {
+	peak := v.run.peak
 	v.peak = peak
 	v.loudest = math.Max(v.loudest, peak)
 

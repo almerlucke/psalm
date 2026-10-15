@@ -132,15 +132,16 @@ func voicing(power []float64, hz, sr float64, cfg Config) *[128]float64 {
 	body := math.Max(0, math.Min(cfg.Body, 1))
 	direct := 1 - 0.7*body
 	ref := direct*direct + body*body
-	beta := math.Max(0.02, math.Min(cfg.StrikePosition, 0.5))
 	h := math.Max(0, math.Min(cfg.Hardness, 1))
 
 	var gains [128]float64
 	for key := range gains {
 		pitch := math.Max(21, math.Min(float64(key), 108))
 		f0 := 440 * math.Exp2((stretched(pitch, &cfg)-69)/12) // tuned like the strings
-		b := inharmonicity(pitch) * math.Max(0, cfg.Stiffness)
-		t60 := ringTime(pitch) * math.Max(0.05, cfg.Decay)
+		b := inharmonicityAt(pitch, cfg.Wound) * math.Max(0, cfg.Stiffness)
+		ringF, dampF, _ := woundTraits(pitch, &cfg)
+		t60 := ringTime(pitch) * ringF * math.Max(0.05, cfg.Decay)
+		beta := math.Max(0.02, math.Min(cfg.StrikePosition*strikeRegister(&cfg, pitch), 0.5))
 
 		// the hammer pulse at velocity 0.8
 		contact := hammerContact(pitch) * 0.7 * (1.25 - 0.5*h)
@@ -175,8 +176,8 @@ func voicing(power []float64, hz, sr float64, cfg Config) *[128]float64 {
 				g := smoothingGain(lp, f, sr) / smoothingGain(lp, f0, sr)
 				comb *= g * g
 			}
-			decay := math.Min(1/(1/t60+highDamping*math.Max(0, cfg.Damping)*f*f), 3) // seconds, heard for 3
-			kw := 1 + 1.5*f*f/(f*f+1500*1500)                                        // the ear: the highs count more
+			decay := math.Min(1/(1/t60+highDamping*dampF*math.Max(0, cfg.Damping)*f*f), 3) // seconds, heard for 3
+			kw := 1 + 1.5*f*f/(f*f+1500*1500)                                              // the ear: the highs count more
 			weight := (re*re + im*im) * comb * decay * kw
 
 			// the partial is a few Hz wide (the strings beat, they are not exactly in tune)

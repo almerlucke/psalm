@@ -29,6 +29,8 @@ type Piano struct {
 	fadeOut         psalm.Channels
 	fading          bool
 	bank            []*sympathetic
+	br              *bridge // the bridge the voices share
+	active          []*Voice
 	bankIn          float64 // the bridge of the strings ringing along, of two samples
 	bankPhase       int
 	symPrev, symCur [2]float64           // their last two outputs, interpolated
@@ -97,7 +99,9 @@ func NewPoly(cfg Config, numVoices int) *Piano {
 		voices: voices,
 		order:  make([]int64, numVoices),
 	}
+	p.br = newBridge(p.Config().SampleRate)
 	for _, v := range voices {
+		v.bridge = p.br
 		v.sostenuto = &p.caught
 		v.knockOut = make([]float64, p.Config().BufferSize)
 	}
@@ -127,7 +131,7 @@ func NewPoly(cfg Config, numVoices int) *Piano {
 func (p *Piano) buildBank() {
 	cfg := &p.cfg
 	sr := p.Config().SampleRate / 2
-	disp := dispersion(sr, math.Max(0, cfg.Stiffness))
+	disp := dispersion(sr, math.Max(0, cfg.Stiffness), math.Max(0, math.Min(cfg.Wound, 1)))
 	p.bank = p.bank[:0]
 	for key := 21; key <= 108; key++ {
 		pitch := float64(key)
@@ -135,6 +139,7 @@ func (p *Piano) buildBank() {
 		if pitch > highestDamper {
 			drain = 1 // the short strings at the top die fast
 		}
+		ringF, dampF, massF := woundTraits(pitch, cfg)
 		d := stringDesign{
 			sr: sr,
 			f0: 440 * math.Exp2((stretched(pitch, cfg)-69)/12),
@@ -143,8 +148,8 @@ func (p *Piano) buildBank() {
 			ad:     disp[key].ad,
 			// its own losses and part of what the bridge takes (the strings of a key move together
 			// as the bridge drives them, a part ends up in the motions that last)
-			t60:        1 / (1/(ringTime(pitch)*math.Max(0.05, cfg.Decay)) + drain*bridgeDrain(pitch)/6.91),
-			damping:    highDamping * math.Max(0, cfg.Damping),
+			t60:        1 / (1/(ringTime(pitch)*ringF*math.Max(0.05, cfg.Decay)) + drain*massF*bridgeDrain(pitch)/6.91),
+			damping:    highDamping * dampF * math.Max(0, cfg.Damping),
 			damperTime: math.Max(0.02, cfg.DamperTime) * (1 + math.Max(0, (48-pitch)/24)),
 		}
 		s := &sympathetic{pitch: pitch}
@@ -246,13 +251,13 @@ func (p *Piano) ReceiveMessage(msg psalm.Message) {
 		}
 		p.sustain = f
 	})
-	for _, k := range []string{"body", "hardness", "strikePosition", "stiffness", "decay", "damping"} {
+	for _, k := range []string{"body", "hardness", "strikePosition", "strikeRegister", "stiffness", "decay", "damping", "wound"} {
 		if _, ok := msg[k]; ok {
 			p.voice()
 			break
 		}
 	}
-	for _, k := range []string{"hardness", "strikePosition", "variation", "stretch", "stiffness"} {
+	for _, k := range []string{"hardness", "strikePosition", "strikeRegister", "variation", "stretch", "stiffness", "wound"} {
 		if _, ok := msg[k]; ok {
 			p.voices[0].prepareHammers()
 			break
@@ -261,7 +266,7 @@ func (p *Piano) ReceiveMessage(msg psalm.Message) {
 	if _, ok := msg["position"]; ok {
 		p.listener = newListener(p.cfg.Position, p.Config().SampleRate)
 	}
-	for _, k := range []string{"stiffness", "decay", "damping", "damperTime", "width", "stretch", "position"} {
+	for _, k := range []string{"stiffness", "decay", "damping", "damperTime", "width", "stretch", "position", "wound"} {
 		if _, ok := msg[k]; ok {
 			p.buildBank()
 			return
@@ -317,7 +322,9 @@ func (p *Piano) allocate(note psalm.Message) (*Voice, bool) {
 		}
 	}
 	v := p.voices[quietest]
+	v.bridgeOff = true // outside the bridge: it is rendered alone
 	v.Synthesize()
+	v.bridgeOff = false
 	n := float32(len(p.fadeOut[0]))
 	for c, ch := range v.Output(0).Channels {
 		for i, x := range ch {
@@ -331,6 +338,7 @@ func (p *Piano) allocate(note psalm.Message) (*Voice, bool) {
 
 func (p *Piano) Synthesize() {
 	// the voices, and a voice taken while sounding fading out
+	faded := p.fading
 	if p.fading {
 		p.mixed.Copy(p.fadeOut)
 		p.fadeOut.Clear()
@@ -340,21 +348,18 @@ func (p *Piano) Synthesize() {
 	}
 	clear(p.knock[0])
 	clear(p.knock[1])
+	p.active = p.active[:0]
 	for _, v := range p.voices {
 		if v.IsActive() {
 			clear(v.knockOut)
-			v.Synthesize()
-			p.mixed.Accum(v.Output(0).Channels)
-			for i, k := range v.knockOut {
-				p.knock[0][i] += k * v.gainL
-				p.knock[1][i] += k * v.gainR
+			if v.begin() {
+				p.active = append(p.active, v)
 			}
 		}
 	}
 
 	// nothing sounds: rest (the soundboard tail and the strings ringing along have died away)
-	in0 := p.mixed
-	if p.idle > idleSamples && silent(in0) && p.pedal.noise < 1e-9 && cmplx.Abs(p.pedal.thump) < 1e-9 {
+	if p.idle > idleSamples && len(p.active) == 0 && !faded && p.pedal.noise < 1e-9 && cmplx.Abs(p.pedal.thump) < 1e-9 {
 		p.Output(0).Clear()
 		return
 	}
@@ -410,7 +415,28 @@ func (p *Piano) Synthesize() {
 		}
 	}
 
+	bridged := false
+	for _, v := range p.active {
+		bridged = bridged || v.bridgeAmt > 0
+	}
 	for i := range out[0] {
+		// the voices step together, so the strings of all keys meet on the bridge every sample:
+		// they put their force on it, it moves, and moves them
+		for _, v := range p.active {
+			v.stringsStep(i)
+		}
+		if bridged {
+			p.br.tick()
+		}
+		for _, v := range p.active {
+			v.outStep(i)
+			for c, ch := range v.Output(0).Channels {
+				in[c][i] += ch[i]
+			}
+			p.knock[0][i] += v.knockOut[i] * v.gainL
+			p.knock[1][i] += v.knockOut[i] * v.gainR
+		}
+
 		l := float64(in[0][i])
 		r := l
 		if len(in) > 1 {
@@ -476,6 +502,9 @@ func (p *Piano) Synthesize() {
 		}
 	}
 
+	for _, v := range p.active {
+		v.end()
+	}
 	p.board.Synthesize()
 	wet := p.board.Output(0).Channels
 	for i := range out[0] {

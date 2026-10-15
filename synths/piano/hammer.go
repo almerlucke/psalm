@@ -538,8 +538,25 @@ const (
 
 // keyStrikeAt returns where the hammer of a key hits: the setting, a little different for every key
 func keyStrikeAt(cfg *Config, key int) float64 {
-	return cfg.StrikePosition + math.Max(0, math.Min(cfg.Variation, 1))*0.008*keyRandom(key, 2)
+	return cfg.StrikePosition*strikeRegister(cfg, float64(key)) + math.Max(0, math.Min(cfg.Variation, 1))*0.008*keyRandom(key, 2)
 }
+
+// strikeRegister returns the factor of the strike point of a pitch: the hammers of a piano hit
+// the long bass strings at 1/8 of their length, the strike moves towards the end (1/12) in the
+// treble, where a hammer is as wide as a fair part of the string and the fundamental should
+// speak. The setting is the bass, the register moves it to strikeTreble times that at the top
+func strikeRegister(cfg *Config, pitch float64) float64 {
+	amount := math.Max(0, math.Min(cfg.StrikeRegister, 1))
+	x := math.Max(0, math.Min((pitch-strikeFrom)/(strikeTo-strikeFrom), 1))
+	x = x * x * (3 - 2*x)
+	return 1 - amount*x*(1-strikeTreble)
+}
+
+const (
+	strikeFrom   = 48.0
+	strikeTo     = 100.0
+	strikeTreble = 2.0 / 3 // 1/8 to 1/12
+)
 
 // prepareHammers fits the felt of every key now (see feltStiffness), so no strike has to
 func (v *Voice) prepareHammers() {

@@ -13,15 +13,18 @@ import (
 // ear the higher partials of the bass are the pitch). Starting from A4, that gives the Railsback
 // curve: the low bass some 20 cents flat, the top some 30 cents sharp
 
-var stretchTables sync.Map // stiffness -> *[128]float64
+type stretchKey struct{ stiffness, wound float64 }
+
+var stretchTables sync.Map // stretchKey -> *[128]float64
 
 // stretch returns how many cents every key is tuned from equal temperament for a stiffness (the
 // inharmonicity is what the tuner hears)
-func stretch(stiffness float64) *[128]float64 {
-	if t, ok := stretchTables.Load(stiffness); ok {
+func stretch(stiffness, wound float64) *[128]float64 {
+	sk := stretchKey{stiffness, wound}
+	if t, ok := stretchTables.Load(sk); ok {
 		return t.(*[128]float64)
 	}
-	b := func(key int) float64 { return inharmonicity(float64(key)) * stiffness }
+	b := func(key int) float64 { return inharmonicityAt(float64(key), wound) * stiffness }
 	// cents partial m of a key is above m times its fundamental
 	partial := func(key, m int) float64 {
 		k := float64(m)
@@ -49,7 +52,7 @@ func stretch(stiffness float64) *[128]float64 {
 	for key := 68; key >= 0; key-- {
 		t[key] = t[key+1] - octave(max(key, 21))/12
 	}
-	stored, _ := stretchTables.LoadOrStore(stiffness, &t)
+	stored, _ := stretchTables.LoadOrStore(sk, &t)
 	return stored.(*[128]float64)
 }
 
@@ -59,7 +62,7 @@ func stretched(pitch float64, cfg *Config) float64 {
 	if s == 0 {
 		return pitch
 	}
-	t := stretch(math.Max(0, cfg.Stiffness))
+	t := stretch(math.Max(0, cfg.Stiffness), math.Max(0, math.Min(cfg.Wound, 1)))
 	key := max(0, min(int(math.Floor(pitch)), 126))
 	frac := math.Max(0, math.Min(pitch-float64(key), 1))
 	cents := t[key] + (t[key+1]-t[key])*frac

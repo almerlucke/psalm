@@ -24,6 +24,7 @@ func Describe(cfg Config) params.Set {
 		params.K("Hammer", "strikePosition", 0.02, 0.5, cfg.StrikePosition, params.Label("strike position")),
 		params.K("Hammer", "velocitySens", 0, 1, cfg.VelocitySens, params.Label("velocity")),
 		params.K("Hammer", "variation", 0, 1, cfg.Variation),
+		params.K("Hammer", "strikeRegister", 0, 1, cfg.StrikeRegister, params.Label("strike by register")),
 
 		params.K("Strings", "stiffness", 0, 3, cfg.Stiffness),
 		params.K("Strings", "decay", 0.05, 4, cfg.Decay, params.Exp()),
@@ -32,11 +33,14 @@ func Describe(cfg Config) params.Set {
 		params.K("Strings", "strings", 1, 3, float64(strings), params.Step(1)),
 		params.K("Strings", "stretch", 0, 2, cfg.Stretch),
 		params.K("Strings", "bark", 0, 1, cfg.Bark),
+		params.K("Strings", "wound", 0, 1, cfg.Wound, params.Label("wound bass")),
+		params.K("Strings", "precursor", 0, 1, cfg.Precursor),
 		params.K("Strings", "resonance", 0, 1, cfg.Resonance),
 		params.K("Strings", "damperTime", 0.02, 2, max(0.02, cfg.DamperTime), params.Exp(), params.Unit("s"), params.Label("damper time")),
 
 		params.K("Body", "soundboard", 0, 1, cfg.Soundboard),
 		params.K("Body", "body", 0, 1, cfg.Body),
+		params.K("Body", "bridge", 0, 1, cfg.Bridge),
 		params.K("Body", "mechanics", 0, 1, cfg.Mechanics),
 		params.K("Body", "keyBed", 0, 1, cfg.KeyBed, params.Label("key bed")),
 

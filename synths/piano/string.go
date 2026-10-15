@@ -196,7 +196,7 @@ func designString(d stringDesign) stringParams {
 
 // dispersionKey is a table of dispersion filters for every key
 type dispersionKey struct {
-	sr, stiffness float64
+	sr, stiffness, wound float64
 }
 
 type dispersionFilter struct {
@@ -209,15 +209,15 @@ var dispersionTables sync.Map // dispersionKey -> *[128]dispersionFilter
 // dispersion returns the dispersion filters of every key for a stiffness (scaling the
 // inharmonicity of a grand) at a sample rate. Fitting them takes a while, so they are fitted once
 // per stiffness and sample rate (when the voices are created) and kept
-func dispersion(sr, stiffness float64) *[128]dispersionFilter {
-	key := dispersionKey{sr, stiffness}
+func dispersion(sr, stiffness, wound float64) *[128]dispersionFilter {
+	key := dispersionKey{sr, stiffness, wound}
 	if t, ok := dispersionTables.Load(key); ok {
 		return t.(*[128]dispersionFilter)
 	}
 	var t [128]dispersionFilter
 	for k := range t {
 		pitch := math.Max(21, math.Min(float64(k), 108))
-		t[k].stages, t[k].ad = fitDispersion(sr, 440*math.Exp2((pitch-69)/12), inharmonicity(pitch)*stiffness, dispersionStages)
+		t[k].stages, t[k].ad = fitDispersion(sr, 440*math.Exp2((pitch-69)/12), inharmonicityAt(pitch, wound)*stiffness, dispersionStages)
 	}
 	stored, _ := dispersionTables.LoadOrStore(key, &t)
 	return stored.(*[128]dispersionFilter)
@@ -418,6 +418,38 @@ func interpolateLinear(table [][2]float64, pitch float64) float64 {
 var inharmonicityTable = [][2]float64{{21, 3e-4}, {33, 1.5e-4}, {45, 1.5e-4}, {57, 3e-4}, {69, 7e-4}, {81, 2e-3}, {93, 6e-3}, {108, 2e-2}}
 
 func inharmonicity(pitch float64) float64 { return interpolate(inharmonicityTable, pitch) }
+
+// The bass strings are wound: a steel core with a copper wrap. The wrap adds mass but hardly any
+// stiffness, so a wound string is much less inharmonic than the plain string of the same pitch
+// would be, and there is a step in the inharmonicity where the plain strings begin. The copper also
+// rubs: the highs die faster, the string rings a little shorter, and the mass drives the bridge
+// harder. The transition (the second string break, where the strings go from two to three) takes a
+// key or two, so it is audible but not a jump
+const (
+	woundBreak     = 44.5 // keys below it are wound
+	woundWidth     = 0.5  // keys, of the transition
+	woundStiffness = 0.4  // inharmonicity of a wound string against the plain one
+	woundRing      = 0.85 // ring time
+	woundDamping   = 1.0  // extra damping of the highs (times 1)
+	woundMass      = 0.3  // extra drain into the bridge
+)
+
+// woundness returns how wound the string of a key is: 1 in the bass, 0 above the break
+func woundness(pitch float64) float64 { return 1 / (1 + math.Exp((pitch-woundBreak)/woundWidth)) }
+
+// inharmonicityAt returns the inharmonicity of a key with the wound strings at an amount (0 is
+// the plain curve of inharmonicity, 1 the steps of a real piano)
+func inharmonicityAt(pitch, wound float64) float64 {
+	w := math.Max(0, math.Min(wound, 1)) * woundness(pitch)
+	return inharmonicity(pitch) * (1 - w*(1-woundStiffness))
+}
+
+// woundTraits returns what the copper wrap does to a key: the factor of its ring time, of the
+// damping of its highs, and of its drain into the bridge
+func woundTraits(pitch float64, cfg *Config) (ring, damping, mass float64) {
+	w := math.Max(0, math.Min(cfg.Wound, 1)) * woundness(pitch)
+	return 1 - w*(1-woundRing), 1 + w*woundDamping, 1 + w*woundMass
+}
 
 // ringTable is how long the fundamental of a string of a key takes to fall 60 dB (seconds) by its
 // own losses: the long second stage of a note (the first, fast one is the bridge, see
