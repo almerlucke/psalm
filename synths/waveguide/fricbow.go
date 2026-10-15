@@ -58,7 +58,7 @@ type fricStore struct {
 var (
 	fricCur     atomic.Pointer[fricStore]
 	fricWriteMu sync.Mutex
-	fricQueue   = make(chan fricKey, 1024)
+	fricQueue   = make(chan fricKey, 16384)
 	fricPending atomic.Int64
 	fricOnce    sync.Once
 	fricWarmed  sync.Map
@@ -133,13 +133,15 @@ func fricEstimate(k fricKey) fricFit {
 }
 
 // fricRequest asks for a calibration to be made in the background (it never waits)
-func fricRequest(k fricKey) {
+func fricRequest(k fricKey) bool {
 	fricOnce.Do(func() { go fricWorker() })
 	fricPending.Add(1)
 	select {
 	case fricQueue <- k:
+		return true
 	default:
 		fricPending.Add(-1)
+		return false
 	}
 }
 
@@ -197,10 +199,15 @@ func warmBow(cfg *Config, sr float64) {
 	if _, done := fricWarmed.LoadOrStore(id, true); done {
 		return
 	}
+	queued := true
 	for p := 36.0; p <= 96; p++ {
 		f := 440 * math.Exp2((p-69)/12)
-		fricRequest(fricKey{freq: f, pos: pos, force: force, speed: speed, attack: cfg.BowAttack, sr: sr, follow: follow})
-		fricRequest(fricKey{freq: f, pos: pos, force: slope, speed: tspeed, attack: cfg.BowAttack, sr: sr, table: true})
+		a := fricRequest(fricKey{freq: f, pos: pos, force: force, speed: speed, attack: cfg.BowAttack, sr: sr, follow: follow})
+		b := fricRequest(fricKey{freq: f, pos: pos, force: slope, speed: tspeed, attack: cfg.BowAttack, sr: sr, table: true})
+		queued = queued && a && b
+	}
+	if !queued {
+		fricWarmed.Delete(id) // the queue was full: the next voice asks again
 	}
 }
 

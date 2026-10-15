@@ -135,7 +135,10 @@ func TestOrgan(t *testing.T) {
 func TestWaveguide(t *testing.T) {
 	for n, f := range waveguide.Presets {
 		fresh()
-		check(t, n, waveguide.New(f()), note)
+		cfg := f()
+		waveguide.WarmBow(cfg) // a friction bow is tuned by a cache that fills in the background: measure it warm
+		waveguide.WaitBow()
+		check(t, n, waveguide.New(cfg), note)
 	}
 }
 
