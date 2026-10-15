@@ -63,7 +63,7 @@ func Steel() Config {
 
 // Muted is a palm muted guitar: a short, dull pluck
 func Muted() Config {
-	c := plucked(0.25, 0.6, 0.6, 0.12, 0.05, GuitarBody, 0.4, 1.5)
+	c := plucked(0.25, 0.6, 0.6, 0.12, 0.05, GuitarBody, 0.4, 1.432)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum, c.FretNoise = 1e-4, 0.03, 0.6, 0.1
 	return c
 }
@@ -88,7 +88,7 @@ func Bass() Config {
 // UprightBass is a double bass plucked with the finger: the long thick gut or steel string, the
 // large body that gives way under it, the string slapping the fingerboard a little
 func UprightBass() Config {
-	c := plucked(1.6, 0.45, 0.3, 0.2, 0.2, BassBody, 0.55, 1.366)
+	c := plucked(1.6, 0.45, 0.3, 0.2, 0.2, BassBody, 0.55, 1.429)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 2e-4, 0.09, 0
 	c.Polarization, c.BodyCoupling, c.TensionMod, c.FretBuzz, c.FretNoise = 0.35, 0.7, 0.4, 0.15, 0.2
 	return c
@@ -141,10 +141,11 @@ func Ponticello() Config {
 }
 
 // Rosin is a violin bowed by the physics of the thing: a friction curve with a memory, a bow
-// that has a weight and a speed, the grain of the rosin, and a bow that turns round
+// that has a weight and a speed, and the grain of the rosin. The bow doesn't turn round (BowReverse
+// is there to set: it dips a held note every stroke, and the highest notes lurch by it)
 func Rosin() Config {
 	c := bowed(0.55, 0.127, 0.08, 0.15, 5.5, 0.1, 0.25, ViolinBody, 0.6, 0.933) // the pressure is that of the table bow, for the highest notes
-	c.BowModel, c.BowForce, c.BowSpeed, c.BowNoise, c.BowReverse = 1, 0.3, 0.5, 0.3, 1.6
+	c.BowModel, c.BowForce, c.BowSpeed, c.BowNoise, c.BowReverse = 1, 0.3, 0.5, 0.3, 0
 	return c
 }
 
@@ -191,22 +192,22 @@ func blown(reed bool, breath, noise, embouchure, damping, attack, release, vibRa
 }
 
 // Tom is a rack tom struck a little off the middle: a round tone with a bit of thump as the skin tightens
-func Tom() Config { return drum(0.9, 0.45, 0.35, 0.5, 0.5, 0, 0, 1.07) }
+func Tom() Config { return drum(0.9, 0.45, 0.35, 0.5, 0.5, 0, 0, 0.6977) }
 
 // FloorTom is a large tom: long, dark, the pitch falling back after the hit
-func FloorTom() Config { return drum(1.4, 0.35, 0.4, 0.4, 0.7, 0, 0, 1.09) }
+func FloorTom() Config { return drum(1.4, 0.35, 0.4, 0.4, 0.7, 0, 0, 0.7815) }
 
 // Conga is hit near the rim with the hand: bright and short, and a hand on the skin stops it
-func Conga() Config { return drum(0.5, 0.6, 0.7, 0.75, 0.3, 0, 0.15, 1.93) }
+func Conga() Config { return drum(0.5, 0.6, 0.7, 0.75, 0.3, 0, 0.15, 0.8472) }
 
 // Tabla is a small skin with a strong pitch bend after the strike and rings clearly
-func Tabla() Config { return drum(0.7, 0.25, 0.25, 0.6, 0.9, 0, 0.2, 1.03) }
+func Tabla() Config { return drum(0.7, 0.25, 0.25, 0.6, 0.9, 0, 0.2, 0.6519) }
 
 // FrameDrum is a soft mallet on a wide, loose skin: a warm, dull boom
-func FrameDrum() Config { return drum(1.2, 0.7, 0.5, 0.25, 0.1, 0, 0.3, 1.1) }
+func FrameDrum() Config { return drum(1.2, 0.7, 0.5, 0.25, 0.1, 0, 0.3, 0.9018) }
 
 // SnareDrum is a skin with the wires under it buzzing along, hit with a hard stick
-func SnareDrum() Config { return drum(0.35, 0.5, 0.4, 0.8, 0.15, 0.7, 0, 1.02) }
+func SnareDrum() Config { return drum(0.35, 0.5, 0.4, 0.8, 0.15, 0.7, 0, 0.5394) }
 
 // Flute is blown over the edge: airy, with a vibrato that comes in after the start
 func Flute() Config { return blown(false, 0.72, 0.25, 0.4, 0.6, 0.06, 0.12, 5, 0.15, 0.3, 0.146) }

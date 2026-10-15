@@ -20,6 +20,11 @@ var besselZeros = [...]struct {
 
 const numModes = len(besselZeros)
 
+// membraneGain is how much louder the skin is than the sum of its modes: the stick presses for a time
+// and does not hit in a step, which leaves the same hit with less peak (and less in all), so the skin
+// is made up for it, and the presets keep their levels
+const membraneGain = 2.4
+
 // modeRatio is the frequency of mode k over the lowest
 func modeRatio(k int) float64 { return besselZeros[k].j / besselZeros[0].j }
 
@@ -36,6 +41,10 @@ type membrane struct {
 	prev   float64 // the wires' noise, before
 	rel    float64 // the decay per sample of a hand laid on the skin
 	live   bool
+	// the stick's contact: a push on the skin that lasts a time (a raised cosine, as the stick presses
+	// and lets go), not an instant. exc is what each mode gets in all, pn of pnN samples of it are given
+	exc     [numModes]float64
+	pn, pnN int
 }
 
 func (m *membrane) clear() { *m = membrane{} }
@@ -87,13 +96,20 @@ func (v *Voice) strike() {
 		w[k] = math.Jn(besselZeros[k].m, besselZeros[k].j*place) * math.Exp(-r*(1-hard)*3)
 		sum += math.Abs(w[k])
 	}
+	// a roll: what is left of the push before goes into the skin now
+	m.flush()
 	if sum > 0 {
 		// whatever the stick, the skin starts with the same size of hit; the velocity is the size
 		g := (0.3 + 0.7*v.velocity) / sum
 		for k := range numModes {
-			// added to what still rings: a roll
-			m.re[k] += w[k] * g
+			m.exc[k] = w[k] * g
 		}
+		// the stick presses for a time: a hard, fast stick for a fraction of a millisecond, a soft
+		// one for several. A mode that turns over in less than that hardly feels it (the soft stick
+		// leaves the highs out), and the sound doesn't start with a step
+		ms := (0.4 + 7*math.Pow(1-hard, 1.5)) * (1.15 - 0.3*math.Max(0, math.Min(v.velocity, 1)))
+		m.pnN = max(2, int(ms*0.001*sr))
+		m.pn = 0
 	}
 	m.glide = math.Max(0, math.Min(cfg.Tension, 1)) * 0.35 * (0.4 + 0.6*v.velocity)
 	m.step = math.Exp(-1 / (0.07 * sr))
@@ -101,8 +117,35 @@ func (v *Voice) strike() {
 	m.count = 0
 }
 
+// push is how much of the stick's push falls on the sample i of n: a raised cosine, which adds up to 1
+func push(i, n int) float64 {
+	return (1 - math.Cos(2*math.Pi*(float64(i)+0.5)/float64(n))) / float64(n)
+}
+
+// flush gives the skin what is left of the push at once
+func (m *membrane) flush() {
+	if m.pn >= m.pnN {
+		return
+	}
+	rest := 0.0
+	for i := m.pn; i < m.pnN; i++ {
+		rest += push(i, m.pnN)
+	}
+	for k := range numModes {
+		m.re[k] += m.exc[k] * rest
+	}
+	m.pn = m.pnN
+}
+
 // tick returns a sample of the skin; bend is the pitch bend
 func (m *membrane) tick(v *Voice, bend float64) float64 {
+	if m.pn < m.pnN {
+		f := push(m.pn, m.pnN)
+		for k := range numModes {
+			m.re[k] += m.exc[k] * f
+		}
+		m.pn++
+	}
 	if m.count&7 == 0 {
 		if ratio := bend * (1 + m.glide); math.Abs(ratio-m.ratio) > 1e-7 {
 			m.retune(v, ratio)
@@ -126,7 +169,7 @@ func (m *membrane) tick(v *Voice, bend float64) float64 {
 		m.re[k], m.im[k] = nr, ni
 		sum += nr
 	}
-	s := sum
+	s := sum * membraneGain
 	if sn := v.cfg.Snare; sn > 0 {
 		// the wires buzz as loud as the skin is moving
 		m.snare = math.Max(math.Abs(sum), m.snare*0.9993)

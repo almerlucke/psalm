@@ -1330,12 +1330,22 @@ pitch at the strike and lets it fall back (a tom's thump, a tabla's bend), `snar
 along, and `release` is a hand laid on the skin (conga). Presets: `tom`, `floorTom`, `conga`, `tabla`,
 `frameDrum`, `snareDrum`.
 
+The stick has a contact time: it presses on the skin for a moment (a fraction of a millisecond for a
+hard, fast stick, several for a soft one, set by `hardness` and the velocity) instead of hitting in an
+instant, so the sound begins at nothing and rises, not with a step (which was a click, and most of what
+a drum sounded like). A mode that turns over in less than the contact hardly feels it, so a soft stick
+leaves the highs out.
+
 `Pipe` is a blown tube: by default a flute (an air jet driving a delay-line tube through a saturating
 curve), with `reed` on a clarinet (a single reed on a closed tube, odd partials, an octave lower).
 `breath` is the pressure (too little does not sound, too much overblows or chokes the reed), `noise`
 the air, `embouchure` the jet's offset (even partials) or the reed's stiffness, `damping` darkens the
 tube; the attack and release (`ampAttack`, `ampRelease`) shape the breath and the vibrato is the bow's.
-A pitch keeper trims the tube so it plays in tune whatever the blowing. Presets: `flute`, `clarinet`,
+A pitch keeper trims the tube so it plays in tune whatever the blowing: it moves the length a little
+at a time (a delay line whose length jumps clicks) and waits until the tone has stopped growing. A note
+speaks within a fraction of a second at any pitch (a reed's tube starts with a small puff in it, a flute's
+jet has more gain while the tone is weak), and a flute that starts to sound an octave too high is eased
+off the jet, as a player would (not for a breath above 1, which asks for the overblown note). Presets: `flute`, `clarinet`,
 `panpipe`. Both take the voice filter, the body, and the matrix (new destinations `breath` and
 `embouchure`; the membrane's `decay`, `damping` and `pitch`).
 
@@ -1370,7 +1380,8 @@ tune; gentle strings keep the cheap fit.
 The bow has a switch, `bowModel`: 0 is the table (`pressure`), 1 the friction curve with stick-slip and a
 rosin memory (`bowForce`, `bowSpeed`, `bowNoise`, `bowReverse`). The violin, cello, slowStrings,
 ponticello, flautando, ghostBow and rosin presets use friction, with a weight that follows the speed,
-which follows the velocity. Its pitch is held to within about 6 cents from pitch 36 to 96: when a note
+which follows the velocity (rosin has a fixed speed and force, in the one regime of the friction curve that
+stays steady over most of the range, and its bow does not turn round: `bowReverse` 0). Its pitch is held to within about 6 cents from pitch 36 to 96: when a note
 starts the bow looks up a tuning for its pitch, force, position and speed, found by running the bow loop
 on a background worker (the cache warms about 1-2 s after the synth is made; `waveguide.WarmBow(cfg)`
 and `WaitBow()` let a test or patch wait for it). A first note at a pitch not yet in the cache plays on
@@ -1479,10 +1490,14 @@ tune the arch so the modes sit at 1:4:10 (marimba, vibraphone) or 1:3:6 (xylopho
 The strike position reads the solved mode shapes. `undercut` (0.01-1, default 1) blends from a uniform
 bar to the tuned arch.
 
-Gongs and cymbals have `nonlinearity` (0-1; 0.6 and 0.8 in their presets, off elsewhere): a hard blow
-starts up to 5% sharp and glides down as the modes decay, each mode passes energy up to the modes above
-it over a few tenths of a second (a crash blooms from the low modes into the high ones), and the modes
-shimmer with a slow random detuning; all of it scales with the blow's velocity squared. The church
+Gongs and cymbals have `nonlinearity` (0-1; 0.6 and 0.8 in their presets, off elsewhere), all of it
+scaling with the blow's velocity squared. For a **cymbal** (and the hi-hats and the thunder sheet) a hard
+blow starts up to 5% sharp and glides down as the modes decay, each mode passes energy up to the modes
+above it with a random phase (a crash blooms into a hiss), and the modes shimmer with a random detuning.
+A **gong** (`gong`, `gongAgeng`, `gongSoft`, `tamTam`, `bowedGong`) is gentler, since the same would make
+it noisy and steer its pitch: the push is at most 2% (about 15 to 25 cents on a hard blow), the energy
+moves up at half the rate and joins what already rings, in its phase, so the high modes swell instead
+of being kicked about, and the shimmer is smaller (about a cent) and drifts over a second. The church
 bell uses ratios after Rossing and Perrin (hum 0.5, prime 1, tierce 1.2, quint 1.5, nominal 2, ...) with
 beating pairs; the handbell, gong and cymbal ratios are approximations. New instruments and presets:
 `woodBlock` (re-voiced), `templeBlock` and `bottle`, a Helmholtz cavity at the pitch plus the wall's modes.

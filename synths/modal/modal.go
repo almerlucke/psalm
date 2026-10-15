@@ -404,6 +404,7 @@ func (v *Voice) bend() float64 {
 // walk (the shimmer). Everything grows with the blow's velocity.
 func (v *Voice) nonlinear(dt float64) {
 	n := v.n
+	gentle := v.cfg.Instrument == InstGong // a gong swells and drifts; a cymbal hisses
 	if cap(v.nlEnergy) < n {
 		v.nlEnergy = make([]float64, n)
 	}
@@ -429,7 +430,11 @@ func (v *Voice) nonlinear(dt float64) {
 	// passes a share of its energy to the ones up to an octave and a bit above it, so the energy takes a
 	// few hops, a few tenths of a second, to reach the top
 	onset := 1 - math.Exp(-v.nlTime/0.5)
-	phi := math.Min(0.25, 24*v.nlStrength*rel*onset*dt)
+	rate := 24.0
+	if gentle {
+		rate = gongBloom
+	}
+	phi := math.Min(0.25, rate*v.nlStrength*rel*onset*dt)
 	if cap(v.nlGain) < n {
 		v.nlGain = make([]float64, n)
 	}
@@ -466,21 +471,40 @@ func (v *Voice) nonlinear(dt float64) {
 			continue
 		}
 		if gain[k] > 0 {
-			// random phase: the energy arrives without a relation to what rings
-			v.rng = v.rng*1664525 + 1013904223
-			a := float64(int32(v.rng)) / 2147483648
-			v.rng = v.rng*1664525 + 1013904223
-			b := float64(int32(v.rng)) / 2147483648
-			g := math.Sqrt(1.5 * gain[k])
-			m.re += a * g
-			m.im += b * g
+			if gentle {
+				// the energy joins what rings, in its phase: the mode swells, it does not get kicked about
+				if e[k] > 1e-16 {
+					g := math.Min(math.Sqrt(1+gain[k]/e[k]), 1.3)
+					m.re *= g
+					m.im *= g
+				} else {
+					m.re += math.Sqrt(gain[k])
+				}
+			} else {
+				// random phase: the energy arrives without a relation to what rings (a crash's hiss)
+				v.rng = v.rng*1664525 + 1013904223
+				a := float64(int32(v.rng)) / 2147483648
+				v.rng = v.rng*1664525 + 1013904223
+				b := float64(int32(v.rng)) / 2147483648
+				g := math.Sqrt(1.5 * gain[k])
+				m.re += a * g
+				m.im += b * g
+			}
 		}
 		// the shimmer
 		v.rng = v.rng*1664525 + 1013904223
 		r := float64(int32(v.rng)) / 2147483648
-		m.jit = math.Max(-0.004, math.Min(0.99*m.jit+r*0.0008*v.nlStrength*amp, 0.004))
+		if gentle { // a gong's modes drift a little, over about a second
+			m.jit = math.Max(-0.0012, math.Min(0.9991*m.jit+r*0.00005*v.nlStrength*amp, 0.0012))
+		} else {
+			m.jit = math.Max(-0.004, math.Min(0.99*m.jit+r*0.0008*v.nlStrength*amp, 0.004))
+		}
 	}
-	v.nlShift = 0.05 * v.nlStrength * rel
+	if gentle {
+		v.nlShift = 0.02 * v.nlStrength * rel
+	} else {
+		v.nlShift = 0.05 * v.nlStrength * rel
+	}
 	v.turn(v.bend())
 }
 
@@ -488,6 +512,10 @@ func (v *Voice) nonlinear(dt float64) {
 func (v *Voice) keyValue() float64 {
 	return math.Max(-1, math.Min(math.Log2(v.freq/middleC)/5, 1))
 }
+
+// gongBloom is how fast a gong's modes pass energy up (a cymbal's 24: it hisses); the energy joins what
+// rings in its phase, so the high modes swell and do not get kicked about
+const gongBloom = 12.0
 
 const middleC = 261.6255653005986
 

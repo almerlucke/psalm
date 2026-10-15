@@ -121,7 +121,7 @@ func NylonClassical() Config {
 	c.Polarization, c.BodyCoupling, c.FretNoise = 0.35, 0.6, 0.12
 	mod(&c, 0, modmatrix.Random, "pickPosition", 0.6)
 	mod(&c, 1, modmatrix.Velocity, "brightness", 0.5)
-	return lvl(c, 1.142)
+	return lvl(c, 1.21)
 }
 
 // SteelAcoustic is a steel string flat top played with the fingers (fingerpicking): the bright ring
@@ -131,7 +131,7 @@ func SteelAcoustic() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1e-4, 0.04, 0.3
 	c.Polarization, c.BodyCoupling, c.FretNoise = 0.45, 0.5, 0.1
 	mod(&c, 0, modmatrix.Velocity, "brightness", 0.4)
-	return lvl(c, 1.019)
+	return lvl(c, 1.079)
 }
 
 // TwelveString is a guitar with its strings in pairs and octaves: the two of a pair never quite
@@ -140,7 +140,7 @@ func TwelveString() Config {
 	c := plucked(4.5, 0.15, 0.7, 0.11, 0.3, GuitarBody, 0.4, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1e-4, 0.03, 0.7
 	c.Polarization, c.BodyCoupling, c.Sympathetic = 0.9, 0.4, 0.45
-	return lvl(c, 0.956)
+	return lvl(c, 1.012)
 }
 
 // PalmMuted is an electric guitar chugged with the heel of the hand on the strings at the bridge:
@@ -149,7 +149,7 @@ func PalmMuted() Config {
 	c := plucked(0.16, 0.8, 0.55, 0.09, 0.03, NoBody, 0, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum, c.FretNoise = 1.2e-4, 0.02, 0.9, 0.15
 	c.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 2200}
-	return lvl(c, 1.084)
+	return lvl(c, 1.148)
 }
 
 // JazzArchtop is a hollow body guitar with flatwound strings, played with the thumb: dark, round
@@ -159,7 +159,7 @@ func JazzArchtop() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 2.5e-4, 0.07, 0.35
 	c.Polarization, c.BodyCoupling = 0.3, 0.45
 	c.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 3000}
-	return lvl(c, 1.101)
+	return lvl(c, 1.166)
 }
 
 // ElectricPick is a solid body electric guitar through a pickup: picked, long and clear, with a
@@ -170,7 +170,7 @@ func ElectricPick() Config {
 	c.Polarization, c.TensionMod, c.FretNoise = 0.3, 0.6, 0.1
 	c.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 3500}
 	mod(&c, 0, modmatrix.Velocity, "brightness", 0.4)
-	return lvl(c, 0.912)
+	return lvl(c, 0.9663)
 }
 
 // Resonator is a dobro: a steel guitar with a metal cone in its body, picked and slid. A tinny, nasal
@@ -180,7 +180,7 @@ func Resonator() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1.2e-4, 0.03, 0.55
 	c.Polarization, c.BodyCoupling, c.Slide = 0.4, 0.8, 0.12
 	c.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 3000, Resonance: 0.3}
-	return lvl(c, 1.070)
+	return lvl(c, 1.133)
 }
 
 // PinchHarmonic is a pick that brushes the string with the thumb: an artificial harmonic squealing
@@ -190,7 +190,7 @@ func PinchHarmonic() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1.1e-4, 0.02, 0.95
 	c.Harmonic, c.TensionMod = 0.25, 0.3
 	c.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 5000}
-	return lvl(c, 1.164)
+	return lvl(c, 1.233)
 }
 
 // TwelfthHarmonic is the harmonic at the seventh fret of a nylon string: a soft bell a twelfth above
@@ -199,7 +199,7 @@ func TwelfthHarmonic() Config {
 	c := plucked(3, 0.25, 0.5, 0.12, 0.2, GuitarBody, 0.3, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 4e-5, 0.05, 0.1
 	c.Harmonic, c.Polarization, c.BodyCoupling = 1.0/3, 0.25, 0.3
-	return lvl(c, 1.009)
+	return lvl(c, 1.069)
 }
 
 // ---- plucked: basses
@@ -211,7 +211,7 @@ func SlapBass() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 2.5e-4, 0.03, 0.95
 	c.TensionMod, c.FretBuzz, c.FretNoise, c.Polarization = 0.85, 0.5, 0.4, 0.3
 	c.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 4500}
-	return lvl(c, 1.000)
+	return lvl(c, 1.059)
 }
 
 // FretlessBass is a bass without frets: the string sings against the fingerboard, the "mwah" of a
@@ -221,7 +221,7 @@ func FretlessBass() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 2.5e-4, 0.09, 0.1
 	c.Polarization, c.FretBuzz, c.FretPosition, c.Slide = 0.4, 0.3, 0.9, 0.08
 	c.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 1800}
-	return lvl(c, 0.946)
+	return lvl(c, 1.002)
 }
 
 // PickBass is a bass played with a plectrum: a hard attack and a clear, even sustain
@@ -229,7 +229,7 @@ func PickBass() Config {
 	c := plucked(1.4, 0.25, 0.6, 0.08, 0.1, NoBody, 0, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 3e-4, 0.02, 1
 	c.Polarization, c.TensionMod, c.FretNoise = 0.5, 0.3, 0.35
-	return lvl(c, 0.804)
+	return lvl(c, 0.8512)
 }
 
 // UprightWalking is an upright bass in a walking line: the finger pulls the thick gut string,
@@ -238,7 +238,7 @@ func UprightWalking() Config {
 	c := plucked(1.1, 0.55, 0.38, 0.17, 0.12, BassBody, 0.65, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 2e-4, 0.1, 0
 	c.Polarization, c.BodyCoupling, c.FretBuzz, c.FretNoise = 0.3, 0.8, 0.08, 0.25
-	return lvl(c, 1.491)
+	return lvl(c, 1.58)
 }
 
 // ---- plucked: harps, zithers and lutes
@@ -249,7 +249,7 @@ func HarpHarmonics() Config {
 	c := plucked(3.5, 0.2, 0.5, 0.12, 0, HarpBody, 0.4, 1)
 	c.Inharmonicity, c.PluckWidth = 2e-5, 0.04
 	c.Harmonic, c.Polarization, c.BodyCoupling = 0.5, 0.2, 0.3
-	return lvl(c, 1.217)
+	return lvl(c, 1.289)
 }
 
 // CelticHarp is a small harp with brass strings plucked with the nails: bright, bell like,
@@ -259,7 +259,7 @@ func CelticHarp() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1.6e-4, 0.025, 0.25
 	c.Polarization, c.BodyCoupling = 0.25, 0.4
 	mod(&c, 0, modmatrix.Random, "pickPosition", 0.6)
-	return lvl(c, 1.342)
+	return lvl(c, 1.421)
 }
 
 // Banjo is a steel string over a drum head: short and bright, with a metallic ring and the pluck
@@ -269,7 +269,7 @@ func Banjo() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1.3e-4, 0.015, 0.7
 	c.Polarization, c.FretNoise = 0.3, 0.1
 	c.Filter = voicefilter.Config{Type: voicefilter.HighPass, Cutoff: 300}
-	return lvl(c, 1.478)
+	return lvl(c, 1.565)
 }
 
 // Mandolin is plucked with a plectrum on pairs of steel strings that are a little out of tune with
@@ -279,7 +279,7 @@ func Mandolin() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1.4e-4, 0.015, 0.95
 	c.Polarization, c.BodyCoupling, c.FretNoise = 0.95, 0.4, 0.1
 	mod(&c, 0, modmatrix.Velocity, "brightness", 0.4)
-	return lvl(c, 1.033)
+	return lvl(c, 1.094)
 }
 
 // MandolinTremolo is the tremolo of the mandolin: the plectrum going back and forth so fast that the
@@ -290,7 +290,7 @@ func MandolinTremolo() Config {
 	c.Polarization, c.BodyCoupling = 0.95, 0.4
 	c.LFO2Rate = 12
 	mod(&c, 0, modmatrix.LFO2, "level", -0.45)
-	return lvl(c, 1.067)
+	return lvl(c, 1.129)
 }
 
 // Ukulele is a small nylon guitar strummed by the thumb: soft, plunky, quickly gone
@@ -299,7 +299,7 @@ func Ukulele() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 3e-5, 0.06, 0.2
 	c.Polarization, c.BodyCoupling, c.FretNoise = 0.3, 0.45, 0.08
 	c.Filter = voicefilter.Config{Type: voicefilter.HighPass, Cutoff: 150}
-	return lvl(c, 1.411)
+	return lvl(c, 1.495)
 }
 
 // Sitar has a flat bridge that the string is lifted from and falls back on: the string buzzes
@@ -310,7 +310,7 @@ func Sitar() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 5e-5, 0.03, 0.6
 	c.FretBuzz, c.FretPosition, c.Sympathetic, c.TensionMod = 0.85, 0.06, 0.55, 0.4
 	c.Polarization = 0.3
-	return lvl(c, 0.837)
+	return lvl(c, 0.8861)
 }
 
 // Koto is a long zither of silk strings on movable bridges, plucked with a plectrum on the thumb
@@ -319,7 +319,7 @@ func Koto() Config {
 	c := plucked(2.6, 0.22, 0.68, 0.1, 0.1, HarpBody, 0.4, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 8e-5, 0.025, 0.8
 	c.TensionMod, c.Polarization, c.BodyCoupling = 0.8, 0.3, 0.35
-	return lvl(c, 1.353)
+	return lvl(c, 1.433)
 }
 
 // Oud is the fretless lute of the Middle East: paired gut strings plucked with a long plectrum
@@ -328,7 +328,7 @@ func Oud() Config {
 	c := plucked(1.6, 0.42, 0.52, 0.15, 0.18, GuitarBody, 0.55, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 4e-5, 0.045, 0.6
 	c.Polarization, c.BodyCoupling, c.FretNoise = 0.7, 0.75, 0.1
-	return lvl(c, 1.153)
+	return lvl(c, 1.222)
 }
 
 // Lute is a renaissance lute: courses of gut strings plucked with the fingers, the soft, woody sound
@@ -337,7 +337,7 @@ func Lute() Config {
 	c := plucked(1.9, 0.38, 0.42, 0.16, 0.2, GuitarBody, 0.5, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 6e-5, 0.06, 0.12
 	c.Polarization, c.BodyCoupling, c.Sympathetic = 0.65, 0.6, 0.15
-	return lvl(c, 1.095)
+	return lvl(c, 1.16)
 }
 
 // Dulcimer is a hammered dulcimer: courses of wires struck with light hammers, every note shimmering
@@ -346,7 +346,7 @@ func Dulcimer() Config {
 	c := plucked(3.8, 0.16, 0.55, 0.125, 0, HarpBody, 0.5, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1.8e-4, 0.015, 0.2
 	c.Polarization, c.BodyCoupling, c.Sympathetic = 0.9, 0.3, 0.3
-	return lvl(c, 1.346)
+	return lvl(c, 1.426)
 }
 
 // Zither is a flat box of strings plucked with a ring on the thumb, ringing into each other
@@ -354,7 +354,7 @@ func Zither() Config {
 	c := plucked(4.2, 0.22, 0.5, 0.12, 0, HarpBody, 0.45, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1e-4, 0.03, 0.4
 	c.Polarization, c.BodyCoupling, c.Sympathetic = 0.55, 0.4, 0.4
-	return lvl(c, 1.341)
+	return lvl(c, 1.42)
 }
 
 // Harpsichord has a quill in a jack that plucks the string as the key goes down and a damper that
@@ -363,7 +363,7 @@ func Harpsichord() Config {
 	c := plucked(2, 0.14, 0.82, 0.1, 0.03, HarpBody, 0.4, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1.2e-4, 0.012, 1
 	c.BodyCoupling, c.FretNoise = 0.4, 0.2
-	return lvl(c, 1.421)
+	return lvl(c, 1.505)
 }
 
 // Clavinet is a clavichord for funk: a string pressed onto an anvil and picked up electrically,
@@ -373,7 +373,7 @@ func Clavinet() Config {
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1e-4, 0.015, 0.9
 	c.TensionMod, c.FretBuzz, c.FretPosition = 0.3, 0.25, 0.1
 	c.Filter = voicefilter.Config{Type: voicefilter.BandPass, Cutoff: 2200, Resonance: 0.2}
-	return lvl(c, 2.631)
+	return lvl(c, 2.786)
 }
 
 // PianoString is a piano string alone, struck by a felt hammer an eighth of the way along: stiff
@@ -382,7 +382,7 @@ func PianoString() Config {
 	c := plucked(6, 0.28, 0.45, 0.125, 0.1, HarpBody, 0.5, 1)
 	c.Inharmonicity, c.PluckWidth = 4e-4, 0.12
 	c.Polarization, c.BodyCoupling = 0.45, 0.6
-	return lvl(c, 1.312)
+	return lvl(c, 1.39)
 }
 
 // SnapPizzicato is a Bartok pizzicato on a cello: the string pulled up and let go so that it snaps
@@ -391,7 +391,7 @@ func SnapPizzicato() Config {
 	c := plucked(0.9, 0.35, 0.7, 0.2, 0.08, CelloBody, 0.55, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1.5e-4, 0.05, 0.4
 	c.TensionMod, c.FretBuzz, c.FretPosition, c.FretNoise = 1, 0.9, 0.93, 0.3
-	return lvl(c, 1.229)
+	return lvl(c, 1.302)
 }
 
 // ColLegno is the wood of the bow struck on a violin string: a dry, short, clicking tone, hardly
@@ -400,7 +400,7 @@ func ColLegno() Config {
 	c := plucked(0.22, 0.65, 0.9, 0.12, 0.05, ViolinBody, 0.5, 1)
 	c.Inharmonicity, c.PluckWidth, c.Plectrum = 8e-5, 0.01, 0.9
 	c.FretNoise, c.BodyCoupling = 0.5, 0.3
-	return lvl(c, 1.367)
+	return lvl(c, 1.448)
 }
 
 // ---- bowed
@@ -524,59 +524,59 @@ func SingingSaw() Config {
 // ---- membranes
 
 // KickDrum is a large drum struck hard: the pitch drops fast after the hit, a short, deep thump
-func KickDrum() Config { return lvl(drum(0.5, 0.75, 0.15, 0.5, 1, 0, 0.05, 1), 0.981) }
+func KickDrum() Config { return lvl(drum(0.5, 0.75, 0.15, 0.5, 1, 0, 0.05, 1), 0.7227) }
 
 // TomHigh is a small rack tom: a short, round and ringing tone
-func TomHigh() Config { return lvl(drum(0.55, 0.4, 0.4, 0.65, 0.35, 0, 0, 1), 1.065) }
+func TomHigh() Config { return lvl(drum(0.55, 0.4, 0.4, 0.65, 0.35, 0, 0, 1), 0.7628) }
 
 // TomLow is a mid tom, a stick on a loose head: long and dark
-func TomLow() Config { return lvl(drum(0.7, 0.2, 0.55, 0.75, 0.3, 0, 0, 1), 1.387) }
+func TomLow() Config { return lvl(drum(0.7, 0.2, 0.55, 0.75, 0.3, 0, 0, 1), 0.7588) }
 
 // CongaOpen is the open tone of a conga: the hand bounces off the rim, a clear ring
-func CongaOpen() Config { return lvl(drum(0.55, 0.45, 0.8, 0.7, 0.15, 0, 0.2, 1), 1.715) }
+func CongaOpen() Config { return lvl(drum(0.55, 0.45, 0.8, 0.7, 0.15, 0, 0.2, 1), 0.8685) }
 
 // CongaSlap is the slap: the fingers whipped across the head, bright and short
-func CongaSlap() Config { return lvl(drum(0.2, 0.8, 1, 1, 0.1, 0, 0.05, 1), 3.9) }
+func CongaSlap() Config { return lvl(drum(0.2, 0.8, 1, 1, 0.1, 0, 0.05, 1), 1.763) }
 
 // CongaBass is the bass tone: the palm in the middle of the head, a dull thud
-func CongaBass() Config { return lvl(drum(0.65, 0.6, 0.15, 0.3, 0.45, 0, 0.1, 1), 0.980) }
+func CongaBass() Config { return lvl(drum(0.65, 0.6, 0.15, 0.3, 0.45, 0, 0.1, 1), 0.8351) }
 
 // Bongo is a pair of small drums on the knees: high, dry and tight
-func Bongo() Config { return lvl(drum(0.28, 0.6, 0.65, 0.85, 0.2, 0, 0.08, 1), 1.726) }
+func Bongo() Config { return lvl(drum(0.28, 0.6, 0.65, 0.85, 0.2, 0, 0.08, 1), 0.9383) }
 
 // Djembe is a goblet drum struck by the hand: a deep bass tone with a bright crack
-func Djembe() Config { return lvl(drum(0.6, 0.3, 0.55, 0.7, 0.6, 0, 0.12, 1), 1.318) }
+func Djembe() Config { return lvl(drum(0.6, 0.3, 0.55, 0.7, 0.6, 0, 0.12, 1), 0.7673) }
 
 // Bayan is the left drum of the tabla: a large head that bends far upwards under the heel of the hand
-func Bayan() Config { return lvl(drum(1.2, 0.4, 0.15, 0.25, 1, 0, 0.3, 1), 0.980) }
+func Bayan() Config { return lvl(drum(1.2, 0.4, 0.15, 0.25, 1, 0, 0.3, 1), 1.067) }
 
 // Dayan is the right drum of the tabla: high, with the black spot of the head that gives a clear,
 // ringing tone
-func Dayan() Config { return lvl(drum(1, 0.12, 0.55, 0.85, 0.1, 0, 0.3, 1), 1.556) }
+func Dayan() Config { return lvl(drum(1, 0.12, 0.55, 0.85, 0.1, 0, 0.3, 1), 0.7909) }
 
 // Bodhran is the Irish goatskin frame drum struck by a tipper: a hollow, dry knock
-func Bodhran() Config { return lvl(drum(0.35, 0.65, 0.3, 0.5, 0.2, 0, 0.1, 1), 0.988) }
+func Bodhran() Config { return lvl(drum(0.35, 0.65, 0.3, 0.5, 0.2, 0, 0.1, 1), 0.7446) }
 
 // Taiko is a huge Japanese drum with a thick skin struck by heavy sticks: it booms
-func Taiko() Config { return lvl(drum(2.2, 0.5, 0.25, 0.35, 0.55, 0, 0, 1), 0.980) }
+func Taiko() Config { return lvl(drum(2.2, 0.5, 0.25, 0.35, 0.55, 0, 0, 1), 0.7711) }
 
 // SnareTight is a small snare tuned high, rimmed and hit hard: a crack
-func SnareTight() Config { return lvl(drum(0.18, 0.65, 0.45, 0.95, 0.2, 0.9, 0, 1), 1.006) }
+func SnareTight() Config { return lvl(drum(0.18, 0.65, 0.45, 0.95, 0.2, 0.9, 0, 1), 0.5745) }
 
 // SnareFat is a deep snare with loose wires: a thick, long backbeat
-func SnareFat() Config { return lvl(drum(0.9, 0.3, 0.3, 0.5, 0.6, 0.6, 0, 1), 0.791) }
+func SnareFat() Config { return lvl(drum(0.9, 0.3, 0.3, 0.5, 0.6, 0.6, 0, 1), 0.5722) }
 
 // SnareBrush is a snare swept with brushes: a soft hit and a hush of the wires
-func SnareBrush() Config { return lvl(drum(1.2, 0.97, 0.95, 0, 0, 1, 0.15, 1), 0.648) }
+func SnareBrush() Config { return lvl(drum(1.2, 0.97, 0.95, 0, 0, 1, 0.15, 1), 1.001) }
 
 // Timbale is a shallow metal-shelled drum hit with a stick: tight, high and ringing
-func Timbale() Config { return lvl(drum(0.4, 0.3, 0.8, 0.95, 0.15, 0.15, 0.1, 1), 1.902) }
+func Timbale() Config { return lvl(drum(0.4, 0.3, 0.8, 0.95, 0.15, 0.15, 0.1, 1), 0.8883) }
 
 // Cajon is a wooden box sat on and hit by the hand: a bass thud with a snare-like slap
-func Cajon() Config { return lvl(drum(0.15, 0.8, 0.25, 0.45, 0.45, 0.15, 0.05, 1), 0.934) }
+func Cajon() Config { return lvl(drum(0.15, 0.8, 0.25, 0.45, 0.45, 0.15, 0.05, 1), 0.8526) }
 
 // Tambourine is a frame with a head and jingles: a short slap and a shimmer of metal
-func Tambourine() Config { return lvl(drum(1.0, 0.3, 1, 0.3, 0.1, 1, 0.1, 1), 0.658) }
+func Tambourine() Config { return lvl(drum(1.0, 0.3, 1, 0.3, 0.1, 1, 0.1, 1), 0.5412) }
 
 // ---- pipes
 
@@ -589,7 +589,7 @@ func AltoFlute() Config {
 
 // Piccolo is the small flute that plays an octave over the flute: bright, thin, piercing
 func Piccolo() Config {
-	return lvl(blown(false, 0.85, 0.15, 0.6, 0.2, 0.04, 0.08, 5.5, 0.1, 0.3, 1), 0.111)
+	return lvl(blown(false, 0.65, 0.3, 0.6, 0.1, 0.04, 0.08, 5.5, 0.1, 0.3, 1), 0.1743)
 }
 
 // Shakuhachi is the Japanese bamboo flute with no reed or lip plate: very much air, a slow head
@@ -602,7 +602,7 @@ func Shakuhachi() Config {
 
 // Ocarina is a vessel flute of clay: a pure, hooting tone with hardly any overtones
 func Ocarina() Config {
-	return lvl(blown(false, 0.6, 0.08, 0.3, 0.95, 0.06, 0.1, 5, 0.12, 0.3, 1), 0.352)
+	return lvl(blown(false, 0.6, 0.08, 0.3, 0.95, 0.06, 0.1, 5, 0.12, 0.3, 1), 0.3391)
 }
 
 // Recorder is a block flute: the air is led onto the edge by a duct so that it speaks at once

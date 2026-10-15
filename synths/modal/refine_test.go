@@ -114,8 +114,9 @@ func TestGongBloomAndPitchGlide(t *testing.T) {
 		return at, best
 	}
 	// a hard blow blooms: the upper modes rise after the strike, peak later than the first tenth and settle
+	// (gently: a gong that blooms and steers hard sounds noisy, so it is a swell of a dB or two)
 	at, top := peak(hard)
-	if at < 2 || top < hard[0]+2 || hard[len(hard)-1] > top-30 {
+	if at < 1 || top < hard[0]+1 || hard[len(hard)-1] > top-30 {
 		t.Errorf("hard gong: the upper modes %v dB, peak at %d: no bloom", hard[:8], at)
 	}
 	if at, top := peak(soft); at > 1 && top > soft[0]+1 {
@@ -124,12 +125,13 @@ func TestGongBloomAndPitchGlide(t *testing.T) {
 	if at, top := peak(linear); at > 1 && top > linear[0]+0.5 {
 		t.Errorf("a linear gong blooms: %v", linear[:8])
 	}
-	// the pitch starts sharp and falls: more than 20 cents for a hard blow, nothing for a soft one
-	if c := cents(1+hardShift[0], 1); c < 20 {
-		t.Errorf("hard blow only %.1f cents sharp", c)
+	// the pitch starts sharp and falls: between 10 and 25 cents for a hard blow (more is steering), nothing
+	// for a soft one
+	if c := cents(1+hardShift[0], 1); c < 10 || c > 25 {
+		t.Errorf("hard blow %.1f cents sharp, want 10 to 25", c)
 	}
-	if c := cents(1+hardShift[0], 1+hardShift[len(hardShift)-1]); c < 20 {
-		t.Errorf("the pitch fell %.1f cents", c)
+	if c := cents(1+hardShift[0], 1+hardShift[len(hardShift)-1]); c < 10 || c > 25 {
+		t.Errorf("the pitch fell %.1f cents, want 10 to 25", c)
 	}
 	if c := cents(1+softShift[0], 1); c > 3 {
 		t.Errorf("a soft blow %.1f cents sharp", c)
@@ -259,6 +261,49 @@ func TestNoNaNAcrossTheMatrixForNonlinearInstruments(t *testing.T) {
 				_, z := strike(c, 60, 0.05)
 				finite(t, Instruments[ins]+" "+d.Key, z)
 			}
+		}
+	}
+}
+
+// the loudness of the 500 Hz to 2 kHz band, in 25 ms windows from 0.4 s: how many dB it jumps between
+// neighbours (a gong that kicks its modes about flutters; the beating of its own modes is what a linear
+// one has)
+func midFlutter(x []float64) float64 {
+	win := int(0.025 * sr())
+	var prev, sum float64
+	n := 0
+	for s := int(0.4 * sr()); s+win < len(x) && s < int(3*sr()); s += win {
+		var e float64
+		for f := 500.0; f < 2000; f += 7 {
+			a := amplitude(x[s:s+win], f)
+			e += a * a
+		}
+		db := 10 * math.Log10(e+1e-20)
+		if n > 0 {
+			sum += math.Abs(db - prev)
+		}
+		prev = db
+		n++
+	}
+	return sum / float64(n-1)
+}
+
+// a gong is not noisy: with the nonlinearity on, the mid band flutters no more than the linear gong's
+// own beating does (it used to be kicked about by random energy, 2 to 3 times as much), and the pitch
+// is not steered about
+func TestGongIsNotNoisy(t *testing.T) {
+	for _, name := range []string{"gong", "gongSoft", "gongAgeng", "tamTam"} {
+		flutter := func(nl float64) float64 {
+			cfg := Presets[name]()
+			cfg.Nonlinearity = nl
+			seeded()
+			v := New(cfg)
+			v.NoteOn(1, psalm.Message{"pitch": 48.0, "velocity": 0.9}, psalm.CtrlTick{}, v.Config())
+			return midFlutter(run(v, 3.2))
+		}
+		lin, now := flutter(0), flutter(Presets[name]().Nonlinearity)
+		if now > 1.4*lin+0.3 {
+			t.Errorf("%s: the mid band flutters %.2f dB between windows against %.2f for the linear gong", name, now, lin)
 		}
 	}
 }
