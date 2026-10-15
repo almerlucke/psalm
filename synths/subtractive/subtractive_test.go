@@ -6,6 +6,7 @@ import (
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -105,7 +106,7 @@ func TestLFOWaveformsInRange(t *testing.T) {
 		l := &lfo{}
 		l.trigger(cfg, 44100.0)
 		for range 44100 {
-			if v := l.tick(cfg, 44100.0); v < -1.0 || v > 1.0 || math.IsNaN(v) {
+			if v := l.tick(cfg, 44100.0, cfg.Rate); v < -1.0 || v > 1.0 || math.IsNaN(v) {
 				t.Fatalf("waveform %d out of range: %v", wf, v)
 			}
 		}
@@ -117,13 +118,13 @@ func TestLFODelayFadesIn(t *testing.T) {
 	l := &lfo{}
 	l.trigger(cfg, 1000.0)
 
-	if v := l.tick(cfg, 1000.0); math.Abs(v) > 0.02 {
+	if v := l.tick(cfg, 1000.0, cfg.Rate); math.Abs(v) > 0.02 {
 		t.Fatalf("expected faded out lfo at start, got %v", v)
 	}
 	for range 200 {
-		l.tick(cfg, 1000.0)
+		l.tick(cfg, 1000.0, cfg.Rate)
 	}
-	if v := l.tick(cfg, 1000.0); math.Abs(v) != 1.0 {
+	if v := l.tick(cfg, 1000.0, cfg.Rate); math.Abs(v) != 1.0 {
 		t.Fatalf("expected fully faded in lfo, got %v", v)
 	}
 }
@@ -348,5 +349,72 @@ func TestModulatedInputsDontClick(t *testing.T) {
 		if r := jumpRatio(c.cfg, c.input, c.value); r > 1.1 {
 			t.Fatalf("%s changes click at buffer boundaries (jump ratio %.2f)", c.name, r)
 		}
+	}
+}
+
+// energy plays a note and returns the sum of the squares of what it sounds
+func energy(v *Voice, blocks int) float64 {
+	v.NoteOn(0.8, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, v.Config())
+	var e float64
+	for range blocks {
+		v.Synthesize()
+		for _, s := range v.Output(0).Channels[0] {
+			e += float64(s) * float64(s)
+		}
+	}
+	return e
+}
+
+// a value cabled in on an Ext input moves any setting a slot joins it to
+func TestMatrixExtMovesLevel(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "level", Amount: -1}
+	loud, quiet := New(cfg), New(cfg)
+	quiet.Receive(1.0, InExt1)
+	el, eq := energy(loud, 40), energy(quiet, 40)
+	if el < 1 || eq > el*0.01 {
+		t.Errorf("energy %g with the value at 0, %g at 1: want it silent at 1", el, eq)
+	}
+	if quiet.cfg.Ext[0] != 1 {
+		t.Errorf("the value isn't kept in the config: %v", quiet.cfg.Ext)
+	}
+}
+
+// an LFO on the pitch through the matrix sounds different from none
+func TestMatrixLFOToPitch(t *testing.T) {
+	plain := energy(New(DefaultConfig()), 40)
+	cfg := DefaultConfig()
+	cfg.LFO1.Rate = 5
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.LFO1, Dest: "pitch", Amount: 0.5}
+	moved := New(cfg)
+	if em := energy(moved, 40); em == plain || math.IsNaN(em) {
+		t.Errorf("energy %g, the same as without (%g)", em, plain)
+	}
+}
+
+// every source into every destination plays no NaN, and the slots arrive by message
+func TestMatrixEverything(t *testing.T) {
+	for src := modmatrix.FilterEnv; src < modmatrix.NumSources; src++ {
+		for _, d := range Dests {
+			cfg := DefaultConfig()
+			cfg.LFO1.Rate, cfg.LFO2.Rate = 3, 4
+			cfg.Mods[0] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: 1}
+			cfg.Mods[1] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: -1}
+			v := New(cfg)
+			v.NoteOn(1, psalm.Message{"pitch": 36.0}, psalm.CtrlTick{}, v.Config())
+			for range 20 {
+				v.Synthesize()
+				for _, s := range v.Output(0).Channels[0] {
+					if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) || math.Abs(float64(s)) > 20 {
+						t.Fatalf("%s to %s: sample %v", modmatrix.SourceNames[src], d.Key, s)
+					}
+				}
+			}
+		}
+	}
+	v := New(DefaultConfig())
+	v.ReceiveMessage(psalm.Message{"mod3Src": int(modmatrix.Wheel), "mod3Dest": 2, "mod3Amount": 0.5})
+	if s := v.cfg.Mods[2]; s.Src != modmatrix.Wheel || s.Dest != "cutoff" || s.Amount != 0.5 {
+		t.Errorf("slot %+v", s)
 	}
 }

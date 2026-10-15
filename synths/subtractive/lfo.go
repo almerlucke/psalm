@@ -61,7 +61,8 @@ func (l *lfo) trigger(cfg *LFOConfig, sr float64) {
 	}
 }
 
-func (l *lfo) tick(cfg *LFOConfig, sr float64) float64 {
+// tick moves the LFO a sample on at a rate in Hz (cfg.Rate, or moved by the matrix)
+func (l *lfo) tick(cfg *LFOConfig, sr, rate float64) float64 {
 	var v float64
 
 	switch cfg.Waveform {
@@ -83,7 +84,7 @@ func (l *lfo) tick(cfg *LFOConfig, sr float64) float64 {
 		v = sine.Cycle(l.phase)
 	}
 
-	l.phase += cfg.Rate / sr
+	l.phase += rate / sr
 	if l.phase >= 1.0 {
 		l.phase -= math.Floor(l.phase)
 		l.sh = l.random().Float64()*2.0 - 1.0

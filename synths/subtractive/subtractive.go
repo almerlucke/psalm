@@ -10,6 +10,7 @@ import (
 	"github.com/almerlucke/psalm/blocks/filters/formant"
 	"github.com/almerlucke/psalm/blocks/filters/ladder"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -80,6 +81,8 @@ type Config struct {
 	// Modulation
 	LFO1 LFOConfig
 	LFO2 LFOConfig
+	Mods [modmatrix.Slots]modmatrix.Slot // the matrix: a source to a destination (see Dests) over an amount
+	Ext  [modmatrix.Exts]float64         // the values 0-1 of the matrix's sources Ext 1 to 4 (cabled in on InExt1...)
 
 	Level float64 // output level (0 is treated as 1)
 }
@@ -106,6 +109,56 @@ func DefaultConfig() Config {
 
 const middleC = 261.6255653005986
 
+// The destinations of the matrix (see Dests), by number
+const (
+	dPitch = iota
+	dCutoff
+	dResonance
+	dPulseWidth
+	dOsc1Level
+	dOsc2Level
+	dSubLevel
+	dNoiseLevel
+	dOsc2Detune
+	dFM
+	dDrive
+	dVowel
+	dLevel
+	dLFO1Rate
+	dLFO2Rate
+	numDests
+)
+
+// Dests are the settings the matrix of a voice moves: by their keys, as described (Describe), with
+// how far a full source moves them (semitones, octaves, or the setting itself)
+var Dests = []modmatrix.Dest{
+	dPitch:      {Key: "pitch", Label: "pitch", Span: 24},
+	dCutoff:     {Key: "cutoff", Label: "cutoff", Span: 6},
+	dResonance:  {Key: "resonance", Label: "resonance", Span: 1},
+	dPulseWidth: {Key: "pulseWidth", Label: "pulse width", Span: 0.45},
+	dOsc1Level:  {Key: "osc1Level", Label: "level 1", Span: 1},
+	dOsc2Level:  {Key: "osc2Level", Label: "level 2", Span: 1},
+	dSubLevel:   {Key: "subLevel", Label: "sub", Span: 1},
+	dNoiseLevel: {Key: "noiseLevel", Label: "noise", Span: 1},
+	dOsc2Detune: {Key: "osc2Detune", Label: "detune 2", Span: 12},
+	dFM:         {Key: "fmAmount", Label: "fm", Span: 5},
+	dDrive:      {Key: "drive", Label: "drive", Span: 3},
+	dVowel:      {Key: "vowel", Label: "vowel", Span: 4},
+	dLevel:      {Key: "level", Label: "level", Span: 1},
+	dLFO1Rate:   {Key: "lfo1Rate", Label: "lfo 1 rate", Span: 3},
+	dLFO2Rate:   {Key: "lfo2Rate", Label: "lfo 2 rate", Span: 3},
+}
+
+// The value inputs of a voice: 1 to 4 set the cutoff, the resonance, the pulse width and the vowel,
+// 5 to 8 the values of the matrix (Ext 1 to 4) that a slot can move any setting by
+const (
+	InCutoff     = 1
+	InResonance  = 2
+	InPulseWidth = 3
+	InVowel      = 4
+	InExt1       = 5 // to InExt1+3
+)
+
 type Voice struct {
 	*psalm.Module
 	cfg       Config
@@ -130,6 +183,9 @@ type Voice struct {
 	vowel     float64 // smoothed vowel, ramps towards cfg.Vowel over a buffer
 	waitSamps int
 	expr      expression.Expression // the pitch bend; the mod wheel opens the filter
+	mods      *modmatrix.Matrix
+	velocity  float64 // the amplitude of the note
+	random    float64 // a random value for the note, -1 to 1
 }
 
 func New(cfg Config) *Voice {
@@ -162,6 +218,14 @@ func New(cfg Config) *Voice {
 	v.lfo2.rng = v.Rand()
 	v.noise.rng = v.Rand()
 
+	v.mods = modmatrix.New(Dests)
+	for i, sl := range cfg.Mods {
+		v.mods.Set(i, sl)
+	}
+	for i, e := range cfg.Ext {
+		v.mods.SetExt(i, e)
+	}
+
 	v.SetSelf(v)
 
 	return v
@@ -191,6 +255,13 @@ func (v *Voice) SetPulseWidth(pw float64) {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	v.mods.Receive(msg)
+	for i := range v.cfg.Mods {
+		v.cfg.Mods[i] = v.mods.Slot(i)
+	}
+	for i := range v.cfg.Ext {
+		v.cfg.Ext[i] = v.mods.Ext(i)
+	}
 	envelope.Receive(msg, "amp", &v.cfg.AmpEnv)
 	envelope.Receive(msg, "filter", &v.cfg.FilterEnv)
 	msg.IfIntVal("osc1Waveform", func(wf int) {
@@ -245,7 +316,8 @@ func receiveLFOMessage(msg psalm.Message, prefix string, cfg *LFOConfig) {
 }
 
 // Receive accepts messages, or plain values on inputs 1 (cutoff), 2 (resonance), 3 (pulse width)
-// and 4 (vowel), which makes it easy to connect LFOs
+// and 4 (vowel), which makes it easy to connect LFOs; and on 5 to 8 (InExt1...) values 0-1 that the
+// matrix takes as sources Ext 1 to 4, to move any setting it has a slot for
 func (v *Voice) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		v.ReceiveMessage(msg)
@@ -261,6 +333,9 @@ func (v *Voice) Receive(value any, index int) {
 		v.SetPulseWidth(psalm.FltVal[float64](value))
 	case 4:
 		v.cfg.Vowel = psalm.FltVal[float64](value)
+	case InExt1, InExt1 + 1, InExt1 + 2, InExt1 + 3:
+		v.mods.SetExt(index-InExt1, psalm.FltVal[float64](value))
+		v.cfg.Ext[index-InExt1] = v.mods.Ext(index - InExt1)
 	}
 }
 
@@ -276,6 +351,8 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 	v.ReceiveMessage(message)
 
 	v.waitSamps = tick.SampleOffset
+	v.velocity = amplitude
+	v.random = v.Rand().Float64()*2 - 1
 
 	sr := v.Config().SampleRate
 	v.lfo1.trigger(&v.cfg.LFO1, sr)
@@ -326,8 +403,13 @@ func (v *Voice) Synthesize() {
 	resInc := (cfg.Resonance - v.res) / n
 	vowelInc := (cfg.Vowel - v.vowel) / n
 	osc2Ratio := v.osc2Ratio()
-	lfo1Active := cfg.LFO1.active()
-	lfo2Active := cfg.LFO2.active()
+	mods := v.mods
+	modded := mods.Active()
+	lfo1Active := cfg.LFO1.active() || mods.Uses(modmatrix.LFO1)
+	lfo2Active := cfg.LFO2.active() || mods.Uses(modmatrix.LFO2)
+	pwModded := modded && mods.Targets(dPulseWidth)
+	detuneModded := modded && mods.Targets(dOsc2Detune)
+	driveModded := modded && mods.Targets(dDrive)
 	drive := cfg.Drive
 	if drive <= 0.0 {
 		drive = 1.0
@@ -336,6 +418,11 @@ func (v *Voice) Synthesize() {
 	level := cfg.Level
 	if level <= 0 {
 		level = 1
+	}
+	if modded {
+		mods.Values[modmatrix.Velocity] = v.velocity
+		mods.Values[modmatrix.Random] = v.random
+		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.glideFreq/middleC)/5, 1))
 	}
 
 	glideCoef := 1.0
@@ -348,27 +435,40 @@ func (v *Voice) Synthesize() {
 		// Modulation sources
 		fenv := v.filterEnv.Generate()
 
+		amp := v.ampEnv.Generate()
+
 		var l1, l2 float64
 		if lfo1Active {
-			l1 = v.lfo1.tick(&cfg.LFO1, sr)
+			l1 = v.lfo1.tick(&cfg.LFO1, sr, cfg.LFO1.Rate*math.Exp2(mods.Mod(dLFO1Rate)))
 		}
 		if lfo2Active {
-			l2 = v.lfo2.tick(&cfg.LFO2, sr)
+			l2 = v.lfo2.tick(&cfg.LFO2, sr, cfg.LFO2.Rate*math.Exp2(mods.Mod(dLFO2Rate)))
+		}
+		if modded {
+			mv := &mods.Values
+			mv[modmatrix.FilterEnv], mv[modmatrix.AmpEnv] = fenv, amp
+			mv[modmatrix.LFO1], mv[modmatrix.LFO2] = l1, l2
+			mv[modmatrix.Wheel] = v.expr.Wheel()
+			mods.Eval(sr)
 		}
 
 		// Pitch: glide, LFO vibrato and filter envelope pitch sweep
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
 		freq := v.glideFreq
-		if semis := cfg.LFO1.Pitch*l1 + cfg.LFO2.Pitch*l2 + cfg.FilterEnvToPitch*fenv + v.expr.Semitones(); semis != 0.0 {
+		if semis := cfg.LFO1.Pitch*l1 + cfg.LFO2.Pitch*l2 + cfg.FilterEnvToPitch*fenv + v.expr.Semitones() + mods.Mod(dPitch); semis != 0.0 {
 			freq *= math.Pow(2.0, semis/12.0)
 		}
 
+		ratio := osc2Ratio
+		if detuneModded {
+			ratio *= math.Exp2(mods.Mod(dOsc2Detune) / 12)
+		}
 		v.osc1.SetFrequency(freq, sr)
-		v.osc2.SetFrequency(freq*osc2Ratio, sr)
+		v.osc2.SetFrequency(freq*ratio, sr)
 
 		// Pulse width modulation
-		if lfo1Active || lfo2Active {
-			pw := math.Max(0.02, math.Min(0.98, cfg.PulseWidth+cfg.LFO1.PulseWidth*l1+cfg.LFO2.PulseWidth*l2))
+		if lfo1Active || lfo2Active || pwModded {
+			pw := math.Max(0.02, math.Min(0.98, cfg.PulseWidth+cfg.LFO1.PulseWidth*l1+cfg.LFO2.PulseWidth*l2+mods.Mod(dPulseWidth)))
 			v.osc1.SetPulseWidth(pw)
 			v.osc2.SetPulseWidth(pw)
 		}
@@ -380,47 +480,51 @@ func (v *Voice) Synthesize() {
 		wrapped := phase < prevPhase
 
 		fm := 0.0
-		if cfg.FMAmount != 0.0 {
-			fm = cfg.FMAmount * o1 * freq * osc2Ratio / sr
+		if fmAmount := cfg.FMAmount + mods.Mod(dFM); fmAmount != 0.0 {
+			fm = fmAmount * o1 * freq * ratio / sr
 		}
 
 		syncPhase := 0.0
 		if cfg.Sync && wrapped {
-			syncPhase = phase * osc2Ratio
+			syncPhase = phase * ratio
 			syncPhase -= math.Floor(syncPhase)
 		}
 
 		o2 := v.osc2.Tick(fm, cfg.Sync && wrapped, syncPhase)
 
-		s := o1*cfg.Osc1Level + o2*cfg.Osc2Level
+		s := o1*math.Max(0, cfg.Osc1Level+mods.Mod(dOsc1Level)) + o2*math.Max(0, cfg.Osc2Level+mods.Mod(dOsc2Level))
 
-		if cfg.SubLevel > 0.0 {
+		if sub := cfg.SubLevel + mods.Mod(dSubLevel); sub > 0.0 {
 			v.sub.SetFrequency(freq*0.5, sr)
-			s += v.sub.Tick(0, false, 0) * cfg.SubLevel
+			s += v.sub.Tick(0, false, 0) * sub
 		}
 		if cfg.RingModLevel > 0.0 {
 			s += o1 * o2 * cfg.RingModLevel
 		}
-		if cfg.NoiseLevel > 0.0 {
-			s += v.noise.tick(cfg.NoiseType) * cfg.NoiseLevel
+		if noiseLevel := cfg.NoiseLevel + mods.Mod(dNoiseLevel); noiseLevel > 0.0 {
+			s += v.noise.tick(cfg.NoiseType) * noiseLevel
 		}
 
 		// Saturation
-		s = math.Tanh(s*drive) * driveComp
+		if driveModded {
+			d := drive * math.Exp2(mods.Mod(dDrive))
+			s = math.Tanh(s*d) / math.Tanh(d)
+		} else {
+			s = math.Tanh(s*drive) * driveComp
+		}
 
 		// Filter with envelope and LFO modulation in octaves (in vowel steps for the formant filter)
 		v.cutoff += cutoffInc
 		v.res += resInc
 		v.vowel += vowelInc
 		if v.formCount == 0 {
-			mod := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2 + 2*v.expr.Wheel()
-			v.setFilter(v.cutoff*keyTrackMult*math.Exp2(mod), mod)
+			mod := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2 + 2*v.expr.Wheel() + mods.Mod(dCutoff)
+			v.setFilter(v.cutoff*keyTrackMult*math.Exp2(mod), mod, math.Max(0, math.Min(v.res+mods.Mod(dResonance), 1)), v.vowel+mods.Mod(dVowel))
 		}
 		v.formCount = (v.formCount + 1) % filterUpdate
 		s = v.processFilter(s)
 
 		// Amp with LFO tremolo
-		amp := v.ampEnv.Generate()
 		if cfg.LFO1.Amp != 0.0 {
 			amp *= 1.0 - cfg.LFO1.Amp*(1.0-l1)*0.5
 		}
@@ -428,7 +532,7 @@ func (v *Voice) Synthesize() {
 			amp *= 1.0 - cfg.LFO2.Amp*(1.0-l2)*0.5
 		}
 
-		val := float32(s * amp * level)
+		val := float32(s * amp * math.Max(0, level+mods.Mod(dLevel)))
 		for _, channel := range outChannels {
 			channel[i] = val
 		}
@@ -462,7 +566,7 @@ func formantQ(res float64) float64 {
 const filterUpdate = 4
 
 // setFilter updates the coefficients of the selected filter
-func (v *Voice) setFilter(cutoff float64, mod float64) {
+func (v *Voice) setFilter(cutoff, mod, res, vowel float64) {
 	cfg := &v.cfg
 
 	switch cfg.FilterType {
@@ -475,7 +579,7 @@ func (v *Voice) setFilter(cutoff float64, mod float64) {
 			v.ladderDrv = drive
 			v.ladder.SetDrive(drive)
 		}
-		v.ladder.Set(cutoff, v.res)
+		v.ladder.Set(cutoff, res)
 
 	case FilterFormant:
 		shift := cfg.FormantShift
@@ -486,10 +590,10 @@ func (v *Voice) setFilter(cutoff float64, mod float64) {
 			v.formShift = shift
 			v.formant.SetShift(shift)
 		}
-		v.formant.Set(v.vowel+mod, formantQ(v.res))
+		v.formant.Set(vowel+mod, formantQ(res))
 
 	default:
-		v.svf.Set(cutoff, v.res)
+		v.svf.Set(cutoff, res)
 	}
 }
 

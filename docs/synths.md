@@ -204,10 +204,42 @@ notes stay at the sustain level until note off, timed notes release after their 
 
 An LFO without any destination amount, or with rate 0, is off.
 
+### Modulation matrix
+
+`Config.Mods` is a matrix of 8 slots (`blocks/modmatrix`): each takes a source to a destination over
+an amount (-1 to 1, of the span of the destination). It does what the fixed LFO amounts can't:
+per note, from any source, to nearly any setting.
+
+```go
+cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Wheel, Dest: "cutoff", Amount: 0.5}   // wheel opens the filter 3 octaves
+cfg.Mods[1] = modmatrix.Slot{Src: modmatrix.Velocity, Dest: "pulseWidth", Amount: 1}
+cfg.Mods[2] = modmatrix.Slot{Src: modmatrix.FilterEnv, Dest: "lfo1Rate", Amount: 0.3}
+```
+
+| Sources | |
+|---|---|
+| `FilterEnv`, `AmpEnv` | the envelopes of the voice, 0-1 |
+| `LFO1`, `LFO2` | the LFOs, -1 to 1 (they run when a slot uses them, rate from `LFO1.Rate`) |
+| `Velocity` | the note's velocity, 0-1 |
+| `Key` | the note, -1 to 1 over five octaves either side of middle C |
+| `Random` | a new value -1 to 1 for every note |
+| `Wheel` | the mod wheel and the aftertouch, 0-1 |
+| `Ext1`...`Ext4` | values 0-1 cabled in (inputs 5 to 8, below) |
+
+The destinations are `subtractive.Dests` (a full source with a full amount moves it by its span):
+`pitch` (24 st), `cutoff` (6 oct), `resonance`, `pulseWidth`, `osc1Level`, `osc2Level`, `subLevel`,
+`noiseLevel`, `osc2Detune` (12 st), `fmAmount` (5), `drive` (3 oct), `vowel` (4), `level`, `lfo1Rate`
+and `lfo2Rate` (3 oct). The slots are settings like any: `mod1Src`, `mod1Dest` (0 none, then the
+destinations in order) and `mod1Amount` to `mod8...`, saved in a preset and edited in the editor
+(group Modulation).
+
 ### Inputs and messages
 
 **Value inputs** (connect LFO modules or generators to the poly synth): 1 cutoff, 2 resonance,
-3 pulse width, 4 vowel.
+3 pulse width, 4 vowel (they set the setting itself); 5 to 8 (`subtractive.InExt1`...) the sources
+Ext 1 to 4 of the matrix (0-1): they move whatever a slot joins them to, over the setting, so an LFO
+module on input 5 with a slot `Ext1` to `cutoff` is a vibrato of the filter that keeps the knob.
+`ext1`...`ext4` are the same as settings (a mod cable of the patcher can move them).
 
 **Messages** (in the note message of a trigger, or with `"command": "voice"`):
 
@@ -217,6 +249,7 @@ An LFO without any destination amount, or with rate 0, is off.
 | Oscillators | `osc1Waveform`, `osc2Waveform`, `osc1Level`, `osc2Level`, `osc2Detune`, `osc2Octave`, `pulseWidth`, `subLevel`, `noiseLevel`, `noiseType`, `ringModLevel`, `sync`, `fmAmount`, `drive` |
 | Filter | `filterType`, `filterMode`, `ladderMode`, `filterDrive`, `cutoff`, `resonance`, `filterEnvAmount`, `keyTrack`, `vowel`, `formantShift` |
 | LFOs | `lfo1Waveform`, `lfo1Rate`, `lfo1Delay`, `lfo1KeySync`, `lfo1Pitch`, `lfo1Cutoff`, `lfo1PulseWidth`, `lfo1Amp`, and the same with `lfo2` |
+| Matrix | `mod1Src`, `mod1Dest`, `mod1Amount` (to `mod8`), `ext1` to `ext4` |
 
 Settings sent with a note change that voice and stay until changed again, so a sequence can step
 through settings note by note (see `cmd/examples/subtractive2`).

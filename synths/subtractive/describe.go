@@ -3,6 +3,7 @@ package subtractive
 import (
 	"fmt"
 
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/params"
 )
 
@@ -60,6 +61,14 @@ func Describe(cfg Config) params.Set {
 			params.K(g, k+"Amp", 0, 1, l.Amp, params.Label("tremolo")),
 		)
 	}
+	m := modmatrix.New(Dests)
+	for i, sl := range cfg.Mods {
+		m.Set(i, sl)
+	}
+	for i, e := range cfg.Ext {
+		m.SetExt(i, e)
+	}
+	s.Params = append(s.Params, m.Describe("Modulation")...)
 	s.Envelopes = []params.Envelope{
 		params.E("Envelopes", "amp", "amp", cfg.AmpEnv.AttackDuration, cfg.AmpEnv.DecayDuration, cfg.AmpEnv.DecayLevel, cfg.AmpEnv.ReleaseDuration),
 		params.E("Envelopes", "filter", "filter", cfg.FilterEnv.AttackDuration, cfg.FilterEnv.DecayDuration, cfg.FilterEnv.DecayLevel, cfg.FilterEnv.ReleaseDuration),
