@@ -1,7 +1,12 @@
-// Package vocal sings vowels: a buzzing source like the vocal folds, shaped by five formants (the
-// resonances of the throat and mouth) of a bass, tenor, alto or soprano, with breath, vibrato and
-// the small unsteadiness of a real voice. A choir is a voice sung by several singers at once, each a
-// little out of tune and time, spread over the stereo field.
+// Package vocal sings: a glottal source (the flow of air through the vocal folds, a
+// Rosenberg-Klatt pulse with an open quotient, a skew and a return, with jitter, shimmer and breath
+// that follows the cycle) through a cascade of five formants (the resonances of the throat and mouth)
+// of a bass, tenor, alto, soprano or child, with a nose, a singer's formant, formant tuning to the
+// pitch, vibrato and the small unsteadiness of a real voice. It sings twelve vowels (see Vowels) or
+// the scale a e i o u, glides from one vowel to another within a note (a diphthong), and speaks words
+// of vowels and consonants (stops, fricatives, nasals, liquids and glides) whose formants move from
+// the consonant into the vowel. A choir is a voice sung by several singers at once, each a little
+// out of tune and time, spread over the stereo field.
 //
 //	choir := vocal.NewPoly(vocal.Choir(), 8).AddTo(p)
 //	choir.Receive(psalm.Message{"vowel": 3.0}, 0) // all sing "o"
@@ -18,7 +23,6 @@ import (
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/blocks/modmatrix"
-	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -32,6 +36,8 @@ const (
 	Tenor
 	Alto
 	Soprano
+	ChildVoice
+	numRanges
 )
 
 // Config is a voice, or a section of a choir
@@ -60,7 +66,37 @@ type Config struct {
 	VowelSteps bool
 	Level      float64 // output level (0 is treated as 1)
 
-	Consonant      Consonant // a burst of noise as the note starts (none unless set)
+	// Phoneme sings one of the twelve vowels of Vowels (1 to 12) instead of Vowel (0): the vowel
+	// moves along that list, so the steps of the matrix and the wheel go to the neighbours
+	Phoneme int
+	// PhonemeTo makes a diphthong of the note: the vowel glides from the one sung to this one (1 to
+	// 12, 0 is none) in DiphthongTime seconds (0 is 0.3), after holding the first for DiphthongHold
+	PhonemeTo     int
+	DiphthongTime float64
+	DiphthongHold float64
+
+	// the glottal source. OpenQuotient (0.2-0.95: the part of the cycle the folds are open), the
+	// SpeedQuotient (0.8-4: how much longer they take to open than to close) and the ReturnPhase
+	// (0.02-1: how slowly the closing ends; the longer the darker) are made from Brightness unless set
+	// (0 is that). Jitter is the spread of the length of the cycles (0.005 is 0.5%), Shimmer that of
+	// their loudness (0.03 is 3%): none unless set
+	OpenQuotient  float64
+	SpeedQuotient float64
+	ReturnPhase   float64
+	Jitter        float64
+	Shimmer       float64
+
+	// Tuning is how far the first formant follows the pitch up when the pitch is higher than it, as
+	// a soprano's does (0 is 1; a negative value is none). Training (0-1) is the singer's formant: the
+	// third to fifth formants gather near 3 kHz, as in a trained voice. Nasal (0-1) opens the nose
+	Tuning   float64
+	Training float64
+	Nasal    float64
+	// Coarticulation is the seconds the formants take to move from a consonant into the vowel
+	// (0 is 0.045)
+	Coarticulation float64
+
+	Consonant      Consonant // a consonant as the note starts (none unless set)
 	ConsonantLevel float64   // 0-1 (0 is treated as 0.5)
 
 	// FormantShift scales all the formants (and their widths): below 1 a bigger throat, a giant;
@@ -106,11 +142,19 @@ var Dests = []modmatrix.Dest{
 	dCutoff:       {Key: "cutoff", Label: "cutoff", Span: 4},
 }
 
-// Syllable is a vowel position (0-4: a e i o u, fractions morph) and a consonant before it
+// Syllable is a vowel position (0-4: a e i o u, fractions morph) and a consonant before it. A
+// Diphthong (1 to 5, see DiphthongNames) sings that pair of vowels instead of Vowel
 type Syllable struct {
 	Vowel     float64
 	Consonant Consonant
+	Diphthong int
 }
+
+// DiphthongNames are the diphthongs of a syllable, by number
+var DiphthongNames = []string{"none", "ai", "au", "ei", "ou", "oi"}
+
+// the vowels each diphthong glides from and to, by their place in Vowels (from 1)
+var diphthongs = [...][2]int{{}, {6, 2}, {6, 9}, {3, 2}, {8, 9}, {7, 2}}
 
 // wordPlace is the place in the word, shared by the voices of a Poly: the syllable the next note sings
 type wordPlace struct{ next int }
@@ -121,7 +165,7 @@ const InExt1 = 3 // to InExt1+3
 
 const middleC = 261.6255653005986
 
-// Consonant is the burst of noise a note starts with
+// Consonant is the sound a note starts with
 type Consonant int
 
 const (
@@ -131,65 +175,64 @@ const (
 	S
 	Sh
 	F
+	M
+	N
+	Ng
+	L
+	R
+	W
+	Y
 	numConsonants
 )
 
 // ConsonantNames are the names of the consonants, by number
-var ConsonantNames = []string{"none", "t", "k", "s", "sh", "f"}
+var ConsonantNames = []string{"none", "t", "k", "s", "sh", "f", "m", "n", "ng", "l", "r", "w", "y"}
 
-// consonantShape is a burst: noise through a band (freq, q), as long as dur seconds, either
-// dying away at once (a plosive, with the time constant tau) or swelling and fading (a fricative)
+// locus is where the formants of a consonant stand: the first three (and their widths) at the start,
+// held for hold seconds, then moving into the vowel in trans seconds. A nasal opens the nose (with a
+// zero at zero Hz); the voice is as loud as amp while it is at the locus
+type locus struct {
+	f, bw       [3]float64
+	hold, trans float64
+	nasal, zero float64
+	amp         float64
+}
+
+// consonantShape is a consonant: a burst of noise through a band (freq, q), as long as dur seconds,
+// either dying away at once (a plosive, with the time constant tau) or swelling and fading (a
+// fricative); and the locus its formants start from. A nasal, a liquid or a glide has no noise
 type consonantShape struct {
 	freq, q, dur, tau, gain float64
 	plosive                 bool
+	loc                     locus
 }
 
 var consonants = [...]consonantShape{
-	T:  {freq: 5200, q: 1.2, dur: 0.05, tau: 0.01, gain: 3, plosive: true},
-	K:  {freq: 2000, q: 2, dur: 0.07, tau: 0.018, gain: 3, plosive: true},
-	S:  {freq: 7500, q: 1.5, dur: 0.12, gain: 2.5},
-	Sh: {freq: 3500, q: 1, dur: 0.14, gain: 2.5},
-	F:  {freq: 4500, q: 0.4, dur: 0.1, gain: 1.8},
+	T: {freq: 5200, q: 1.2, dur: 0.05, tau: 0.01, gain: 3, plosive: true,
+		loc: locus{f: [3]float64{300, 1800, 2900}, bw: [3]float64{100, 150, 200}, trans: 0.045, amp: 1}},
+	K: {freq: 2000, q: 2, dur: 0.07, tau: 0.018, gain: 3, plosive: true,
+		loc: locus{f: [3]float64{300, 1500, 2500}, bw: [3]float64{100, 150, 200}, trans: 0.045, amp: 1}},
+	S: {freq: 7500, q: 1.5, dur: 0.12, gain: 2.5,
+		loc: locus{f: [3]float64{350, 1700, 2700}, bw: [3]float64{100, 150, 200}, trans: 0.05, amp: 1}},
+	Sh: {freq: 3500, q: 1, dur: 0.14, gain: 2.5,
+		loc: locus{f: [3]float64{350, 1900, 2400}, bw: [3]float64{100, 150, 200}, trans: 0.05, amp: 1}},
+	F: {freq: 4500, q: 0.4, dur: 0.1, gain: 1.8,
+		loc: locus{f: [3]float64{350, 1100, 2300}, bw: [3]float64{100, 150, 200}, trans: 0.05, amp: 1}},
+	M: {loc: locus{f: [3]float64{250, 1000, 2200}, bw: [3]float64{90, 200, 250}, hold: 0.04, trans: 0.055,
+		nasal: 1, zero: 1000, amp: 0.55}},
+	N: {loc: locus{f: [3]float64{250, 1500, 2500}, bw: [3]float64{90, 180, 250}, hold: 0.04, trans: 0.055,
+		nasal: 1, zero: 1600, amp: 0.55}},
+	Ng: {loc: locus{f: [3]float64{250, 1900, 2500}, bw: [3]float64{90, 180, 250}, hold: 0.04, trans: 0.055,
+		nasal: 1, zero: 2100, amp: 0.55}},
+	L: {loc: locus{f: [3]float64{360, 1100, 2800}, bw: [3]float64{80, 110, 140}, hold: 0.025, trans: 0.055, amp: 0.8}},
+	R: {loc: locus{f: [3]float64{400, 1300, 1650}, bw: [3]float64{90, 110, 100}, hold: 0.03, trans: 0.06, amp: 0.85}},
+	W: {loc: locus{f: [3]float64{300, 700, 2300}, bw: [3]float64{70, 90, 130}, hold: 0.015, trans: 0.07, amp: 0.8}},
+	Y: {loc: locus{f: [3]float64{290, 2250, 3000}, bw: [3]float64{60, 90, 130}, hold: 0.015, trans: 0.065, amp: 0.85}},
 }
 
 // DefaultConfig is a solo voice
 func DefaultConfig() Config {
 	return Solo()
-}
-
-// formant is a resonance: its frequency, its level (dB) and its width (Hz)
-type formant struct{ freq, db, bw float64 }
-
-// the formants of the vowels a e i o u of each range (after the formant table of Csound)
-var ranges = map[Range][5][5]formant{
-	Bass: {
-		{{600, 0, 60}, {1040, -7, 70}, {2250, -9, 110}, {2450, -9, 120}, {2750, -20, 130}},
-		{{400, 0, 40}, {1620, -12, 80}, {2400, -9, 100}, {2800, -12, 120}, {3100, -18, 120}},
-		{{250, 0, 60}, {1750, -30, 90}, {2600, -16, 100}, {3050, -22, 120}, {3340, -28, 120}},
-		{{400, 0, 40}, {750, -11, 80}, {2400, -21, 100}, {2600, -20, 120}, {2900, -40, 120}},
-		{{350, 0, 40}, {600, -20, 80}, {2400, -32, 100}, {2675, -28, 120}, {2950, -36, 120}},
-	},
-	Tenor: {
-		{{650, 0, 80}, {1080, -6, 90}, {2650, -7, 120}, {2900, -8, 130}, {3250, -22, 140}},
-		{{400, 0, 70}, {1700, -14, 80}, {2600, -12, 100}, {3200, -14, 120}, {3580, -20, 120}},
-		{{290, 0, 40}, {1870, -15, 90}, {2800, -18, 100}, {3250, -20, 120}, {3540, -30, 120}},
-		{{400, 0, 40}, {800, -10, 80}, {2600, -12, 100}, {2800, -12, 120}, {3000, -26, 120}},
-		{{350, 0, 40}, {600, -20, 60}, {2700, -17, 100}, {2900, -14, 120}, {3300, -26, 120}},
-	},
-	Alto: {
-		{{800, 0, 80}, {1150, -4, 90}, {2800, -20, 120}, {3500, -36, 130}, {4950, -60, 140}},
-		{{400, 0, 60}, {1600, -24, 80}, {2700, -30, 120}, {3300, -35, 150}, {4950, -60, 200}},
-		{{350, 0, 50}, {1700, -20, 100}, {2700, -30, 120}, {3700, -36, 150}, {4950, -60, 200}},
-		{{450, 0, 70}, {800, -9, 80}, {2830, -16, 100}, {3500, -28, 130}, {4950, -55, 135}},
-		{{325, 0, 50}, {700, -12, 60}, {2530, -30, 170}, {3500, -40, 180}, {4950, -64, 200}},
-	},
-	Soprano: {
-		{{800, 0, 80}, {1150, -6, 90}, {2900, -32, 120}, {3900, -20, 130}, {4950, -50, 140}},
-		{{350, 0, 60}, {2000, -20, 100}, {2800, -15, 120}, {3600, -40, 150}, {4950, -56, 200}},
-		{{270, 0, 60}, {2140, -12, 90}, {2950, -26, 100}, {3900, -26, 120}, {4950, -44, 120}},
-		{{450, 0, 40}, {800, -11, 80}, {2830, -22, 100}, {3800, -22, 120}, {4950, -50, 120}},
-		{{325, 0, 50}, {700, -16, 60}, {2700, -35, 170}, {3800, -40, 180}, {4950, -60, 200}},
-	},
 }
 
 // rangeOf returns the range that sings a pitch best
@@ -208,9 +251,12 @@ func rangeOf(pitch float64) Range {
 // maxSingers is the most singers of a voice
 const maxSingers = 16
 
+// outScale brings the cascade of formants to the level the voice had before
+const outScale = 0.12
+
 // singer is one of the voices of a note: its own source, a little out of tune and time
 type singer struct {
-	osc     *blosc.Blosc
+	g       glottis
 	detune  float64 // as a ratio
 	vibRate float64
 	vibPh   float64
@@ -233,10 +279,13 @@ type Voice struct {
 	velocity  float64
 	amp       float64
 	rng       *randSource
-	formants  [2][5]*svf.SVF
-	gains     [5]float64
-	vowel     float64 // the vowel sung, gliding to cfg.Vowel
+	tract     [2]tractFilter
+	vowel     float64 // the vowel sung, gliding to its target: a position on the scale or along Vowels
+	mode      int     // 0 when vowel is on the scale a e i o u, else the phoneme it is a position along Vowels
+	phTo      int     // the vowel a diphthong glides to (0 none)
+	oq, sq    float64 // the shape of the glottal pulse now
 	tilt      [2]float64
+	tiltCoef  float64
 	breathLP  [2]float64
 	env       float64
 	released  bool
@@ -253,18 +302,28 @@ type Voice struct {
 	random    float64 // a random value for the note, -1 to 1
 	lfo2      float64 // phase
 	cons      *svf.SVF
-	consT     int // samples into the consonant (-1 none)
+	consT     int // samples into the burst of the consonant (-1 none)
 	consNow   Consonant
+	artT      int // samples since the consonant began moving the formants (-1 over)
+	artGain   float64
+	artTarget float64
+	syllT0    int // the sample the syllable (or the note) began
 	place     *wordPlace
 	syl       int     // the syllable this note started on
 	sylNow    int     // the syllable sung now (-1 when there is no word)
 	sylVowel  float64 // its vowel
+	sylPh     int     // its vowel as a phoneme (0 none), and the one it glides to
+	sylTo     int
+	fnow      [5]float64 // the formants now (Hz)
 }
 
 // randSource is a small fast random generator
 type randSource struct{ s uint64 }
 
 func (r *randSource) float() float64 {
+	if r.s == 0 {
+		r.s = 0x9E3779B97F4A7C15
+	}
 	r.s ^= r.s << 13
 	r.s ^= r.s >> 7
 	r.s ^= r.s << 17
@@ -278,18 +337,14 @@ func New(cfg Config) *Voice {
 	}
 	v := &Voice{Module: psalm.NewModule(nil, []int{cfg.NumChannels}), cfg: cfg, pitch: 60, vowel: cfg.Vowel, place: &wordPlace{}, sylNow: -1}
 	sr := v.Config().SampleRate
-	for i := range v.singers {
-		v.singers[i].osc = blosc.New(220, sr, 0, 0.5, 1, blosc.Sawtooth)
-	}
-	for c := range v.formants {
-		for k := range v.formants[c] {
-			v.formants[c][k] = svf.New(1000, 0, sr)
-		}
-	}
 	v.rng = &randSource{s: v.Rand().Uint64() | 1}
+	for i := range v.singers {
+		// the irregularities of each source have a stream of their own, so they never move the others
+		v.singers[i].g.rng.s = (v.rng.s ^ uint64(i+1)*0xBF58476D1CE4E5B9) | 1
+	}
 	v.filter = voicefilter.New(cfg.Filter, sr, cfg.NumChannels)
 	v.cons = svf.New(1000, 0, sr)
-	v.consT = -1
+	v.consT, v.artT, v.artGain, v.artTarget = -1, -1, 1, 1
 	v.mods = modmatrix.New(Dests)
 	for i, sl := range cfg.Mods {
 		v.mods.Set(i, sl)
@@ -312,20 +367,48 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	for i := range v.cfg.Ext {
 		v.cfg.Ext[i] = v.mods.Ext(i)
 	}
-	msg.IfFltVal("formantShift", func(f float64) { v.cfg.FormantShift = math.Max(0.25, math.Min(f, 4)) })
-	msg.IfFltVal("wordSync", func(f float64) { v.cfg.WordSync = math.Max(0, f) })
+	cfg := &v.cfg
+	msg.IfFltVal("formantShift", func(f float64) { cfg.FormantShift = math.Max(0.25, math.Min(f, 4)) })
+	msg.IfFltVal("wordSync", func(f float64) { cfg.WordSync = math.Max(0, f) })
 	msg.IfStrVal("word", func(s string) {
 		if w, err := ParseWord(s); err == nil {
-			v.cfg.Word = w
+			cfg.Word = w
 		}
 	})
 	// the next syllable to sing (the place is shared in a Poly)
 	for _, k := range []string{"syllable", "wordStep"} {
 		msg.IfIntVal(k, func(i int) { v.place.next = max(0, i) })
 	}
-	msg.IfIntVal("consonant", func(c int) { v.cfg.Consonant = Consonant(max(0, min(c, int(numConsonants)-1))) })
-	msg.IfFltVal("consonantLevel", func(f float64) { v.cfg.ConsonantLevel = math.Max(0, math.Min(f, 1)) })
-	envelope.Seconds(msg, "amp", &v.cfg.Attack, nil, &v.cfg.Release)
+	msg.IfIntVal("consonant", func(c int) { cfg.Consonant = Consonant(max(0, min(c, int(numConsonants)-1))) })
+	msg.IfFltVal("consonantLevel", func(f float64) { cfg.ConsonantLevel = math.Max(0, math.Min(f, 1)) })
+	msg.IfIntVal("phoneme", func(i int) { cfg.Phoneme = max(0, min(i, len(Vowels))) })
+	msg.IfIntVal("phonemeTo", func(i int) { cfg.PhonemeTo = max(0, min(i, len(Vowels))) })
+	// a named diphthong sets both vowels
+	msg.IfIntVal("diphthong", func(i int) {
+		i = max(0, min(i, len(diphthongs)-1))
+		if i == 0 {
+			cfg.PhonemeTo = 0
+			return
+		}
+		cfg.Phoneme, cfg.PhonemeTo = diphthongs[i][0], diphthongs[i][1]
+	})
+	msg.IfFltVal("diphthongTime", func(f float64) { cfg.DiphthongTime = math.Max(0, math.Min(f, 4)) })
+	msg.IfFltVal("diphthongHold", func(f float64) { cfg.DiphthongHold = math.Max(0, math.Min(f, 4)) })
+	msg.IfFltVal("openQuotient", func(f float64) { cfg.OpenQuotient = zeroOr(f, 0.2, 0.95) })
+	msg.IfFltVal("speedQuotient", func(f float64) { cfg.SpeedQuotient = zeroOr(f, 0.8, 4) })
+	msg.IfFltVal("returnPhase", func(f float64) { cfg.ReturnPhase = zeroOr(f, 0.02, 1) })
+	msg.IfFltVal("jitter", func(f float64) { cfg.Jitter = math.Max(0, math.Min(f, 0.05)) })
+	msg.IfFltVal("shimmer", func(f float64) { cfg.Shimmer = math.Max(0, math.Min(f, 0.3)) })
+	msg.IfFltVal("formantTuning", func(f float64) {
+		cfg.Tuning = math.Max(0, math.Min(f, 1))
+		if cfg.Tuning == 0 {
+			cfg.Tuning = -1
+		}
+	})
+	msg.IfFltVal("training", func(f float64) { cfg.Training = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("nasal", func(f float64) { cfg.Nasal = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("coarticulation", func(f float64) { cfg.Coarticulation = math.Max(0.005, math.Min(f, 0.2)) })
+	envelope.Seconds(msg, "amp", &cfg.Attack, nil, &cfg.Release)
 	msg.IfFltVal("frequency", func(f float64) {
 		if f > 0 {
 			v.pitch = 69 + 12*math.Log2(f/440)
@@ -333,14 +416,22 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	})
 	msg.IfFltVal("pitch", func(p float64) { v.pitch = p })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("vowel", func(f float64) { v.cfg.Vowel = f })
-	msg.IfFltVal("vowelGlide", func(f float64) { v.cfg.VowelGlide = f })
-	msg.IfFltVal("brightness", func(f float64) { v.cfg.Brightness = f })
-	msg.IfFltVal("breath", func(f float64) { v.cfg.Breath = f })
-	msg.IfFltVal("vibratoRate", func(f float64) { v.cfg.VibratoRate = f })
-	msg.IfFltVal("vibratoDepth", func(f float64) { v.cfg.VibratoDepth = f })
-	msg.IfIntVal("range", func(r int) { v.cfg.Range = Range(r) })
-	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
+	msg.IfFltVal("vowel", func(f float64) { cfg.Vowel = f })
+	msg.IfFltVal("vowelGlide", func(f float64) { cfg.VowelGlide = f })
+	msg.IfFltVal("brightness", func(f float64) { cfg.Brightness = f })
+	msg.IfFltVal("breath", func(f float64) { cfg.Breath = f })
+	msg.IfFltVal("vibratoRate", func(f float64) { cfg.VibratoRate = f })
+	msg.IfFltVal("vibratoDepth", func(f float64) { cfg.VibratoDepth = f })
+	msg.IfIntVal("range", func(r int) { cfg.Range = Range(max(0, min(r, int(numRanges)-1))) })
+	msg.IfFltVal("level", func(f float64) { cfg.Level = f })
+}
+
+// zeroOr keeps 0 (the setting is made from others) and limits anything else to lo-hi
+func zeroOr(f, lo, hi float64) float64 {
+	if f <= 0 {
+		return 0
+	}
+	return math.Max(lo, math.Min(f, hi))
 }
 
 // Receive takes messages, or the vowel on input 1 and the vibrato depth on input 2, and on 3 to 6
@@ -399,22 +490,18 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 		v.setSyllable(v.syl)
 	}
 	v.startConsonant()
-	if !v.active {
-		v.env = 0
-		v.vowel = cfg.Vowel
-		if v.sylNow >= 0 {
-			v.vowel = v.sylVowel
-		}
-		for c := range v.formants {
-			for _, f := range v.formants[c] {
-				f.Clear()
-			}
-			v.tilt[c], v.breathLP[c] = 0, 0
-		}
-	}
 	v.rangeNow = cfg.Range
 	if v.rangeNow == Auto {
 		v.rangeNow = rangeOf(v.pitch)
+	}
+	if !v.active {
+		v.env = 0
+		ph, _, pos := v.vowelBase()
+		v.mode, v.vowel = ph, pos
+		for c := range v.tract {
+			v.tract[c].clear()
+			v.tilt[c], v.breathLP[c] = 0, 0
+		}
 	}
 	v.n = max(1, min(cfg.Singers, maxSingers))
 	spread := math.Max(0, math.Min(cfg.Spread, 1))
@@ -438,7 +525,8 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 			s.delay = int(v.rng.float() * 0.03 * sr) // they don't all start at once
 		}
 		if !v.active {
-			s.osc.SetPhase(v.rng.float())
+			s.g.phase = v.rng.float()
+			s.g.mul, s.g.amp = 1, 1
 		}
 		a := (pos*spread + 1) * math.Pi / 4
 		g := 1 / math.Sqrt(float64(v.n))
@@ -452,33 +540,161 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 func (v *Voice) setSyllable(i int) {
 	s := v.cfg.Word[i]
 	v.sylNow, v.sylVowel, v.consNow = i, s.Vowel, s.Consonant
+	v.sylPh, v.sylTo = 0, 0
+	if s.Diphthong > 0 && s.Diphthong < len(diphthongs) {
+		v.sylPh, v.sylTo = diphthongs[s.Diphthong][0], diphthongs[s.Diphthong][1]
+	}
 }
 
-// setFormants tunes the formants to the vowel (the first follows the pitch up when it is higher,
-// as singers do)
+// vowelBase returns the vowel to sing without the movement of the wheel and the matrix: the phoneme
+// (0 for the scale a e i o u), the one it glides to, and the position (on the scale, or along Vowels)
+func (v *Voice) vowelBase() (ph, to int, pos float64) {
+	cfg := &v.cfg
+	if v.sylNow >= 0 {
+		ph, to, pos = v.sylPh, v.sylTo, v.sylVowel
+	} else {
+		ph, to, pos = cfg.Phoneme, cfg.PhonemeTo, cfg.Vowel
+	}
+	if ph > 0 {
+		pos = float64(ph - 1)
+	}
+	return
+}
+
+// diphFrac is how far the glide of a diphthong has come (0-1)
+func (v *Voice) diphFrac(sr float64) float64 {
+	d := v.cfg.DiphthongTime
+	if d <= 0 {
+		d = 0.3
+	}
+	u := (float64(v.t-v.syllT0)/sr - v.cfg.DiphthongHold) / d
+	if u <= 0 {
+		return 0
+	}
+	if u >= 1 {
+		return 1
+	}
+	return u * u * (3 - 2*u)
+}
+
+// setFormants tunes the tract to the vowel, the diphthong, the consonant the syllable began with, the
+// pitch (the first formant follows it up when it is higher, as sopranos tune it), the singer's
+// formant and the nose
 func (v *Voice) setFormants(f0 float64) {
-	table := ranges[v.rangeNow]
-	pos := math.Max(0, math.Min(v.vowel, 4))
-	i := min(int(pos), 3)
-	frac := pos - float64(i)
+	cfg := &v.cfg
 	sr := v.Config().SampleRate
-	shift := v.cfg.FormantShift
+	shift := cfg.FormantShift
 	if shift <= 0 {
 		shift = 1
 	}
-	for k := range 5 {
-		a, b := table[i][k], table[i+1][k]
-		freq := a.freq * math.Pow(b.freq/a.freq, frac) * shift
-		if k == 0 {
-			freq = math.Max(freq, f0*1.1)
-		}
-		bw := (a.bw + (b.bw-a.bw)*frac) * shift
-		v.gains[k] = math.Pow(10, (a.db+(b.db-a.db)*frac)/20)
-		freq = math.Min(freq, sr*0.45)
-		for c := range v.formants {
-			v.formants[c][k].SetFrequencyQ(freq, freq/bw)
+	f, bw := tractAt(v.rangeNow, v.mode, v.vowel)
+	if v.phTo > 0 {
+		if d := v.diphFrac(sr); d > 0 {
+			fb, bb := tractAt(v.rangeNow, 1, float64(v.phTo-1))
+			for k := range f {
+				f[k] *= math.Pow(fb[k]/f[k], d)
+				bw[k] += (bb[k] - bw[k]) * d
+			}
 		}
 	}
+	for k := range f {
+		f[k] *= shift
+		bw[k] *= shift
+	}
+	// formant tuning: the first formant rises towards the pitch (a soft maximum, so it bends)
+	if tn := tuningOf(cfg.Tuning); tn > 0 {
+		const p = 6.0
+		f[0] = math.Pow(math.Pow(f[0], p)+math.Pow(tn*f0*1.08, p), 1/p)
+	}
+	// the singer's formant: the third to fifth formants gather
+	if tr := math.Max(0, math.Min(cfg.Training, 1)); tr > 0 {
+		fs := voiceTypes[v.rangeNow].singerForm * shift
+		f[2] += tr * 0.6 * (fs*0.97 - f[2])
+		f[3] += tr * (fs*1.05 - f[3])
+		f[4] += tr * (fs*1.2 - f[4])
+		for k := 2; k < 5; k++ {
+			bw[k] *= 1 - 0.3*tr
+		}
+	}
+	nasal := math.Max(0, math.Min(cfg.Nasal, 1))
+	zero := 1000 * shift
+	v.artTarget = 1
+	if v.artT >= 0 {
+		l := &consonants[v.consNow].loc
+		coart := cfg.Coarticulation
+		if coart <= 0 {
+			coart = 0.045
+		}
+		trans := l.trans * coart / 0.045
+		el := float64(v.artT) / sr
+		u := math.Max(0, math.Min((el-l.hold)/trans, 1))
+		if u >= 1 {
+			v.artT = -1
+		}
+		u = u * u * (3 - 2*u)
+		for k := range 3 {
+			f[k] = l.f[k]*shift + (f[k]-l.f[k]*shift)*u
+			bw[k] = l.bw[k]*shift + (bw[k]-l.bw[k]*shift)*u
+		}
+		if l.nasal > 0 {
+			nasal = l.nasal*(1-u) + nasal*u
+			zero = (l.zero*(1-u) + 1000*u) * shift
+		}
+		v.artTarget = l.amp*(1-u) + u
+	}
+	v.fnow = f
+	chans := 1
+	if v.cfg.NumChannels > 1 {
+		chans = 2
+	}
+	t := &v.tract[0]
+	for k := range f {
+		t.f[k].set(f[k], bw[k], sr)
+	}
+	t.np.set(270*shift, 100*shift, sr)
+	t.nz.set(zero, 120*shift, sr)
+	t.nasal = nasal
+	for c := 1; c < chans; c++ {
+		u := &v.tract[c]
+		for k := range f {
+			u.f[k].a, u.f[k].b, u.f[k].c = t.f[k].a, t.f[k].b, t.f[k].c
+		}
+		u.np.a, u.np.b, u.np.c = t.np.a, t.np.b, t.np.c
+		u.nz.a, u.nz.b, u.nz.c = t.nz.a, t.nz.b, t.nz.c
+		u.nasal = nasal
+	}
+}
+
+// tuningOf is how much a voice tunes its first formant: 0 is full, a negative value none
+func tuningOf(t float64) float64 {
+	switch {
+	case t < 0:
+		return 0
+	case t == 0:
+		return 1
+	}
+	return math.Min(t, 1)
+}
+
+// shape sets the glottal pulse and the tilt from the brightness of the voice: a soft voice is breathy
+// (the folds open long, close slowly and the high partials fall away); a pressed one is bright
+func (v *Voice) shape(bright float64) {
+	cfg := &v.cfg
+	sr := v.Config().SampleRate
+	oq := cfg.OpenQuotient
+	if oq <= 0 {
+		oq = 0.85 - 0.5*bright
+	}
+	sq := cfg.SpeedQuotient
+	if sq <= 0 {
+		sq = 1 + 0.8*bright
+	}
+	v.oq, v.sq = math.Max(0.2, math.Min(oq, 0.95)), math.Max(0.8, math.Min(sq, 4))
+	b := bright
+	if cfg.ReturnPhase > 0 {
+		b = 1 - cfg.ReturnPhase
+	}
+	v.tiltCoef = math.Exp(-2 * math.Pi * (300 + 4000*b*b) / sr)
 }
 
 // reshape sets the detune and the spread of the singers as the matrix moves them
@@ -498,14 +714,19 @@ func (v *Voice) reshape() {
 // cents is how far the singer is out of tune when the choir is detuned over a spread of cents
 func (s *singer) cents(detune float64) float64 { return s.pos*detune/2 + s.jitter*detune }
 
-// startConsonant starts the burst of the consonant
+// startConsonant starts the consonant: its burst of noise and the formants moving from its locus
 func (v *Voice) startConsonant() {
-	v.consT = -1
+	v.consT, v.artT = -1, -1
+	v.syllT0 = v.t
 	c := v.consNow
 	if c <= NoConsonant || c >= numConsonants {
 		return
 	}
+	v.artT = 0
 	sh := consonants[c]
+	if sh.gain == 0 {
+		return
+	}
 	v.cons.Clear()
 	v.cons.SetFrequencyQ(math.Min(sh.freq, v.Config().SampleRate*0.45), sh.q)
 	v.consT = 0
@@ -545,7 +766,7 @@ func (v *Voice) NoteOff() {
 
 func (v *Voice) Clear() {
 	v.filter.Clear()
-	v.consT = -1
+	v.consT, v.artT = -1, -1
 	v.active = false
 	v.env = 0
 	v.Output(0).Clear()
@@ -570,8 +791,6 @@ func (v *Voice) Synthesize() {
 	}
 	gain := level * v.amp
 	bright := math.Max(0, math.Min(cfg.Brightness+0.4*(v.velocity-0.5), 1))
-	// the source's tilt: a soft voice loses its high partials sooner
-	tiltCoef := math.Exp(-2 * math.Pi * (300 + 4000*bright*bright) / sr)
 	breath := math.Max(0, cfg.Breath)
 	attack := 1 / math.Max(1, cfg.Attack*sr)
 	release := math.Pow(10, -3/(math.Max(0.01, cfg.Release)*sr))
@@ -607,11 +826,15 @@ func (v *Voice) Synthesize() {
 		mv[modmatrix.Random] = v.random
 		mv[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(f0/middleC)/5, 1))
 	}
+	chans := 1
+	if stereo {
+		chans = 2
+	}
+	jitter, shimmer := cfg.Jitter, cfg.Shimmer
 	for i := v.waitSamps; i < n; i++ {
 		// the vowel glides; the formants follow every 32 samples
 		v.expr.Tick(sr)
 		bend := v.expr.Ratio()
-		target := cfg.Vowel + 2*v.expr.Wheel()
 		if v.sylNow >= 0 {
 			// the word: a held note goes on to the next syllable on the clock
 			if sylInc > 0 {
@@ -620,11 +843,13 @@ func (v *Voice) Synthesize() {
 					v.startConsonant()
 				}
 			}
-			target = v.sylVowel + 2*v.expr.Wheel()
 		}
+		ph, phTo, base := v.vowelBase()
+		off := 2 * v.expr.Wheel() // the vowel's movement, in steps
 		vib0 := cfg.VibratoDepth
 		breathNow := breath
 		pitchMul := 1.0
+		bnow := bright
 		if modded {
 			mv := &mods.Values
 			mv[modmatrix.AmpEnv] = v.env
@@ -642,34 +867,46 @@ func (v *Voice) Synthesize() {
 				}
 			}
 			mods.Eval(sr)
-			target += mods.Mod(dVowel)
+			off += mods.Mod(dVowel)
 			vib0 += mods.Mod(dVibratoDepth)
 			breathNow = math.Max(0, breath+mods.Mod(dBreath))
 			pitchMul = math.Exp2(mods.Mod(dPitch) / 12)
 			if brightModded {
-				b := math.Max(0, math.Min(cfg.Brightness+mods.Mod(dBrightness)+0.4*(v.velocity-0.5), 1))
-				tiltCoef = math.Exp(-2 * math.Pi * (300 + 4000*b*b) / sr)
+				bnow = math.Max(0, math.Min(cfg.Brightness+mods.Mod(dBrightness)+0.4*(v.velocity-0.5), 1))
 			}
 		}
 		if moving {
-			ph := vowelInc * float64(v.t)
+			p := vowelInc * float64(v.t)
 			if cfg.VowelSteps {
-				if v.t == 0 || math.Floor(ph) != math.Floor(ph-vowelInc) {
+				if v.t == 0 || math.Floor(p) != math.Floor(p-vowelInc) {
 					v.stepTo = (v.rng.float()*2 - 1) * cfg.VowelDepth // a new vowel every cycle
 				}
-				target += v.stepTo
+				off += v.stepTo
 			} else {
-				target += cfg.VowelDepth * math.Sin(2*math.Pi*ph)
+				off += cfg.VowelDepth * math.Sin(2*math.Pi*p)
 			}
 		}
+		target := base + off
+		if ph > 0 {
+			target = math.Max(0, math.Min(target, float64(len(Vowels)-1)))
+		}
+		if ph != v.mode {
+			v.mode, v.vowel = ph, target
+		}
+		v.phTo = phTo
 		v.vowel += (target - v.vowel) * glide
 		if v.update == 0 {
+			v.shape(bnow)
 			v.setFormants(f0)
 			if reshape {
 				v.reshape()
 			}
 		}
 		v.update = (v.update + 1) % 32
+		if v.artT >= 0 {
+			v.artT++
+		}
+		v.artGain += (v.artTarget - v.artGain) * 0.003
 
 		// the vibrato comes in gently after its delay
 		vib := 0.0
@@ -677,6 +914,7 @@ func (v *Voice) Synthesize() {
 			vib = vib0 * math.Min(1, float64(v.t-vibDelay)/(0.5*sr))
 		}
 		var src [2]float64
+		flow, sung := 0.0, 0
 		for k := range v.n {
 			s := &v.singers[k]
 			if v.t < s.delay {
@@ -692,14 +930,19 @@ func (v *Voice) Synthesize() {
 			}
 			s.drift += (s.driftTo - s.drift) * driftCoef
 			semis := vib*math.Sin(2*math.Pi*s.vibPh) + s.drift
-			s.osc.SetFrequency(f0*bend*pitchMul*s.detune*(1+semis*0.05776), sr) // 2^(x/12) for small x
-			x := s.osc.Tick(0, false, 0)
+			inc := f0 * bend * pitchMul * s.detune * (1 + semis*0.05776) / sr // 2^(x/12) for small x
+			x, fl := s.g.tick(inc, v.oq, v.sq, jitter, shimmer)
+			flow += fl
+			sung++
 			if stereo {
 				src[0] += x * s.gainL
 				src[1] += x * s.gainR
 			} else {
 				src[0] += x * (s.gainL + s.gainR) / 2
 			}
+		}
+		if sung > 0 {
+			flow /= float64(sung)
 		}
 		// the envelope
 		if !v.released {
@@ -708,25 +951,19 @@ func (v *Voice) Synthesize() {
 			v.env *= release
 		}
 		var y [2]float64
-		chans := 1
-		if stereo {
-			chans = 2
-		}
 		air := 0.0
 		if breathNow > 0 {
-			air = v.rng.float() - 0.5 // the breath is one, in the middle
+			// the breath is one, in the middle, and swells with the open folds
+			air = (v.rng.float() - 0.5) * (0.42 + 0.98*flow)
 		}
 		for c := range chans {
-			v.tilt[c] = (1-tiltCoef)*src[c] + tiltCoef*v.tilt[c]
+			v.tilt[c] = (1-v.tiltCoef)*src[c] + v.tiltCoef*v.tilt[c]
 			x := v.tilt[c]
 			if breathNow > 0 {
 				v.breathLP[c] += (air - v.breathLP[c]) * 0.5
 				x += v.breathLP[c] * breathNow * 0.6
 			}
-			for k, f := range v.formants[c] {
-				_, band, _ := f.Tick(x)
-				y[c] += band * f.K() * v.gains[k]
-			}
+			y[c] = v.tract[c].tick(x) * outScale * v.artGain
 		}
 		g := gain
 		if modded && mods.Targets(dLevel) {
@@ -786,34 +1023,46 @@ func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 }
 
 // ParseWord turns a text into syllables: words split by spaces, dashes or commas, each a consonant
-// (t k s sh f, or none) and a vowel (a e i o u), so "ta ke so" is three syllables and "sha-fu" two.
-// A lone consonant or an unknown letter is an error
+// (t k s sh f m n ng l r w y, or none) and a vowel (a e i o u, or a diphthong: ai au ei ou oi), so
+// "ta ke so" is three syllables, "sha-fu" two and "mai" one that glides. A lone consonant or an
+// unknown letter is an error
 func ParseWord(text string) ([]Syllable, error) {
-	vowels := map[byte]float64{'a': 0, 'e': 1, 'i': 2, 'o': 3, 'u': 4}
+	vowels := map[string]float64{"a": 0, "e": 1, "i": 2, "o": 3, "u": 4}
 	var word []Syllable
 	for _, tok := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
 		return r == ' ' || r == '-' || r == ',' || r == '\t' || r == '\n'
 	}) {
 		var c Consonant
 		rest := tok
-		if strings.HasPrefix(rest, "sh") {
-			c, rest = Sh, rest[2:]
-		} else {
-			for i, n := range ConsonantNames[1:] {
-				if len(n) == 1 && rest[0] == n[0] {
-					c, rest = Consonant(i+1), rest[1:]
-					break
+		// the longest name first (sh and ng before s and n)
+		for l := 2; l >= 1 && c == NoConsonant; l-- {
+			if len(rest) > l {
+				for i, n := range ConsonantNames[1:] {
+					if len(n) == l && rest[:l] == n {
+						c, rest = Consonant(i+1), rest[l:]
+						break
+					}
 				}
 			}
 		}
-		if len(rest) != 1 {
+		syl := Syllable{Consonant: c}
+		if vw, ok := vowels[rest]; ok {
+			syl.Vowel = vw
+		} else if d := diphthongOf(rest); d > 0 {
+			syl.Vowel, syl.Diphthong = vowels[rest[:1]], d
+		} else {
 			return nil, fmt.Errorf("vocal: cannot sing %q", tok)
 		}
-		vw, ok := vowels[rest[0]]
-		if !ok {
-			return nil, fmt.Errorf("vocal: cannot sing %q", tok)
-		}
-		word = append(word, Syllable{Vowel: vw, Consonant: c})
+		word = append(word, syl)
 	}
 	return word, nil
+}
+
+func diphthongOf(s string) int {
+	for i := 1; i < len(DiphthongNames); i++ {
+		if DiphthongNames[i] == s {
+			return i
+		}
+	}
+	return 0
 }

@@ -10,7 +10,7 @@ import (
 
 func TestParseWord(t *testing.T) {
 	w, err := ParseWord("ta Ke-sho a")
-	want := []Syllable{{0, T}, {1, K}, {3, Sh}, {0, NoConsonant}}
+	want := []Syllable{{0, T, 0}, {1, K, 0}, {3, Sh, 0}, {0, NoConsonant, 0}}
 	if err != nil || len(w) != len(want) {
 		t.Fatalf("%v %v", w, err)
 	}

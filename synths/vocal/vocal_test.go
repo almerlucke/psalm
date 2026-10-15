@@ -62,6 +62,7 @@ func harmonicsIn(x []float64, f0, lo, hi float64) float64 {
 
 func steady(cfg Config) Config {
 	cfg.VibratoDepth, cfg.Steady, cfg.Breath = 0, true, 0
+	cfg.Jitter, cfg.Shimmer = 0, 0
 	return cfg
 }
 

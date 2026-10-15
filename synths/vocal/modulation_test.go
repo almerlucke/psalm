@@ -89,7 +89,7 @@ func TestConsonants(t *testing.T) {
 	cfg.Attack = 0.2 // the vowel hasn't come in during the burst
 	none, _ := sung(cfg, psalm.Message{"pitch": 55.0}, 0.15)
 	n := int(0.04 * sr())
-	for c := T; c < numConsonants; c++ {
+	for c := T; c <= F; c++ { // the consonants with a burst of noise
 		cfg.Consonant = c
 		cfg.ConsonantLevel = 1
 		x, _ := sung(cfg, psalm.Message{"pitch": 55.0}, 0.15)
@@ -97,7 +97,7 @@ func TestConsonants(t *testing.T) {
 			t.Errorf("%s: the burst %g against %g", ConsonantNames[c], rms(x[:n]), rms(none[:n]))
 		}
 		// it is over in a fraction of a second
-		if tail := rms(x[int(0.14*sr()):]); tail > 0.5*rms(x[:n]) {
+		if tail := rms(x[int(0.14*sr()):]); tail > 1.3*rms(none[int(0.14*sr()):]) {
 			t.Errorf("%s: still going", ConsonantNames[c])
 		}
 	}
