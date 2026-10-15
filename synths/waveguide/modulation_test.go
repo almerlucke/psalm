@@ -126,7 +126,7 @@ func TestSympathetic(t *testing.T) {
 }
 
 func TestNoNaNAcrossMatrix(t *testing.T) {
-	for _, cfg := range []Config{Steel(), Violin()} {
+	for _, cfg := range []Config{Steel(), Violin(), Tom(), SnareDrum(), Flute(), Clarinet()} {
 		for src := modmatrix.FilterEnv; src < modmatrix.NumSources; src++ {
 			for d := range Dests {
 				c := cfg

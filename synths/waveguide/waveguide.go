@@ -29,6 +29,8 @@ type Model int
 const (
 	Pluck Model = iota
 	Bow
+	Membrane // a drum skin, struck (see membrane.go)
+	Pipe     // a tube that is blown: a flute, or with Reed a clarinet (see pipe.go)
 )
 
 // Body is the instrument the string sounds through
@@ -63,6 +65,20 @@ type Config struct {
 	VibratoDepth float64 // semitones
 	VibratoDelay float64 // seconds before the vibrato comes in
 
+	// Membrane (struck; Decay is the seconds the lowest mode rings, Damping how much faster the higher
+	// modes die, Release a hand laid on the skin)
+	Tension  float64 // 0-1: the skin tightens as it is struck, the pitch falls back from above (a tom's thump)
+	Strike   float64 // 0-1: where the skin is struck, from the middle (0, a few pure tones) to the rim (1)
+	Hardness float64 // 0-1: the stick, from a soft mallet to a hard tip; the velocity adds to it
+	Snare    float64 // 0-1: the wires under the skin, buzzing along
+
+	// Pipe (blown; the breath is shaped by BowAttack and BowRelease, Damping darkens the tube, the
+	// vibrato is the bow's)
+	Reed       bool    // a single reed (a clarinet: odd partials) instead of an air jet over an edge (a flute)
+	Breath     float64 // 0-1: the pressure of the breath
+	Noise      float64 // 0-1: the air in the sound
+	Embouchure float64 // 0-1: the jet's reach over the edge (flute), the reed's stiffness (clarinet)
+
 	Body    Body
 	BodyMix float64 // 0-1: how much of the sound is the body
 	Level   float64 // output level (0 is treated as 1)
@@ -88,6 +104,8 @@ const (
 	dPitch
 	dLevel
 	dCutoff
+	dBreath
+	dEmbouchure
 )
 
 // Dests are the settings the matrix of a voice moves: by their keys, as described (Describe), with
@@ -107,6 +125,8 @@ var Dests = []modmatrix.Dest{
 	dPitch:        {Key: "pitch", Label: "pitch", Span: 12},
 	dLevel:        {Key: "level", Label: "level", Span: 1},
 	dCutoff:       {Key: "cutoff", Label: "cutoff", Span: 4},
+	dBreath:       {Key: "breath", Label: "breath", Span: 0.5},
+	dEmbouchure:   {Key: "embouchure", Label: "embouchure", Span: 0.5},
 }
 
 // The value inputs of a voice: 1 is the bow pressure and 2 the vibrato depth, 3 to 6 the values of
@@ -180,6 +200,9 @@ type Voice struct {
 	lfo2    float64 // phase
 	sym     []*svf.SVF
 	symFreq float64
+
+	mem  membrane // the struck skin
+	pipe pipeState
 
 	expr    expression.Expression // the pitch bend; the mod wheel brings in a vibrato
 	period  float64               // samples of the pluck's period, unbent
@@ -275,6 +298,14 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("vibratoDepth", func(f float64) { v.cfg.VibratoDepth = f })
 	msg.IfFltVal("bodyMix", func(f float64) { v.cfg.BodyMix = f })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
+	msg.IfFltVal("tension", func(f float64) { v.cfg.Tension = f })
+	msg.IfFltVal("strike", func(f float64) { v.cfg.Strike = f })
+	msg.IfFltVal("hardness", func(f float64) { v.cfg.Hardness = f })
+	msg.IfFltVal("snare", func(f float64) { v.cfg.Snare = f })
+	msg.IfBoolVal("reed", func(b bool) { v.cfg.Reed = b })
+	msg.IfFltVal("breath", func(f float64) { v.cfg.Breath = f })
+	msg.IfFltVal("noise", func(f float64) { v.cfg.Noise = f })
+	msg.IfFltVal("embouchure", func(f float64) { v.cfg.Embouchure = f })
 }
 
 // Receive takes messages, or the bow pressure on input 1 and the vibrato depth on input 2, and on 3
@@ -331,7 +362,7 @@ func (v *Voice) note(duration, amplitude float64, message psalm.Message, tick ps
 		mv := &v.mods.Values
 		*mv = [modmatrix.NumSources]float64{}
 		mv[modmatrix.AmpEnv] = v.penv
-		if v.cfg.Model == Bow {
+		if v.cfg.Model == Bow || v.cfg.Model == Pipe {
 			mv[modmatrix.AmpEnv] = 0
 		}
 		v.fillStatic()
@@ -343,9 +374,14 @@ func (v *Voice) note(duration, amplitude float64, message psalm.Message, tick ps
 	}
 	v.filter.Trigger(duration*1000, mode)
 	v.prepareBody()
-	if v.cfg.Model == Bow {
+	switch v.cfg.Model {
+	case Bow:
 		v.bowNote()
-	} else {
+	case Membrane:
+		v.strike()
+	case Pipe:
+		v.pipeNote()
+	default:
 		v.pluck()
 	}
 	v.active = true
@@ -515,6 +551,8 @@ func (v *Voice) Clear() {
 	v.neck.clear()
 	v.bridge.clear()
 	v.prev, v.apX, v.apY, v.bowFilt, v.bowEnv = 0, 0, 0, 0, 0
+	v.mem.clear()
+	v.pipe = pipeState{}
 	for _, b := range v.body {
 		b.Clear()
 	}
@@ -546,11 +584,16 @@ func (v *Voice) Synthesize() {
 	if cfg.Model == Pluck {
 		gain *= v.amp * (0.3 + 0.7*v.velocity)
 	}
+	if cfg.Model == Membrane {
+		gain *= v.amp // the velocity is in the strike
+	}
 	mods := v.mods
 	modded := mods.Active()
-	lossModded := modded && cfg.Model == Pluck && (mods.Targets(dDecay) || mods.Targets(dDamping))
+	lossModded := modded && (cfg.Model == Pluck || cfg.Model == Membrane) && (mods.Targets(dDecay) || mods.Targets(dDamping))
 	pressModded := modded && mods.Targets(dPressure)
 	posModded := modded && cfg.Model == Bow && mods.Targets(dBowPosition)
+	breathP, noiseP, embP := cfg.Breath, cfg.Noise, cfg.Embouchure
+	windModded := modded && cfg.Model == Pipe && (mods.Targets(dBreath) || mods.Targets(dEmbouchure))
 	filtered := v.filter.On()
 	tickFilter := filtered || (modded && mods.Uses(modmatrix.FilterEnv))
 	lfo1Used := modded && mods.Uses(modmatrix.LFO1)
@@ -560,8 +603,11 @@ func (v *Voice) Synthesize() {
 		lfo2Inc = 2 / sr
 	}
 	penvStep := 1.0
-	if cfg.Model == Pluck && modded {
+	if (cfg.Model == Pluck || cfg.Model == Membrane) && modded {
 		t60 := math.Max(0.01, cfg.Decay) * math.Sqrt(220/v.freq)
+		if cfg.Model == Membrane {
+			t60 = math.Max(0.01, cfg.Decay)
+		}
 		penvStep = math.Pow(10, -3/(t60*sr))
 	}
 	if modded {
@@ -601,7 +647,7 @@ func (v *Voice) Synthesize() {
 		depth := cfg.VibratoDepth
 		if modded {
 			mv := &mods.Values
-			if cfg.Model == Bow {
+			if cfg.Model == Bow || cfg.Model == Pipe {
 				mv[modmatrix.AmpEnv] = v.bowEnv
 			} else {
 				v.penv *= penvStep
@@ -638,11 +684,19 @@ func (v *Voice) Synthesize() {
 				slope = 5 - 4*math.Max(0, math.Min(pressure, 1))
 			}
 			if lossModded && i&15 == 0 {
-				v.setLoss(cfg.Damping+mods.Mod(dDamping), cfg.Decay*math.Exp2(mods.Mod(dDecay)))
-				loopGain = v.gain
-				if v.released && cfg.Release > 0 {
-					loopGain = math.Min(loopGain, math.Pow(10, -3/(v.freq*cfg.Release)))
+				if cfg.Model == Membrane {
+					v.mem.setLoss(v, cfg.Damping+mods.Mod(dDamping), cfg.Decay*math.Exp2(mods.Mod(dDecay)))
+				} else {
+					v.setLoss(cfg.Damping+mods.Mod(dDamping), cfg.Decay*math.Exp2(mods.Mod(dDecay)))
+					loopGain = v.gain
+					if v.released && cfg.Release > 0 {
+						loopGain = math.Min(loopGain, math.Pow(10, -3/(v.freq*cfg.Release)))
+					}
 				}
+			}
+			if windModded {
+				breathP = cfg.Breath + mods.Mod(dBreath)
+				embP = cfg.Embouchure + mods.Mod(dEmbouchure)
 			}
 			if posModded {
 				v.bridge.len = math.Max(v.baseDelay*math.Max(0.02, math.Min(cfg.BowPosition+mods.Mod(dBowPosition), 0.5)), minBridge)
@@ -676,6 +730,8 @@ func (v *Voice) Synthesize() {
 					v.vibPhase--
 				}
 			}
+		} else if cfg.Model == Membrane {
+			s = v.mem.tick(v, bend)
 		} else {
 			// the bow speeds up while held, and slows down when let go
 			if !v.released {
@@ -696,29 +752,33 @@ func (v *Voice) Synthesize() {
 			if depth != 0 {
 				ratio = math.Exp2(-depth * math.Sin(2*math.Pi*v.vibPhase) / 12)
 			}
-			v.neck.len = v.baseDelay*ratio/bend - v.bridge.len
-			nut := -v.neck.out
-			v.bowFilt = (1-filterPole)*v.bridge.out*0.95 + filterPole*v.bowFilt
-			bridge := -v.bowFilt
-			dv := v.bowSpeed*v.bowEnv - (nut + bridge)
-			push := 0.0
-			if v.bowEnv > 0 {
-				push = dv * bowTable(dv, slope)
-				if v.released {
-					push *= v.bowEnv * v.bowEnv // lifting, the bow lets go of the string as it slows
+			if cfg.Model == Pipe {
+				s = v.pipeTick(ratio/bend, breathP, noiseP, embP, sr)
+			} else {
+				v.neck.len = v.baseDelay*ratio/bend - v.bridge.len
+				nut := -v.neck.out
+				v.bowFilt = (1-filterPole)*v.bridge.out*0.95 + filterPole*v.bowFilt
+				bridge := -v.bowFilt
+				dv := v.bowSpeed*v.bowEnv - (nut + bridge)
+				push := 0.0
+				if v.bowEnv > 0 {
+					push = dv * bowTable(dv, slope)
+					if v.released {
+						push *= v.bowEnv * v.bowEnv // lifting, the bow lets go of the string as it slows
+					}
 				}
+				if v.released {
+					// the damping grows as the bow comes to a stop
+					still := 1 - v.bowEnv
+					still *= still
+					d := 1 - (1-v.bowDamp)*still*still
+					bridge *= d
+					nut *= d
+				}
+				v.neck.tick(bridge + push)
+				v.bridge.tick(nut + push)
+				s = v.bridge.out * 1.2
 			}
-			if v.released {
-				// the damping grows as the bow comes to a stop
-				still := 1 - v.bowEnv
-				still *= still
-				d := 1 - (1-v.bowDamp)*still*still
-				bridge *= d
-				nut *= d
-			}
-			v.neck.tick(bridge + push)
-			v.bridge.tick(nut + push)
-			s = v.bridge.out * 1.2
 		}
 		if mix > 0 {
 			b := 0.0
@@ -771,7 +831,7 @@ func (v *Voice) Synthesize() {
 	}
 	v.waitSamps = 0
 	// the string rests once it has been silent a while, bowed or plucked
-	held := cfg.Model == Bow && (!v.released || v.bowEnv > 0)
+	held := (cfg.Model == Bow || cfg.Model == Pipe) && (!v.released || v.bowEnv > 0)
 	if quiet && !held && v.exPos >= len(v.excite) {
 		v.quiet += n
 		if v.quiet > int(0.05*sr) {

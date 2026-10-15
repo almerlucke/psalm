@@ -19,6 +19,17 @@ var Presets = map[string]func() Config{
 	"eBow":      EBow,
 	"ghostBow":  GhostBow,
 	"scrape":    Scrape,
+
+	"tom":       Tom,
+	"floorTom":  FloorTom,
+	"conga":     Conga,
+	"tabla":     Tabla,
+	"frameDrum": FrameDrum,
+	"snareDrum": SnareDrum,
+
+	"flute":    Flute,
+	"clarinet": Clarinet,
+	"panpipe":  Panpipe,
 }
 
 func plucked(decay, damping, brightness, pick, release float64, body Body, mix, level float64) Config {
@@ -80,3 +91,40 @@ func GhostBow() Config { return bowed(0.18, 0.35, 1.2, 1.5, 3, 0.35, 0.2, CelloB
 
 // Scrape is a bow pressed hard close to the bridge: gritty, metallic, on the edge of breaking
 func Scrape() Config { return bowed(0.95, 0.1, 0.05, 0.1, 0, 0, 0, NoBody, 0, 0.556) }
+
+func drum(decay, damping, strike, hardness, tension, snare, release float64, level float64) Config {
+	return Config{Model: Membrane, Decay: decay, Damping: damping, Strike: strike, Hardness: hardness,
+		Tension: tension, Snare: snare, Release: release, Level: level}
+}
+
+func blown(reed bool, breath, noise, embouchure, damping, attack, release, vibRate, vibDepth, vibDelay float64, level float64) Config {
+	return Config{Model: Pipe, Reed: reed, Breath: breath, Noise: noise, Embouchure: embouchure, Damping: damping,
+		BowAttack: attack, BowRelease: release, VibratoRate: vibRate, VibratoDepth: vibDepth, VibratoDelay: vibDelay, Level: level}
+}
+
+// Tom is a rack tom struck a little off the middle: a round tone with a bit of thump as the skin tightens
+func Tom() Config { return drum(0.9, 0.45, 0.35, 0.5, 0.5, 0, 0, 1.07) }
+
+// FloorTom is a large tom: long, dark, the pitch falling back after the hit
+func FloorTom() Config { return drum(1.4, 0.35, 0.4, 0.4, 0.7, 0, 0, 1.09) }
+
+// Conga is hit near the rim with the hand: bright and short, and a hand on the skin stops it
+func Conga() Config { return drum(0.5, 0.6, 0.7, 0.75, 0.3, 0, 0.15, 1.93) }
+
+// Tabla is a small skin with a strong pitch bend after the strike and rings clearly
+func Tabla() Config { return drum(0.7, 0.25, 0.25, 0.6, 0.9, 0, 0.2, 1.03) }
+
+// FrameDrum is a soft mallet on a wide, loose skin: a warm, dull boom
+func FrameDrum() Config { return drum(1.2, 0.7, 0.5, 0.25, 0.1, 0, 0.3, 1.1) }
+
+// SnareDrum is a skin with the wires under it buzzing along, hit with a hard stick
+func SnareDrum() Config { return drum(0.35, 0.5, 0.4, 0.8, 0.15, 0.7, 0, 1.02) }
+
+// Flute is blown over the edge: airy, with a vibrato that comes in after the start
+func Flute() Config { return blown(false, 0.72, 0.25, 0.4, 0.6, 0.06, 0.12, 5, 0.15, 0.3, 0.146) }
+
+// Clarinet is a single reed on a closed tube: hollow, the odd partials
+func Clarinet() Config { return blown(true, 0.8, 0.1, 0.4, 0.5, 0.04, 0.08, 4.5, 0.06, 0.4, 0.42) }
+
+// Panpipe is a flute blown hard and breathy, a closed tube each, no vibrato
+func Panpipe() Config { return blown(false, 0.7, 0.45, 0.5, 0.7, 0.08, 0.15, 0, 0, 0, 0.158) }

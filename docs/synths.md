@@ -1272,6 +1272,26 @@ the note, so velocity, key, random, wheel and ext are the sources for them.
 an octave and a fifth above the note, and adds them back: a shimmering, resonant string. It costs
 nothing at 0.
 
+### Membrane and pipe
+
+Two more models join the pluck and the bow. `Membrane` is a struck drum skin: 14 modes of an ideal
+circular membrane (1, 1.59, 2.14, 2.30, 2.65, 2.92 ... times the pitch), each a damped oscillator,
+started with the loudness the place of the strike gives it (`strike`, 0 the middle to 1 the rim; the
+middle leaves only the round modes). `hardness` (plus velocity) brightens the stick, `decay` is the
+seconds the lowest mode rings and `damping` how much faster the higher ones die. `tension` raises the
+pitch at the strike and lets it fall back (a tom's thump, a tabla's bend), `snare` adds wires buzzing
+along, and `release` is a hand laid on the skin (conga). Presets: `tom`, `floorTom`, `conga`, `tabla`,
+`frameDrum`, `snareDrum`.
+
+`Pipe` is a blown tube: by default a flute (an air jet driving a delay-line tube through a saturating
+curve), with `reed` on a clarinet (a single reed on a closed tube, odd partials, an octave lower).
+`breath` is the pressure (too little does not sound, too much overblows or chokes the reed), `noise`
+the air, `embouchure` the jet's offset (even partials) or the reed's stiffness, `damping` darkens the
+tube; the attack and release (`ampAttack`, `ampRelease`) shape the breath and the vibrato is the bow's.
+A pitch keeper trims the tube so it plays in tune whatever the blowing. Presets: `flute`, `clarinet`,
+`panpipe`. Both take the voice filter, the body, and the matrix (new destinations `breath` and
+`embouchure`; the membrane's `decay`, `damping` and `pitch`).
+
 ## modal
 
 `synths/modal`
