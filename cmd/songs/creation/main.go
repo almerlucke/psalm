@@ -33,10 +33,10 @@ package main
 // that sound pure in it (I, IV, V, vi and iii). The verse of every day is printed as it begins
 // (King James Version).
 //
-//	go run ./cmd/examples/creation                                     play it
-//	go run ./cmd/examples/creation -tuning equal                       in equal temperament instead
-//	go run ./cmd/examples/creation -render creation.wav -stems -seed 7 render it, a stem per strip
-//	go run ./cmd/examples/creation -profile                            the time every module takes
+//	go run ./cmd/songs/creation                                     play it
+//	go run ./cmd/songs/creation -tuning equal                       in equal temperament instead
+//	go run ./cmd/songs/creation -render creation.wav -stems -seed 7 render it, a stem per strip
+//	go run ./cmd/songs/creation -profile                            the time every module takes
 //
 // The files: form.go (the days, their chords and voicings), melodies.go, orchestra.go (the
 // instruments on the mixer), parts.go (what every instrument plays, day by day) and arrangement.go

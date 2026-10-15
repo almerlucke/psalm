@@ -30,9 +30,9 @@ package main
 // is written per section in beats (the melodies in score notation) and the arrangement automates
 // the string filter, the granulator and the tempo. The piece loops, the schedule is printed at start
 //
-//	go run ./cmd/examples/showcase                                    play it
-//	go run ./cmd/examples/showcase -render aurora.wav -stems -seed 7  render it, a stem per mixer strip
-//	go run ./cmd/examples/showcase -profile                           the time every module takes
+//	go run ./cmd/songs/showcase                                    play it
+//	go run ./cmd/songs/showcase -render aurora.wav -stems -seed 7  render it, a stem per mixer strip
+//	go run ./cmd/songs/showcase -profile                           the time every module takes
 //
 // The files: music.go (the chords, the form and the melodies), orchestra.go (the instruments on
 // the mixer), parts.go (what every instrument plays, section by section) and arrangement.go (the

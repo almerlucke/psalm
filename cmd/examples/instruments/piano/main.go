@@ -5,8 +5,8 @@ package main
 // sustain pedal (and half pedaling), the sostenuto and the soft pedal; after that every other preset plays a short piece that suits
 // it. All music is original.
 //
-//	go run ./cmd/examples/piano                                  play it
-//	go run ./cmd/examples/piano -render piano.wav -seed 3        render a pass
+//	go run ./cmd/examples/instruments/piano                                  play it
+//	go run ./cmd/examples/instruments/piano -render piano.wav -seed 3        render a pass
 //
 // The files: main.go (the sections of the tour and the pianos), parts.go (what every piano plays)
 // and arrangement.go (the tempo of every section and the pedals).
