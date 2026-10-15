@@ -488,6 +488,13 @@ No factory sounds are included: load banks you own or that are shared for free u
 original patches are built in (`dx.Presets`: `glassKeys`, `woodBass`, `softBrass`, `bellPad`),
 and `dx.InitVoice()` is the classic single sine starting point.
 
+### Beyond the DX7
+
+Two things the DX7 doesn't have, kept in the patch beside the SysEx data (they are not sent as SysEx):
+a **wave per operator** (`op1Wave`...`op6Wave`, 0-7: sine, half sine, abs sine, pulse sine, even sine,
+even abs, square, log saw: the TX81Z's eight, `dx.WaveNames`), and the [voice filter](#the-voice-filter)
+(`filterType`...`filterRelease`, 0-99). The editor has both.
+
 ### Patches
 
 A `dx.Patch` has six `Operator`s (`Ops[0]` is operator 1) and the voice settings, all in the

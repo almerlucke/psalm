@@ -24,6 +24,7 @@ type Operator struct {
 	Coarse       int    // 0-31, ratio (0 is 0.5) or fixed frequency decade (1, 10, 100, 1000 Hz)
 	Fine         int    // 0-99
 	Detune       int    // 0-14, 7 is centered
+	Wave         int    // 0-7, the wave of the operator (see WaveNames): the sine of the DX7, or one of the TX81Z's; not part of the SysEx data
 }
 
 // Patch is a complete 6 operator voice

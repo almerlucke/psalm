@@ -52,6 +52,7 @@ psalm.register("dx7", (p, api) => {
 	}
 	const labelled = (label, ...kids) => { const b = el("label", "dx-field"); b.append(el("span", "dx-label", label), ...kids); return b; };
 
+	const waveNames = ["sine", "half sine", "abs sine", "pulse sine", "even sine", "even abs", "square", "log saw"];
 	const root = el("div", "dx");
 	const envCanvases = []; // [operator, the small envelope, the big one]
 
@@ -273,6 +274,7 @@ psalm.register("dx7", (p, api) => {
 		const ks = el("div", "dx-row");
 		ks.append(el("span", "dx-label", "scaling"),
 			num(`op${op}BreakPoint`, v => "break " + noteName(v + 21), "break point"),
+			num(`op${op}Wave`, v => waveNames[v], "the wave of the operator"),
 			num(`op${op}LeftDepth`, v => "left " + v), num(`op${op}LeftCurve`, v => curves[v]),
 			num(`op${op}RightDepth`, v => "right " + v), num(`op${op}RightCurve`, v => curves[v]));
 		detail.append(eg, ks);

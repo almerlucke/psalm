@@ -353,7 +353,12 @@ func (v *Voice) Synthesize() {
 				pm += (v.fb[0] + v.fb[1]) * 0.5 * fbAmount
 			}
 
-			s := sine.Cycle(v.phase[op] + pm)
+			var s float64
+			if w := p.Ops[op].Wave; w == 0 {
+				s = sine.Cycle(v.phase[op] + pm)
+			} else {
+				s = wave(w, v.phase[op]+pm)
+			}
 			level := v.envs[op].next()
 			if v.ampCount == 0 {
 				v.opAmpInc[op] = (levelToAmp(level)*v.opLevel[op] - v.opAmp[op]) / ampUpdate

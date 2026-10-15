@@ -68,6 +68,7 @@ var Settings = func() []Setting {
 		add("Coarse", 31, func(op *Operator) *int { return &op.Coarse })
 		add("Fine", 99, func(op *Operator) *int { return &op.Fine })
 		add("Detune", 14, func(op *Operator) *int { return &op.Detune })
+		add("Wave", 7, func(op *Operator) *int { return &op.Wave })
 		add("Level", 99, func(op *Operator) *int { return &op.OutputLevel })
 		s = append(s, Setting{Name: fmt.Sprintf("op%dFixed", o+1), Max: 1, Op: o + 1, flag: func(p *Patch) *bool { return &op(p).FixedFreq }})
 		add("VelocitySens", 7, func(op *Operator) *int { return &op.VelocitySens })
