@@ -32,6 +32,10 @@ func Describe(cfg Config) params.Set {
 	if level <= 0 {
 		level = 1
 	}
+	vibScale := cfg.VibratoScale
+	if vibScale <= 0 {
+		vibScale = 1
+	}
 	lfo2 := cfg.LFO2Rate
 	if lfo2 <= 0 {
 		lfo2 = 1
@@ -43,13 +47,22 @@ func Describe(cfg Config) params.Set {
 
 		params.C("Vibrato", "vibrato", Vibratos, int(cfg.Vibrato), params.Label("scanner")),
 		params.K("Vibrato", "vibratoHz", 0.5, 20, vibratoHz, params.Exp(), params.Unit("Hz"), params.Label("speed")),
+		params.K("Vibrato", "vibratoScale", 0.25, 6, vibScale, params.Exp(), params.Label("depth scale")),
 
 		params.K("Modulation", "lfo2Rate", 0.05, 20, lfo2, params.Exp(), params.Unit("Hz"), params.Label("lfo 2 rate")),
 
+		params.K("Generator", "tonewheel", 0, 1, cfg.Tonewheel, params.Label("tonewheel realism")),
+		params.K("Generator", "contactSpread", 0, 10, cfg.ContactSpread, params.Unit("ms"), params.Label("contact spread")),
+		params.K("Generator", "leakage", 0, 1, cfg.Leakage, params.Label("crosstalk")),
+
+		params.K("Leslie", "leslie", 0, 1, cfg.Leslie),
+		params.K("Leslie", "leslieSpeed", 0, 1, cfg.LeslieSpeed, params.Label("speed")),
+		params.K("Leslie", "lesliePosition", 0, 1, cfg.LesliePosition, params.Label("microphones")),
+
 		params.K("Output", "click", 0, 1, cfg.Click),
 		params.K("Output", "clickRand", 0, 1, cfg.ClickRand, params.Label("click random")),
-		params.K("Output", "leakage", 0, 1, cfg.Leakage),
 		params.K("Output", "drive", 0, 1, cfg.Drive),
+		params.K("Output", "tone", 0, 1, cfg.Tone),
 		params.K("Output", "level", 0, 4, level),
 	)
 	fp, fe := voicefilter.Describe(cfg.Filter, "Filter")

@@ -68,17 +68,21 @@ func TestLeakageAddsFaintWheels(t *testing.T) {
 	if r := rms(diff); r == 0 || r > 0.1*rms(clean) {
 		t.Errorf("leakage %g against a signal of %g", r, rms(clean))
 	}
-	// different on the next key press
-	o := New(cfg)
-	down(o, "a", 60)
-	render(o, 0.01)
-	first := o.keys[0].leak
-	o2 := New(cfg)
-	o2.rng2 = 5
-	down(o2, "a", 60)
-	render(o2, 0.01)
-	if first == o2.keys[0].leak {
-		t.Errorf("the same crosstalk twice")
+	// it is the neighbouring wheels, 40 dB down at most, the same on every key press
+	cfg.Leakage = 0
+	x := play(cfg, 1)[int(0.2*sr()):]
+	cfg.Leakage = 1
+	y := play(cfg, 1)[int(0.2*sr()):]
+	w := wheelOf(60)
+	main := amplitude(y, wheelHz(w))
+	diff = make([]float64, len(x))
+	for i := range diff {
+		diff[i] = y[i] - x[i]
+	}
+	for _, n := range []int{w - 1, w + 1, w + 12, w + 19} {
+		if d := db(amplitude(diff, wheelHz(n)) / main); d < -52 || d > -38 {
+			t.Errorf("wheel %d leaks at %.1f dB, want -52 to -38", n, d)
+		}
 	}
 }
 

@@ -49,6 +49,9 @@ func db(a float64) float64 { return 20 * math.Log10(a) }
 
 func pitchHz(p float64) float64 { return 440 * math.Exp2((p-69)/12) }
 
+// gearHz is the frequency the generator plays a pitch (a MIDI note, folded back) at
+func gearHz(p int) float64 { return wheelHz(wheelOf(p)) }
+
 func clean(bars string) Config {
 	cfg := DefaultConfig()
 	cfg.Drawbars, cfg.Click = Bars(bars), 0
@@ -59,13 +62,15 @@ func TestDrawbarsPlayTheirFootages(t *testing.T) {
 	o := New(clean("888000000"))
 	down(o, "a", 57)
 	x := render(o, 1)[int(0.2*sr()):]
-	f := pitchHz(57)
+	f := gearHz(57)
+	ref := amplitude(x, f)
 	for _, c := range []struct {
 		freq float64
 		on   bool
-	}{{f / 2, true}, {pitchHz(64), true}, {f, true}, {2 * f, false}, {pitchHz(76), false}, {4 * f, false}} {
+	}{{gearHz(45), true}, {gearHz(64), true}, {f, true}, {2 * f, false}, {gearHz(76), false}, {4 * f, false}} {
 		a := amplitude(x, c.freq)
-		if c.on && a < 0.01 || !c.on && a > 1e-4 {
+		// a wheel is not a pure sine: what is off may show a few percent of what is on
+		if c.on && a < 0.01 || !c.on && a > 0.05*ref {
 			t.Errorf("%.1f Hz: amplitude %g, want it on: %v", c.freq, a, c.on)
 		}
 	}
@@ -103,7 +108,7 @@ func TestPercussionSingleTrigger(t *testing.T) {
 	cfg := clean("888000000")
 	cfg.Percussion, cfg.PercFast = PercThird, true
 	o := New(cfg)
-	third := pitchHz(57 + 19)
+	third := gearHz(57 + 19)
 	down(o, "a", 57)
 	x := render(o, 0.5)
 	early := amplitude(x[:int(0.05*sr())], third)
@@ -114,7 +119,7 @@ func TestPercussionSingleTrigger(t *testing.T) {
 	// a key played while another is down has no percussion
 	down(o, "b", 64)
 	x = render(o, 0.1)
-	if a := amplitude(x, pitchHz(64+19)); a > early*0.1 {
+	if a := amplitude(x, gearHz(64+19)); a > early*0.1 {
 		t.Errorf("legato: the second key has percussion %g", a)
 	}
 	// after all keys are up it comes again
@@ -130,7 +135,7 @@ func TestPercussionSingleTrigger(t *testing.T) {
 	cfg.Percussion = PercSecond
 	o = New(cfg)
 	down(o, "a", 57)
-	if a := amplitude(render(o, 1)[int(0.5*sr()):], 8*pitchHz(57)); a > 1e-4 {
+	if a := amplitude(render(o, 1)[int(0.5*sr()):], gearHz(57+36)); a > 1e-4 {
 		t.Errorf("the 1' with the percussion on: %g", a)
 	}
 }
@@ -155,7 +160,7 @@ func TestVibrato(t *testing.T) {
 	for _, c := range []struct {
 		v        Vibrato
 		min, max float64
-	}{{VibratoOff, 0, 0.001}, {V1, 0.005, 0.03}, {V3, 0.03, 0.08}} {
+	}{{VibratoOff, 0, 0.001}, {V1, 0.002, 0.01}, {V3, 0.008, 0.03}} {
 		cfg := clean("008000000")
 		cfg.Vibrato = c.v
 		o := New(cfg)
@@ -171,8 +176,17 @@ func TestNotesAndPedal(t *testing.T) {
 	// a note of a duration, starting on its sample
 	o.Note(0.1, 1, psalm.Message{"pitch": 69.0}, psalm.CtrlTick{SampleOffset: 50}, o.Config())
 	o.Synthesize()
-	if v := o.Output(0).Channels[0]; v[49] != 0 || v[51] == 0 {
-		t.Errorf("the note starts at %v, want sample 50", v[48:52])
+	// the contacts close a few ms apart: nothing before sample 50, the first contact soon after
+	v := o.Output(0).Channels[0]
+	first := 0
+	for i, x := range v {
+		if x != 0 {
+			first = i
+			break
+		}
+	}
+	if first < 50 || first > 50+int(0.005*sr()) {
+		t.Errorf("the note starts at sample %d, want just after 50", first)
 	}
 	render(o, 0.2)
 	if len(o.keys) != 0 {
