@@ -179,3 +179,31 @@ func TestFilterReleaseAndNoNaN(t *testing.T) {
 		}
 	}
 }
+
+func TestLFO2MovesLevel(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.LFO2, Dest: "level", Amount: 1}
+	cfg.LFO2Rate = 2
+	x := play(cfg, 1)
+	win := len(x) / 8
+	lo, hi := math.Inf(1), 0.0
+	for i := 0; i+win <= len(x); i += win {
+		r := rms(x[i : i+win])
+		lo, hi = math.Min(lo, r), math.Max(hi, r)
+	}
+	if hi == 0 || lo > hi*0.6 {
+		t.Errorf("level swings %g to %g under a 2 Hz LFO 2", lo, hi)
+	}
+	o := New(DefaultConfig())
+	o.ReceiveMessage(psalm.Message{"lfo2Rate": 3.0})
+	if o.cfg.LFO2Rate != 3 {
+		t.Errorf("lfo2Rate %g", o.cfg.LFO2Rate)
+	}
+	// without a slot using it the LFO does not run
+	plain := New(DefaultConfig())
+	down(plain, "a", 60)
+	render(plain, 0.1)
+	if plain.lfo2Phase != 0 {
+		t.Error("LFO 2 runs unused")
+	}
+}

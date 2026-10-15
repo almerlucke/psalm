@@ -34,6 +34,8 @@ func Describe(cfg Config) params.Set {
 		params.K("Oscillator B", "oscBOctave", -3, 3, float64(max(-3, min(cfg.OscBOctave, 3))), params.Step(1), params.Label("octave")),
 		params.K("Oscillator B", "oscBSemi", -12, 12, cfg.OscBSemi, params.Unit("st"), params.Label("semitones")),
 		params.K("Oscillator B", "oscBDetune", -50, 50, cfg.OscBDetune, params.Unit("ct"), params.Label("detune")),
+		params.K("Oscillator B", "oscBUnison", 1, MaxUnison, float64(max(1, min(cfg.OscBUnison, MaxUnison))), params.Step(1), params.Label("unison")),
+		params.K("Oscillator B", "oscBSpread", 0, 100, cfg.OscBSpread, params.Unit("ct"), params.Label("spread")),
 
 		params.K("Modulation", "lfo1Rate", 0.01, 20, max(0.01, orOneF(cfg.LFO1Rate)), params.Exp(), params.Unit("Hz"), params.Label("lfo 1 rate")),
 		params.K("Modulation", "lfo2Rate", 0.01, 20, max(0.01, orOneF(cfg.LFO2Rate)), params.Exp(), params.Unit("Hz"), params.Label("lfo 2 rate")),

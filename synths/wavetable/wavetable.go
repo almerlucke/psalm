@@ -72,6 +72,10 @@ type Config struct {
 	OscBOctave   int     // -3 to 3 octaves from the note
 	OscBSemi     float64 // -12 to 12 semitones from the note
 	OscBDetune   float64 // -50 to 50 cents from the note
+	// OscBUnison stacks oscillator B in 1-7 oscillators (0 is 1), spread over OscBSpread cents (0 takes
+	// Detune) and the stereo width Spread
+	OscBUnison int
+	OscBSpread float64
 
 	// Two LFOs (sines) for the sources LFO 1 and LFO 2 of the matrix; they run only when a slot uses them
 	LFO1Rate float64 // Hz (0 is 1 Hz)
@@ -198,6 +202,7 @@ type Voice struct {
 	vibPhase  float64
 	lfoPhase  float64
 	phaseB    float64
+	phasesB   [MaxUnison]float64 // the unison oscillators of B after the first (phaseB)
 	warpPhase float64
 	lfo1Phase float64
 	lfo2Phase float64
@@ -284,6 +289,8 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("oscBOctave", func(n int) { cfg.OscBOctave = n })
 	msg.IfFltVal("oscBSemi", func(f float64) { cfg.OscBSemi = f })
 	msg.IfFltVal("oscBDetune", func(f float64) { cfg.OscBDetune = f })
+	msg.IfIntVal("oscBUnison", func(n int) { cfg.OscBUnison = max(1, min(n, MaxUnison)) })
+	msg.IfFltVal("oscBSpread", func(f float64) { cfg.OscBSpread = math.Max(0, f) })
 	msg.IfFltVal("lfo1Rate", func(f float64) { cfg.LFO1Rate = f })
 	msg.IfFltVal("lfo2Rate", func(f float64) { cfg.LFO2Rate = f })
 	msg.IfFltVal("normalize", func(f float64) { cfg.Normalize = f >= 0.5 })
@@ -348,6 +355,11 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 		v.subPhase = 0
 		v.vibPhase = 0
 		v.phaseB, v.warpPhase = 0, 0
+		if v.cfg.OscBUnison > 1 {
+			for u := 1; u < MaxUnison; u++ {
+				v.phasesB[u] = v.Rand().Float64()
+			}
+		}
 		v.lfo1Phase, v.lfo2Phase = 0, 0
 		v.position = v.cfg.Position
 		v.cutoff = v.cfg.Cutoff
@@ -473,6 +485,15 @@ func (v *Voice) Synthesize() {
 
 	// oscillator B, and the warp: only worked out when they are on
 	baseRatioB := math.Exp2(float64(cfg.OscBOctave) + cfg.OscBSemi/12)
+	nB := max(1, min(cfg.OscBUnison, MaxUnison))
+	var ratiosB, gainBL, gainBR [MaxUnison]float64
+	if nB > 1 {
+		spreadB := cfg.OscBSpread
+		if spreadB <= 0 {
+			spreadB = cfg.Detune
+		}
+		unison(nB, spreadB, cfg.Spread, stereo, &ratiosB, &gainBL, &gainBR)
+	}
 	bModded := modded && (mods.Targets(dOscBLevel) || mods.Targets(dOscBDetune) || mods.Targets(dOscBPosition))
 	warpModded := modded && mods.Targets(dWarp)
 	lfo1Active := mods.Uses(modmatrix.LFO1) || mods.Targets(dLFO1Rate)
@@ -564,7 +585,7 @@ func (v *Voice) Synthesize() {
 		if wamt == 0 {
 			wmode = WarpOff
 		}
-		var oB, l, r float64
+		var oB, oBl, oBr, l, r float64
 		if levelB > 0 || (wmode == WarpFMB) {
 			posB, centsB := cfg.OscBPosition, cfg.OscBDetune
 			if bModded {
@@ -577,14 +598,43 @@ func (v *Voice) Synthesize() {
 			if cfg.Normalize {
 				gB = cb.gain
 			}
-			pb := v.phaseB
-			if wmode != WarpFMB && wmode != WarpFMSine {
-				pb = warp(wmode, wamt, pb, 0)
-				cb = table.cursor(posB, incB*warpSlope(wmode, wamt))
+			if nB == 1 {
+				pb := v.phaseB
+				if wmode != WarpFMB && wmode != WarpFMSine {
+					pb = warp(wmode, wamt, pb, 0)
+					cb = table.cursor(posB, incB*warpSlope(wmode, wamt))
+				}
+				oB = cb.read(pb) * gB
+				oBl, oBr = oB, oB
+				v.phaseB += incB
+				v.phaseB -= math.Floor(v.phaseB)
+			} else {
+				fm := wmode == WarpFMB || wmode == WarpFMSine
+				slopeB := 1.0
+				if !fm {
+					slopeB = warpSlope(wmode, wamt)
+				}
+				cb = table.cursor(posB, incB*ratiosB[nB-1]*slopeB)
+				if cfg.Normalize {
+					gB = cb.gain
+				}
+				for u := range nB {
+					p := &v.phaseB
+					if u > 0 {
+						p = &v.phasesB[u]
+					}
+					pb := *p
+					if !fm {
+						pb = warp(wmode, wamt, pb, 0)
+					}
+					x := cb.read(pb) * gB
+					oBl += x * gainBL[u]
+					oBr += x * gainBR[u]
+					*p += incB * ratiosB[u]
+					*p -= math.Floor(*p)
+				}
+				oB = (oBl + oBr) / 2
 			}
-			oB = cb.read(pb) * gB
-			v.phaseB += incB
-			v.phaseB -= math.Floor(v.phaseB)
 		}
 
 		// oscillator A, the highest unison oscillator picks the band limited level for all
@@ -615,9 +665,8 @@ func (v *Voice) Synthesize() {
 		v.warpPhase += inc
 		v.warpPhase -= math.Floor(v.warpPhase)
 		if levelB > 0 {
-			oB *= levelB
-			l += oB
-			r += oB
+			l += oBl * levelB
+			r += oBr * levelB
 		}
 		if sub := cfg.SubLevel + mods.Mod(dSubLevel); sub > 0 {
 			sub *= sine.Cycle(v.subPhase)

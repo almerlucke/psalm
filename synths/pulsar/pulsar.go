@@ -170,6 +170,7 @@ type Voice struct {
 	lfo2Phase float64
 	waitSamps int
 	filter    *voicefilter.Filter
+	tail      int // samples the voice stays active after its amp envelope for the filter to fade (filter on)
 	mods      *modmatrix.Matrix
 	velocity  float64
 	random    float64
@@ -322,11 +323,21 @@ func (v *Voice) Clear() {
 	v.ampEnv.Clear()
 	v.formantEnv.Clear()
 	v.filter.Clear()
+	v.tail = 0
 	v.Output(0).Clear()
 }
 
+// IsActive is true while the amp envelope runs and, with the filter on, until the filter's own
+// release time has passed after it (the filter rings on after the amplitude has fallen)
 func (v *Voice) IsActive() bool {
-	return !v.ampEnv.Done()
+	return !v.ampEnv.Done() || v.tail > 0
+}
+
+// tailSamples is how long a filter that is on rings on after the amp envelope: its release, to
+// at most 5 seconds
+func (v *Voice) tailSamples() int {
+	rel := math.Max(0, math.Min(v.cfg.Filter.Env.ReleaseDuration, 5000))
+	return int(rel * 0.001 * v.Config().SampleRate)
 }
 
 // window returns the pulsaret envelope at t (0-1)
@@ -478,7 +489,9 @@ func (v *Voice) Synthesize() {
 	outSocket := v.Output(0)
 	outSocket.Clear()
 
-	if v.ampEnv.Done() {
+	filtered := v.filter.On()
+	if v.ampEnv.Done() && (!filtered || v.tail <= 0) {
+		v.tail = 0
 		return
 	}
 
@@ -506,7 +519,6 @@ func (v *Voice) Synthesize() {
 		lfo2Rate = 1
 	}
 	lfo2On := mods.Uses(modmatrix.LFO2)
-	filtered := v.filter.On()
 	if modded {
 		mods.Values[modmatrix.Velocity] = v.velocity
 		mods.Values[modmatrix.Random] = v.random
@@ -573,18 +585,29 @@ func (v *Voice) Synthesize() {
 		} else {
 			v.filter.Tick(freq, 0, 0)
 		}
-		g := amp * level
+		lv := level
 		if modded {
-			g = amp * math.Max(0, level+mods.Mod(dLevel))
+			lv = math.Max(0, level+mods.Mod(dLevel))
+		}
+		// the amplitude goes in ahead of the filter when there is one, so what it rings with after
+		// the envelope has fallen is heard, for the filter's release
+		pre, g := 1.0, amp*lv
+		if filtered {
+			pre, g = amp, lv
+			if v.ampEnv.Done() {
+				v.tail--
+			} else {
+				v.tail = v.tailSamples()
+			}
 		}
 
 		// pan, then remove the offset of the sine bursts (panning after the DC blocker would put a
 		// step in its tail at every pan change), then the filter
 		if len(outs) == 1 {
-			outs[0][i] = float32(v.filterOut(filtered, 0, v.dcBlock(0, x)) * g)
+			outs[0][i] = float32(v.filterOut(filtered, 0, v.dcBlock(0, x)*pre) * g)
 		} else {
-			outs[0][i] = float32(v.filterOut(filtered, 0, v.dcBlock(0, x*v.gainL)) * g)
-			outs[1][i] = float32(v.filterOut(filtered, 1, v.dcBlock(1, x*v.gainR)) * g)
+			outs[0][i] = float32(v.filterOut(filtered, 0, v.dcBlock(0, x*v.gainL)*pre) * g)
+			outs[1][i] = float32(v.filterOut(filtered, 1, v.dcBlock(1, x*v.gainR)*pre) * g)
 		}
 	}
 

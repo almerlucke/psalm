@@ -75,14 +75,20 @@ type Config struct {
 	Response  float64 // seconds the vactrol takes to let go (0 is 0.15)
 	Color     float64 // 0-1: how bright it opens (0 is 0.8)
 	Strike    float64 // 0-1: how far the lamp lights at once at a note, the gate opens with a hit
-	KeyTrack  float64 // 0-1: how much it opens brighter for higher notes (0 is 0.6, negative is none)
+	// StrikeDecay is the seconds the hit takes to die away on an envelope of its own (the lamp is
+	// driven by it and the function generator, whichever is higher); 0 kicks the lamp itself, which
+	// then lets go at the Response
+	StrikeDecay float64
+	KeyTrack    float64 // 0-1: how much it opens brighter for higher notes (0 is 0.6, negative is none)
 
 	// an LFO, a sine from the start of every note: Hz, or beats a cycle (LFOSync, follows the
 	// tempo); it moves the fold (0-1, up and down) and the FM index
 	LFORate float64
 	LFOSync float64
-	LFOFold float64
-	LFOFM   float64
+	// LFO2Sync is the beats a cycle of the second LFO (follows the tempo like LFOSync); 0 is LFO2Rate
+	LFO2Sync float64
+	LFOFold  float64
+	LFOFM    float64
 
 	// the matrix: a source to a destination (see Dests) over an amount. FilterEnv is the function
 	// generator, AmpEnv the vactrol (the gate), LFO1 the LFO above, LFO2 a second sine from the
@@ -153,6 +159,7 @@ type Voice struct {
 	modPhase2 float64
 	lfoPhase  float64
 	lfo2Phase float64
+	hit       float64 // the strike envelope (with StrikeDecay)
 	cycle     float64 // where the function generator is in its cycle
 	mods      *modmatrix.Matrix
 	random    float64 // a value for the note, -1 to 1
@@ -213,6 +220,8 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
 	msg.IfFltVal("color", func(f float64) { v.cfg.Color = f })
 	msg.IfFltVal("strike", func(f float64) { v.cfg.Strike = f })
+	msg.IfFltVal("strikeDecay", func(f float64) { v.cfg.StrikeDecay = f })
+	msg.IfFltVal("lfo2Sync", func(f float64) { v.cfg.LFO2Sync = f })
 	msg.IfIntVal("modWave", func(w int) { v.cfg.ModWave = ModWave(max(0, min(w, int(ModSquare)))) })
 	msg.IfFltVal("osc2Mix", func(f float64) { v.cfg.Osc2Mix = f })
 	msg.IfFltVal("osc2Detune", func(f float64) { v.cfg.Osc2Detune = f })
@@ -261,13 +270,18 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 	}
 	v.stage = 0
 	if !v.active {
-		v.env, v.vactrol = 0, 0
+		v.env, v.vactrol, v.hit = 0, 0, 0
 		v.lpg.Clear()
 		v.phase, v.modPhase = 0, 0
 		v.phase2, v.modPhase2 = 0, 0
 	}
 	if v.cfg.Strike > 0 {
-		v.vactrol = math.Max(v.vactrol, math.Min(v.cfg.Strike, 1)*(0.5+0.5*v.velocity))
+		kick := math.Min(v.cfg.Strike, 1) * (0.5 + 0.5*v.velocity)
+		if v.cfg.StrikeDecay > 0 {
+			v.hit = math.Max(v.hit, kick)
+		} else {
+			v.vactrol = math.Max(v.vactrol, kick)
+		}
 	}
 	// drawn only when a slot uses it: a voice that doesn't keeps the random stream it had
 	if v.mods.Uses(modmatrix.Random) {
@@ -365,6 +379,13 @@ func (v *Voice) Synthesize() {
 	if lfo2Rate <= 0 {
 		lfo2Rate = 1
 	}
+	if cfg.LFO2Sync > 0 {
+		lfo2Rate = v.BPM() / 60 / cfg.LFO2Sync
+	}
+	hitCoef := 0.0
+	if cfg.StrikeDecay > 0 {
+		hitCoef = math.Pow(10, -3/(cfg.StrikeDecay*sr))
+	}
 	cycleRate := cfg.CycleRate
 	if cycleRate <= 0 {
 		cycleRate = 2
@@ -425,6 +446,15 @@ func (v *Voice) Synthesize() {
 			}
 		}
 		c := v.env * vel
+		if v.hit > 0 {
+			if hitCoef > 0 {
+				v.hit *= hitCoef
+			}
+			if v.hit < 1e-4 || hitCoef == 0 {
+				v.hit = 0
+			}
+			c = math.Max(c, v.hit)
+		}
 		if c > v.vactrol {
 			v.vactrol += (c - v.vactrol) * rise
 		} else {

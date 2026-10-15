@@ -22,6 +22,10 @@ func Describe(cfg Config) params.Set {
 	if lfoRate <= 0 {
 		lfoRate = 5
 	}
+	lfo2Rate := cfg.LFO2Rate
+	if lfo2Rate <= 0 {
+		lfo2Rate = 1
+	}
 	s := params.Set{Name: "modal", Params: []params.Param{
 		params.C("Mallet", "excitation", Excitations, int(cfg.Excitation)),
 		params.K("Mallet", "hardness", 0, 1, cfg.Hardness),
@@ -35,6 +39,7 @@ func Describe(cfg Config) params.Set {
 		params.K("Tremolo", "tremoloDepth", 0, 1, cfg.TremoloDepth, params.Label("depth")),
 
 		params.K("Modulation", "lfoRate", 0.1, 20, lfoRate, params.Exp(), params.Unit("Hz"), params.Label("lfo 1 rate")),
+		params.K("Modulation", "lfo2Rate", 0.05, 20, lfo2Rate, params.Exp(), params.Unit("Hz"), params.Label("lfo 2 rate")),
 
 		params.K("Output", "level", 0, 4, level),
 	}, Envelopes: []params.Envelope{

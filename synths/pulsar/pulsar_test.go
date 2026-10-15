@@ -462,3 +462,52 @@ func TestMatrixEverything(t *testing.T) {
 		t.Errorf("slot %+v", s)
 	}
 }
+
+// afterRelease plays a note, lets go, and counts the buffers the voice stays active and how loud
+// the first buffers after the amp envelope are
+func afterRelease(cfg Config) (active int, ring float64) {
+	v := New(cfg)
+	v.NoteOn(0.8, psalm.Message{"frequency": 220.0}, psalm.CtrlTick{}, v.Config())
+	for range 10 {
+		v.Synthesize()
+	}
+	v.NoteOff()
+	for blocks := 0; v.IsActive(); blocks++ {
+		if blocks > 2000 {
+			panic("never ends")
+		}
+		v.Synthesize()
+		active++
+		if blocks > 8 {
+			for _, s := range v.Output(0).Channels[0] {
+				ring += float64(s) * float64(s)
+			}
+		}
+		for _, s := range v.Output(0).Channels[0] {
+			if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) {
+				panic("NaN")
+			}
+		}
+	}
+	return
+}
+
+func TestFilterTailExtendsTheVoice(t *testing.T) {
+	cfg := steady()
+	plain, _ := afterRelease(cfg)
+	cfg.Filter = voicefilter.Config{Type: voicefilter.Ladder24, Cutoff: 600, Resonance: 0.95,
+		Env: *adsr.NewSetting(1.0, 5.0, 1.0, 600.0, 1.0, 600.0)}
+	long, ring := afterRelease(cfg)
+	if long <= plain+10 {
+		t.Errorf("active %d buffers with the filter, %d without", long, plain)
+	}
+	if ring == 0 {
+		t.Error("the resonant filter does not ring on after the amp envelope")
+	}
+	// a filter that is off changes nothing
+	off := steady()
+	off.Filter.Env = *adsr.NewSetting(1.0, 5.0, 1.0, 600.0, 1.0, 600.0)
+	if got, _ := afterRelease(off); got != plain {
+		t.Errorf("filter off: %d buffers against %d", got, plain)
+	}
+}

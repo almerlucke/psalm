@@ -20,7 +20,7 @@ const (
 
 // Dests are the settings the matrix of a voice moves: by their keys, as described (Describe), with
 // how far a full source moves them (semitones, octaves, or the setting itself). The pitch is moved
-// once a buffer; decay, hardness, position, beat, noise, inharmonicity and high damping are set as
+// every 8 samples; decay, hardness, position, beat, noise, inharmonicity and high damping are set as
 // the note is struck, from the sources known then (velocity, key, random, wheel, ext); the rest
 // every sample.
 var Dests = []modmatrix.Dest{

@@ -8,7 +8,9 @@
 package vocal
 
 import (
+	"fmt"
 	"math"
+	"strings"
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
@@ -61,6 +63,16 @@ type Config struct {
 	Consonant      Consonant // a burst of noise as the note starts (none unless set)
 	ConsonantLevel float64   // 0-1 (0 is treated as 0.5)
 
+	// FormantShift scales all the formants (and their widths): below 1 a bigger throat, a giant;
+	// above 1 a smaller one, a child (0 is 1)
+	FormantShift float64
+
+	// Word is a text to sing: each note takes the next syllable (its vowel and consonant), looping at
+	// the end (see ParseWord). With WordSync beats a syllable (0 is one syllable a note), a held note
+	// goes on to the next syllables too. The notes of a Poly share the place in the word
+	Word     []Syllable
+	WordSync float64
+
 	Filter voicefilter.Config              // a filter after the formants (off unless its Type is set)
 	Mods   [modmatrix.Slots]modmatrix.Slot // the matrix: a source to a destination (see Dests) over an amount
 	Ext    [modmatrix.Exts]float64         // the values 0-1 of the matrix's sources Ext 1 to 4 (cabled in on InExt1...)
@@ -93,6 +105,15 @@ var Dests = []modmatrix.Dest{
 	dLevel:        {Key: "level", Label: "level", Span: 1},
 	dCutoff:       {Key: "cutoff", Label: "cutoff", Span: 4},
 }
+
+// Syllable is a vowel position (0-4: a e i o u, fractions morph) and a consonant before it
+type Syllable struct {
+	Vowel     float64
+	Consonant Consonant
+}
+
+// wordPlace is the place in the word, shared by the voices of a Poly: the syllable the next note sings
+type wordPlace struct{ next int }
 
 // The value inputs of a voice: 1 is the vowel and 2 the vibrato depth, 3 to 6 the values of the
 // matrix (Ext 1 to 4) that a slot can move any setting by
@@ -233,6 +254,11 @@ type Voice struct {
 	lfo2      float64 // phase
 	cons      *svf.SVF
 	consT     int // samples into the consonant (-1 none)
+	consNow   Consonant
+	place     *wordPlace
+	syl       int     // the syllable this note started on
+	sylNow    int     // the syllable sung now (-1 when there is no word)
+	sylVowel  float64 // its vowel
 }
 
 // randSource is a small fast random generator
@@ -250,7 +276,7 @@ func New(cfg Config) *Voice {
 	if cfg.NumChannels == 0 {
 		cfg.NumChannels = psalm.Stereo
 	}
-	v := &Voice{Module: psalm.NewModule(nil, []int{cfg.NumChannels}), cfg: cfg, pitch: 60, vowel: cfg.Vowel}
+	v := &Voice{Module: psalm.NewModule(nil, []int{cfg.NumChannels}), cfg: cfg, pitch: 60, vowel: cfg.Vowel, place: &wordPlace{}, sylNow: -1}
 	sr := v.Config().SampleRate
 	for i := range v.singers {
 		v.singers[i].osc = blosc.New(220, sr, 0, 0.5, 1, blosc.Sawtooth)
@@ -285,6 +311,17 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	}
 	for i := range v.cfg.Ext {
 		v.cfg.Ext[i] = v.mods.Ext(i)
+	}
+	msg.IfFltVal("formantShift", func(f float64) { v.cfg.FormantShift = math.Max(0.25, math.Min(f, 4)) })
+	msg.IfFltVal("wordSync", func(f float64) { v.cfg.WordSync = math.Max(0, f) })
+	msg.IfStrVal("word", func(s string) {
+		if w, err := ParseWord(s); err == nil {
+			v.cfg.Word = w
+		}
+	})
+	// the next syllable to sing (the place is shared in a Poly)
+	for _, k := range []string{"syllable", "wordStep"} {
+		msg.IfIntVal(k, func(i int) { v.place.next = max(0, i) })
 	}
 	msg.IfIntVal("consonant", func(c int) { v.cfg.Consonant = Consonant(max(0, min(c, int(numConsonants)-1))) })
 	msg.IfFltVal("consonantLevel", func(f float64) { v.cfg.ConsonantLevel = math.Max(0, math.Min(f, 1)) })
@@ -354,10 +391,20 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 		mode = adsr.Duration
 	}
 	v.filter.Trigger(duration*1000, mode)
+	v.sylNow = -1
+	v.consNow = cfg.Consonant
+	if n := len(cfg.Word); n > 0 {
+		v.syl = v.place.next % n
+		v.place.next = (v.syl + 1) % n
+		v.setSyllable(v.syl)
+	}
 	v.startConsonant()
 	if !v.active {
 		v.env = 0
 		v.vowel = cfg.Vowel
+		if v.sylNow >= 0 {
+			v.vowel = v.sylVowel
+		}
 		for c := range v.formants {
 			for _, f := range v.formants[c] {
 				f.Clear()
@@ -401,6 +448,12 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 	v.active = true
 }
 
+// setSyllable makes the syllable i of the word the one sung now
+func (v *Voice) setSyllable(i int) {
+	s := v.cfg.Word[i]
+	v.sylNow, v.sylVowel, v.consNow = i, s.Vowel, s.Consonant
+}
+
 // setFormants tunes the formants to the vowel (the first follows the pitch up when it is higher,
 // as singers do)
 func (v *Voice) setFormants(f0 float64) {
@@ -409,13 +462,17 @@ func (v *Voice) setFormants(f0 float64) {
 	i := min(int(pos), 3)
 	frac := pos - float64(i)
 	sr := v.Config().SampleRate
+	shift := v.cfg.FormantShift
+	if shift <= 0 {
+		shift = 1
+	}
 	for k := range 5 {
 		a, b := table[i][k], table[i+1][k]
-		freq := a.freq * math.Pow(b.freq/a.freq, frac)
+		freq := a.freq * math.Pow(b.freq/a.freq, frac) * shift
 		if k == 0 {
 			freq = math.Max(freq, f0*1.1)
 		}
-		bw := a.bw + (b.bw-a.bw)*frac
+		bw := (a.bw + (b.bw-a.bw)*frac) * shift
 		v.gains[k] = math.Pow(10, (a.db+(b.db-a.db)*frac)/20)
 		freq = math.Min(freq, sr*0.45)
 		for c := range v.formants {
@@ -444,7 +501,7 @@ func (s *singer) cents(detune float64) float64 { return s.pos*detune/2 + s.jitte
 // startConsonant starts the burst of the consonant
 func (v *Voice) startConsonant() {
 	v.consT = -1
-	c := v.cfg.Consonant
+	c := v.consNow
 	if c <= NoConsonant || c >= numConsonants {
 		return
 	}
@@ -459,7 +516,7 @@ func (v *Voice) consonant(sr float64) float64 {
 	if v.consT < 0 {
 		return 0
 	}
-	sh := consonants[v.cfg.Consonant]
+	sh := consonants[v.consNow]
 	t := float64(v.consT) / sr
 	v.consT++
 	if t >= sh.dur {
@@ -533,6 +590,10 @@ func (v *Voice) Synthesize() {
 		vowelInc = v.BPM() / 60 / cfg.VowelSync / sr
 	}
 	moving := vowelInc > 0 && cfg.VowelDepth != 0
+	sylInc := 0.0
+	if len(cfg.Word) > 0 && cfg.WordSync > 0 {
+		sylInc = v.BPM() / 60 / cfg.WordSync / sr
+	}
 	mods := v.mods
 	modded := mods.Active()
 	filtered := v.filter.On()
@@ -551,6 +612,16 @@ func (v *Voice) Synthesize() {
 		v.expr.Tick(sr)
 		bend := v.expr.Ratio()
 		target := cfg.Vowel + 2*v.expr.Wheel()
+		if v.sylNow >= 0 {
+			// the word: a held note goes on to the next syllable on the clock
+			if sylInc > 0 {
+				if k := (v.syl + int(sylInc*float64(v.t))) % len(cfg.Word); k != v.sylNow {
+					v.setSyllable(k)
+					v.startConsonant()
+				}
+			}
+			target = v.sylVowel + 2*v.expr.Wheel()
+		}
 		vib0 := cfg.VibratoDepth
 		breathNow := breath
 		pitchMul := 1.0
@@ -699,14 +770,50 @@ func (v *Voice) Synthesize() {
 	}
 }
 
-// NewPoly creates a set of voices
+// NewPoly creates a set of voices. They share their place in the word (Config.Word), so a sequence
+// of notes sings the text whichever voice each note lands on
 func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 	if cfg.NumChannels == 0 {
 		cfg.NumChannels = psalm.Stereo
 	}
 	voices := make([]*Voice, numVoices)
+	place := &wordPlace{}
 	for i := range numVoices {
 		voices[i] = New(cfg)
+		voices[i].place = place
 	}
 	return poly.New[*Voice](cfg.NumChannels, voices)
+}
+
+// ParseWord turns a text into syllables: words split by spaces, dashes or commas, each a consonant
+// (t k s sh f, or none) and a vowel (a e i o u), so "ta ke so" is three syllables and "sha-fu" two.
+// A lone consonant or an unknown letter is an error
+func ParseWord(text string) ([]Syllable, error) {
+	vowels := map[byte]float64{'a': 0, 'e': 1, 'i': 2, 'o': 3, 'u': 4}
+	var word []Syllable
+	for _, tok := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return r == ' ' || r == '-' || r == ',' || r == '\t' || r == '\n'
+	}) {
+		var c Consonant
+		rest := tok
+		if strings.HasPrefix(rest, "sh") {
+			c, rest = Sh, rest[2:]
+		} else {
+			for i, n := range ConsonantNames[1:] {
+				if len(n) == 1 && rest[0] == n[0] {
+					c, rest = Consonant(i+1), rest[1:]
+					break
+				}
+			}
+		}
+		if len(rest) != 1 {
+			return nil, fmt.Errorf("vocal: cannot sing %q", tok)
+		}
+		vw, ok := vowels[rest[0]]
+		if !ok {
+			return nil, fmt.Errorf("vocal: cannot sing %q", tok)
+		}
+		word = append(word, Syllable{Vowel: vw, Consonant: c})
+	}
+	return word, nil
 }

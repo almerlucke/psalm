@@ -35,6 +35,7 @@ func main() {
 	device := flag.String("device", "", "a raw MIDI device to play it from too (empty: the first keyboard, if there is one)")
 	theme := flag.String("theme", "default", "the theme of the page")
 	mine := flag.String("presets", "dx-presets", "the folder the patches you save are kept in")
+	sysex := flag.String("sysex", "dx-sysex", "the folder of SysEx files the page lists, loads as the bank and saves into")
 	flag.Parse()
 
 	// the bank: the built in patches, then every voice of the SysEx banks
@@ -88,7 +89,7 @@ func main() {
 	}
 	ctl.SetTheme(t)
 	ctl.Section("DX")
-	ed := dxeditor.Add(ctl, "DX", synth, bank[0], dxeditor.Bank(bank))
+	ed := dxeditor.Add(ctl, "DX", synth, bank[0], dxeditor.Bank(bank), dxeditor.SysExFolder(*sysex))
 	if err := ed.Keep(*mine); err != nil { // patches of your own
 		log.Fatal(err)
 	}

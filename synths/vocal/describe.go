@@ -20,18 +20,25 @@ func Describe(cfg Config) params.Set {
 	if level == 0 {
 		level = 1
 	}
+	shift := cfg.FormantShift
+	if shift <= 0 {
+		shift = 1
+	}
 	set := params.Set{Name: "vocal", Params: []params.Param{
 		params.C("Voice", "range", Ranges, int(cfg.Range)),
 		params.K("Voice", "vowel", 0, 4, cfg.Vowel),
 		params.K("Voice", "vowelGlide", 0, 2, cfg.VowelGlide, params.Unit("s"), params.Label("vowel glide")),
 		params.K("Voice", "brightness", 0, 1, cfg.Brightness),
 		params.K("Voice", "breath", 0, 1, cfg.Breath),
+		params.K("Voice", "formantShift", 0.25, 4, shift, params.Exp(), params.Label("formant shift")),
 
 		params.K("Vibrato", "vibratoRate", 0, 12, cfg.VibratoRate, params.Unit("Hz"), params.Label("rate")),
 		params.K("Vibrato", "vibratoDepth", 0, 2, cfg.VibratoDepth, params.Unit("st"), params.Label("depth")),
 
 		params.C("Consonant", "consonant", ConsonantNames, int(cfg.Consonant)),
 		params.K("Consonant", "consonantLevel", 0, 1, clevel, params.Label("level")),
+
+		params.K("Word", "wordSync", 0, 4, cfg.WordSync, params.Unit("beats"), params.Label("beats a syllable")),
 
 		params.K("Output", "level", 0, 4, level),
 	}, Envelopes: []params.Envelope{

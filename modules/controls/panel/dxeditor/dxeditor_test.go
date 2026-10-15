@@ -1,8 +1,12 @@
 package dxeditor
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -186,5 +190,92 @@ func TestEditorLoadsExactOperators(t *testing.T) {
 	synth.CallVoices(func(v *dx.Voice) { got = v.Patch() })
 	if !got.Ops[0].FreeOn || got.Ops[0].Free != flute.Ops[0].Free || got.Level != flute.Level || got.VibratoDepth != flute.VibratoDepth {
 		t.Errorf("the synth plays %+v (level %v), want the flute's exact values", got.Ops[0], got.Level)
+	}
+}
+
+func sysexEditor(t *testing.T) (*Editor, string, []dx.Patch) {
+	dir := t.TempDir()
+	var few []dx.Patch
+	for i, n := range []string{"bellPad", "woodBass", "bellPad"} {
+		p := dx.Presets[n]()
+		p.Name = fmt.Sprintf("V%d-%s", i, strings.ToUpper(n[:4]))
+		few = append(few, p)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "few.syx"), dx.EncodeBank(few), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x"), 0o644)
+	start := dx.Presets["bellPad"]()
+	synth := dx.NewPoly(start, 2, 2)
+	ctl := panel.New(psalm.New(nil), "Test")
+	e := Add(ctl, "DX", synth, start, Bank([]dx.Patch{start}), SysExFolder(dir))
+	return e, dir, few
+}
+
+func TestSysExFolder(t *testing.T) {
+	e, dir, few := sysexEditor(t)
+	if f := e.SysExFiles(); len(f) != 1 || f[0] != "few.syx" {
+		t.Fatalf("files %v", f)
+	}
+	if err := e.LoadSysEx("few"); err != nil {
+		t.Fatal(err)
+	}
+	st := e.sysexState()
+	if st.File != "few.syx" || len(st.Bank) != 32 || st.Bank[1] != few[1].Name {
+		t.Errorf("bank %q %d", st.File, len(st.Bank))
+	}
+	for _, bad := range []string{"../few", "a/b", `a\b`, "", ".hidden", "x..y", "a\x00b", ".syx"} {
+		if _, err := e.SaveSysEx(bad, false, true); err == nil {
+			t.Errorf("%q should be rejected", bad)
+		}
+	}
+	if err := e.LoadSysEx("../few"); err == nil {
+		t.Error("a path should be rejected")
+	}
+	if err := e.LoadSysEx("missing"); err == nil {
+		t.Error("a missing file should be rejected")
+	}
+
+	// the patch saved as a single dump, read back; not replaced without saying so
+	e.Load(few[0])
+	e.parts["op3Coarse"].Set(9)
+	file, err := e.SaveSysEx("mine.SYX", false, false)
+	if err != nil || file != "mine.syx" {
+		t.Fatalf("save %q %v", file, err)
+	}
+	back, err := dx.LoadSysEx(filepath.Join(dir, "mine.syx"))
+	if err != nil || len(back) != 1 || back[0].Ops[2].Coarse != 9 || back[0].Name != few[0].Name {
+		t.Fatalf("read back %v %v", back, err)
+	}
+	if _, err := e.SaveSysEx("mine", false, false); !errors.Is(err, os.ErrExist) {
+		t.Errorf("replaced without saying so: %v", err)
+	}
+	if _, err := e.SaveSysEx("mine", true, true); err != nil {
+		t.Fatal(err)
+	}
+	if back, err = dx.LoadSysEx(filepath.Join(dir, "mine.syx")); err != nil || len(back) != 32 {
+		t.Errorf("bank read back %d %v", len(back), err)
+	}
+
+	// through the messages of the page
+	e.sysexMessage([]byte(`{"save": "../x"}`))
+	if st := e.sysexState(); !st.Error {
+		t.Error("the bad name should be an error on the page")
+	}
+	e.sysexMessage([]byte(`{"load": ""}`))
+	if st := e.sysexState(); st.File != "" || len(st.Bank) != 1 || len(st.Files) != 2 {
+		t.Errorf("built in again: %+v", st)
+	}
+}
+
+func TestSysExOff(t *testing.T) {
+	start := dx.Presets["bellPad"]()
+	ctl := panel.New(psalm.New(nil), "Test")
+	e := Add(ctl, "DX", dx.NewPoly(start, 2, 2), start, Bank([]dx.Patch{start}))
+	if e.sysexState() != nil || e.LoadSysEx("a") == nil {
+		t.Error("off without a folder")
+	}
+	if _, err := e.SaveSysEx("a", false, false); err == nil {
+		t.Error("no folder to save into")
 	}
 }

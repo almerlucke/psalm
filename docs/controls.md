@@ -807,6 +807,15 @@ banks, _ := dx.LoadSysEx("assets/dx7/rom1a.syx")
 dxeditor.Add(ctl, "DX", synth, patch, dxeditor.Bank(banks))
 ```
 
+`dxeditor.SysExFolder(dir)` turns on a SysEx browser. The editor lists the `.syx` files of the folder in a
+"sysex" row (the refresh button looks again). Choosing a file makes its voices the program list,
+whether it is a 32 voice bulk dump or single dumps; "built in" returns to the bank given with `Bank`.
+"save patch" writes the patch as it is (with its exact operator values) as a single voice dump, "save
+bank" the bank shown as a 32 voice dump (the first 32 voices). Both use the name in the box (letters,
+digits, spaces and `- _ . ( )`; the editor adds `.syx` and never accepts a path). A file that exists is
+only replaced after the page asks you to confirm. In the patcher set `catalog.Config.SysEx` to a
+folder; the `dxedit` example has `-sysex` (default `dx-sysex`). The folder is made on the first save.
+
 **The patcher** (`modules/controls/panel/patcher`) makes a modular patch on the page. Add modules
 from a palette, move them by their heads, and draw cables from an output to an input of the same
 kind: audio (the sound), notes (a keyboard to the synths it plays) and modulation (an LFO, a random

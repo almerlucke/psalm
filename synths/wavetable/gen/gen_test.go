@@ -384,3 +384,49 @@ func TestFromSoundSkipsSilence(t *testing.T) {
 		}
 	}
 }
+
+func TestAdditive(t *testing.T) {
+	want := []float64{1, 0, 0.5, 0, 0.25, 0.125}
+	table := Additive(want, 4)
+	if table.NumFrames() != 4 {
+		t.Fatalf("%d frames", table.NumFrames())
+	}
+	for _, pos := range []float64{0, 0.5, 1} {
+		amps := harmonics(table, pos)
+		for k, w := range want {
+			if got := amps[k+1] / amps[1]; math.Abs(got-w/want[0]) > 0.01 {
+				t.Errorf("position %g harmonic %d: %g, want %g", pos, k+1, got, w)
+			}
+		}
+		for k := len(want) + 1; k < len(amps); k++ {
+			if amps[k] > 1e-3*amps[1] {
+				t.Fatalf("harmonic %d sounds: %g", k, amps[k])
+			}
+		}
+	}
+	if Additive(nil, 0).NumFrames() != 1 {
+		t.Error("an empty list is one frame")
+	}
+}
+
+func TestAdditiveMorph(t *testing.T) {
+	table := AdditiveMorph([]float64{1}, []float64{0, 1, 1}, 9)
+	lo, mid, hi := harmonics(table, 0), harmonics(table, 0.5), harmonics(table, 1)
+	if lo[2] > 1e-3 || hi[1] > 1e-3 {
+		t.Errorf("ends: %g %g", lo[2], hi[1])
+	}
+	// halfway through harmonic 1 is at half and 2 and 3 at half of the end
+	if r := mid[2] / mid[1]; math.Abs(r-1) > 0.05 {
+		t.Errorf("middle: harmonics 1 and 2 %g", r)
+	}
+	if r := mid[1] / lo[1]; math.Abs(r-0.5) > 0.1 {
+		t.Errorf("fundamental in the middle %g of the start", r)
+	}
+	for _, a := range [][]float64{lo, mid, hi} {
+		for _, v := range a {
+			if math.IsNaN(v) {
+				t.Fatal("NaN")
+			}
+		}
+	}
+}

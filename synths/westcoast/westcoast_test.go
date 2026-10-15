@@ -282,3 +282,61 @@ func TestStrike(t *testing.T) {
 		t.Errorf("energy %g struck, %g without", energy(hit), energy(soft))
 	}
 }
+
+// the strike decays on its own envelope when StrikeDecay is set
+func TestStrikeDecay(t *testing.T) {
+	cfg := Bell()
+	cfg.Attack = 3
+	cfg.Strike = 1
+	cfg.Response = 0.02
+	msg := psalm.Message{"pitch": 57.0}
+	window := func(x []float64, from, to float64) float64 { return energy(x[int(from*sr()):int(to*sr())]) }
+	_, lamp := play(cfg, msg, 0.4)
+	cfg.StrikeDecay = 0.08
+	_, short := play(cfg, msg, 0.4)
+	cfg.StrikeDecay = 0.6
+	v, long := play(cfg, msg, 0.4)
+	if v.cfg.StrikeDecay != 0.6 {
+		t.Fatal("strikeDecay")
+	}
+	if window(long, 0.2, 0.3) < 3*window(short, 0.2, 0.3) {
+		t.Errorf("energy at 0.2-0.3 s: %g with a long hit, %g with a short one", window(long, 0.2, 0.3), window(short, 0.2, 0.3))
+	}
+	if window(short, 0.01, 0.03) < 0.3*window(lamp, 0.01, 0.03) {
+		t.Errorf("the short hit is not struck at once: %g against %g", window(short, 0.01, 0.03), window(lamp, 0.01, 0.03))
+	}
+	for _, s := range long {
+		if math.IsNaN(s) || math.IsInf(s, 0) {
+			t.Fatal("NaN")
+		}
+	}
+	w := New(Bell())
+	w.ReceiveMessage(psalm.Message{"strikeDecay": 0.3, "lfo2Sync": 2.0})
+	if w.cfg.StrikeDecay != 0.3 || w.cfg.LFO2Sync != 2 {
+		t.Errorf("messages: %+v", w.cfg)
+	}
+}
+
+// the second LFO follows the tempo with LFO2Sync: beats a cycle
+func TestLFO2Sync(t *testing.T) {
+	cfg := open()
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.LFO2, Dest: "level", Amount: 0.9}
+	msg := psalm.Message{"frequency": 220.0}
+	v := New(cfg)
+	rate := v.BPM() / 60 / 2
+	cfg.LFO2Rate = rate
+	_, hz := play(cfg, msg, 0.5)
+	cfg.LFO2Rate, cfg.LFO2Sync = 7, 2
+	_, synced := play(cfg, msg, 0.5)
+	if len(hz) != len(synced) || energy(hz) == 0 {
+		t.Fatal("no sound")
+	}
+	for i := range hz {
+		if hz[i] != synced[i] {
+			t.Fatalf("sync of 2 beats differs from %g Hz at %d", rate, i)
+		}
+		if math.IsNaN(synced[i]) {
+			t.Fatal("NaN")
+		}
+	}
+}

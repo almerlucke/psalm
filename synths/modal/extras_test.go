@@ -218,3 +218,52 @@ func TestMaterialPresets(t *testing.T) {
 		t.Errorf("metal should ring much longer than wood")
 	}
 }
+
+func TestLFO2MovesLevel(t *testing.T) {
+	cfg := Marimba()
+	cfg.Noise = 0
+	cfg.Decay = 5
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.LFO2, Dest: "level", Amount: 0.9}
+	cfg.LFO2Rate = 4
+	v, x := strike(cfg, 60, 1)
+	finite(t, "lfo2", x)
+	win := len(x) / 16
+	lo, hi := math.Inf(1), 0.0
+	for i := 0; i+win <= len(x); i += win {
+		r := rms(x[i : i+win])
+		lo, hi = math.Min(lo, r), math.Max(hi, r)
+	}
+	if hi == 0 || lo > hi*0.7 {
+		t.Errorf("level swings %g to %g under a 4 Hz LFO 2", lo, hi)
+	}
+	v.ReceiveMessage(psalm.Message{"lfo2Rate": 2.0})
+	if v.cfg.LFO2Rate != 2 {
+		t.Errorf("lfo2Rate %g", v.cfg.LFO2Rate)
+	}
+	plain := New(Marimba())
+	plain.NoteOn(1, psalm.Message{"pitch": 60.0}, psalm.CtrlTick{}, plain.Config())
+	run(plain, 0.1)
+	if plain.lfo2Phase != 0 {
+		t.Error("LFO 2 runs unused")
+	}
+}
+
+func TestPitchModulationIsSmooth(t *testing.T) {
+	cfg := Marimba()
+	cfg.Noise = 0
+	cfg.LFO2Rate = 20
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.LFO2, Dest: "pitch", Amount: 0.1}
+	v := New(cfg)
+	v.NoteOn(1, psalm.Message{"pitch": 60.0}, psalm.CtrlTick{}, v.Config())
+	for b := range 12 {
+		v.Synthesize()
+		if b < 2 {
+			continue
+		}
+		got := 12 * math.Log2(v.bentTo)
+		want := 1.2 * math.Sin(2*math.Pi*v.lfo2Phase)
+		if math.Abs(got-want) > 0.3 {
+			t.Fatalf("buffer %d: bent %g semitones, the LFO is at %g: the pitch lags a buffer", b, got, want)
+		}
+	}
+}

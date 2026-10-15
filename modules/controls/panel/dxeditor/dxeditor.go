@@ -49,6 +49,14 @@ type Editor struct {
 	name         string    // of the patch loaded last
 	loaded       *dx.Patch // a patch loaded, whose values beyond the 0-99 ones the next buffer takes
 	store        *editor.Store
+	builtin      []dx.Patch // the bank given (e.bank is the one shown: a file's voices)
+	base         dx.Patch   // the patch loaded last (the exact values a save keeps)
+	sysexDir     string
+	file         string // the SysEx file the bank is from
+	files        []string
+	note         string
+	noteErr      bool
+	jobs         chan json.RawMessage
 }
 
 func (e *Editor) patchName() string {
@@ -91,15 +99,26 @@ type data struct {
 type state struct {
 	Name    string `json:"name"`
 	Presets any    `json:"presets"` // yours (editor.Store)
+	SysEx   any    `json:"sysex,omitempty"`
 }
 
 // Add adds an editor of a dx synth playing a patch (the patch the editor starts from) to a panel
 // (and the plugin to its page)
 func Add(ctl *panel.Panel, name string, synth *poly.Poly[*dx.Voice], patch dx.Patch, opts ...Option) *Editor {
 	ctl.Use(Plugin)
-	e := &Editor{synth: synth, patch: patch, parts: map[string]*panel.Param{}, name: patch.Name}
+	e := &Editor{synth: synth, patch: patch, parts: map[string]*panel.Param{}, name: patch.Name, base: patch}
 	for _, o := range opts {
 		o(e)
+	}
+	e.builtin = e.bank
+	e.files = e.SysExFiles()
+	if e.sysexDir != "" {
+		e.jobs = make(chan json.RawMessage, 16)
+		go func() {
+			for raw := range e.jobs {
+				e.sysexMessage(raw)
+			}
+		}()
 	}
 	d := data{Bank: []string{}}
 	for _, a := range dx.Algorithms {
@@ -134,12 +153,19 @@ func Add(ctl *panel.Panel, name string, synth *poly.Poly[*dx.Voice], patch dx.Pa
 	})
 	e.Param = ctl.Custom(Kind, name, set("algorithm"), panel.Range(1, 32, panel.Linear), panel.Step(1),
 		panel.Default(float64(patch.Algorithm+1)), panel.Data(d),
-		panel.OnBuffer(e.apply), panel.Live(func() any { return state{Name: e.patchName(), Presets: e.store.State()} }),
+		panel.OnBuffer(e.apply), panel.Live(func() any { return state{Name: e.patchName(), Presets: e.store.State(), SysEx: e.sysexState()} }),
 		panel.OnMessage(func(raw json.RawMessage) {
 			var m struct {
 				Presets json.RawMessage `json:"presets"`
+				SysEx   json.RawMessage `json:"sysex"`
 			}
-			if json.Unmarshal(raw, &m) != nil || m.Presets == nil {
+			if json.Unmarshal(raw, &m) != nil {
+				return
+			}
+			if m.SysEx != nil {
+				e.queueSysEx(m.SysEx) // the files are read and written off the audio thread
+			}
+			if m.Presets == nil {
 				return
 			}
 			var load struct {
@@ -193,9 +219,20 @@ func Add(ctl *panel.Panel, name string, synth *poly.Poly[*dx.Voice], patch dx.Pa
 	e.parts["fbFrom"] = e.Part(name+" fbFrom", 1, 6, panel.Linear, mark(""), panel.Step(1), panel.Default(float64(routing.FeedbackFrom+1)))
 	e.parts["fbTo"] = e.Part(name+" fbTo", 1, 6, panel.Linear, mark(""), panel.Step(1), panel.Default(float64(routing.FeedbackTo+1)))
 
-	if len(e.bank) > 0 {
-		e.parts["program"] = e.Part(name+" program", 0, float64(len(e.bank)-1), panel.Linear,
-			panel.Func(func(v float64) { e.Load(e.bank[int(v)]) }), panel.Step(1), panel.NoDefault())
+	if len(e.bank) > 0 || e.sysexDir != "" {
+		top := float64(len(e.bank) - 1)
+		if e.sysexDir != "" { // the bank changes with the file
+			top = max(top, 1023)
+		}
+		e.parts["program"] = e.Part(name+" program", 0, top, panel.Linear,
+			panel.Func(func(v float64) {
+				e.mu.Lock()
+				i, bank := int(v), e.bank
+				e.mu.Unlock()
+				if i >= 0 && i < len(bank) {
+					e.Load(bank[i])
+				}
+			}), panel.Step(1), panel.NoDefault())
 	}
 	return e
 }
@@ -254,6 +291,7 @@ func (e *Editor) apply() {
 func (e *Editor) Load(p dx.Patch) {
 	e.mu.Lock()
 	e.name = p.Name
+	e.base = p
 	e.loaded = &p
 	e.mu.Unlock()
 	e.Set(float64(p.Algorithm + 1))

@@ -30,6 +30,38 @@ func fromLevels(numFrames int, numHarmonics int, f func(position float64, levels
 	})
 }
 
+// Additive builds a table from the amplitudes of its partials: harmonics[0] is the fundamental,
+// harmonics[1] the second harmonic, and so on (up to 1023, the rest is ignored; negative amplitudes
+// count as 0). Every frame has the same spectrum, so the position changes nothing: a single cycle
+// of your own (numFrames below 1 is 1). The table is normalized to its peak, so it is the ratios
+// of the amplitudes that count
+func Additive(harmonics []float64, numFrames int) *wavetable.Table {
+	return AdditiveMorph(harmonics, harmonics, numFrames)
+}
+
+// AdditiveMorph builds a table that morphs from the partials of from to the partials of to: the
+// amplitude of every harmonic crossfades linearly over the frames (a list shorter than the other
+// counts as 0 for the harmonics it lacks). See Additive
+func AdditiveMorph(from, to []float64, numFrames int) *wavetable.Table {
+	numFrames = max(1, numFrames)
+	n := min(max(len(from), len(to)), FrameSize/2-1)
+	if n == 0 { // nothing to sound: a sine
+		from, to, n = []float64{1}, []float64{1}, 1
+	}
+	at := func(h []float64, k int) float64 {
+		if k < len(h) {
+			return math.Max(0, h[k])
+		}
+		return 0
+	}
+	return fromLevels(numFrames, n, func(position float64, amps []float64) {
+		for k := range n {
+			a, b := at(from, k), at(to, k)
+			amps[k] = a + (b-a)*position
+		}
+	})
+}
+
 // Brightness morphs from a sine to a bright sawtooth: the harmonics of a sawtooth fade in from
 // low to high as the position rises, like opening a lowpass filter
 func Brightness(numFrames int) *wavetable.Table {

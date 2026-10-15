@@ -32,6 +32,10 @@ func Describe(cfg Config) params.Set {
 	if level <= 0 {
 		level = 1
 	}
+	lfo2 := cfg.LFO2Rate
+	if lfo2 <= 0 {
+		lfo2 = 1
+	}
 	s.Params = append(s.Params,
 		params.C("Percussion", "percussion", Percussions, int(cfg.Percussion), params.Label("harmonic")),
 		params.S("Percussion", "percFast", cfg.PercFast, params.Label("fast")),
@@ -39,6 +43,8 @@ func Describe(cfg Config) params.Set {
 
 		params.C("Vibrato", "vibrato", Vibratos, int(cfg.Vibrato), params.Label("scanner")),
 		params.K("Vibrato", "vibratoHz", 0.5, 20, vibratoHz, params.Exp(), params.Unit("Hz"), params.Label("speed")),
+
+		params.K("Modulation", "lfo2Rate", 0.05, 20, lfo2, params.Exp(), params.Unit("Hz"), params.Label("lfo 2 rate")),
 
 		params.K("Output", "click", 0, 1, cfg.Click),
 		params.K("Output", "clickRand", 0, 1, cfg.ClickRand, params.Label("click random")),

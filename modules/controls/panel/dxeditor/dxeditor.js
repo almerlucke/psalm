@@ -86,13 +86,68 @@ psalm.register("dx7", (p, api) => {
 	const fbRow = el("div", "dx-row");
 	fbRow.append(labelled("feedback", num("feedback", v => String(v), "feedback, 0 to 7")));
 	head.append(name, algRow, fbRow);
-	if (p.data.bank && p.data.bank.length) {
-		const sel = el("select", "dx-bank");
-		p.data.bank.forEach((n, i) => { const o = el("option", "", `${i + 1} ${n}`); o.value = i; sel.append(o); });
+	const sel = el("select", "dx-bank");
+	const bankField = labelled("patch", sel);
+	let bankShown = "";
+	const showBank = names => {
+		const key = JSON.stringify(names);
+		if (key === bankShown) return;
+		bankShown = key;
+		sel.innerHTML = "";
+		names.forEach((n, i) => { const o = el("option", "", `${i + 1} ${n}`); o.value = i; sel.append(o); });
+		if (part.program) sel.value = String(vals.program);
+		bankField.hidden = !names.length;
+	};
+	if (part.program) {
 		sel.addEventListener("change", () => api.send(part.program.name, Number(sel.value)));
 		bind("program", v => { sel.value = String(v); });
-		head.append(labelled("patch", sel));
 	}
+	showBank(p.data.bank || []);
+	head.append(bankField);
+
+	// SysEx files in a folder: choose one for the bank, save the patch or the bank into it
+	const sxRow = el("div", "dx-row dx-sysex");
+	sxRow.hidden = true;
+	const sxSel = el("select", "dx-bank");
+	sxSel.title = "the bank: the built in patches, or the voices of a SysEx file";
+	const sxName = el("input", "dx-name-in"); sxName.placeholder = "file name"; sxName.maxLength = 64;
+	const sxOne = el("button", "dx-flag", "save patch"), sxAll = el("button", "dx-flag", "save bank");
+	const sxRefresh = el("button", "dx-flag", "refresh");
+	sxOne.title = "save the patch as a single voice dump (.syx)"; sxAll.title = "save the bank as a 32 voice dump (.syx)";
+	sxRefresh.title = "look in the folder again";
+	const sxNote = el("span", "dx-hint");
+	sxRow.append(el("span", "dx-label", "sysex"), sxSel, sxRefresh, sxName, sxOne, sxAll, sxNote);
+	head.append(sxRow);
+	let sx = null, sxShown = "";
+	const showSysex = () => {
+		sxRow.hidden = !(sx && sx.keeps);
+		if (sxRow.hidden) return;
+		const key = JSON.stringify(sx.files);
+		if (key !== sxShown) {
+			sxShown = key;
+			sxSel.innerHTML = "";
+			const none = el("option", "", "built in"); none.value = ""; sxSel.append(none);
+			for (const n of sx.files) { const o = el("option", "", n); o.value = n; sxSel.append(o); }
+		}
+		sxSel.value = sx.file;
+		showBank(sx.bank);
+		sxNote.textContent = sx.note || "";
+		sxNote.classList.toggle("error", !!sx.error);
+	};
+	const sxSend = m => api.message(p.name, {sysex: m});
+	sxSel.addEventListener("change", () => sxSend({load: sxSel.value}));
+	sxRefresh.addEventListener("click", () => sxSend({refresh: true}));
+	const sxSave = bank => {
+		const n = sxName.value.trim();
+		if (!n) return;
+		const file = n.replace(/\.syx$/i, "") + ".syx";
+		const exists = sx && sx.files.some(f => f.toLowerCase() === file.toLowerCase());
+		if (exists && !confirm(`Replace ${file}?`)) return;
+		sxSend({save: n, bank, overwrite: !!exists});
+	};
+	sxOne.addEventListener("click", () => sxSave(false));
+	sxAll.addEventListener("click", () => sxSave(true));
+	sxName.addEventListener("keydown", ev => { if (ev.key === "Enter") sxSave(false); });
 
 	// your own: the modulations a higher operator can make into a lower one, the feedback loop
 	const routing = el("div", "dx-routing");
@@ -349,6 +404,7 @@ psalm.register("dx7", (p, api) => {
 			if (!st) return;
 			if (st.name !== undefined) name.textContent = st.name;
 			if (st.presets) { mine = st.presets; showMine(); }
+			if (st.sysex) { sx = st.sysex; showSysex(); }
 		},
 		restyle() { drawAlgorithm(); drawEnvelopes(); },
 	};

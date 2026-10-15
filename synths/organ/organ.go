@@ -59,6 +59,7 @@ type Config struct {
 	Leakage    float64 // 0-1, the faint crosstalk of other tonewheels into a key, different on every key press
 	Drive      float64 // 0-1, the preamp driven into saturation
 	Level      float64 // output level (0 is treated as 1)
+	LFO2Rate   float64 // Hz of the matrix's LFO 2, a plain sine (0 is 1), running only when a slot uses it
 	// Filter is one filter on the sum of the drawbars (an organ has no voices), its envelope
 	// starting with the first key of a phrase, like the percussion (off unless its Type is set)
 	Filter voicefilter.Config
@@ -173,6 +174,7 @@ type Organ struct {
 	delay     []float64
 	dpos      int
 	lfoPhase  float64
+	lfo2Phase float64
 	silent    int                   // samples it has been silent: it rests once the scanner's delay is empty
 	expr      expression.Expression // the pitch bend (all the wheels); the mod wheel brings in the scanner vibrato
 }
@@ -273,7 +275,7 @@ func (o *Organ) Receive(value any, index int) {
 // ReceiveMessage plays the triggers of a poly synth (with a duration, or noteOn and noteOff) and
 // takes the settings: "drawbars" ("888000000"), "drawbar1" to "drawbar9" (0-8), "percussion"
 // (0 off, 1 second, 2 third), "percFast", "percSoft", "vibrato" (0 off, 1-3 V1-V3, 4-6 C1-C3),
-// "vibratoHz", "click", "clickRand", "leakage", "drive", "level", the "sustain" pedal (above 0.5 is
+// "vibratoHz", "lfo2Rate", "click", "clickRand", "leakage", "drive", "level", the "sustain" pedal (above 0.5 is
 // down), the filter (voicefilter: "filterType", "cutoff", "resonance", ...) and the matrix
 // (modmatrix: "mod1Src", "mod1Dest", "mod1Amount", ..., "ext1" to "ext4")
 func (o *Organ) ReceiveMessage(msg psalm.Message) {
@@ -318,6 +320,7 @@ func (o *Organ) ReceiveMessage(msg psalm.Message) {
 	msg.IfBoolVal("percSoft", func(b bool) { o.cfg.PercSoft = b })
 	msg.IfIntVal("vibrato", func(i int) { o.cfg.Vibrato = Vibrato(i) })
 	msg.IfFltVal("vibratoHz", func(f float64) { o.cfg.VibratoHz = f })
+	msg.IfFltVal("lfo2Rate", func(f float64) { o.cfg.LFO2Rate = f })
 	msg.IfFltVal("click", func(f float64) { o.cfg.Click = f })
 	msg.IfFltVal("clickRand", func(f float64) { o.cfg.ClickRand = f })
 	msg.IfFltVal("leakage", func(f float64) { o.cfg.Leakage = f })
@@ -467,6 +470,11 @@ func (o *Organ) Synthesize() {
 	filtered := o.filter.On()
 	envUsed := modded && mods.Uses(modmatrix.FilterEnv)
 	lfoUsed := modded && mods.Uses(modmatrix.LFO1)
+	lfo2Used := modded && mods.Uses(modmatrix.LFO2)
+	lfo2Inc := 1.0 / sr
+	if cfg.LFO2Rate > 0 {
+		lfo2Inc = cfg.LFO2Rate / sr
+	}
 	if modded {
 		mods.Values[modmatrix.Velocity] = o.velocity
 		mods.Values[modmatrix.Random] = o.random
@@ -531,6 +539,12 @@ func (o *Organ) Synthesize() {
 			mv := &mods.Values
 			mv[modmatrix.FilterEnv], mv[modmatrix.AmpEnv] = o.filter.Env(), math.Min(loud, 1)
 			mv[modmatrix.LFO1] = math.Sin(2 * math.Pi * o.lfoPhase)
+			if lfo2Used {
+				mv[modmatrix.LFO2] = math.Sin(2 * math.Pi * o.lfo2Phase)
+				if o.lfo2Phase += lfo2Inc; o.lfo2Phase >= 1 {
+					o.lfo2Phase--
+				}
+			}
 			mv[modmatrix.Wheel] = o.expr.Wheel()
 			mods.Eval(sr)
 			bend *= math.Exp2(mods.Mod(dPitch) / 12)

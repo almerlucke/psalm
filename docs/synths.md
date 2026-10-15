@@ -711,6 +711,9 @@ harmonics of the formant so it stays clean) crossfaded with the formant sines by
 sines only). `burst` and `burstRest` play N pulses and then rest M, for stuttering rhythms (0 burst is
 off); the count restarts at each note.
 
+With the filter on, the voice stays active after the amp envelope for the filter's release time (up to
+5 s) and the amp is applied before the filter, so a resonant filter rings out its tail.
+
 ## wavetable
 
 `synths/wavetable`
@@ -863,6 +866,14 @@ lfo 2 (plain sines, `lfo1Rate`, `lfo2Rate` in Hz, running when a slot uses them)
 random, wheel and `Ext1`...`Ext4` (value inputs 5 to 8, `wavetable.InExt1`); destinations `position`,
 `cutoff` (6 oct), `resonance`, `pitch` (24 st), `detune`, `spread`, `subLevel`, `level`, `warp`,
 `oscBLevel`, `oscBPosition`, `oscBDetune` and the two LFO rates (`wavetable.Dests`).
+
+### Oscillator B unison, additive tables
+
+Oscillator B can be stacked like oscillator A: `oscBUnison` (1-7) oscillators spread over `oscBSpread`
+cents (0 takes `detune`) and over the stereo width of `spread`, the level kept constant. In Go,
+`gen.Additive(harmonics, numFrames)` builds a table from the amplitudes of its partials (index 0 is the
+fundamental), and `gen.AdditiveMorph(from, to, numFrames)` crossfades between two partial lists over the
+frames, so moving the position morphs one spectrum into the other. No aliasing: every harmonic is exact.
 
 ## piano
 
@@ -1193,6 +1204,9 @@ LFO 1 (the scanner's), velocity and key of the last note, a random value per phr
 `resonance`, `percLevel`, `leakage` and `pitch`. There is no LFO 2. The rotary of a Leslie is the
 `rotary` effect after the organ.
 
+The matrix has a second LFO: `lfo2Rate` (Hz, default 1) is a plain sine, available as the source LFO 2
+next to the scanner's, running only when a slot uses it.
+
 ## waveguide
 
 `synths/waveguide`
@@ -1319,6 +1333,10 @@ inputs 3-6, `modal.InExt1`) to `pitch`, `decay`, `hardness`, `position`, `tremol
 `noise`, `level`, `cutoff`, `resonance`, `inharmonicity` and `highDamping`. The destinations that shape
 the strike are read when the note is struck, from the sources known then.
 
+The matrix has LFO 2, a plain sine from the strike at `lfo2Rate` Hz (default 1), running when a slot uses
+it. The pitch from the matrix is followed every 8 samples (re-tuning the modes only when pitch is a
+destination), so a fast LFO on pitch is a smooth vibrato.
+
 ## drumsynth
 
 `synths/drumsynth`
@@ -1418,6 +1436,16 @@ vibrato), lfo 2 (a plain sine at 2 Hz), velocity, key, random, wheel and ext 1-4
 note starts: a clipped click for t and k, a swell of hiss for s, sh and f. It sits in the middle and
 is not shaped by the vowel or the filter, which makes syllables of the notes. The default is none.
 
+### Words and formant shift
+
+The vocal synth can sing a word. Set `Word` (or send `word: "ta ke so"`) and each new note takes the
+next syllable and loops at the end. A syllable is a consonant (`t k s sh f`, or none) plus a vowel
+(`a e i o u`); `vocal.ParseWord` turns text into syllables. With `WordSync` (`wordSync`) beats per
+syllable, a held note goes on to the next syllables on the tempo. In a Poly the voices share one place
+in the word, so a note sings the next syllable whichever voice it lands on. `syllable` (alias
+`wordStep`) sets the next syllable to sing. `formantShift` scales every formant: below 1 is a bigger
+throat (a giant), above 1 a smaller one (a child). Presets: `chant`, `giant` and `child`.
+
 ## pd
 
 `synths/pd`
@@ -1506,6 +1534,10 @@ first. The function generator can cycle (`cycle`, `cycleRate` in Hz): it retrigg
 never sustains, and keeps the voice sounding until the key is released. `strike` (0-1) lights the
 vactrol at once at a note, so the gate opens with a hit even with a slow attack. `color` and `modWave`
 are messages too.
+
+`strikeDecay` (seconds): the hit of `strike` decays on its own envelope (by 60 dB in that time) instead of
+the lamp's `response`, so a long gate can have a short, sharp hit. 0 keeps the old lamp kick.
+`lfo2Sync` (beats per cycle, 0 is off) makes the second LFO follow the tempo like `lfoSync`.
 
 ## supersaw
 

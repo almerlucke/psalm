@@ -56,6 +56,7 @@ type Config struct {
 	Excitation    Excitation // what rings the modes (Strike is 0)
 	Inharmonicity float64    // 0-1: stretches the modes' ratios, the higher ones more (stiff metal, glass)
 	LFORate       float64    // Hz of the matrix's LFO 1 (0 is 5)
+	LFO2Rate      float64    // Hz of the matrix's LFO 2, a plain sine from the strike (0 is 1), running only when a slot uses it
 	// Filter is a filter after the modes, its envelope starting at the strike (off unless its Type is set)
 	Filter voicefilter.Config
 	Mods   [modmatrix.Slots]modmatrix.Slot // the matrix: a source to a destination (see Dests) over an amount
@@ -106,6 +107,7 @@ type Voice struct {
 	random    float64
 	ampEnv    float64 // the loudness of the note, falling with the decay (a source of the matrix)
 	lfoPhase  float64
+	lfo2Phase float64
 	bowEnv    float64 // how hard the bow presses
 	bowLP     float64
 	bowSigma  float64
@@ -145,6 +147,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("excitation", func(i int) { v.cfg.Excitation = Excitation(max(0, min(i, int(Burst)))) })
 	msg.IfFltVal("inharmonicity", func(f float64) { v.cfg.Inharmonicity = f })
 	msg.IfFltVal("lfoRate", func(f float64) { v.cfg.LFORate = f })
+	msg.IfFltVal("lfo2Rate", func(f float64) { v.cfg.LFO2Rate = f })
 	envelope.Seconds(msg, "amp", nil, &v.cfg.Decay, &v.cfg.Release)
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
@@ -207,7 +210,7 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 	if v.mods.Uses(modmatrix.Random) {
 		v.random = v.Rand().Float64()*2 - 1
 	}
-	v.ampEnv, v.lfoPhase, v.pitchMod = 1, 0, 0
+	v.ampEnv, v.lfoPhase, v.lfo2Phase, v.pitchMod = 1, 0, 0, 0
 	v.prime()
 	mods := v.mods
 	pos := cfg.Position
@@ -323,6 +326,16 @@ func (v *Voice) prime() {
 	}
 }
 
+// turn tunes every mode to the bend
+func (v *Voice) turn(bend float64) {
+	for k := range v.n {
+		m := &v.modes[k]
+		w := math.Min(m.w*bend, math.Pi*0.96)
+		m.c, m.s = m.r*math.Cos(w), m.r*math.Sin(w)
+	}
+	v.bentTo = bend
+}
+
 // keyValue is the note for the matrix: -1 to 1, five octaves below middle C to five above
 func (v *Voice) keyValue() float64 {
 	return math.Max(-1, math.Min(math.Log2(v.freq/middleC)/5, 1))
@@ -364,6 +377,12 @@ func (v *Voice) Synthesize() {
 	filtered := v.filter.On()
 	envUsed := modded && mods.Uses(modmatrix.FilterEnv)
 	lfoUsed := modded && mods.Uses(modmatrix.LFO1)
+	lfo2Used := modded && mods.Uses(modmatrix.LFO2)
+	lfo2Inc := 1 / sr
+	if cfg.LFO2Rate > 0 {
+		lfo2Inc = cfg.LFO2Rate / sr
+	}
+	pitchOn := modded && mods.Targets(dPitch)
 	bow := cfg.Excitation == Bow
 	lfoInc := 5 / sr
 	if cfg.LFORate > 0 {
@@ -372,18 +391,13 @@ func (v *Voice) Synthesize() {
 	decayCoef := math.Pow(10, -3/(math.Max(0.005, cfg.Decay)*sr))
 	damp := v.released && cfg.Release > 0
 	knockCoef := math.Exp(-1 / (0.002 * sr))
-	// the bend turns every mode (once a buffer, the modes ring on smoothly)
+	// the bend turns every mode (the modes ring on smoothly; the matrix's pitch every 8 samples)
 	v.expr.Settle()
 	if modded {
 		v.pitchMod = mods.Mod(dPitch)
 	}
 	if bend := v.expr.Ratio() * math.Exp2(v.pitchMod/12); bend != v.bentTo || v.bentTo == 0 {
-		for k := range v.n {
-			m := &v.modes[k]
-			w := math.Min(m.w*bend, math.Pi*0.96)
-			m.c, m.s = m.r*math.Cos(w), m.r*math.Sin(w)
-		}
-		v.bentTo = bend
+		v.turn(bend)
 	}
 	// the tremolo: the motor's, or the wheel's
 	tremolo := cfg.Tremolo
@@ -433,8 +447,21 @@ func (v *Voice) Synthesize() {
 					v.lfoPhase--
 				}
 			}
+			if lfo2Used {
+				mv[modmatrix.LFO2] = math.Sin(2 * math.Pi * v.lfo2Phase)
+				if v.lfo2Phase += lfo2Inc; v.lfo2Phase >= 1 {
+					v.lfo2Phase--
+				}
+			}
 			mods.Eval(sr)
 			dLev, dTrem = mods.Mod(dLevel), mods.Mod(dTremoloDepth)
+			// the pitch follows the matrix every 8 samples, so a fast LFO glides instead of stepping
+			if pitchOn && i&7 == 0 {
+				v.pitchMod = mods.Mod(dPitch)
+				if bend := v.expr.Ratio() * math.Exp2(v.pitchMod/12); bend != v.bentTo {
+					v.turn(bend)
+				}
+			}
 		}
 		s := 0.0
 		for k := range v.n {

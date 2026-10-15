@@ -58,10 +58,12 @@ func Describe(cfg Config) params.Set {
 		params.K("Gate", "response", 0.01, 4, response, params.Exp(), params.Unit("s")),
 		params.K("Gate", "color", 0, 1, color),
 		params.K("Gate", "strike", 0, 1, cfg.Strike),
+		params.K("Gate", "strikeDecay", 0, 2, cfg.StrikeDecay, params.Unit("s"), params.Label("strike decay")),
 
 		params.S("Function", "cycle", cfg.Cycle),
 		params.K("Function", "cycleRate", 0.05, 40, cycleRate, params.Exp(), params.Unit("Hz"), params.Label("cycle rate")),
 		params.K("Function", "lfo2Rate", 0.05, 40, lfo2, params.Exp(), params.Unit("Hz"), params.Label("lfo 2 rate")),
+		params.K("Function", "lfo2Sync", 0, 32, cfg.LFO2Sync, params.Unit("beats"), params.Label("lfo 2 beats")),
 
 		params.K("Output", "level", 0, 10, level),
 	}}

@@ -17,6 +17,9 @@ var Presets = map[string]func() Config{
 	"whisper":     Whisper,
 	"alien":       Alien,
 	"babble":      Babble,
+	"chant":       Chant,
+	"giant":       Giant,
+	"child":       Child,
 }
 
 // Solo is one singer with a natural vibrato
@@ -110,4 +113,40 @@ func Babble() Config {
 	return Config{Vowel: 2, VowelGlide: 0.12, VowelRate: 3, VowelDepth: 2, VowelSteps: true, Brightness: 0.45,
 		Breath: 0.15, Attack: 0.2, Release: 0.6, VibratoRate: 5, VibratoDepth: 0.1, Singers: 12, Detune: 30,
 		Spread: 1, Level: 1.98}
+}
+
+func mustWord(text string) []Syllable {
+	w, err := ParseWord(text)
+	if err != nil {
+		panic(err)
+	}
+	return w
+}
+
+// Chant sings "ta ke so fu": every note the next syllable of the word, looping
+func Chant() Config {
+	cfg := Solo()
+	cfg.Word = mustWord("ta ke so fu")
+	cfg.Release, cfg.Steady, cfg.Brightness = 0.15, true, 0.7
+	cfg.ConsonantLevel, cfg.Level = 0.15, 1.2
+	return cfg
+}
+
+// Giant is a deep slow voice, the formants shifted down, speaking "sho-ku-ta" on the beat
+func Giant() Config {
+	cfg := Monks()
+	cfg.Word = mustWord("sho ku ta")
+	cfg.FormantShift = 0.75
+	cfg.Singers, cfg.Detune = 3, 8
+	cfg.WordSync = 1
+	cfg.Level = 0.7
+	return cfg
+}
+
+// Child is a small bright voice (the formants shifted up) on "i"
+func Child() Config {
+	cfg := Solo()
+	cfg.Vowel, cfg.FormantShift, cfg.Brightness = 2, 1.3, 0.6
+	cfg.Level = 1.9
+	return cfg
 }

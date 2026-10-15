@@ -67,6 +67,9 @@ type Config struct {
 	// Drums is the folder of the drum samples of the drum machine (see drummachine.go); "" is
 	// assets/sounds/drums. Without the samples the drum machine is left out
 	Drums string
+	// SysEx is the folder of SysEx files of the DX7 editor (list, load as the bank, save into); ""
+	// leaves it off
+	SysEx string
 }
 
 var (
@@ -109,7 +112,7 @@ func Kinds(cfg Config) []patcher.Kind {
 	kinds = append(kinds,
 		synth("subtractive", sorted(subtractive.Presets), func(n string, v int) psalm.Modular { return subtractive.NewPoly(subtractive.Presets[n](), v) },
 			func(n string) params.Set { return subtractive.Describe(subtractive.Presets[n]()) }, v),
-		dxKind(v),
+		dxKind(v, cfg.SysEx),
 		synth("wavetable", sorted(wavetable.Presets), func(n string, v int) psalm.Modular { return wavetable.NewPoly(wavetable.Presets[n](table), v) },
 			func(n string) params.Set { return wavetable.Describe(wavetable.Presets[n](table)) }, v),
 		synth("supersaw", sorted(supersaw.Presets), func(n string, v int) psalm.Modular { return supersaw.NewPoly(supersaw.Presets[n](), v) },
@@ -229,7 +232,7 @@ func Kinds(cfg Config) []patcher.Kind {
 }
 
 // dxKind is the DX7, with its own editor
-func dxKind(voices int) patcher.Kind {
+func dxKind(voices int, sysex string) patcher.Kind {
 	names := sorted(dx.Presets)
 	patch := func(n string) dx.Patch {
 		p := dx.Presets[n]()
@@ -245,7 +248,11 @@ func dxKind(voices int) patcher.Kind {
 				for _, n := range names {
 					bank = append(bank, patch(n))
 				}
-				return dxeditor.Add(page, name, synth, patch(preset), dxeditor.Bank(bank))
+				opts := []dxeditor.Option{dxeditor.Bank(bank)}
+				if sysex != "" {
+					opts = append(opts, dxeditor.SysExFolder(sysex))
+				}
+				return dxeditor.Add(page, name, synth, patch(preset), opts...)
 			}}, nil
 	}}
 }
