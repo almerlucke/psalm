@@ -318,6 +318,7 @@ type Param struct {
 
 	value   atomic.Uint64 // the value asked for (float64 bits)
 	dirty   atomic.Bool
+	placed  atomic.Bool // placed (Place): the glide goes there, nothing is sent
 	presses atomic.Int64
 
 	// the audio thread's side
@@ -348,6 +349,19 @@ func (par *Param) Value() float64 { return math.Float64frombits(par.value.Load()
 // control again
 func (par *Param) Set(v float64) {
 	par.set(v)
+	par.caught.Store(false)
+}
+
+// Place puts the control at a value without sending it: the page shows it, the target is left as it
+// is (it was made at that value some other way), and a value asked for but not yet sent is dropped.
+// From any goroutine
+func (par *Param) Place(v float64) {
+	if par.Kind == ButtonKind || par.Kind == MeterKind {
+		return
+	}
+	par.value.Store(math.Float64bits(par.clamp(v)))
+	par.placed.Store(true)
+	par.dirty.Store(false)
 	par.caught.Store(false)
 }
 
@@ -421,6 +435,11 @@ func (par *Param) tick(dt float64) {
 		return
 	}
 	if par.target == nil {
+		par.dirty.Store(false)
+		return
+	}
+	if par.placed.Swap(false) {
+		par.pos = par.Position(par.Value())
 		par.dirty.Store(false)
 		return
 	}

@@ -309,3 +309,125 @@ func TestNoteMessage(t *testing.T) {
 		t.Errorf("the note sounding didn't take its message: %g", v.pitch)
 	}
 }
+
+func trigger(p *Poly[*mockVoice], id string, duration float64) {
+	msg := psalm.Message{"command": "trigger", "tick": psalm.CtrlTick{}, "amplitude": 1.0, "message": psalm.Message{}}
+	if id != "" {
+		msg["noteOn"] = id
+	} else {
+		msg["duration"] = duration
+	}
+	p.ReceiveMessage(msg)
+}
+
+func mockPoly(n int) (*Poly[*mockVoice], []*mockVoice) {
+	vs := make([]*mockVoice, n)
+	for i := range vs {
+		vs[i] = newMockVoice()
+	}
+	return New(psalm.Stereo, vs), vs
+}
+
+// the voices of another Poly replace its own: the notes sounding are cut (with a fade, no click),
+// the new voices play, the other is left without
+func TestAdoptVoices(t *testing.T) {
+	p, old := mockPoly(3)
+	trigger(p, "a", 0)
+	trigger(p, "b", 0)
+	other, fresh := mockPoly(5)
+	if !p.AdoptVoices(other) {
+		t.Fatal("a Poly of the same voices should be adopted")
+	}
+	if len(p.activePool) != 0 || len(p.freePool) != 5 || len(other.freePool)+len(other.activePool) != 0 {
+		t.Fatalf("pools after: %d active, %d free (other %d)", len(p.activePool), len(p.freePool), len(other.freePool))
+	}
+	for _, v := range old {
+		if slices.Contains(fresh, v) {
+			t.Fatal("an old voice is still there")
+		}
+	}
+	if !p.hasFadeOut {
+		t.Error("the notes that sounded should fade out, not stop")
+	}
+	p.Synthesize() // plays the fade
+	if p.hasFadeOut {
+		t.Error("the fade should be played once")
+	}
+	trigger(p, "c", 0)
+	if len(p.activePool) != 1 || !slices.ContainsFunc(fresh, func(v *mockVoice) bool { return v.IsActive() }) {
+		t.Error("the adopted voices should play")
+	}
+	p.CallVoices(func(v *mockVoice) {
+		if slices.Contains(old, v) {
+			t.Error("a message reaches an old voice")
+		}
+	})
+	// a Poly of another kind of voice, or of another number of channels, is not taken
+	if p.AdoptVoices(New[*mockVoice](psalm.Mono, []*mockVoice{newMockVoice()})) {
+		t.Error("another number of channels should not be adopted")
+	}
+	if p.AdoptVoices(p) {
+		t.Error("itself should not be adopted")
+	}
+}
+
+// mono and legato stay as they were, the notes held are let go, and the one voice is one of the new
+func TestAdoptVoicesMono(t *testing.T) {
+	p, old := mockPoly(3)
+	p.SetMono(true, true)
+	trigger(p, "a", 0)
+	trigger(p, "b", 0)
+	if len(p.held) != 2 {
+		t.Fatalf("held %d", len(p.held))
+	}
+	other, fresh := mockPoly(2)
+	if !p.AdoptVoices(other) {
+		t.Fatal("not adopted")
+	}
+	if m, l := p.Mono(); !m || !l {
+		t.Errorf("mono %v legato %v, want both kept", m, l)
+	}
+	if len(p.held) != 0 || len(p.timers) != 0 {
+		t.Errorf("held %d, timers %d", len(p.held), len(p.timers))
+	}
+	if p.monoVoice == nil || !slices.Contains(fresh, p.monoVoice.voice) || slices.Contains(old, p.monoVoice.voice) {
+		t.Fatal("the mono voice should be one of the adopted")
+	}
+	trigger(p, "c", 0)
+	if !p.monoVoice.voice.IsActive() || len(p.held) != 1 {
+		t.Error("it should play mono on the new voice")
+	}
+	// not mono, it stays so
+	q, _ := mockPoly(2)
+	r, _ := mockPoly(2)
+	q.AdoptVoices(r)
+	if m, _ := q.Mono(); m || q.monoVoice != nil {
+		t.Error("a polyphonic synth should stay so")
+	}
+}
+
+// the swap makes the synth off the calling goroutine, and the last one asked for wins
+func TestSwap(t *testing.T) {
+	p, _ := mockPoly(2)
+	built := map[string]*Poly[*mockVoice]{}
+	sw := NewSwap(func(f func()) { f() }, p, func(name string) psalm.Modular {
+		m, _ := mockPoly(3 + len(name))
+		built[name] = m
+		return m
+	})
+	if !sw.Can() {
+		t.Fatal("a Poly takes voices")
+	}
+	sw.Load("ab")
+	sw.Wait()
+	if n := len(p.freePool); n != 5 {
+		t.Errorf("%d voices after the swap, want 5", n)
+	}
+	// something that is not an Adopter does nothing
+	plain := NewSwap(nil, newMockVoice(), func(string) psalm.Modular { t.Error("built"); return nil })
+	if plain.Can() {
+		t.Error("a voice takes no voices")
+	}
+	plain.Load("x")
+	plain.Wait()
+}

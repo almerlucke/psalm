@@ -785,6 +785,29 @@ ed.Factory(slices.Sorted(maps.Keys(subtractive.Presets)), func(n string) params.
 ed.Keep("presets/subtractive")
 ```
 
+`Factory` only moves the controls, and a preset is more than its description: a waveguide string's model
+(pluck, bow, membrane, pipe), a modal synth's mode list, a vocal's word and the matrix slots are not
+settings the editor has controls for, so choosing a bowed preset while the page started on a plucked one
+leaves the synth plucked. `ed.FactoryApply(names, describe, apply)` does better: choosing a preset
+places the controls at the described values without sending them (`Param.Place`), then calls
+`apply(name)`. With a `poly.Swap` that builds the synth at the preset off the audio thread, `apply` swaps
+the new voices into the live synth between two buffers (`Poly.AdoptVoices`), so the sound is exactly
+the synth made at that preset. Notes sounding fade out, and mono and legato stay as set.
+`Editor.Base()` is the preset chosen last. The patcher does this for every polyphonic synth in its
+catalog (`Made.Rebuild`) and records the chosen preset on the node, so a saved patch keeps it. Presets of
+your own still go through `Apply` (their settings on the synth as it is). The organ and the piano are
+single modules with no voices to swap and keep the settings-only load (a few of their presets differ
+by up to 6 dB or a few percent in pitch when chosen on a page). In code:
+
+```go
+swap := poly.NewSwap(p.Do, synth, func(name string) psalm.Modular { return waveguide.NewPoly(waveguide.Presets[name](), 12) })
+ed.FactoryApply(names, describe, swap.Load)
+```
+
+A test in the patcher catalog (`TestFactoryPresetsAreThePresetsMade`; `AUDIT=1` runs every preset of
+every synth) chooses presets through the editor's own load path and compares the sound with the synth
+made at that preset.
+
 The settings start where the description has them and are sent there when the patch starts;
 `panel.NoDefault()` keeps the synth's own until one moves. `params/paramstest` checks a description:
 every key a message the module takes, every value landing where it says. `cmd/examples/editors` has

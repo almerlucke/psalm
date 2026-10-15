@@ -85,5 +85,38 @@ func TestPresetsPlay(t *testing.T) {
 	}
 }
 
+// the page started on a plucked string: choosing a bow (violin) or a pipe (altoFlute) in its editor
+// gives that instrument (a short noise burst and then nothing would be the pluck's settings moved
+// to a bow's), and the controls show the preset
+func TestChosenPresetIsThePreset(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	p := psalm.New(paneltest.NewEngine(t))
+	in, err := build(p, options{start: "guitar", voices: 4, hall: 0, presetDir: t.TempDir(), theme: panel.Themes["default"]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	for _, name := range []string{"violin", "altoFlute", "guitar"} {
+		if err := in.editor.Presets().Load(name, false); err != nil {
+			t.Fatal(err)
+		}
+		in.swap.Wait()
+		if in.editor.Base() != name {
+			t.Errorf("%s: the editor's base is %q", name, in.editor.Base())
+		}
+		in.run("Chord")
+		time.Sleep(500 * time.Millisecond) // the burst of a pluck is over, a bow or a pipe goes on
+		if got := peakOf(p, in, 600*time.Millisecond); got < 0.01 && name != "guitar" {
+			t.Errorf("%s: peak %v half a second into a held chord, want a sustained sound", name, got)
+		}
+		in.stop()
+		time.Sleep(300 * time.Millisecond)
+	}
+}
+
 func float32ToBits(f float32) uint32   { return math.Float32bits(f) }
 func float32FromBits(u uint32) float32 { return math.Float32frombits(u) }

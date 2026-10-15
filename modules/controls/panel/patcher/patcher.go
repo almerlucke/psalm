@@ -35,6 +35,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/editor"
 	"github.com/almerlucke/psalm/modules/effects/gain"
+	"github.com/almerlucke/psalm/modules/poly"
 	"github.com/almerlucke/psalm/params"
 )
 
@@ -102,6 +103,11 @@ type Made struct {
 	// Describe describes its settings at a preset (nil: it has none to edit or modulate); the
 	// presets of the kind are its factory presets in its editor
 	Describe func(preset string) params.Set
+	// Rebuild makes another module of the kind at a preset (off the audio thread; nil: none): choosing a
+	// factory preset in the editor swaps its voices into Module (poly.Swap), so Module is what the
+	// preset makes and not Module as the settings of the preset move it; a Module that takes no voices
+	// (organ, piano) keeps the settings moving
+	Rebuild func(preset string) psalm.Modular
 	// Edit makes an editor of its own on its page instead (the DX7's); it returns the settings
 	Edit func(page *panel.Panel, name, preset string) Settings
 	// Added returns the modules its editor added to the patch (a step sequencer playing the module),
@@ -152,6 +158,7 @@ type node struct {
 	made     *Made
 	page     *panel.Panel
 	settings Settings
+	swap     *poly.Swap        // a factory preset of the editor makes the module again (nil: it moves the settings)
 	set      params.Set        // its settings described (for modulation: their ranges)
 	texts    map[string]string // its settings of text as they are
 	textErr  map[string]string // what was wrong with one typed (it kept the one before)
@@ -434,7 +441,25 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 		} else {
 			ed := editor.Add(n.page, kindName, made.Module, n.set, panel.NoDefault())
 			if len(k.Presets) > 0 {
-				ed.Factory(k.Presets, made.Describe)
+				var sw *poly.Swap
+				if made.Rebuild != nil {
+					sw = poly.NewSwap(pt.p.Do, made.Module, func(name string) psalm.Modular {
+						var m psalm.Modular
+						pt.p.Within(func() { m = made.Rebuild(name) })
+						return m
+					})
+				}
+				n.swap = sw
+				if sw == nil || !sw.Can() {
+					ed.Factory(k.Presets, made.Describe)
+				} else {
+					ed.FactoryApply(k.Presets, made.Describe, func(name string) {
+						pt.mu.Lock()
+						n.Preset = name // what the module is made at, for a patch kept
+						pt.mu.Unlock()
+						sw.Load(name)
+					})
+				}
 			}
 			if pt.presets != "" {
 				_ = ed.Keep(filepath.Join(pt.presets, kindName))
@@ -1255,6 +1280,22 @@ func (pt *Patcher) Cables() []Cable {
 		cs = append(cs, *c)
 	}
 	return cs
+}
+
+// Wait waits for the factory presets chosen in the editors to be in: a module is made at the
+// preset off the audio thread, then swapped in between two buffers
+func (pt *Patcher) Wait() {
+	pt.mu.Lock()
+	var swaps []*poly.Swap
+	for _, n := range pt.nodes {
+		if n.swap != nil {
+			swaps = append(swaps, n.swap)
+		}
+	}
+	pt.mu.Unlock()
+	for _, s := range swaps {
+		s.Wait()
+	}
 }
 
 // Module returns the module of a node (nil for none)

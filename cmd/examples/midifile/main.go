@@ -607,7 +607,7 @@ func main() {
 		// the editor of every sound a channel plays (made here, before it plays)
 		for _, pt := range parts {
 			for _, s := range pt.built {
-				page, added := editPage(s, t, *presetDir)
+				page, added := editPage(p, s, t, *presetDir)
 				for _, m := range added {
 					p.Add(m)
 				}
@@ -641,7 +641,7 @@ func main() {
 						log.Printf("channel %d: %v", pt.channel, err)
 						return
 					}
-					page, added := editPage(s, t, *presetDir) // its editor, made here: its presets read from disk
+					page, added := editPage(p, s, t, *presetDir) // its editor, made here: its presets read from disk
 					s.page = page
 					p.Do(func() {
 						if _, ok := pt.built[name]; !ok {

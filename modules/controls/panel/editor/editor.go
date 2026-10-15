@@ -11,6 +11,7 @@ package editor
 
 import (
 	_ "embed"
+	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
@@ -41,6 +42,7 @@ type Editor struct {
 	parts map[string]*panel.Param // by message key ("cutoff", "ampAttack")
 	to    Receiver
 	store *Store
+	base  atomic.Value // the factory preset chosen last (string)
 }
 
 // param is a setting as the page sees it
@@ -153,6 +155,31 @@ func (e *Editor) Factory(names []string, describe func(name string) params.Set) 
 	return e
 }
 
+// FactoryApply is Factory for a synth that is more than its settings: choosing a preset moves the
+// controls to its description without sending it (the synth is not told setting by setting), and
+// calls apply with its name to make the synth that preset (poly.Swap: build one, swap its voices in).
+// A preset is made of more than a description says (the model of a string, a list of modes, a
+// word), which messages of settings leave as the preset before had it. The controls end up showing
+// the described values, and the synth is the one made at the preset. apply is called from the
+// goroutine of the load (the audio thread when the page chose it): it must not wait
+func (e *Editor) FactoryApply(names []string, describe func(name string) params.Set, apply func(name string)) *Editor {
+	e.store.SetFactory(names, func(name string) {
+		e.Place(describe(name))
+		e.base.Store(name)
+		if apply != nil {
+			apply(name)
+		}
+	})
+	return e
+}
+
+// Base returns the factory preset chosen last with FactoryApply ("" for none): what the synth is
+// made at, the settings kept apart from it are the ones moved since
+func (e *Editor) Base() string {
+	s, _ := e.base.Load().(string)
+	return s
+}
+
 // Keep keeps presets of your own in a folder (made when it isn't there): the page saves the
 // settings under a name, loads them back, deletes them
 func (e *Editor) Keep(dir string) error { return e.store.keep(dir) }
@@ -172,10 +199,15 @@ func (e *Editor) Setting(key string) *panel.Param { return e.parts[key] }
 
 // Load moves every setting to where another description has them (a preset of the synth): the
 // synth gets them as they move. From any goroutine
-func (e *Editor) Load(set params.Set) {
+func (e *Editor) Load(set params.Set) { e.move(set, (*panel.Param).Set) }
+
+// Place is Load without sending: the controls show the description, the synth is left as it is
+func (e *Editor) Place(set params.Set) { e.move(set, (*panel.Param).Place) }
+
+func (e *Editor) move(set params.Set, set1 func(*panel.Param, float64)) {
 	for _, p := range set.Params {
 		if c := e.parts[p.Key]; c != nil {
-			c.Set(p.Value)
+			set1(c, p.Value)
 		}
 	}
 	for _, env := range set.Envelopes {
@@ -183,7 +215,7 @@ func (e *Editor) Load(set params.Set) {
 		for i := range len(env.Stages) {
 			if st, ok := stages[env.Stages[i]]; ok {
 				if c := e.parts[env.Prefix+st.key]; c != nil {
-					c.Set(values[env.Stages[i]])
+					set1(c, values[env.Stages[i]])
 				}
 			}
 		}

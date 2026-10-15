@@ -209,3 +209,24 @@ func TestDuplicateNamePanics(t *testing.T) {
 	}()
 	pn.Toggle("X", nil)
 }
+
+// Place puts a control at a value the page shows without sending it, and drops what was asked
+// for but not yet sent (also with a glide)
+func TestPlace(t *testing.T) {
+	pn, tk := newPanel()
+	rec := newRecorder()
+	level := pn.Fader("Level", 0, 1, Linear, Input(rec, 1), Default(0.2), Smooth(0.05))
+	tk.tick(1)
+	n := len(rec.got)
+	level.Set(0.9)
+	level.Place(0.5)
+	tk.tick(50)
+	if level.Value() != 0.5 || len(rec.got) != n {
+		t.Fatalf("placed at %v, sent %d more", level.Value(), len(rec.got)-n)
+	}
+	level.Set(0.6) // moves from where it was placed
+	tk.tick(1)
+	if len(rec.got) == n {
+		t.Error("a control moved after being placed should send")
+	}
+}

@@ -85,6 +85,7 @@ type instrument struct {
 	mix    *mixer.Mixer
 	ctl    *panel.Panel
 	editor *editor.Editor
+	swap   *poly.Swap          // a preset chosen on the page is swapped in
 	run    func(phrase string) // plays a test phrase
 	stop   func()              // ends the phrase and lets go of the notes
 }
@@ -162,7 +163,14 @@ func build(p *psalm.Psalm, o options) (*instrument, error) {
 
 	in.ctl.Section("Preset")
 	in.editor = editor.Add(in.ctl, "Waveguide", in.synth, waveguide.Describe(waveguide.Presets[o.start]()), panel.NoDefault())
-	in.editor.Factory(names, func(n string) params.Set { return waveguide.Describe(waveguide.Presets[n]()) })
+	// a preset is the synth made at it, its voices swapped in (a model, a bow or a pipe isn't a setting
+	// of the one before)
+	in.swap = poly.NewSwap(p.Do, in.synth, func(n string) psalm.Modular {
+		var m psalm.Modular
+		p.Within(func() { m = waveguide.NewPoly(waveguide.Presets[n](), o.voices) })
+		return m
+	})
+	in.editor.FactoryApply(names, func(n string) params.Set { return waveguide.Describe(waveguide.Presets[n]()) }, in.swap.Load)
 	if err := in.editor.Keep(filepath.Join(o.presetDir, "waveguide")); err != nil {
 		return nil, err
 	}

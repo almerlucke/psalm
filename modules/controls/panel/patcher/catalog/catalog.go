@@ -81,7 +81,8 @@ var (
 // synth is a kind of synth: its presets (sorted), how one is made at a preset and described
 func synth(name string, presets []string, make func(preset string, voices int) psalm.Modular, describe func(preset string) params.Set, voices int) patcher.Kind {
 	return patcher.Kind{Name: name, Group: "Synths", Presets: presets, Ins: note, Outs: outs, Make: func(preset string) (*patcher.Made, error) {
-		return &patcher.Made{Module: make(preset, voices), Describe: describe}, nil
+		return &patcher.Made{Module: make(preset, voices), Describe: describe,
+			Rebuild: func(preset string) psalm.Modular { return make(preset, voices) }}, nil
 	}}
 }
 

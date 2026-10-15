@@ -33,30 +33,43 @@ import (
 type describer struct {
 	presets  []string
 	describe func(preset string) params.Set
+	build    func(preset string) psalm.Modular // the synth made at a preset (nil: its settings move)
 }
 
-func describing[T any](presets map[string]T, describe func(preset string) params.Set) describer {
-	return describer{presets: slices.Sorted(maps.Keys(presets)), describe: describe}
+func describing[T any](presets map[string]T, describe func(preset string) params.Set, build ...func(preset string) psalm.Modular) describer {
+	d := describer{presets: slices.Sorted(maps.Keys(presets)), describe: describe}
+	if len(build) > 0 {
+		d.build = build[0]
+	}
+	return d
 }
 
 // describers are the synths the editor of a channel describes (the DX7 has its own editor)
 var describers = map[string]describer{
-	"piano":       describing(piano.Presets, func(n string) params.Set { return piano.Describe(piano.Presets[n]()) }),
-	"organ":       describing(organ.Presets, func(n string) params.Set { return organ.Describe(organ.Presets[n]()) }),
-	"waveguide":   describing(waveguide.Presets, func(n string) params.Set { return waveguide.Describe(waveguide.Presets[n]()) }),
-	"modal":       describing(modal.Presets, func(n string) params.Set { return modal.Describe(modal.Presets[n]()) }),
-	"westcoast":   describing(westcoast.Presets, func(n string) params.Set { return westcoast.Describe(westcoast.Presets[n]()) }),
-	"subtractive": describing(subtractive.Presets, func(n string) params.Set { return subtractive.Describe(subtractive.Presets[n]()) }),
-	"supersaw":    describing(supersaw.Presets, func(n string) params.Set { return supersaw.Describe(supersaw.Presets[n]()) }),
+	"piano": describing(piano.Presets, func(n string) params.Set { return piano.Describe(piano.Presets[n]()) }),
+	"organ": describing(organ.Presets, func(n string) params.Set { return organ.Describe(organ.Presets[n]()) }),
+	"waveguide": describing(waveguide.Presets, func(n string) params.Set { return waveguide.Describe(waveguide.Presets[n]()) },
+		func(n string) psalm.Modular { return waveguide.NewPoly(waveguide.Presets[n](), 12) }),
+	"modal": describing(modal.Presets, func(n string) params.Set { return modal.Describe(modal.Presets[n]()) },
+		func(n string) psalm.Modular { return modal.NewPoly(modal.Presets[n](), 16) }),
+	"westcoast": describing(westcoast.Presets, func(n string) params.Set { return westcoast.Describe(westcoast.Presets[n]()) },
+		func(n string) psalm.Modular { return westcoast.NewPoly(westcoast.Presets[n](), 12) }),
+	"subtractive": describing(subtractive.Presets, func(n string) params.Set { return subtractive.Describe(subtractive.Presets[n]()) },
+		func(n string) psalm.Modular { return subtractive.NewPoly(subtractive.Presets[n](), 12) }),
+	"supersaw": describing(supersaw.Presets, func(n string) params.Set { return supersaw.Describe(supersaw.Presets[n]()) },
+		func(n string) psalm.Modular { return supersaw.NewPoly(supersaw.Presets[n](), 12) }),
 	"wavetable": describing(wavetable.Presets, func(n string) params.Set {
 		return wavetable.Describe(wavetable.Presets[n](wavetableTable))
-	}),
-	"pd":     describing(pd.Presets, func(n string) params.Set { return pd.Describe(pd.Presets[n]()) }),
-	"pulsar": describing(pulsar.Presets, func(n string) params.Set { return pulsar.Describe(pulsar.Presets[n]()) }),
-	"vocal":  describing(vocal.Presets, func(n string) params.Set { return vocal.Describe(vocal.Presets[n]()) }),
+	}, func(n string) psalm.Modular { return wavetable.NewPoly(wavetable.Presets[n](wavetableTable), 12) }),
+	"pd": describing(pd.Presets, func(n string) params.Set { return pd.Describe(pd.Presets[n]()) },
+		func(n string) psalm.Modular { return pd.NewPoly(pd.Presets[n](), 12) }),
+	"pulsar": describing(pulsar.Presets, func(n string) params.Set { return pulsar.Describe(pulsar.Presets[n]()) },
+		func(n string) psalm.Modular { return pulsar.NewPoly(pulsar.Presets[n](), 12) }),
+	"vocal": describing(vocal.Presets, func(n string) params.Set { return vocal.Describe(vocal.Presets[n]()) },
+		func(n string) psalm.Modular { return vocal.NewPoly(vocal.Presets[n](), 8) }),
 	"drumsynth": describing(drumsynth.Kits, func(n string) params.Set {
 		return drumsynth.Describe(drumsynth.Config{Kit: drumsynth.Kits[n]()})
-	}),
+	}, func(n string) psalm.Modular { return drumsynth.NewPoly(drumsynth.Config{Kit: drumsynth.Kits[n]()}, 16) }),
 }
 
 // later is a patch that keeps what is added to it, to add it to the real one later (between two
@@ -74,7 +87,7 @@ func (l *later) Add(m psalm.Modular) psalm.Patcher {
 // editPage makes the page of a sound of a channel: its editor (the DX editor for the DX7), its
 // presets and yours (kept in dir/<synth>, the same as the editors example's). The page isn't in the
 // patch yet: add what the returned patcher kept (p.Add) where it is safe
-func editPage(s *sound, theme panel.Theme, dir string) (*panel.Panel, []psalm.Modular) {
+func editPage(p *psalm.Psalm, s *sound, theme panel.Theme, dir string) (*panel.Panel, []psalm.Modular) {
 	synth, preset, _ := strings.Cut(s.name, "/")
 	l := &later{}
 	page := panel.New(l, s.name)
@@ -100,7 +113,15 @@ func editPage(s *sound, theme panel.Theme, dir string) (*panel.Panel, []psalm.Mo
 			return nil, nil
 		}
 		ed := editor.Add(page, s.name, s.synth, d.describe(preset), panel.NoDefault())
-		ed.Factory(d.presets, d.describe)
+		if sw := poly.NewSwap(p.Do, s.synth, func(n string) psalm.Modular { // the preset made, its voices swapped in
+			var m psalm.Modular
+			p.Within(func() { m = d.build(n) })
+			return m
+		}); d.build != nil && sw.Can() {
+			ed.FactoryApply(d.presets, d.describe, sw.Load)
+		} else {
+			ed.Factory(d.presets, d.describe)
+		}
 		_ = ed.Keep(filepath.Join(dir, synth))
 	}
 	return page, l.added

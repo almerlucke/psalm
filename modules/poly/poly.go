@@ -90,6 +90,38 @@ func (p *Poly[T]) SetMono(mono, legato bool) *Poly[T] {
 	return p
 }
 
+// AdoptVoices takes the voices of another Poly of the same kind of voice in place of its own: what a
+// synth made at a preset is, handed to the synth already in a patch (its cables stay). The notes
+// that sound are cut with the fade of a stolen voice (no click), the notes held in mono are let go;
+// whether it plays mono, and legato, stays as it was. It returns false (and changes nothing) when
+// other isn't a Poly of this kind of voice or has another number of channels. Call it on the audio
+// thread (patch.Do): it makes nothing, so it doesn't allocate once the other is made. The other is
+// left without voices
+func (p *Poly[T]) AdoptVoices(other psalm.Modular) bool {
+	o, ok := other.(*Poly[T])
+	if !ok || o == p || len(o.Output(0).Channels) != len(p.Output(0).Channels) {
+		return false
+	}
+	if len(p.activePool) > 0 {
+		p.hasFadeOut = true
+		inv := 1.0 / float32(len(p.fadeOut[0]))
+		for _, vi := range p.activePool {
+			vi.voice.Synthesize()
+			p.fadeOut.CopyWithFunc(vi.voice.Output(0).Channels, func(buf psalm.Buffer, samp float32, index int) {
+				buf[index] += samp * (1.0 - inv*float32(index))
+			})
+		}
+	}
+	p.freePool, p.activePool = o.freePool, o.activePool
+	o.freePool, o.activePool = nil, nil
+	p.held, p.timers = p.held[:0], p.timers[:0]
+	p.monoVoice = nil
+	if p.mono {
+		p.SetMono(true, p.legato)
+	}
+	return true
+}
+
 // Mono returns whether it plays one note at a time, and legato
 func (p *Poly[T]) Mono() (mono, legato bool) { return p.mono, p.legato }
 

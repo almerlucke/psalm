@@ -80,6 +80,7 @@ type instrument struct {
 	start    string                         // the preset it starts with
 	presets  []string                       // sorted
 	describe func(preset string) params.Set // nil: an editor of its own (the DX7)
+	make     func(preset string) psalm.Modular
 	page     *panel.Panel
 }
 
@@ -187,7 +188,7 @@ func main() {
 		synth.(interface {
 			AddTo(psalm.Patcher) psalm.Modular
 		}).AddTo(p)
-		instruments = append(instruments, &instrument{name: name, synth: synth, presets: presets, start: start, describe: describe})
+		instruments = append(instruments, &instrument{name: name, synth: synth, presets: presets, start: start, describe: describe, make: make})
 	}
 	add("subtractive", presetsOf(subtractive.Presets), "lead",
 		func(n string) psalm.Modular { return subtractive.NewPoly(subtractive.Presets[n](), 12) },
@@ -360,7 +361,17 @@ func main() {
 		} else {
 			// its presets above the controls: the synth's own, and yours, kept in a folder of its own
 			ed := editor.Add(in.page, in.name, in.synth, in.describe(in.start), panel.NoDefault())
-			ed.Factory(in.presets, in.describe)
+			// a factory preset is the synth made at it, its voices swapped in (organ and piano, with no
+			// voices to swap, move to its settings)
+			if sw := poly.NewSwap(p.Do, in.synth, func(n string) psalm.Modular {
+				var m psalm.Modular
+				p.Within(func() { m = in.make(n) })
+				return m
+			}); sw.Can() {
+				ed.FactoryApply(in.presets, in.describe, sw.Load)
+			} else {
+				ed.Factory(in.presets, in.describe)
+			}
 			if err := ed.Keep(filepath.Join(*presetDir, in.name)); err != nil {
 				log.Fatal(err)
 			}

@@ -161,3 +161,57 @@ func waitFor(t *testing.T, ok func() bool) {
 	}
 	t.Fatal("it didn't happen")
 }
+
+// FactoryApply moves the controls to the description of a preset without sending it, and calls the
+// hook with the name: the synth is made at the preset (the hook), not told its settings one by one
+func TestFactoryApply(t *testing.T) {
+	describe := func(name string) params.Set {
+		cutoff := map[string]float64{"dark": 300, "bright": 9000}[name]
+		return params.Set{Name: "test", Params: []params.Param{params.K("Filter", "cutoff", 20, 18000, cutoff, params.Exp())},
+			Envelopes: []params.Envelope{params.E("Envelopes", "amp", "amp", 5, 200, 0.7, 300)}}
+	}
+	ctl := panel.New(psalm.New(nil), "Test")
+	r := &receiver{got: map[string]float64{}}
+	e := Add(ctl, "Synth", r, describe("dark"), panel.NoDefault())
+	var applied []string
+	e.FactoryApply([]string{"dark", "bright"}, describe, func(name string) { applied = append(applied, name) })
+	tick := func() { ctl.CtrlTick(psalm.CtrlTick{SampleTimestamp: 1}) }
+	e.Setting("cutoff").Set(500) // asked for, not yet sent: a preset chosen drops it
+	if err := e.Presets().Load("bright", false); err != nil {
+		t.Fatal(err)
+	}
+	tick()
+	tick()
+	if len(applied) != 1 || applied[0] != "bright" || e.Base() != "bright" {
+		t.Errorf("applied %v, base %q", applied, e.Base())
+	}
+	if e.Setting("cutoff").Value() != 9000 {
+		t.Errorf("the control shows %v, want the preset's 9000", e.Setting("cutoff").Value())
+	}
+	if len(r.got) != 0 {
+		t.Errorf("the settings were sent to the synth: %v", r.got)
+	}
+	// a setting moved after goes to the synth as ever, and the preset of your own too
+	e.Setting("cutoff").Set(1000)
+	tick()
+	if r.got["cutoff"] != 1000 {
+		t.Errorf("a moved setting: %v", r.got)
+	}
+	e.Apply(map[string]float64{"cutoff": 2000})
+	tick()
+	if r.got["cutoff"] != 2000 {
+		t.Errorf("Apply: %v", r.got)
+	}
+	if err := e.Presets().Load("nope", false); err == nil {
+		t.Error("an unknown preset should be an error")
+	}
+	// Factory (without a hook) still sends the settings
+	e2 := Add(panel.New(psalm.New(nil), "Test"), "S2", r, describe("dark"), panel.NoDefault())
+	e2.Factory([]string{"dark", "bright"}, describe)
+	r.got = map[string]float64{}
+	_ = e2.Presets().Load("bright", false)
+	e2.Setting("cutoff").Set(9000)
+	if e2.Base() != "" {
+		t.Errorf("a base without a hook: %q", e2.Base())
+	}
+}
