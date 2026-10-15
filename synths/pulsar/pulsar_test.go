@@ -7,6 +7,8 @@ import (
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/fft"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -316,5 +318,147 @@ func TestFormantCeiling(t *testing.T) {
 	}
 	if v.formant2 != 0 {
 		t.Fatalf("a second formant above the ceiling should be left out, it is %.0f", v.formant2)
+	}
+}
+
+func rough(x []float64) float64 {
+	var e float64
+	for i := 1; i < len(x); i++ {
+		d := x[i] - x[i-1]
+		e += d * d
+	}
+	return e
+}
+
+func TestFilterDarkens(t *testing.T) {
+	open := steady()
+	open.Formant = 4000
+	closed := open
+	closed.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 500, KeyTrack: 0}
+	msg := psalm.Message{"frequency": 110.0}
+	ro, rc := rms(render(open, msg, 60)), rms(render(closed, msg, 60))
+	if ro < 0.01 || rc > ro*0.2 {
+		t.Errorf("rms %g without a filter, %g with a low pass at 500 Hz under a formant at 4 kHz", ro, rc)
+	}
+	v := New(open)
+	v.ReceiveMessage(psalm.Message{"filterType": int(voicefilter.Ladder24), "cutoff": 700.0})
+	if v.cfg.Filter.Type != voicefilter.Ladder24 || v.cfg.Filter.Cutoff != 700 {
+		t.Errorf("filter settings %+v", v.cfg.Filter)
+	}
+}
+
+func TestSecondPulsaret(t *testing.T) {
+	msg := psalm.Message{"frequency": 220.0}
+	base := render(steady(), msg, 40)
+	zero := steady()
+	zero.Pulsaret2 = Square
+	same := render(zero, msg, 40)
+	for i := range base {
+		if base[i] != same[i] {
+			t.Fatalf("shape mix 0 changes the sound at %d", i)
+		}
+	}
+	for _, p := range []Pulsaret2{Saw, Square, Triangle} {
+		cfg := steady()
+		cfg.Pulsaret2, cfg.ShapeMix = p, 1
+		x := render(cfg, msg, 40)
+		if r := rms(x); r < 0.01 || math.IsNaN(r) {
+			t.Errorf("pulsaret %d: rms %g", p, r)
+		}
+		diff := 0.0
+		for i := range x {
+			diff += math.Abs(x[i] - base[i])
+		}
+		if diff < 1 {
+			t.Errorf("pulsaret %d sounds as the sines", p)
+		}
+	}
+	// a saw is brighter than a sine at the same formant
+	saw := steady()
+	saw.Pulsaret2, saw.ShapeMix = Saw, 1
+	if rough(render(saw, msg, 40)) < 2*rough(base) {
+		t.Errorf("a saw pulsaret isn't brighter than a sine")
+	}
+}
+
+func TestBurst(t *testing.T) {
+	msg := psalm.Message{"frequency": 220.0}
+	full := rms(render(steady(), msg, 60))
+	cfg := steady()
+	cfg.Burst, cfg.BurstRest = 1, 1
+	half := rms(render(cfg, msg, 60))
+	if ratio := half * half / (full * full); ratio < 0.35 || ratio > 0.65 {
+		t.Errorf("a burst of 1 with a rest of 1 keeps %g of the energy", ratio)
+	}
+	cfg.Burst, cfg.BurstRest = 3, 1
+	if r := rms(render(cfg, msg, 60)); r*r/(full*full) < 0.6 {
+		t.Errorf("a burst of 3 with a rest of 1 is too quiet")
+	}
+}
+
+func TestMatrixExtMovesLevel(t *testing.T) {
+	cfg := steady()
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "level", Amount: -1}
+	loud, quiet := New(cfg), New(cfg)
+	quiet.Receive(1.0, InExt1)
+	var el, eq float64
+	loud.NoteOn(0.5, psalm.Message{"frequency": 220.0}, psalm.CtrlTick{}, loud.Config())
+	quiet.NoteOn(0.5, psalm.Message{"frequency": 220.0}, psalm.CtrlTick{}, quiet.Config())
+	for range 40 {
+		loud.Synthesize()
+		quiet.Synthesize()
+		for i := range loud.Output(0).Channels[0] {
+			a, b := float64(loud.Output(0).Channels[0][i]), float64(quiet.Output(0).Channels[0][i])
+			el, eq = el+a*a, eq+b*b
+		}
+	}
+	if el < 0.1 || eq > el*0.01 {
+		t.Errorf("energy %g with the value at 0, %g at 1: want it silent at 1", el, eq)
+	}
+	if quiet.cfg.Ext[0] != 1 {
+		t.Errorf("the value isn't kept in the config: %v", quiet.cfg.Ext)
+	}
+}
+
+// the amp envelope through the matrix lifts the formant: the spectrum goes up
+func TestMatrixMovesFormant(t *testing.T) {
+	msg := psalm.Message{"frequency": 110.0}
+	cfg := steady()
+	cfg.Formant = 500
+	base := centroid(spectrum(render(cfg, msg, 60)))
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.AmpEnv, Dest: "formant", Amount: 0.6}
+	if moved := centroid(spectrum(render(cfg, msg, 60))); moved < base*1.5 {
+		t.Errorf("centroid %g with the amp envelope on the formant, %g without", moved, base)
+	}
+}
+
+func TestMatrixEverything(t *testing.T) {
+	for src := modmatrix.FilterEnv; src < modmatrix.NumSources; src++ {
+		for _, d := range Dests {
+			cfg := steady()
+			cfg.FormantLFORate, cfg.LFO2Rate = 3, 4
+			cfg.Formant2 = 1200
+			cfg.Burst, cfg.BurstRest, cfg.ShapeMix = 2, 1, 0.5
+			cfg.Filter = voicefilter.Config{Type: voicefilter.Ladder24, Cutoff: 2000}
+			cfg.Mods[0] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: 1}
+			cfg.Mods[1] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: -1}
+			v := New(cfg)
+			v.NoteOn(1, psalm.Message{"pitch": 36.0}, psalm.CtrlTick{}, v.Config())
+			for range 20 {
+				v.Synthesize()
+				for c := range 2 {
+					for _, s := range v.Output(0).Channels[c] {
+						if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) || math.Abs(float64(s)) > 20 {
+							t.Fatalf("%s to %s: sample %v", modmatrix.SourceNames[src], d.Key, s)
+						}
+					}
+				}
+			}
+		}
+	}
+	v := New(DefaultConfig())
+	v.ReceiveMessage(psalm.Message{"mod3Src": int(modmatrix.Wheel), "mod3Dest": 1, "mod3Amount": 0.5})
+	if s := v.cfg.Mods[2]; s.Src != modmatrix.Wheel || s.Dest != "formant" || s.Amount != 0.5 {
+		t.Errorf("slot %+v", s)
 	}
 }

@@ -722,6 +722,20 @@ next pulse, so modulating them never clicks.
 | `raindrops` | `RaindropsPreset` | For very low notes (8-20 Hz): irregular drops at random pitches and places |
 | `motor` | `MotorPreset` | For low notes (15-40 Hz): a running engine, raise the frequency to rev it up (long glide) |
 
+### Filter, matrix, second pulsaret and bursts
+
+Pulsar has the [voice filter](#the-voice-filter) after the pulse train (off by default) and an 8 slot
+[modulation matrix](#modulation-matrix): the formant envelope as filter env, the amp envelope, the
+formant LFO (needs `FormantLFORate` > 0), a second LFO at `lfo2Rate`, velocity, key, random, wheel and
+Ext 1-4 on inputs 5-8, to `formant`, `formant2` (octaves), `duty`, `masking`, `jitter`, `stereoSpread`,
+`pitch` (semitones), `level`, `cutoff` (octaves), `resonance`, `shapeMix` or `lfoRate`. Pulse
+destinations are picked up at the start of each pulse.
+
+The pulse content has a second pulsaret (`pulsaret2`: saw, square, triangle, built from a few
+harmonics of the formant so it stays clean) crossfaded with the formant sines by `shapeMix` (0 is the
+sines only). `burst` and `burstRest` play N pulses and then rest M, for stuttering rhythms (0 burst is
+off); the count restarts at each note.
+
 ## wavetable
 
 `synths/wavetable`
@@ -1426,6 +1440,20 @@ saws a tritone apart), `brass`, `strings`, `ePiano`, `bass`, `resoBass`, `organ`
 
 **Messages**: `pitch`, `frequency`, `velocity`, `level`, `dcw1`, `dcw2`, `waveform1`, `waveform2`, `detune`, `vibratoDepth`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
 
+### Filter, matrix, CZ envelopes
+
+After the two lines the voice has the [voice filter](#the-voice-filter) (off by default) and an 8 slot
+[modulation matrix](#modulation-matrix): filter env, amp env (line 1's DCA), lfo 1 (the sweep LFO),
+lfo 2 (a plain sine or triangle, `lfo2Rate`/`lfo2Shape`), velocity, key, random, wheel and Ext 1-4
+(value inputs 5-8) to `dcw1`, `dcw2`, `pitch`, `vibratoDepth`, `width`, `level`, `cutoff`,
+`resonance`, `detune` (line 2), `sweepRate` and `sweepDepth`.
+
+Two CZ-style envelopes sit beside the per-line DCW and DCA envelopes. The DCO envelope (`dcoAmount`
+semitones, stages `dcoAttack`...`dcoRelease`) bends the pitch over the note, e.g. a falling zap. The
+depth envelope (`depthAmount` 0-1, stages `depthAttack`...`depthRelease`) adds distortion to both
+lines on top of their own DCW envelopes. Both are off at amount 0. `detune1` and `detune2` (cents)
+detune the lines against each other (`detune2` is the older `detune`).
+
 ## westcoast
 
 `synths/westcoast`
@@ -1458,6 +1486,21 @@ folded in eighth notes), `foldSweep`, `laserPing`, `livingDrone`, `bongo`, `pluc
 
 **Messages**: `pitch`, `frequency`, `velocity`, `level`, `fold`, `symmetry`, `fm`, `am`, `modRatio`, `decay`, `resonance`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
 
+### Matrix, a second oscillator, cycling
+
+An 8 slot [modulation matrix](#modulation-matrix) (`mod1Src`...`mod8Amount`) joins a source (the
+function generator as filter env, the vactrol as amp env, the LFO, a second LFO at `lfo2Rate`,
+velocity, key, random, wheel, or a value cabled in on inputs 5-8 as Ext 1-4) to `fold`, `symmetry`,
+`fm`, `am`, `modRatio` (octaves), `pitch` (semitones), `level`, `color`, `response`, `resonance` or
+`lfoRate`. LFO 1 needs `LFORate` (or `LFOSync`) set to run.
+
+A second complex oscillator ("Osc 2") has its own modulator (`osc2ModWave`, `osc2ModRatio`), a detune
+in semitones (`osc2Detune`) and a mix (`osc2Mix`, 0 is off) and goes into the folder along with the
+first. The function generator can cycle (`cycle`, `cycleRate` in Hz): it retriggers itself like an LFO,
+never sustains, and keeps the voice sounding until the key is released. `strike` (0-1) lights the
+vactrol at once at a note, so the gate opens with a hit even with a slow attack. `color` and `modWave`
+are messages too.
+
 ## supersaw
 
 `synths/supersaw`
@@ -1489,3 +1532,16 @@ pad := supersaw.NewPoly(supersaw.TrancePad(), 8).AddTo(p)
 `unisonBass`.
 
 **Messages**: `pitch`, `frequency`, `velocity`, `level`, `detune`, `mix`, `stereo`, `saws`, `sub`, `cutoff`, `resonance`, `filterEnvAmount`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+
+### Matrix, ensemble, high pass
+
+An 8 slot [modulation matrix](#modulation-matrix): sources filter env, amp env, lfo 1 (`lfoRate`,
+`lfoCutoff`, `lfoDetune`), lfo 2 (a second sine or triangle, `lfo2Rate`, `lfo2Shape`, running when a
+slot uses it), velocity, key, random, wheel and Ext 1-4 (value inputs 5-8); destinations `detune`,
+`mix`, `stereo`, `sub`, `cutoff` (octaves), `resonance`, `pitch` (semitones), `level`, `lfoRate` and
+`ensemble`.
+
+`ensemble` (0-1) adds a built-in string-machine chorus: three modulated delays of about 7 ms per
+channel, swept slowly at `ensembleRate` Hz (default 0.6). It makes a centered voice wide and moves it;
+at 0 it is off. `hpCutoff` (20-2000 Hz, 20 is off) is an extra high pass in series before the filter;
+the `HighPass` setting that follows the note stays as it was.

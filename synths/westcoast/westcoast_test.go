@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -153,5 +154,131 @@ func TestNotes(t *testing.T) {
 		if p < 0.01 || p > 4 || math.IsNaN(p) {
 			t.Errorf("%s peaks at %g", name, p)
 		}
+	}
+}
+
+func energy(x []float64) float64 {
+	var e float64
+	for _, s := range x {
+		e += s * s
+	}
+	return e
+}
+
+// a value cabled in on an Ext input moves a setting a slot joins it to
+func TestMatrixExtMovesLevel(t *testing.T) {
+	cfg := open()
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "level", Amount: -1}
+	loud, quiet := New(cfg), New(cfg)
+	quiet.Receive(1.0, InExt1)
+	msg := psalm.Message{"frequency": 220.0, "velocity": 1.0}
+	loud.NoteOn(1, msg, psalm.CtrlTick{}, loud.Config())
+	quiet.NoteOn(1, msg, psalm.CtrlTick{}, quiet.Config())
+	el, eq := energy(run(loud, 0.3)), energy(run(quiet, 0.3))
+	if el < 1 || eq > el*0.01 {
+		t.Errorf("energy %g with the value at 0, %g at 1: want it silent at 1", el, eq)
+	}
+	if quiet.cfg.Ext[0] != 1 {
+		t.Errorf("the value isn't kept in the config: %v", quiet.cfg.Ext)
+	}
+}
+
+// the function generator through the matrix folds the wave: the 3rd harmonic comes
+func TestMatrixEnvToFold(t *testing.T) {
+	cfg := open()
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.FilterEnv, Dest: "fold", Amount: 0.6}
+	if h := harmonics(cfg, 220, 3); h[3] < 0.1 {
+		t.Errorf("the third harmonic %.3f", h[3])
+	}
+}
+
+// an LFO through the matrix moves the pitch
+func TestMatrixLFOToPitch(t *testing.T) {
+	_, plain := play(open(), psalm.Message{"frequency": 220.0}, 0.4)
+	cfg := open()
+	cfg.LFORate = 5
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.LFO1, Dest: "pitch", Amount: 0.5}
+	_, moved := play(cfg, psalm.Message{"frequency": 220.0}, 0.4)
+	if a, b := amplitude(plain[4000:], 220), amplitude(moved[4000:], 220); b > a*0.8 {
+		t.Errorf("amplitude at 220 Hz %g plain, %g with vibrato", a, b)
+	}
+}
+
+// every source into every destination plays no NaN, and the slots arrive by message
+func TestMatrixEverything(t *testing.T) {
+	for src := modmatrix.FilterEnv; src < modmatrix.NumSources; src++ {
+		for _, d := range Dests {
+			cfg := Bell()
+			cfg.LFORate, cfg.LFO2Rate = 3, 4
+			cfg.Mods[0] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: 1}
+			cfg.Mods[1] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: -1}
+			cfg.Osc2Mix = 0.5
+			v := New(cfg)
+			v.NoteOn(1, psalm.Message{"pitch": 36.0}, psalm.CtrlTick{}, v.Config())
+			for _, s := range run(v, 0.3) {
+				if math.IsNaN(s) || math.IsInf(s, 0) || math.Abs(s) > 20 {
+					t.Fatalf("%s to %s: sample %v", modmatrix.SourceNames[src], d.Key, s)
+				}
+			}
+		}
+	}
+	v := New(DefaultConfig())
+	v.ReceiveMessage(psalm.Message{"mod3Src": int(modmatrix.Wheel), "mod3Dest": 1, "mod3Amount": 0.5})
+	if s := v.cfg.Mods[2]; s.Src != modmatrix.Wheel || s.Dest != "fold" || s.Amount != 0.5 {
+		t.Errorf("slot %+v", s)
+	}
+}
+
+// the second oscillator, detuned, sounds at its own pitch; at mix 0 nothing changes
+func TestOsc2(t *testing.T) {
+	msg := psalm.Message{"frequency": 200.0, "velocity": 1.0}
+	_, one := play(open(), msg, 0.5)
+	cfg := open()
+	cfg.Osc2Detune = 7
+	_, still := play(cfg, msg, 0.5)
+	for i := range one {
+		if one[i] != still[i] {
+			t.Fatalf("mix 0 changes the sound at %d", i)
+		}
+	}
+	cfg.Osc2Mix = 1
+	_, two := play(cfg, msg, 0.5)
+	y := two[int(0.2*sr()):]
+	f2 := 200 * math.Exp2(7.0/12)
+	if a, b := amplitude(y, f2), amplitude(y, 200); a < 0.5*b || b == 0 {
+		t.Errorf("osc 2 at %.1f Hz: %g against %g at 200", f2, a, b)
+	}
+}
+
+// the cycling function generator keeps a held note going and moves the fold again and again
+func TestCycle(t *testing.T) {
+	cfg := Pluck()
+	cfg.Decay = 0.05
+	_, once := play(cfg, psalm.Message{"pitch": 57.0}, 1)
+	cfg.Cycle, cfg.CycleRate = true, 4
+	v, cyc := play(cfg, psalm.Message{"pitch": 57.0}, 1)
+	if !v.IsActive() {
+		t.Errorf("a cycling note stopped")
+	}
+	late := func(x []float64) float64 { return energy(x[int(0.7*sr()):]) }
+	if late(once) > 0.01*late(cyc) || late(cyc) < 0.1 {
+		t.Errorf("energy late in the note: %g once, %g cycling", late(once), late(cyc))
+	}
+	v.NoteOff()
+	run(v, 3)
+	if v.IsActive() {
+		t.Errorf("a cycling note doesn't stop after its release")
+	}
+}
+
+// strike lights the lamp at once: the gate is open at the first samples
+func TestStrike(t *testing.T) {
+	cfg := Bell()
+	cfg.Attack = 0.2
+	_, soft := play(cfg, psalm.Message{"pitch": 57.0}, 0.05)
+	cfg.Strike = 1
+	_, hit := play(cfg, psalm.Message{"pitch": 57.0}, 0.05)
+	if energy(hit) < 5*energy(soft) {
+		t.Errorf("energy %g struck, %g without", energy(hit), energy(soft))
 	}
 }

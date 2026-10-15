@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -217,4 +218,125 @@ func strongest(x []float64) float64 {
 		}
 	}
 	return bestF
+}
+
+func energyOf(x []float64) float64 {
+	var e float64
+	for _, s := range x {
+		e += s * s
+	}
+	return e
+}
+
+// a value cabled in on an Ext input moves any setting a slot joins it to
+func TestMatrixExtMovesLevel(t *testing.T) {
+	cfg := open()
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "level", Amount: -1}
+	loud, quiet := New(cfg), New(cfg)
+	quiet.Receive(1.0, InExt1)
+	loud.NoteOn(1, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, loud.Config())
+	quiet.NoteOn(1, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, quiet.Config())
+	l, _ := run(loud, 0.3)
+	q, _ := run(quiet, 0.3)
+	if el, eq := energyOf(l), energyOf(q); el < 1 || eq > el*0.01 {
+		t.Errorf("energy %g with the value at 0, %g at 1: want it silent at 1", el, eq)
+	}
+	if quiet.cfg.Ext[0] != 1 {
+		t.Errorf("the value isn't kept in the config: %v", quiet.cfg.Ext)
+	}
+}
+
+// the wheel on the cutoff darkens or brightens through the matrix; LFO 2 moves the pitch
+func TestMatrixMovesDestinations(t *testing.T) {
+	cfg := open()
+	cfg.Cutoff = 800
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "cutoff", Amount: 1}
+	dark, bright := New(cfg), New(cfg)
+	bright.Receive(1.0, InExt1)
+	bright.NoteOn(1, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, bright.Config())
+	dark.NoteOn(1, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, dark.Config())
+	d, _ := run(dark, 0.4)
+	b, _ := run(bright, 0.4)
+	d, b = d[int(0.2*sr()):], b[int(0.2*sr()):]
+	if amplitude(b, 880*4) < 3*amplitude(d, 880*4) {
+		t.Errorf("a high harmonic: %g open, %g closed", amplitude(b, 3520), amplitude(d, 3520))
+	}
+	plain := open()
+	moved := open()
+	moved.LFO2Rate = 5
+	moved.Mods[0] = modmatrix.Slot{Src: modmatrix.LFO2, Dest: "pitch", Amount: 0.5}
+	_, p, _ := play(plain, psalm.Message{"pitch": 57.0}, 0.3)
+	_, m, _ := play(moved, psalm.Message{"pitch": 57.0}, 0.3)
+	if energyOf(p) == energyOf(m) || math.IsNaN(energyOf(m)) {
+		t.Errorf("the pitch isn't moved by LFO 2")
+	}
+	// the slots arrive by message
+	v := New(open())
+	v.ReceiveMessage(psalm.Message{"mod3Src": int(modmatrix.Wheel), "mod3Dest": 5, "mod3Amount": 0.5})
+	if s := v.cfg.Mods[2]; s.Src != modmatrix.Wheel || s.Dest != "cutoff" || s.Amount != 0.5 {
+		t.Errorf("slot %+v", s)
+	}
+}
+
+// every source into every destination plays no NaN
+func TestMatrixEverything(t *testing.T) {
+	for src := modmatrix.FilterEnv; src < modmatrix.NumSources; src++ {
+		for _, d := range Dests {
+			cfg := TrancePad()
+			cfg.LFORate, cfg.LFO2Rate = 3, 4
+			cfg.Mods[0] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: 1}
+			cfg.Mods[1] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: -1}
+			v := New(cfg)
+			v.NoteOn(1, psalm.Message{"pitch": 36.0}, psalm.CtrlTick{}, v.Config())
+			for range 20 {
+				v.Synthesize()
+				for _, ch := range v.Output(0).Channels {
+					for _, s := range ch {
+						if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) || math.Abs(float64(s)) > 20 {
+							t.Fatalf("%s to %s: sample %v", modmatrix.SourceNames[src], d.Key, s)
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// the ensemble changes the sound, widens a mono-ish saw, and is off at 0
+func TestEnsemble(t *testing.T) {
+	base := open()
+	base.Detune, base.Stereo = 0.1, 0
+	ens := base
+	ens.Ensemble = 1
+	_, l0, r0 := play(base, psalm.Message{"pitch": 57.0}, 0.5)
+	_, l1, r1 := play(ens, psalm.Message{"pitch": 57.0}, 0.5)
+	diff := func(a, b []float64) float64 {
+		var e float64
+		for i := range a {
+			e += (a[i] - b[i]) * (a[i] - b[i])
+		}
+		return e
+	}
+	if diff(l0, r0) > 1e-9 {
+		t.Fatalf("the plain voice isn't centered")
+	}
+	if diff(l1, r1) < 0.01*energyOf(l1) || math.IsNaN(energyOf(l1)) {
+		t.Errorf("the ensemble doesn't widen: sides differ %g of %g", diff(l1, r1), energyOf(l1))
+	}
+	if diff(l0, l1) < 0.01*energyOf(l0) {
+		t.Errorf("the ensemble doesn't change the sound")
+	}
+}
+
+func TestHighPassCutoff(t *testing.T) {
+	plain := open()
+	hp := open()
+	hp.HPCutoff = 1500
+	msg := psalm.Message{"pitch": 45.0}
+	_, a, _ := play(plain, msg, 0.4)
+	_, b, _ := play(hp, msg, 0.4)
+	a, b = a[int(0.1*sr()):], b[int(0.1*sr()):]
+	if amplitude(b, 110) > 0.1*amplitude(a, 110) {
+		t.Errorf("the fundamental: %g plain, %g high passed", amplitude(a, 110), amplitude(b, 110))
+	}
 }

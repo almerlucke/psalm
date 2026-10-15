@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -160,6 +162,125 @@ func TestNotes(t *testing.T) {
 		}
 		if p < 0.01 || p > 4 || math.IsNaN(p) {
 			t.Errorf("%s peaks at %g", name, p)
+		}
+	}
+}
+
+func energyOf(x []float64) float64 {
+	var e float64
+	for _, s := range x {
+		e += s * s
+	}
+	return e
+}
+
+// the filter after the lines darkens the sound
+func TestFilterDarkens(t *testing.T) {
+	plain := steady(Saw, 0.95)
+	filt := plain
+	filt.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 400, EnvAmount: 0, Env: env(1, 10, 1, 10)}
+	msg := psalm.Message{"frequency": 110.0}
+	_, a := play(plain, msg, 0.4)
+	_, b := play(filt, msg, 0.4)
+	a, b = a[int(0.1*sr()):], b[int(0.1*sr()):]
+	hi := func(x []float64) float64 { return amplitude(x, 1100) / amplitude(x, 110) }
+	if hi(b) > 0.3*hi(a) {
+		t.Errorf("the 10th harmonic: %.3f plain, %.3f filtered", hi(a), hi(b))
+	}
+	// by message
+	v := New(plain)
+	v.ReceiveMessage(psalm.Message{"filterType": int(voicefilter.LowPass), "cutoff": 500.0})
+	if v.cfg.Filter.Type != voicefilter.LowPass || v.cfg.Filter.Cutoff != 500 {
+		t.Errorf("filter %+v", v.cfg.Filter)
+	}
+}
+
+// a pitch envelope bends the note, a depth envelope distorts over the note
+func TestDCOAndDepthEnvelopes(t *testing.T) {
+	cfg := steady(Saw, 0)
+	cfg.DCOAmount = 12
+	cfg.DCOEnv = env(1, 100, 0, 100)
+	_, x := play(cfg, psalm.Message{"frequency": 220.0}, 0.6)
+	early := x[int(0.002*sr()):int(0.03*sr())]
+	late := x[int(0.4*sr()):int(0.5*sr())]
+	// early on it sits an octave up
+	if amplitude(early, 440) < 2*amplitude(early, 220) {
+		t.Errorf("early: 440 Hz %.3f, 220 Hz %.3f", amplitude(early, 440), amplitude(early, 220))
+	}
+	if amplitude(late, 220) < 2*amplitude(late, 440) {
+		t.Errorf("late: 440 Hz %.3f, 220 Hz %.3f", amplitude(late, 440), amplitude(late, 220))
+	}
+	// the depth envelope adds harmonics on a sine
+	cfg = steady(Saw, 0)
+	cfg.DepthAmount = 0.9
+	cfg.DepthEnv = env(1, 100, 0, 100)
+	_, x = play(cfg, psalm.Message{"frequency": 110.0}, 0.6)
+	early = x[int(0.005*sr()):int(0.04*sr())]
+	late = x[int(0.4*sr()):int(0.5*sr())]
+	r := func(y []float64) float64 { return amplitude(y, 330) / amplitude(y, 110) }
+	if r(early) < 5*r(late) {
+		t.Errorf("3rd harmonic: %.3f early, %.3f late", r(early), r(late))
+	}
+	v := New(Brass())
+	v.ReceiveMessage(psalm.Message{"dcoAttack": 33.0, "depthRelease": 777.0, "dcoAmount": 5.0})
+	if v.cfg.DCOEnv.AttackDuration != 33 || v.cfg.DepthEnv.ReleaseDuration != 777 || v.cfg.DCOAmount != 5 {
+		t.Errorf("config %+v", v.cfg)
+	}
+}
+
+// line 1 detunes against line 2
+func TestDetune1(t *testing.T) {
+	v := New(Brass())
+	v.ReceiveMessage(psalm.Message{"detune1": -30.0, "detune2": 25.0})
+	if v.cfg.Line1.Detune != -30 || v.cfg.Line2.Detune != 25 {
+		t.Errorf("detunes %g %g", v.cfg.Line1.Detune, v.cfg.Line2.Detune)
+	}
+}
+
+// a value cabled in moves a setting through the matrix
+func TestMatrixMoves(t *testing.T) {
+	cfg := Brass()
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "level", Amount: -1}
+	loud, quiet := New(cfg), New(cfg)
+	quiet.Receive(1.0, InExt1)
+	loud.NoteOn(1, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, loud.Config())
+	quiet.NoteOn(1, psalm.Message{"pitch": 57.0}, psalm.CtrlTick{}, quiet.Config())
+	if el, eq := energyOf(run(loud, 0.3)), energyOf(run(quiet, 0.3)); el < 0.1 || eq > el*0.01 {
+		t.Errorf("energy %g at 0, %g at 1", el, eq)
+	}
+	// the wheel to the distortion brightens a sine
+	cfg = steady(Saw, 0)
+	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Ext1, Dest: "dcw1", Amount: 1}
+	v := New(cfg)
+	v.Receive(1.0, InExt1)
+	v.NoteOn(1, psalm.Message{"frequency": 110.0}, psalm.CtrlTick{}, v.Config())
+	x := run(v, 0.4)[int(0.1*sr()):]
+	if h := amplitude(x, 330) / amplitude(x, 110); h < 0.05 {
+		t.Errorf("3rd harmonic %.3f: the matrix doesn't distort", h)
+	}
+	v.ReceiveMessage(psalm.Message{"mod3Src": int(modmatrix.Wheel), "mod3Dest": 3, "mod3Amount": 0.5})
+	if s := v.cfg.Mods[2]; s.Src != modmatrix.Wheel || s.Dest != "pitch" || s.Amount != 0.5 {
+		t.Errorf("slot %+v", s)
+	}
+}
+
+// every source into every destination plays no NaN, with the filter and the envelopes on
+func TestMatrixEverything(t *testing.T) {
+	for src := modmatrix.FilterEnv; src < modmatrix.NumSources; src++ {
+		for _, d := range Dests {
+			cfg := Brass()
+			cfg.SweepRate, cfg.LFO2Rate = 3, 4
+			cfg.DCOAmount, cfg.DepthAmount = 3, 0.3
+			cfg.Filter = voicefilter.Config{Type: voicefilter.Ladder24, Cutoff: 2000, EnvAmount: 1}
+			cfg.Mods[0] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: 1}
+			cfg.Mods[1] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: -1}
+			v := New(cfg)
+			v.NoteOn(1, psalm.Message{"pitch": 36.0}, psalm.CtrlTick{}, v.Config())
+			for _, s := range run(v, 0.3) {
+				if math.IsNaN(s) || math.IsInf(s, 0) || math.Abs(s) > 20 {
+					t.Fatalf("%s to %s: sample %v", modmatrix.SourceNames[src], d.Key, s)
+				}
+			}
 		}
 	}
 }
