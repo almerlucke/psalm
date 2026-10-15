@@ -272,7 +272,10 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration, amplitude float64, message
 	v.amp = amplitude
 	v.t = 0
 	v.sweepPh, v.lfo2Ph = 0, 0
-	v.random = v.Rand().Float64()*2 - 1
+	// drawn only when a slot uses it: a voice that doesn't keeps the random stream it had
+	if v.mods.Uses(modmatrix.Random) {
+		v.random = v.Rand().Float64()*2 - 1
+	}
 	v.filter.Trigger(duration*1000, mode)
 	if v.cfg.DCOAmount != 0 {
 		v.dco.TriggerFull(duration*1000, 1, &v.cfg.DCOEnv, mode)

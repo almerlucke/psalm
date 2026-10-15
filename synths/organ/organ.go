@@ -13,8 +13,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/expression"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 )
 
 // Percussion is the harmonic the percussion adds to the first key of a phrase
@@ -52,8 +55,15 @@ type Config struct {
 	Vibrato    Vibrato //
 	VibratoHz  float64 // the scanner speed, 0 is 6.9 Hz
 	Click      float64 // 0-1, the click of the key contacts
+	ClickRand  float64 // 0-1, how much the click differs from key to key (loudness and brightness)
+	Leakage    float64 // 0-1, the faint crosstalk of other tonewheels into a key, different on every key press
 	Drive      float64 // 0-1, the preamp driven into saturation
 	Level      float64 // output level (0 is treated as 1)
+	// Filter is one filter on the sum of the drawbars (an organ has no voices), its envelope
+	// starting with the first key of a phrase, like the percussion (off unless its Type is set)
+	Filter voicefilter.Config
+	Mods   [modmatrix.Slots]modmatrix.Slot // the matrix: a source to a destination (see Dests) over an amount
+	Ext    [modmatrix.Exts]float64         // the values 0-1 of the matrix's sources Ext 1 to 4 (cabled in on InExt1...)
 }
 
 // DefaultConfig is the first three drawbars out, the classic 888000000
@@ -108,12 +118,19 @@ func wheelOf(pitch int) int {
 // key is a key held (or still letting go)
 type key struct {
 	pitch  int
+	leak   [3]leak
 	wheels [9]int
 	perc   [2]int // the percussion wheels: second, third
 	gain   float64
 	target float64
 	amp    float64
 	notes  int // how many notes hold it
+}
+
+// leak is a wheel that bleeds into a key, and how much
+type leak struct {
+	wheel int
+	amp   float64
 }
 
 // timer lets go of a key of a note of Note
@@ -145,8 +162,14 @@ type Organ struct {
 	percDec   float64
 	sustain   bool
 	sustained map[int]int // keys the sustain pedal holds: how many notes
-	click     struct{ env, lp, hp, noise float64 }
+	click     struct{ env, lp, hp, noise, coef float64 }
 	rng       uint32
+	rng2      uint32 // for what differs from key to key, apart from the click's noise
+	filter    *voicefilter.Filter
+	mods      *modmatrix.Matrix
+	lastPitch int
+	velocity  float64
+	random    float64
 	delay     []float64
 	dpos      int
 	lfoPhase  float64
@@ -165,6 +188,8 @@ func New(cfg Config) *Organ {
 		ids:       map[string]int{},
 		sustained: map[int]int{},
 		rng:       uint32(cfg.NumChannels*7919 + 12345),
+		rng2:      uint32(cfg.NumChannels*104729 + 777),
+		lastPitch: 60,
 		delay:     make([]float64, 1024),
 	}
 	sr := o.Config().SampleRate
@@ -173,6 +198,15 @@ func New(cfg Config) *Organ {
 		o.phase[w] = math.Mod(float64(w)*0.618034, 1) // the wheels are not in phase
 	}
 	o.bars = o.barGains()
+	o.click.coef = 0.5
+	o.filter = voicefilter.New(cfg.Filter, sr, 1)
+	o.mods = modmatrix.New(Dests)
+	for i, sl := range cfg.Mods {
+		o.mods.Set(i, sl)
+	}
+	for i, e := range cfg.Ext {
+		o.mods.SetExt(i, e)
+	}
 	o.SetSelf(o)
 	return o
 }
@@ -202,6 +236,25 @@ func (o *Organ) AllNotesOff() {
 	for _, k := range o.keys {
 		k.notes, k.target = 0, 0
 	}
+	o.filter.Release()
+}
+
+// random2 returns a random number from 0 to 1 that doesn't disturb the noise of the click
+func (o *Organ) random2() float64 {
+	o.rng2 = o.rng2*1664525 + 1013904223
+	return float64(o.rng2>>8) / (1 << 24)
+}
+
+// clickOn adds the click of a key contact: its size varies with ClickRand, and so does its colour
+func (o *Organ) clickOn(size float64) {
+	r := o.cfg.ClickRand
+	if r > 0 {
+		size *= 1 + r*0.8*(o.random2()*2-1)
+		o.click.coef = 0.5 + r*0.35*(o.random2()*2-1)
+	} else {
+		o.click.coef = 0.5
+	}
+	o.click.env += size
 }
 
 func (o *Organ) Receive(value any, index int) {
@@ -211,13 +264,18 @@ func (o *Organ) Receive(value any, index int) {
 	}
 	if index >= 1 && index <= 9 {
 		o.cfg.Drawbars[index-1] = psalm.FltVal[float64](value)
+	} else if index >= InExt1 && index < InExt1+modmatrix.Exts {
+		o.mods.SetExt(index-InExt1, psalm.FltVal[float64](value))
+		o.cfg.Ext[index-InExt1] = o.mods.Ext(index - InExt1)
 	}
 }
 
 // ReceiveMessage plays the triggers of a poly synth (with a duration, or noteOn and noteOff) and
 // takes the settings: "drawbars" ("888000000"), "drawbar1" to "drawbar9" (0-8), "percussion"
 // (0 off, 1 second, 2 third), "percFast", "percSoft", "vibrato" (0 off, 1-3 V1-V3, 4-6 C1-C3),
-// "vibratoHz", "click", "drive", "level" and the "sustain" pedal (above 0.5 is down)
+// "vibratoHz", "click", "clickRand", "leakage", "drive", "level", the "sustain" pedal (above 0.5 is
+// down), the filter (voicefilter: "filterType", "cutoff", "resonance", ...) and the matrix
+// (modmatrix: "mod1Src", "mod1Dest", "mod1Amount", ..., "ext1" to "ext4")
 func (o *Organ) ReceiveMessage(msg psalm.Message) {
 	if command, ok := msg.StrVal("command"); ok && command == "trigger" {
 		tick := msg.MustTickVal("tick")
@@ -242,6 +300,15 @@ func (o *Organ) ReceiveMessage(msg psalm.Message) {
 		return
 	}
 	o.expr.Receive(msg)
+	o.filter.Receive(msg)
+	o.cfg.Filter = o.filter.Config()
+	o.mods.Receive(msg)
+	for i := range o.cfg.Mods {
+		o.cfg.Mods[i] = o.mods.Slot(i)
+	}
+	for i := range o.cfg.Ext {
+		o.cfg.Ext[i] = o.mods.Ext(i)
+	}
 	msg.IfStrVal("drawbars", func(s string) { o.cfg.Drawbars = Bars(s) })
 	for i := range 9 {
 		msg.IfFltVal("drawbar"+strconv.Itoa(i+1), func(f float64) { o.cfg.Drawbars[i] = f })
@@ -252,6 +319,8 @@ func (o *Organ) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("vibrato", func(i int) { o.cfg.Vibrato = Vibrato(i) })
 	msg.IfFltVal("vibratoHz", func(f float64) { o.cfg.VibratoHz = f })
 	msg.IfFltVal("click", func(f float64) { o.cfg.Click = f })
+	msg.IfFltVal("clickRand", func(f float64) { o.cfg.ClickRand = f })
+	msg.IfFltVal("leakage", func(f float64) { o.cfg.Leakage = f })
 	msg.IfFltVal("drive", func(f float64) { o.cfg.Drive = f })
 	msg.IfFltVal("level", func(f float64) { o.cfg.Level = f })
 	msg.IfFltVal("sustain", func(f float64) {
@@ -303,26 +372,29 @@ func (o *Organ) apply(e event) {
 		k.notes--
 		if k.notes == 0 {
 			k.target = 0
-			o.click.env += o.cfg.Click * 0.5
+			o.clickOn(o.clickLevel() * 0.5)
+			if !o.held() {
+				o.filter.Release()
+			}
 		}
 		return
 	}
 	// single trigger: the percussion starts when no other key is down
-	held := false
-	for _, x := range o.keys {
-		if x.notes > 0 {
-			held = true
-		}
-	}
-	if !held {
+	if !o.held() {
 		o.perc = 1
+		o.filter.Trigger(0, adsr.NoteOff)
 	}
+	o.lastPitch, o.velocity, o.random = e.pitch, e.amp, o.random2()*2-1
 	if k == nil {
 		k = &key{pitch: e.pitch}
 		for i, f := range footages {
 			k.wheels[i] = wheelOf(e.pitch + f)
 		}
 		k.perc = [2]int{wheelOf(e.pitch + 12), wheelOf(e.pitch + 19)}
+		// the crosstalk: three wheels near the key's own, a little different every time
+		for i := range k.leak {
+			k.leak[i] = leak{wheel: int(o.random2() * numWheels), amp: (0.3 + 0.7*o.random2()) * (1 - 2*float64(i&1))}
+		}
 		o.keys = append(o.keys, k)
 	}
 	k.notes++
@@ -330,7 +402,22 @@ func (o *Organ) apply(e event) {
 	if e.timed > 0 {
 		o.timers = append(o.timers, timer{pitch: e.pitch, left: e.timed})
 	}
-	o.click.env += o.cfg.Click
+	o.clickOn(o.clickLevel())
+}
+
+// held says whether any key is down
+func (o *Organ) held() bool {
+	for _, x := range o.keys {
+		if x.notes > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// clickLevel is the size of the click of a key contact: the setting, and what the matrix adds
+func (o *Organ) clickLevel() float64 {
+	return math.Max(0, o.cfg.Click+o.mods.Mod(dClick))
 }
 
 func (o *Organ) Synthesize() {
@@ -363,17 +450,29 @@ func (o *Organ) Synthesize() {
 	for i := range 9 {
 		barInc[i] = (target[i] - o.bars[i]) / float64(n)
 	}
-	percLevel := 0.0
+	mods := o.mods
+	modded := mods.Active()
+	percBase := 0.0
 	percWheel := 0
 	if cfg.Percussion != PercOff {
-		percLevel = 1.0
+		percBase = 1.0
 		if cfg.PercSoft {
-			percLevel = 0.5
+			percBase = 0.5
 		}
 		if cfg.Percussion == PercThird {
 			percWheel = 1
 		}
 	}
+	percLevel := percBase
+	filtered := o.filter.On()
+	envUsed := modded && mods.Uses(modmatrix.FilterEnv)
+	lfoUsed := modded && mods.Uses(modmatrix.LFO1)
+	if modded {
+		mods.Values[modmatrix.Velocity] = o.velocity
+		mods.Values[modmatrix.Random] = o.random
+		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(float64(o.lastPitch-60)/60, 1))
+	}
+	lastFreq := 440 * math.Exp2(float64(o.lastPitch-69)/12)
 	decay := 1.0
 	if cfg.PercFast {
 		decay = 0.3
@@ -422,6 +521,25 @@ func (o *Organ) Synthesize() {
 		}
 		o.expr.Tick(sr)
 		bend := o.expr.Ratio()
+		var leakage, vibMod, levelMod float64
+		cutMod, resMod := 0.0, 0.0
+		if modded {
+			loud := 0.0
+			for _, k := range o.keys {
+				loud = math.Max(loud, k.gain*k.amp)
+			}
+			mv := &mods.Values
+			mv[modmatrix.FilterEnv], mv[modmatrix.AmpEnv] = o.filter.Env(), math.Min(loud, 1)
+			mv[modmatrix.LFO1] = math.Sin(2 * math.Pi * o.lfoPhase)
+			mv[modmatrix.Wheel] = o.expr.Wheel()
+			mods.Eval(sr)
+			bend *= math.Exp2(mods.Mod(dPitch) / 12)
+			leakage, vibMod, levelMod = mods.Mod(dLeakage), mods.Mod(dVibrato), mods.Mod(dLevel)
+			cutMod, resMod = mods.Mod(dCutoff), mods.Mod(dResonance)
+			percLevel = math.Max(0, percBase+mods.Mod(dPerc))
+			drive = 1 + math.Max(0, cfg.Drive+mods.Mod(dDrive))*8
+		}
+		leakage += cfg.Leakage
 		for w := range numWheels {
 			o.phase[w] += o.inc[w] * bend
 			if o.phase[w] >= 1 {
@@ -449,6 +567,11 @@ func (o *Organ) Synthesize() {
 					ks += o.bars[b] * o.wheel(w)
 				}
 			}
+			if leakage > 0 {
+				for _, l := range k.leak {
+					ks += leakage * 0.04 * l.amp * o.wheel(l.wheel)
+				}
+			}
 			s += ks * g
 			if percLevel > 0 {
 				ps += o.wheel(k.perc[percWheel]) * g
@@ -461,7 +584,7 @@ func (o *Organ) Synthesize() {
 		if o.click.env > 1e-5 {
 			o.rng = o.rng*1664525 + 1013904223
 			noise := float64(int32(o.rng)) / 2147483648
-			o.click.lp += (noise - o.click.lp) * 0.5
+			o.click.lp += (noise - o.click.lp) * o.click.coef
 			hp := o.click.lp - o.click.hp
 			o.click.hp += hp * 0.05
 			s += hp * o.click.env * 0.4
@@ -470,9 +593,18 @@ func (o *Organ) Synthesize() {
 		s *= busGain
 
 		// the scanner: a delay swept by a sine, mixed with the dry sound for the chorus
-		if depth > 0 {
+		depthNow := depth
+		if vibMod != 0 {
+			depthNow = math.Max(0, depth+vibMod*0.00135*sr)
+		}
+		if depthNow <= 0 && lfoUsed { // the matrix's LFO is the scanner's, running without its vibrato
+			if o.lfoPhase += lfoInc; o.lfoPhase >= 1 {
+				o.lfoPhase--
+			}
+		}
+		if depthNow > 0 {
 			o.delay[o.dpos] = s
-			d := 2 + depth*(0.5+0.5*math.Sin(2*math.Pi*o.lfoPhase))
+			d := 2 + depthNow*(0.5+0.5*math.Sin(2*math.Pi*o.lfoPhase))
 			o.lfoPhase += lfoInc
 			if o.lfoPhase >= 1 {
 				o.lfoPhase--
@@ -494,7 +626,17 @@ func (o *Organ) Synthesize() {
 		if drive > 1 {
 			s = math.Tanh(s*drive) / drive
 		}
-		val := float32(s * level)
+		if filtered || envUsed {
+			o.filter.Tick(lastFreq, cutMod, resMod)
+		}
+		if filtered {
+			s = o.filter.Process(0, s)
+		}
+		lv := level
+		if levelMod != 0 {
+			lv = math.Max(0, level+levelMod)
+		}
+		val := float32(s * lv)
 		for _, ch := range out {
 			ch[i] = val
 		}

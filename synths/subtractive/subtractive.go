@@ -222,8 +222,9 @@ func New(cfg Config) *Voice {
 	v.osc2 = blosc.New(v.frequency*v.osc2Ratio(), sr, 0.0, cfg.PulseWidth, 1.0, cfg.Osc2Waveform)
 	v.sub = blosc.New(v.frequency*0.5, sr, 0.0, 0.5, 1.0, blosc.Square)
 	for k := range v.uni1 {
-		v.uni1[k] = blosc.New(v.frequency, sr, v.Rand().Float64(), cfg.PulseWidth, 1.0, cfg.Osc1Waveform)
-		v.uni2[k] = blosc.New(v.frequency, sr, v.Rand().Float64(), cfg.PulseWidth, 1.0, cfg.Osc2Waveform)
+		// spread phases (the golden ratio), without drawing from the voice's random stream
+		v.uni1[k] = blosc.New(v.frequency, sr, math.Mod(0.618034*float64(k+1), 1), cfg.PulseWidth, 1.0, cfg.Osc1Waveform)
+		v.uni2[k] = blosc.New(v.frequency, sr, math.Mod(0.381966*float64(k+2), 1), cfg.PulseWidth, 1.0, cfg.Osc2Waveform)
 	}
 	v.svf = svf.New(cfg.Cutoff, cfg.Resonance, sr)
 	v.ladder = ladder.New(cfg.Cutoff, cfg.Resonance, sr)
@@ -378,7 +379,10 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 
 	v.waitSamps = tick.SampleOffset
 	v.velocity = amplitude
-	v.random = v.Rand().Float64()*2 - 1
+	// drawn only when a slot uses it: a voice that doesn't keeps the random stream it had
+	if v.mods.Uses(modmatrix.Random) {
+		v.random = v.Rand().Float64()*2 - 1
+	}
 
 	sr := v.Config().SampleRate
 	v.lfo1.trigger(&v.cfg.LFO1, sr)

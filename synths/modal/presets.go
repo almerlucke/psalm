@@ -18,6 +18,10 @@ var Presets = map[string]func() Config{
 	"steelPan":   SteelPan,
 	"metalPlate": MetalPlate,
 	"spaceTine":  SpaceTine,
+
+	"wood":  Wood,
+	"metal": Metal,
+	"glass": Glass,
 }
 
 // Marimba is a rosewood bar tuned to the fundamental, its fourth and tenth partials, over a
@@ -198,5 +202,48 @@ func SpaceTine() Config {
 		Modes: []Mode{{1, 1, 1}, {6.27, 0.3, 0.4}, {17.55, 0.1, 0.2}},
 		Decay: 9, HighDamping: 0.2, Hardness: 0.7, Position: 0.1, Tremolo: 11, TremoloDepth: 0.5, Noise: 0.2,
 		Level: 1.66,
+	}
+}
+
+// Wood is a plain bar of hardwood: a dull, short knock with harmonic-ish modes, no stretch
+func Wood() Config {
+	return Config{
+		Modes:       []Mode{{1, 1, 1}, {2.76, 0.5, 0.6}, {5.4, 0.25, 0.4}, {8.9, 0.1, 0.3}},
+		Decay:       0.5,
+		HighDamping: 0.9,
+		Hardness:    0.45,
+		Position:    0.22,
+		Noise:       0.3,
+		Level:       1.1,
+	}
+}
+
+// Metal is a stiff steel bar: long, bright, its upper modes stretched sharp
+func Metal() Config {
+	return Config{
+		Modes:         []Mode{{1, 1, 1}, {2.76, 0.6, 0.8}, {5.4, 0.45, 0.7}, {8.93, 0.3, 0.6}, {13.3, 0.2, 0.5}},
+		Decay:         5,
+		HighDamping:   0.25,
+		Hardness:      0.85,
+		Position:      0.24,
+		Inharmonicity: 0.45,
+		Beat:          0.002,
+		Noise:         0.15,
+		Level:         0.6,
+	}
+}
+
+// Glass is a glass bar or bowl rim: pure, high, a little stretched and shimmering
+func Glass() Config {
+	return Config{
+		Modes:         []Mode{{1, 1, 1}, {2.32, 0.55, 0.9}, {4.25, 0.35, 0.8}, {6.63, 0.2, 0.6}},
+		Decay:         4,
+		HighDamping:   0.1,
+		Hardness:      0.95,
+		Position:      0.3,
+		Inharmonicity: 0.2,
+		Beat:          0.004,
+		Noise:         0.05,
+		Level:         0.7,
 	}
 }

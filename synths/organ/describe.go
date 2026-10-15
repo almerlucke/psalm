@@ -3,6 +3,8 @@ package organ
 import (
 	"strconv"
 
+	"github.com/almerlucke/psalm/blocks/modmatrix"
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/params"
 )
 
@@ -39,8 +41,21 @@ func Describe(cfg Config) params.Set {
 		params.K("Vibrato", "vibratoHz", 0.5, 20, vibratoHz, params.Exp(), params.Unit("Hz"), params.Label("speed")),
 
 		params.K("Output", "click", 0, 1, cfg.Click),
+		params.K("Output", "clickRand", 0, 1, cfg.ClickRand, params.Label("click random")),
+		params.K("Output", "leakage", 0, 1, cfg.Leakage),
 		params.K("Output", "drive", 0, 1, cfg.Drive),
 		params.K("Output", "level", 0, 4, level),
 	)
+	fp, fe := voicefilter.Describe(cfg.Filter, "Filter")
+	s.Params = append(s.Params, fp...)
+	s.Envelopes = append(s.Envelopes, fe)
+	m := modmatrix.New(Dests)
+	for i, sl := range cfg.Mods {
+		m.Set(i, sl)
+	}
+	for i, e := range cfg.Ext {
+		m.SetExt(i, e)
+	}
+	s.Params = append(s.Params, m.Describe("Modulation")...)
 	return s
 }

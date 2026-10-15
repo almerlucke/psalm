@@ -101,14 +101,20 @@ func TestConsonants(t *testing.T) {
 			t.Errorf("%s: still going", ConsonantNames[c])
 		}
 	}
-	// sh is lower than s
-	centroid := func(c Consonant) float64 {
+	// sh is lower than s: less of its energy changes fast (the difference of neighbouring samples)
+	bright := func(c Consonant) float64 {
 		cfg.Consonant = c
 		x, _ := sung(cfg, psalm.Message{"pitch": 55.0}, 0.1)
-		return amplitude(x[:int(0.08*sr())], 3500) / amplitude(x[:int(0.08*sr())], 7500)
+		x = x[:int(0.08*sr())]
+		var e, d float64
+		for i := 1; i < len(x); i++ {
+			e += x[i] * x[i]
+			d += (x[i] - x[i-1]) * (x[i] - x[i-1])
+		}
+		return d / e
 	}
-	if centroid(Sh) < centroid(S) {
-		t.Errorf("sh is not darker than s")
+	if bs, bsh := bright(S), bright(Sh); bsh >= bs {
+		t.Errorf("sh is not darker than s: %g against %g", bsh, bs)
 	}
 }
 

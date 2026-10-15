@@ -314,7 +314,9 @@ func (v *Voice) Note(duration float64, amplitude float64, message psalm.Message,
 func (v *Voice) note(mode adsr.ReleaseMode, duration, amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
 	v.velocity = 0.8
 	v.amplitude = amplitude
-	v.random = v.random01()*2 - 1
+	if v.mods.Uses(modmatrix.Random) { // drawn only when used: the random stream stays as it was
+		v.random = v.random01()*2 - 1
+	}
 	fresh := v.ampEnv.Done()
 	v.ReceiveMessage(message)
 	if fresh {

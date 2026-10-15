@@ -1203,6 +1203,21 @@ sustain pedal.
 | `growlBass` | 16' and 8' driven, all click: a growling bass organ |
 | `seasick` | The scanner at 1.5 Hz, deep: everything sways out of tune and back |
 
+### Filter, leakage, matrix
+
+The organ has no voices, so the new parts act on the summed sound. The [filter](#the-voice-filter)
+(`filterType`, `cutoff`, `resonance`, `filterEnvAmount`, `keyTrack`, `filterDrive` and the `filter`
+envelope) is a single filter after the drawbars; its envelope starts with the first key of a phrase and
+releases when the last key lets go, like the percussion's single trigger. `leakage` (0-1) adds the
+faint crosstalk of three other tonewheels to every key, different on each key press. `clickRand` (0-1)
+makes the key click vary in loudness and colour from key to key.
+
+The 8 slot [modulation matrix](#modulation-matrix) takes the sources filter env, amp (the loudest key),
+LFO 1 (the scanner's), velocity and key of the last note, a random value per phrase, the wheel and Ext
+1-4 (value inputs 10-13, `organ.InExt1`) to `drive`, `click`, `vibratoDepth`, `level`, `cutoff`,
+`resonance`, `percLevel`, `leakage` and `pitch`. There is no LFO 2. The rotary of a Leslie is the
+`rotary` effect after the organ.
+
 ## waveguide
 
 `synths/waveguide`
@@ -1312,6 +1327,22 @@ bell := modal.New(modal.Config{Modes: []modal.Mode{{1, 1, 1}, {2.76, 0.5, 0.6}},
 | `spaceTine` | A tine ringing for ages in a fast tremolo |
 
 **Messages**: `pitch`, `frequency`, `velocity`, `level`, `decay`, `highDamping`, `hardness`, `position`, `release`, `tremolo`, `tremoloDepth`, `noise`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+
+### Excitation, inharmonicity, filter, matrix
+
+`excitation` chooses what rings the modes: `strike` (the default mallet), `bow` (a noise-driven bow
+that fades in and keeps the modes singing while the note is held, and lifts on release) or `noise
+burst` (a short windowed noise burst, shorter the harder the mallet, for brushes and scrapes).
+`inharmonicity` (0-1) stretches the mode ratios relative to the first mode, the higher ones more, for
+stiff metal and glass; it applies at the next strike. The material presets are `wood` (dull and
+short), `metal` (long, stretched) and `glass` (pure and high).
+
+After the modes there is a [voice filter](#the-voice-filter) whose envelope starts at the strike. The
+8 slot [modulation matrix](#modulation-matrix) takes filter env, amp (the decay), LFO 1 (a plain sine at
+`lfoRate`, running when used), velocity, key, a random value per note, the wheel and Ext 1-4 (value
+inputs 3-6, `modal.InExt1`) to `pitch`, `decay`, `hardness`, `position`, `tremoloDepth`, `beat`,
+`noise`, `level`, `cutoff`, `resonance`, `inharmonicity` and `highDamping`. The destinations that shape
+the strike are read when the note is struck, from the sources known then.
 
 ## drumsynth
 

@@ -26,10 +26,18 @@ func playMsg(cfg Config, msg psalm.Message, seconds float64) []float64 {
 	return run(v, seconds)
 }
 
+// sameNoise makes the next plucks start from the same noise, to compare them
+func sameNoise() {
+	psalm.Seed(1)
+	psalm.SetCurrentEnv(psalm.NewEnv(psalm.CurrentStackConfig()))
+}
+
 func TestFilterDarkens(t *testing.T) {
 	cfg := dry(Steel())
+	sameNoise()
 	_, open := play(cfg, 60, 0.5)
 	cfg.Filter = voicefilter.Config{Type: voicefilter.LowPass, Cutoff: 400}
+	sameNoise()
 	_, dark := play(cfg, 60, 0.5)
 	f := hz(60) * 8
 	if amplitude(dark, f) > 0.2*amplitude(open, f) {
@@ -94,14 +102,26 @@ func TestMatrixMessages(t *testing.T) {
 func TestSympathetic(t *testing.T) {
 	cfg := dry(Steel())
 	cfg.Decay = 3
+	same := func() { // the same noise in the pluck for both
+		psalm.Seed(1)
+		psalm.SetCurrentEnv(psalm.NewEnv(psalm.CurrentStackConfig()))
+	}
+	same()
 	_, off := play(cfg, 52, 1.5)
 	cfg.Sympathetic = 1
+	same()
 	_, on := play(cfg, 52, 1.5)
-	// the strings tuned to the fifth above the octave take the third partial along, and the output differs
+	// the strings an octave and a fifth above take the partials along: the first three together
+	// (one partial alone depends on the noise of the pluck) are stronger, and the output differs
 	w := on[int(0.3*sr()):]
 	o := off[int(0.3*sr()):]
-	if amplitude(w, hz(52)*3) < 1.1*amplitude(o, hz(52)*3) {
-		t.Errorf("the sympathetic strings don't add: %g vs %g", amplitude(w, hz(52)*3), amplitude(o, hz(52)*3))
+	var with, without float64
+	for _, m := range []float64{1, 2, 3} {
+		with += amplitude(w, hz(52)*m)
+		without += amplitude(o, hz(52)*m)
+	}
+	if with < 1.1*without {
+		t.Errorf("the sympathetic strings don't add: %g vs %g", with, without)
 	}
 }
 

@@ -267,7 +267,10 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 	wasActive := v.IsActive()
 
 	v.velocity = 1.0
-	v.random = v.Rand().Float64()*2 - 1
+	// drawn only when a slot uses it: a voice that doesn't keeps the random stream it had
+	if v.mods.Uses(modmatrix.Random) {
+		v.random = v.Rand().Float64()*2 - 1
+	}
 	v.ReceiveMessage(message)
 
 	v.waitSamps = tick.SampleOffset

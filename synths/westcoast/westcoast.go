@@ -269,7 +269,10 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 	if v.cfg.Strike > 0 {
 		v.vactrol = math.Max(v.vactrol, math.Min(v.cfg.Strike, 1)*(0.5+0.5*v.velocity))
 	}
-	v.random = v.Rand().Float64()*2 - 1
+	// drawn only when a slot uses it: a voice that doesn't keeps the random stream it had
+	if v.mods.Uses(modmatrix.Random) {
+		v.random = v.Rand().Float64()*2 - 1
+	}
 	v.lfoPhase, v.lfo2Phase, v.cycle = 0, 0, 0
 	v.count = 0
 	v.t = 0

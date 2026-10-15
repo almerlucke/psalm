@@ -345,7 +345,10 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 		v.noteOff = max(1, int(duration*sr))
 	}
 	v.t = 0
-	v.random = v.Rand().Float64()*2 - 1
+	// drawn only when a slot uses it: a voice that doesn't keeps the random stream it had
+	if v.mods.Uses(modmatrix.Random) {
+		v.random = v.Rand().Float64()*2 - 1
+	}
 	mode := adsr.NoteOff
 	if duration > 0 {
 		mode = adsr.Duration
