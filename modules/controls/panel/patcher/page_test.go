@@ -550,3 +550,27 @@ func TestPageNoteRoll(t *testing.T) {
 	tb.Mouse("mouseReleased", xc, yc, map[string]any{"button": "right", "clickCount": 1})
 	paneltest.Eventually(t, "the note taken away", func() bool { _, ok := values()["n/0/key"]; return !ok })
 }
+
+// the arpeggiator is on the page: a module with its notes in, clock in and notes out, and its settings in the side panel
+func TestPageArp(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("arp", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	node := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s']")`, id)
+	tb.WaitFor(node+`.querySelectorAll(".pt-port").length >= 3`, "its ports: notes and clock in, notes out")
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	tb.WaitFor(`!!`+frame+` && `+frame+`.body.innerText.includes("octaves")`, "its settings in the side panel")
+}

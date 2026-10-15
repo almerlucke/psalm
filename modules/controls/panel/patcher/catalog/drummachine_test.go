@@ -4,10 +4,12 @@ import (
 	"testing"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/midi"
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/catalog"
+	"github.com/almerlucke/psalm/synths/subtractive"
 )
 
 // the drum machine: a kind of the patch, its grid kept with the patch and loaded again
@@ -183,5 +185,56 @@ func TestNoteRoll(t *testing.T) {
 	}
 	if v := pt2.SettingsOf(roll).Values(); v["length"] != 4 || v["n/0/key"] != 60 || v["n/0/velocity"] != 0.9 {
 		t.Errorf("the notes should come back with the patch: %v", v)
+	}
+}
+
+// a synth's modulation matrix is among its settings: a slot joins an Ext source to its level, the
+// source is a setting too (a mod cable of the patch moves it)
+func TestSynthMatrixInPatch(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 240, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	peak := func(ext float64, cable bool) float32 {
+		p := psalm.New(nil)
+		pt := patcher.New(p, panel.New(p, "A"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+		p.Out(pt.Out())
+		roll, _ := pt.Add("noteroll", "", 0, 0)
+		synth, _ := pt.Add("subtractive", "", 0, 0)
+		for _, c := range []patcher.Cable{{From: roll, To: synth}, {From: synth, To: "out"}} {
+			if _, err := pt.Connect(c); err != nil {
+				t.Fatal(err)
+			}
+		}
+		pt.SettingsOf(roll).Apply(map[string]float64{"length": 4, "n/0/start": 0, "n/0/length": 2, "n/0/key": 60, "n/0/velocity": 0.9})
+		level := 0
+		for i, d := range subtractive.Dests {
+			if d.Key == "level" {
+				level = i + 1
+			}
+		}
+		pt.SettingsOf(synth).Apply(map[string]float64{"mod1Src": float64(modmatrix.Ext1), "mod1Dest": float64(level), "mod1Amount": -1, "ext1": ext, "level": 1})
+		if cable { // an LFO cabled to the source: the page can move it like any setting
+			lfo, _ := pt.Add("lfo", "", 0, 0)
+			if _, err := pt.Connect(patcher.Cable{From: lfo, To: synth, In: 1, Key: "ext1"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var pk float32
+		for i := range 44100 * 2 / 256 {
+			p.ResetRun()
+			p.Run()
+			if i < 44100/10/256 { // the source glides to its value in the first milliseconds
+				continue
+			}
+			for _, s := range pt.Out().Output(0).Channels[0] {
+				pk = max(pk, s, -s)
+			}
+		}
+		return pk
+	}
+	if open, shut := peak(0, false), peak(1, false); open < 0.01 || shut > open*0.05 {
+		t.Errorf("peak %v with the source at 0, %v at 1: the slot should silence the synth", open, shut)
+	}
+	if peak(0, true) < 0.001 {
+		t.Error("the synth with a mod cable to ext1 doesn't play")
 	}
 }
