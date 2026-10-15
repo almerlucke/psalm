@@ -208,6 +208,15 @@ reaches `unisonDetune` too.
 With the formant filter, all cutoff modulation (filter envelope, LFO cutoff amounts) moves the
 vowel instead of a cutoff, in vowel steps.
 
+### A second filter
+
+`Filter2Mode` (off, low, band, high, notch) adds a second state variable filter, after the first or
+beside it (`Filter2Parallel`: the two mixed): `Filter2Cutoff`, `Filter2Resonance`, `Filter2EnvAmount`
+(octaves, from the filter envelope) and `Filter2KeyTrack`. A low pass and a high pass in a row make a
+band; a notch beside a low pass keeps the lows and a hole above. Messages `filter2Mode`,
+`filter2Cutoff`, `filter2Resonance`, `filter2EnvAmount`, `filter2KeyTrack`, `filter2Parallel`; the
+matrix reaches `filter2Cutoff`.
+
 ### Envelopes
 
 `FilterEnv` and `AmpEnv` are ADSR settings (`adsr.NewSetting(attackLevel, attackMs, sustainLevel,

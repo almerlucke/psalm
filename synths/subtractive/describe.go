@@ -47,6 +47,13 @@ func Describe(cfg Config) params.Set {
 		params.K("Filter", "vowel", 0, 4, cfg.Vowel),
 		params.K("Filter", "formantShift", 0.5, 2, orOne(cfg.FormantShift), params.Exp(), params.Label("formant shift")),
 
+		params.C("Filter 2", "filter2Mode", []string{"off", "low pass", "band pass", "high pass", "notch"}, int(cfg.Filter2Mode), params.Label("mode")),
+		params.K("Filter 2", "filter2Cutoff", 20, 18000, max(20, cfg.Filter2Cutoff), params.Exp(), params.Unit("Hz"), params.Label("cutoff")),
+		params.K("Filter 2", "filter2Resonance", 0, 1, cfg.Filter2Resonance, params.Label("resonance")),
+		params.K("Filter 2", "filter2EnvAmount", -6, 6, cfg.Filter2EnvAmount, params.Unit("oct"), params.Label("env amount")),
+		params.K("Filter 2", "filter2KeyTrack", 0, 1, cfg.Filter2KeyTrack, params.Label("key track")),
+		params.S("Filter 2", "filter2Parallel", cfg.Filter2Parallel, params.Label("parallel")),
+
 		params.K("Pitch", "glide", 0, 2000, cfg.Glide, params.Unit("ms")),
 		params.K("Pitch", "filterEnvToPitch", -48, 48, cfg.FilterEnvToPitch, params.Unit("st"), params.Label("env to pitch")),
 		params.K("Pitch", "level", 0, 4, orOne(cfg.Level)),

@@ -24,6 +24,17 @@ const (
 	FilterFormant                   // vowel filter, the cutoff modulation moves the vowel instead
 )
 
+// Filter2Mode selects the second filter
+type Filter2Mode int
+
+const (
+	Filter2Off Filter2Mode = iota
+	Filter2Low
+	Filter2Band
+	Filter2High
+	Filter2Notch
+)
+
 // FilterMode selects the output of the SVF filter
 type FilterMode int
 
@@ -72,6 +83,15 @@ type Config struct {
 	Resonance       float64     // 0-1, for the formant filter it sets the sharpness of the formants
 	FilterEnvAmount float64     // octaves added to cutoff at full envelope (vowel steps for the formant filter)
 	KeyTrack        float64     // 0-1, 1 means cutoff follows pitch fully (relative to middle C)
+
+	// A second filter, a state variable one after the first (serial) or beside it (parallel): the
+	// two bands of a split, a low pass with a high pass for a band, a notch for a hole
+	Filter2Mode      Filter2Mode
+	Filter2Cutoff    float64 // Hz
+	Filter2Resonance float64 // 0-1
+	Filter2EnvAmount float64 // octaves the filter envelope adds to its cutoff
+	Filter2KeyTrack  float64 // 0-1
+	Filter2Parallel  bool    // beside the first filter (the two mixed) instead of after it
 
 	// Formant filter
 	Vowel        float64 // 0-4: a e i o u, fractions morph. Envelope and LFO cutoff amounts move the vowel
@@ -133,6 +153,7 @@ const (
 	dLFO1Rate
 	dLFO2Rate
 	dUnisonDetune
+	dCutoff2
 	numDests
 )
 
@@ -155,6 +176,7 @@ var Dests = []modmatrix.Dest{
 	dLFO1Rate:     {Key: "lfo1Rate", Label: "lfo 1 rate", Span: 3},
 	dLFO2Rate:     {Key: "lfo2Rate", Label: "lfo 2 rate", Span: 3},
 	dUnisonDetune: {Key: "unisonDetune", Label: "unison detune", Span: 50},
+	dCutoff2:      {Key: "filter2Cutoff", Label: "cutoff 2", Span: 6},
 }
 
 // The value inputs of a voice: 1 to 4 set the cutoff, the resonance, the pulse width and the vowel,
@@ -177,6 +199,7 @@ type Voice struct {
 	lfo1      lfo
 	lfo2      lfo
 	svf       *svf.SVF
+	svf2      *svf.SVF
 	ladder    *ladder.Ladder
 	formant   *formant.Formant
 	ladderDrv float64
@@ -227,6 +250,7 @@ func New(cfg Config) *Voice {
 		v.uni2[k] = blosc.New(v.frequency, sr, math.Mod(0.381966*float64(k+2), 1), cfg.PulseWidth, 1.0, cfg.Osc2Waveform)
 	}
 	v.svf = svf.New(cfg.Cutoff, cfg.Resonance, sr)
+	v.svf2 = svf.New(max(20, cfg.Filter2Cutoff), cfg.Filter2Resonance, sr)
 	v.ladder = ladder.New(cfg.Cutoff, cfg.Resonance, sr)
 	v.formant = formant.New(cfg.Vowel, formantQ(cfg.Resonance), sr)
 	v.filterEnv = adsr.New(&v.cfg.FilterEnv, adsr.NoteOff, sr)
@@ -326,6 +350,12 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("resonance", func(f float64) { v.cfg.Resonance = f })
 	msg.IfFltVal("filterEnvAmount", func(f float64) { v.cfg.FilterEnvAmount = f })
 	msg.IfFltVal("keyTrack", func(f float64) { v.cfg.KeyTrack = f })
+	msg.IfIntVal("filter2Mode", func(m int) { v.cfg.Filter2Mode = Filter2Mode(max(0, min(m, int(Filter2Notch)))) })
+	msg.IfFltVal("filter2Cutoff", func(f float64) { v.cfg.Filter2Cutoff = math.Max(20, f) })
+	msg.IfFltVal("filter2Resonance", func(f float64) { v.cfg.Filter2Resonance = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("filter2EnvAmount", func(f float64) { v.cfg.Filter2EnvAmount = f })
+	msg.IfFltVal("filter2KeyTrack", func(f float64) { v.cfg.Filter2KeyTrack = f })
+	msg.IfFltVal("filter2Parallel", func(f float64) { v.cfg.Filter2Parallel = f > 0.5 })
 	msg.IfFltVal("frequency", v.SetFrequency)
 	msg.IfFltVal("pitch", v.SetPitch)
 }
@@ -402,6 +432,7 @@ func (v *Voice) Clear() {
 	v.filterEnv.Clear()
 	v.ampEnv.Clear()
 	v.svf.Clear()
+	v.svf2.Clear()
 	v.ladder.Clear()
 	v.formant.Clear()
 	v.formCount = 0
@@ -440,6 +471,8 @@ func (v *Voice) Synthesize() {
 	pwModded := modded && mods.Targets(dPulseWidth)
 	detuneModded := modded && mods.Targets(dOsc2Detune)
 	driveModded := modded && mods.Targets(dDrive)
+	filter2 := cfg.Filter2Mode != Filter2Off
+	svf2Mode := [...]svf.Mode{svf.LowPass, svf.LowPass, svf.BandPass, svf.HighPass, svf.Notch}[cfg.Filter2Mode]
 	unison := max(1, min(cfg.Unison, maxUnison))
 	uniDetune := cfg.UnisonDetune
 	if modded {
@@ -580,9 +613,23 @@ func (v *Voice) Synthesize() {
 		if v.formCount == 0 {
 			mod := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2 + 2*v.expr.Wheel() + mods.Mod(dCutoff)
 			v.setFilter(v.cutoff*keyTrackMult*math.Exp2(mod), mod, math.Max(0, math.Min(v.res+mods.Mod(dResonance), 1)), v.vowel+mods.Mod(dVowel))
+			if filter2 {
+				c2 := math.Max(20, cfg.Filter2Cutoff) * math.Pow(v.glideFreq/middleC, cfg.Filter2KeyTrack) * math.Exp2(cfg.Filter2EnvAmount*fenv+mods.Mod(dCutoff2))
+				v.svf2.Set(math.Max(20, math.Min(c2, 0.45*sr)), cfg.Filter2Resonance)
+			}
 		}
 		v.formCount = (v.formCount + 1) % filterUpdate
-		s = v.processFilter(s)
+		if filter2 {
+			in := s
+			s = v.processFilter(in)
+			if cfg.Filter2Parallel {
+				s = 0.5 * (s + v.svf2.Process(in, svf2Mode))
+			} else {
+				s = v.svf2.Process(s, svf2Mode)
+			}
+		} else {
+			s = v.processFilter(s)
+		}
 
 		// Amp with LFO tremolo
 		if cfg.LFO1.Amp != 0.0 {

@@ -469,3 +469,44 @@ func TestDriftWanders(t *testing.T) {
 		t.Error("drift doesn't change the sound")
 	}
 }
+
+// roughness is the energy of what changes fast, over the energy: how bright it is
+func roughness(x []float32) float64 {
+	var e, d float64
+	for i := 1; i < len(x); i++ {
+		e += float64(x[i]) * float64(x[i])
+		d += float64(x[i]-x[i-1]) * float64(x[i]-x[i-1])
+	}
+	if e == 0 {
+		return 0
+	}
+	return d / e
+}
+
+func TestSecondFilter(t *testing.T) {
+	base := DefaultConfig()
+	base.Cutoff, base.Resonance, base.FilterEnvAmount = 12000, 0, 0
+	open := roughness(render(base, 30))
+
+	low := base
+	low.Filter2Mode, low.Filter2Cutoff = Filter2Low, 500
+	if r := roughness(render(low, 30)); r > open*0.3 {
+		t.Errorf("a second low pass at 500 Hz leaves %g of %g", r, open)
+	}
+	high := base
+	high.Filter2Mode, high.Filter2Cutoff = Filter2High, 4000
+	if r := roughness(render(high, 30)); r < open*1.5 {
+		t.Errorf("a second high pass at 4 kHz makes it %g against %g: not brighter", r, open)
+	}
+	// parallel: the low pass beside the open first filter keeps half of the highs
+	par := low
+	par.Filter2Parallel = true
+	if r := roughness(render(par, 30)); r < roughness(render(low, 30))*2 || r > open*1.01 {
+		t.Errorf("parallel: %g, between serial %g and open %g", r, roughness(render(low, 30)), open)
+	}
+	v := New(base)
+	v.ReceiveMessage(psalm.Message{"filter2Mode": 3, "filter2Cutoff": 900.0, "filter2Resonance": 0.4, "filter2Parallel": 1.0})
+	if c := v.cfg; c.Filter2Mode != Filter2High || c.Filter2Cutoff != 900 || c.Filter2Resonance != 0.4 || !c.Filter2Parallel {
+		t.Errorf("settings %+v", c)
+	}
+}
