@@ -18,6 +18,10 @@ func Describe(cfg Config) params.Set {
 	if level <= 0 {
 		level = 1
 	}
+	undercut := cfg.Undercut
+	if undercut <= 0 {
+		undercut = 1
+	}
 	lfoRate := cfg.LFORate
 	if lfoRate <= 0 {
 		lfoRate = 5
@@ -31,6 +35,8 @@ func Describe(cfg Config) params.Set {
 		params.K("Instrument", "resonator", 0, 1, cfg.Resonator),
 		params.K("Instrument", "spread", 0, 4, cfg.Spread),
 		params.K("Instrument", "drift", 0, 1, cfg.Drift),
+		params.K("Instrument", "undercut", 0.01, 1, undercut),
+		params.K("Instrument", "nonlinearity", 0, 1, cfg.Nonlinearity),
 
 		params.C("Mallet", "excitation", Excitations, int(cfg.Excitation)),
 		params.K("Mallet", "hardness", 0, 1, cfg.Hardness),

@@ -56,7 +56,7 @@ func TestBarModeData(t *testing.T) {
 		InstTubularBell: {0, 0, 0, 2, 3, 4, 5, 6}} {
 		md := modelOf(ins)
 		for i, r := range want {
-			if r != 0 && md.parts[i].ratio != r {
+			if r != 0 && math.Abs(1200*math.Log2(md.parts[i].ratio/r)) > 2 {
 				t.Errorf("%s mode %d at %g, want %g", Instruments[ins], i+1, md.parts[i].ratio, r)
 			}
 		}
@@ -360,7 +360,7 @@ func TestInstrumentsAreFinite(t *testing.T) {
 		for i, d := range Dests {
 			src := modmatrix.Source(1 + (i+int(ins))%int(modmatrix.NumSources-1))
 			c := Config{Instrument: ins, Modes: Marimba().Modes, Decay: 1, Hardness: 0.5, Position: 0.4, Spread: 1, Drift: 1,
-				Resonator: 0.6, Contact: 1, Mass: 1, Noise: 0.2, Level: 1}
+				Resonator: 0.6, Contact: 1, Mass: 1, Noise: 0.2, Nonlinearity: 1, Undercut: 0.5, Level: 1}
 			c.Mods[0] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: 1}
 			c.Mods[1] = modmatrix.Slot{Src: src, Dest: d.Key, Amount: -1}
 			c.Ext = [4]float64{1, 1, 1, 1}

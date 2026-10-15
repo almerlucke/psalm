@@ -11,6 +11,8 @@ var Presets = map[string]func() Config{
 	"kalimba":      Kalimba,
 	"singingBowl":  SingingBowl,
 	"woodBlock":    WoodBlock,
+	"templeBlock":  TempleBlock,
+	"bottle":       Bottle,
 
 	"alienBell":  AlienBell,
 	"gamelan":    Gamelan,
@@ -41,7 +43,7 @@ func Marimba() Config {
 		Contact:    0.4,
 		Mass:       0.3,
 		Noise:      0.15,
-		Level:      0.506,
+		Level:      0.393,
 	}
 }
 
@@ -59,7 +61,7 @@ func Vibraphone() Config {
 		Tremolo:      5,
 		TremoloDepth: 0.6,
 		Noise:        0.05,
-		Level:        0.405,
+		Level:        0.304,
 	}
 }
 
@@ -146,16 +148,45 @@ func SingingBowl() Config {
 	}
 }
 
-// WoodBlock is a hollow block of wood: a short knock with a pitch
+// WoodBlock is a hollow block of wood with a slit: a short knock with a pitch, the air in the box
+// ringing a moment under the walls' bar modes
 func WoodBlock() Config {
 	return Config{
-		Modes:       []Mode{{1, 1, 1}, {1.58, 0.5, 0.8}, {2.47, 0.3, 0.6}, {3.9, 0.15, 0.5}},
+		Instrument:  InstWoodBlock,
 		Decay:       0.12,
-		HighDamping: 0.5,
+		HighDamping: 0.3,
 		Hardness:    0.8,
 		Position:    0.3,
+		Contact:     0.3,
 		Noise:       0.4,
 		Level:       0.881,
+	}
+}
+
+// TempleBlock is a big round hollow block: a lower, rounder knock whose cavity rings longer
+func TempleBlock() Config {
+	return Config{
+		Instrument:  InstTempleBlock,
+		Decay:       0.3,
+		HighDamping: 0.3,
+		Hardness:    0.65,
+		Position:    0.3,
+		Contact:     0.3,
+		Mass:        0.3,
+		Noise:       0.25,
+		Level:       0.776,
+	}
+}
+
+// Bottle is a glass bottle tapped with a fingernail: the Helmholtz tone of the body and a thin glass ring
+func Bottle() Config {
+	return Config{
+		Instrument: InstBottle,
+		Decay:      0.9,
+		Hardness:   0.6,
+		Contact:    0.3,
+		Noise:      0.3,
+		Level:      0.881,
 	}
 }
 
@@ -288,31 +319,34 @@ func Handbell() Config {
 	}
 }
 
-// Gong is a tam-tam: the modes of a disc as the zeros of the Bessel derivatives, struck near the centre
+// Gong is a tam-tam: the modes of a disc as the zeros of the Bessel derivatives, struck near the centre;
+// a hard blow glides down in pitch and blooms as the low modes feed the high ones (the nonlinearity)
 func Gong() Config {
 	return Config{
-		Instrument: InstGong,
-		Decay:      9,
-		Hardness:   0.4,
-		Position:   0.35,
-		Spread:     1,
-		Mass:       0.8,
-		Noise:      0.1,
-		Level:      0.436,
+		Instrument:   InstGong,
+		Decay:        9,
+		Hardness:     0.4,
+		Position:     0.35,
+		Spread:       1,
+		Mass:         0.8,
+		Nonlinearity: 0.6,
+		Noise:        0.1,
+		Level:        0.412,
 	}
 }
 
-// Cymbal is a dense wash of plate modes that dies from the top
+// Cymbal is a dense wash of plate modes that dies from the top; a crash blooms as the low modes feed the high ones
 func Cymbal() Config {
 	return Config{
-		Instrument: InstCymbal,
-		Decay:      2.5,
-		Hardness:   1,
-		Position:   0.7,
-		Spread:     1,
-		Contact:    0.5,
-		Noise:      0.3,
-		Level:      0.107,
+		Instrument:   InstCymbal,
+		Decay:        2.5,
+		Hardness:     1,
+		Position:     0.7,
+		Spread:       1,
+		Contact:      0.5,
+		Nonlinearity: 0.8,
+		Noise:        0.3,
+		Level:        0.107,
 	}
 }
 

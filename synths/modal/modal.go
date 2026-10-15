@@ -62,6 +62,8 @@ type Config struct {
 	Drift         float64 // 0-1: each note a little different: the pairs turn, the split and the pitch vary (draws from the random stream only when above 0)
 	Contact       float64 // 0-1: how much the strike's velocity shortens the mallet's touch (the Hertz contact), so a harder blow is brighter
 	Mass          float64 // 0-1: the mallet's weight, a heavier one touches longer
+	Undercut      float64 // 0-1: the arch under a marimba, vibraphone or xylophone bar, from a uniform bar (small) to the tuned arch (1, and 0 is treated as 1); it moves the ratios and the mode shapes
+	Nonlinearity  float64 // 0-1: gongs and cymbals: the pitch glides down after a hard strike, energy cascades from the low modes to the high ones (the bloom) and the modes shimmer; a harder blow does more (0 is linear)
 	Inharmonicity float64 // 0-1: stretches the modes' ratios, the higher ones more (stiff metal, glass)
 	LFORate       float64 // Hz of the matrix's LFO 1 (0 is 5)
 	LFO2Rate      float64 // Hz of the matrix's LFO 2, a plain sine from the strike (0 is 1), running only when a slot uses it
@@ -86,6 +88,7 @@ type resonator struct {
 	gain   float64 // per unit of force
 	fast   float64 // the decay per sample once let go
 	r, w   float64 // the decay and the angle per sample, unbent
+	jit    float64 // the nonlinear shimmer: a slow random detuning of this mode
 	tube   bool    // the resonator tube, which the tremolo swings
 }
 
@@ -122,6 +125,13 @@ type Voice struct {
 	bowSigma  float64
 	pitchMod  float64 // the semitones the matrix bends the modes by
 	hasTube   bool
+	// the nonlinear coupling of a gong or cymbal
+	nlStrength float64 // nonlinearity times the blow's velocity squared
+	nlPeak     float64 // the most energy the modes have had
+	nlShift    float64 // the fraction the modes are sharp by while they ring loud
+	nlTime     float64 // seconds since the strike
+	nlEnergy   []float64
+	nlGain     []float64
 }
 
 // New returns a voice
@@ -161,6 +171,8 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("drift", func(f float64) { v.cfg.Drift = f })
 	msg.IfFltVal("contact", func(f float64) { v.cfg.Contact = f })
 	msg.IfFltVal("mass", func(f float64) { v.cfg.Mass = f })
+	msg.IfFltVal("undercut", func(f float64) { v.cfg.Undercut = math.Max(0.01, math.Min(f, 1)) })
+	msg.IfFltVal("nonlinearity", func(f float64) { v.cfg.Nonlinearity = math.Max(0, math.Min(f, 1)) })
 	msg.IfFltVal("inharmonicity", func(f float64) { v.cfg.Inharmonicity = f })
 	msg.IfFltVal("lfoRate", func(f float64) { v.cfg.LFORate = f })
 	msg.IfFltVal("lfo2Rate", func(f float64) { v.cfg.LFO2Rate = f })
@@ -256,7 +268,7 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 		if !v.active {
 			m.re, m.im = 0, 0
 		}
-		m.r, m.w, m.tube = r, w, tube
+		m.r, m.w, m.tube, m.jit = r, w, tube, 0
 		m.c, m.s = r*math.Cos(w), r*math.Sin(w)
 		m.gain = amp
 		m.fast = math.Pow(10, -3/(math.Min(t60, release)*sr)) / r
@@ -340,6 +352,8 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 		v.knock = 0
 	}
 	v.bentTo = 0 // the modes are set unbent: bend them in the next buffer
+	v.nlShift, v.nlPeak, v.nlTime = 0, 0, 0
+	v.nlStrength = math.Max(0, math.Min(cfg.Nonlinearity, 1)) * v.velocity * v.velocity
 	v.tremPhase = 0
 	v.active = true
 	v.quiet = 0
@@ -373,10 +387,101 @@ func (v *Voice) prime() {
 func (v *Voice) turn(bend float64) {
 	for k := range v.n {
 		m := &v.modes[k]
-		w := math.Min(m.w*bend, math.Pi*0.96)
+		w := math.Min(m.w*bend*(1+m.jit), math.Pi*0.96)
 		m.c, m.s = m.r*math.Cos(w), m.r*math.Sin(w)
 	}
 	v.bentTo = bend
+}
+
+// bend is what the modes are turned by now: the pitch bend, the matrix's pitch and the nonlinear glide
+func (v *Voice) bend() float64 {
+	return v.expr.Ratio() * math.Exp2(v.pitchMod/12) * (1 + v.nlShift)
+}
+
+// nonlinear is the coupling of a gong or cymbal, worked out every few samples: while the modes ring
+// loud they are sharp (the pitch falls as they die), they pass energy from each mode to the ones above
+// it (a crash blooms as the low modes feed the high ones) and each is detuned by a slow random
+// walk (the shimmer). Everything grows with the blow's velocity.
+func (v *Voice) nonlinear(dt float64) {
+	n := v.n
+	if cap(v.nlEnergy) < n {
+		v.nlEnergy = make([]float64, n)
+	}
+	e := v.nlEnergy[:n]
+	total := 0.0
+	for k := range n {
+		m := &v.modes[k]
+		e[k] = m.re*m.re + m.im*m.im
+		if !m.tube {
+			total += e[k]
+		}
+	}
+	v.nlTime += dt
+	if total > v.nlPeak {
+		v.nlPeak = total
+	}
+	if v.nlPeak < 1e-12 || v.nlStrength <= 0 {
+		return
+	}
+	rel := total / v.nlPeak
+	amp := math.Sqrt(rel)
+	// the cascade sets in over a fraction of a second, the more strongly the louder they ring; each mode
+	// passes a share of its energy to the ones up to an octave and a bit above it, so the energy takes a
+	// few hops, a few tenths of a second, to reach the top
+	onset := 1 - math.Exp(-v.nlTime/0.5)
+	phi := math.Min(0.25, 24*v.nlStrength*rel*onset*dt)
+	if cap(v.nlGain) < n {
+		v.nlGain = make([]float64, n)
+	}
+	gain := v.nlGain[:n]
+	clear(gain)
+	keep := math.Sqrt(1 - phi)
+	for j := range n {
+		mj := &v.modes[j]
+		if mj.tube || e[j] == 0 {
+			continue
+		}
+		lo, hi := mj.w*1.15, mj.w*3
+		cnt := 0
+		for k := range n {
+			if w := v.modes[k].w; w > lo && w <= hi && !v.modes[k].tube {
+				cnt++
+			}
+		}
+		if cnt == 0 {
+			continue
+		}
+		share := phi * e[j] / float64(cnt)
+		for k := range n {
+			if w := v.modes[k].w; w > lo && w <= hi && !v.modes[k].tube {
+				gain[k] += share
+			}
+		}
+		mj.re *= keep
+		mj.im *= keep
+	}
+	for k := range n {
+		m := &v.modes[k]
+		if m.tube {
+			continue
+		}
+		if gain[k] > 0 {
+			// random phase: the energy arrives without a relation to what rings
+			v.rng = v.rng*1664525 + 1013904223
+			a := float64(int32(v.rng)) / 2147483648
+			v.rng = v.rng*1664525 + 1013904223
+			b := float64(int32(v.rng)) / 2147483648
+			g := math.Sqrt(1.5 * gain[k])
+			m.re += a * g
+			m.im += b * g
+		}
+		// the shimmer
+		v.rng = v.rng*1664525 + 1013904223
+		r := float64(int32(v.rng)) / 2147483648
+		m.jit = math.Max(-0.004, math.Min(0.99*m.jit+r*0.0008*v.nlStrength*amp, 0.004))
+	}
+	v.nlShift = 0.05 * v.nlStrength * rel
+	v.turn(v.bend())
 }
 
 // keyValue is the note for the matrix: -1 to 1, five octaves below middle C to five above
@@ -439,9 +544,10 @@ func (v *Voice) Synthesize() {
 	if modded {
 		v.pitchMod = mods.Mod(dPitch)
 	}
-	if bend := v.expr.Ratio() * math.Exp2(v.pitchMod/12); bend != v.bentTo || v.bentTo == 0 {
+	if bend := v.bend(); bend != v.bentTo || v.bentTo == 0 {
 		v.turn(bend)
 	}
+	nonlinear := cfg.Nonlinearity > 0 && v.nlStrength > 0
 	// the tremolo: the motor's, or the wheel's
 	tremolo := cfg.Tremolo
 	depth := math.Max(0, math.Min(cfg.TremoloDepth, 1))
@@ -477,6 +583,9 @@ func (v *Voice) Synthesize() {
 				v.bowEnv += (1 - v.bowEnv) * bowAttack
 			}
 			force += v.bowLP * v.bowEnv * v.bowSigma * 2.5
+		}
+		if nonlinear && i&31 == 0 {
+			v.nonlinear(32 / sr)
 		}
 		var dLev, dTrem float64
 		if modded {
