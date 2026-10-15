@@ -1,7 +1,6 @@
 package wavetable
 
 import (
-	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
@@ -9,6 +8,8 @@ import (
 	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
+	"github.com/almerlucke/psalm/blocks/sine"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -20,6 +21,20 @@ const (
 	LowPass
 	BandPass
 	HighPass
+)
+
+// WarpMode selects how the phase of the oscillators is bent before the table is read
+type WarpMode int
+
+const (
+	WarpOff      WarpMode = iota
+	WarpBendUp            // the cycle is pushed towards its end: the first part of the frame is stretched
+	WarpBendDown          // the cycle is pushed towards its start: the last part of the frame is stretched
+	WarpSync              // the frame is played 1 to 8 times in a cycle, like a hard synced oscillator
+	WarpMirror            // the cycle is played forward, then backward (a triangle of the phase)
+	WarpFMB               // oscillator B (as it sounds, before its level) modulates the phase
+	WarpFMSine            // a sine at the pitch of the note modulates the phase
+	numWarpModes
 )
 
 // MaxUnison is the largest number of unison oscillators
@@ -45,6 +60,27 @@ type Config struct {
 	Spread float64 // 0-1, stereo width of the unison oscillators
 
 	SubLevel float64 // sine an octave below
+
+	// Warp bends the phase of oscillator A (and B, but for the FM modes) before the table is read
+	Warp     float64  // 0-1, how far
+	WarpMode WarpMode // see WarpMode
+
+	// Oscillator B reads a table of its own position at its own pitch, mixed with oscillator A (and
+	// the sub): one oscillator, in the middle, with the same table and normalization
+	OscBLevel    float64 // 0-1, 0 is off
+	OscBPosition float64 // 0-1, position through the table
+	OscBOctave   int     // -3 to 3 octaves from the note
+	OscBSemi     float64 // -12 to 12 semitones from the note
+	OscBDetune   float64 // -50 to 50 cents from the note
+
+	// Two LFOs (sines) for the sources LFO 1 and LFO 2 of the matrix; they run only when a slot uses them
+	LFO1Rate float64 // Hz (0 is 1 Hz)
+	LFO2Rate float64 // Hz (0 is 1 Hz)
+
+	// The matrix: a source to a destination (see Dests) over an amount
+	Mods [modmatrix.Slots]modmatrix.Slot
+	// Ext are the values 0-1 of the matrix's sources Ext 1 to 4 (cabled in on InExt1...)
+	Ext [modmatrix.Exts]float64
 
 	// Normalize brings every frame of the table to the same loudness, so moving the position
 	// changes the timbre but not the level (quiet frames are brought up at most 4 times)
@@ -92,8 +128,57 @@ const middleC = 261.6255653005986
 // basic is the table played when the config has none
 var basic = Basic()
 
-// Voice is a wavetable synth voice. Value inputs: 1 position, 2 cutoff, 3 resonance. They glide
-// (the position over a few milliseconds, the filter over a buffer), so modulating them never clicks
+// The destinations of the matrix (see Dests), by number
+const (
+	dPosition = iota
+	dCutoff
+	dResonance
+	dPitch
+	dDetune
+	dSpread
+	dSubLevel
+	dLevel
+	dWarp
+	dOscBLevel
+	dOscBPosition
+	dOscBDetune
+	dLFO1Rate
+	dLFO2Rate
+	numDests
+)
+
+// Dests are the settings the matrix of a voice moves: by their keys (the pitch is the pitch of the
+// voice, not the message), with how far a full source moves them (octaves for the cutoff, semitones
+// for the pitch, cents for the detunes, the setting itself for the rest)
+var Dests = []modmatrix.Dest{
+	dPosition:     {Key: "position", Label: "position", Span: 1},
+	dCutoff:       {Key: "cutoff", Label: "cutoff", Span: 6},
+	dResonance:    {Key: "resonance", Label: "resonance", Span: 1},
+	dPitch:        {Key: "pitch", Label: "pitch", Span: 24},
+	dDetune:       {Key: "detune", Label: "detune", Span: 100},
+	dSpread:       {Key: "spread", Label: "spread", Span: 1},
+	dSubLevel:     {Key: "subLevel", Label: "sub", Span: 1},
+	dLevel:        {Key: "level", Label: "level", Span: 1},
+	dWarp:         {Key: "warp", Label: "warp", Span: 1},
+	dOscBLevel:    {Key: "oscBLevel", Label: "level b", Span: 1},
+	dOscBPosition: {Key: "oscBPosition", Label: "position b", Span: 1},
+	dOscBDetune:   {Key: "oscBDetune", Label: "detune b", Span: 100},
+	dLFO1Rate:     {Key: "lfo1Rate", Label: "lfo 1 rate", Span: 3},
+	dLFO2Rate:     {Key: "lfo2Rate", Label: "lfo 2 rate", Span: 3},
+}
+
+// The value inputs of a voice: 1 to 3 set the position, the cutoff and the resonance, 5 to 8 the
+// values of the matrix (Ext 1 to 4) that a slot can move any setting by
+const (
+	InPosition  = 1
+	InCutoff    = 2
+	InResonance = 3
+	InExt1      = 5 // to InExt1+3
+)
+
+// Voice is a wavetable synth voice. Value inputs: 1 position, 2 cutoff, 3 resonance, 5-8 ext 1-4
+// of the matrix. They glide (the position over a few milliseconds, the filter over a buffer), so
+// modulating them never clicks
 type Voice struct {
 	*psalm.Module
 	cfg         Config
@@ -112,7 +197,14 @@ type Voice struct {
 	res       float64 // smoothed cfg.Resonance
 	vibPhase  float64
 	lfoPhase  float64
-	count     int // samples until the next filter coefficient update
+	phaseB    float64
+	warpPhase float64
+	lfo1Phase float64
+	lfo2Phase float64
+	mods      *modmatrix.Matrix
+	velocity  float64 // the amplitude of the note
+	random    float64 // a random value for the note, -1 to 1
+	count     int     // samples until the next filter coefficient update
 	waitSamps int
 }
 
@@ -138,6 +230,13 @@ func New(cfg Config) *Voice {
 	for c := range v.filters {
 		v.filters[c] = svf.New(cfg.Cutoff, cfg.Resonance, sr)
 	}
+	v.mods = modmatrix.New(Dests)
+	for i, sl := range cfg.Mods {
+		v.mods.Set(i, sl)
+	}
+	for i, e := range cfg.Ext {
+		v.mods.SetExt(i, e)
+	}
 	v.SetSelf(v)
 
 	return v
@@ -156,6 +255,13 @@ func (v *Voice) SetPitch(pitch float64) {
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	v.mods.Receive(msg)
+	for i := range v.cfg.Mods {
+		v.cfg.Mods[i] = v.mods.Slot(i)
+	}
+	for i := range v.cfg.Ext {
+		v.cfg.Ext[i] = v.mods.Ext(i)
+	}
 	envelope.Receive(msg, "amp", &v.cfg.AmpEnv)
 	envelope.Receive(msg, "filter", &v.cfg.FilterEnv)
 	envelope.Receive(msg, "position", &v.cfg.PositionEnv)
@@ -171,6 +277,15 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("detune", func(f float64) { cfg.Detune = f })
 	msg.IfFltVal("spread", func(f float64) { cfg.Spread = f })
 	msg.IfFltVal("subLevel", func(f float64) { cfg.SubLevel = f })
+	msg.IfFltVal("warp", func(f float64) { cfg.Warp = f })
+	msg.IfIntVal("warpMode", func(m int) { cfg.WarpMode = WarpMode(max(0, min(m, int(numWarpModes)-1))) })
+	msg.IfFltVal("oscBLevel", func(f float64) { cfg.OscBLevel = f })
+	msg.IfFltVal("oscBPosition", func(f float64) { cfg.OscBPosition = f })
+	msg.IfIntVal("oscBOctave", func(n int) { cfg.OscBOctave = n })
+	msg.IfFltVal("oscBSemi", func(f float64) { cfg.OscBSemi = f })
+	msg.IfFltVal("oscBDetune", func(f float64) { cfg.OscBDetune = f })
+	msg.IfFltVal("lfo1Rate", func(f float64) { cfg.LFO1Rate = f })
+	msg.IfFltVal("lfo2Rate", func(f float64) { cfg.LFO2Rate = f })
 	msg.IfFltVal("normalize", func(f float64) { cfg.Normalize = f >= 0.5 })
 	msg.IfIntVal("filter", func(m int) { cfg.Filter = FilterMode(m) })
 	msg.IfFltVal("cutoff", func(f float64) { cfg.Cutoff = f })
@@ -192,12 +307,15 @@ func (v *Voice) Receive(value any, index int) {
 	}
 	f := psalm.FltVal[float64](value)
 	switch index {
-	case 1:
+	case InPosition:
 		v.cfg.Position = f
-	case 2:
+	case InCutoff:
 		v.cfg.Cutoff = f
-	case 3:
+	case InResonance:
 		v.cfg.Resonance = f
+	case InExt1, InExt1 + 1, InExt1 + 2, InExt1 + 3:
+		v.mods.SetExt(index-InExt1, f)
+		v.cfg.Ext[index-InExt1] = v.mods.Ext(index - InExt1)
 	}
 }
 
@@ -213,6 +331,8 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 	wasActive := v.IsActive()
 	v.ReceiveMessage(message)
 	v.waitSamps = tick.SampleOffset
+	v.velocity = amplitude
+	v.random = v.Rand().Float64()*2 - 1
 
 	if !wasActive {
 		// unison oscillators start at random phases so they don't start out as one loud wave
@@ -224,6 +344,8 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 		}
 		v.subPhase = 0
 		v.vibPhase = 0
+		v.phaseB, v.warpPhase = 0, 0
+		v.lfo1Phase, v.lfo2Phase = 0, 0
 		v.position = v.cfg.Position
 		v.cutoff = v.cfg.Cutoff
 		v.res = v.cfg.Resonance
@@ -261,6 +383,60 @@ const filterUpdate = 4
 // positionSmoothing is the time in milliseconds the position takes to follow a change
 const positionSmoothing = 5.0
 
+// warpSlope is the most a warp steepens the phase: the table is read at this times the pitch, so
+// the band limited level is picked for the harmonics the warp moves up
+func warpSlope(mode WarpMode, a float64) float64 {
+	switch mode {
+	case WarpBendUp, WarpBendDown:
+		return 1 + 3*a
+	case WarpSync:
+		return 1 + 7*a
+	case WarpMirror:
+		return 1 + a
+	case WarpFMB, WarpFMSine:
+		return 1 + 4*a
+	}
+	return 1
+}
+
+// warp bends a phase (0-1) by a (0-1); mod (-1 to 1) is what modulates the phase in the FM modes
+func warp(mode WarpMode, a, p, mod float64) float64 {
+	switch mode {
+	case WarpBendUp:
+		return math.Pow(p, 1+3*a)
+	case WarpBendDown:
+		return 1 - math.Pow(1-p, 1+3*a)
+	case WarpSync:
+		q := p * (1 + 7*a)
+		return q - math.Floor(q)
+	case WarpMirror:
+		return p + (1-math.Abs(2*p-1)-p)*a
+	case WarpFMB, WarpFMSine:
+		q := p + 0.75*a*mod
+		return q - math.Floor(q)
+	}
+	return p
+}
+
+// unison fills the detune ratios and the gains of n unison oscillators, spread evenly: the sum
+// keeps the level of one oscillator
+func unison(n int, detune, spread float64, stereo bool, ratios, gainL, gainR *[MaxUnison]float64) {
+	norm := 1.0 / math.Sqrt(float64(n))
+	for u := range n {
+		offset := 0.0
+		if n > 1 {
+			offset = float64(u)/float64(n-1) - 0.5
+		}
+		ratios[u] = math.Exp2(offset * detune / 1200.0)
+		pan := 0.5 + offset*spread
+		gainL[u] = math.Cos(pan*math.Pi/2) * math.Sqrt2 * norm
+		gainR[u] = math.Sin(pan*math.Pi/2) * math.Sqrt2 * norm
+		if !stereo {
+			gainL[u] = norm
+		}
+	}
+}
+
 func (v *Voice) Synthesize() {
 	outSocket := v.Output(0)
 	outSocket.Clear()
@@ -277,6 +453,8 @@ func (v *Voice) Synthesize() {
 		table   = cfg.Table
 		level   = cfg.Level
 		stereo  = len(outs) > 1
+		mods    = v.mods
+		modded  = mods.Active()
 	)
 	if table == nil {
 		table = basic
@@ -285,22 +463,22 @@ func (v *Voice) Synthesize() {
 		level = 1
 	}
 
-	// unison: detune ratios and pans, spread evenly, the sum keeps the level of one oscillator
 	n := max(1, min(cfg.Unison, MaxUnison))
 	var ratios, gainL, gainR [MaxUnison]float64
-	norm := 1.0 / math.Sqrt(float64(n))
-	for u := range n {
-		offset := 0.0
-		if n > 1 {
-			offset = float64(u)/float64(n-1) - 0.5
-		}
-		ratios[u] = math.Exp2(offset * cfg.Detune / 1200.0)
-		pan := 0.5 + offset*cfg.Spread
-		gainL[u] = math.Cos(pan*math.Pi/2) * math.Sqrt2 * norm
-		gainR[u] = math.Sin(pan*math.Pi/2) * math.Sqrt2 * norm
-		if !stereo {
-			gainL[u] = norm
-		}
+	unison(n, cfg.Detune, cfg.Spread, stereo, &ratios, &gainL, &gainR)
+	unisonModded := modded && (mods.Targets(dDetune) || mods.Targets(dSpread))
+
+	// oscillator B, and the warp: only worked out when they are on
+	baseRatioB := math.Exp2(float64(cfg.OscBOctave) + cfg.OscBSemi/12)
+	bModded := modded && (mods.Targets(dOscBLevel) || mods.Targets(dOscBDetune) || mods.Targets(dOscBPosition))
+	warpModded := modded && mods.Targets(dWarp)
+	lfo1Active := mods.Uses(modmatrix.LFO1) || mods.Targets(dLFO1Rate)
+	lfo2Active := mods.Uses(modmatrix.LFO2) || mods.Targets(dLFO2Rate)
+	lfo1Rate, lfo2Rate := orOneF(cfg.LFO1Rate), orOneF(cfg.LFO2Rate)
+	if modded {
+		mods.Values[modmatrix.Velocity] = v.velocity
+		mods.Values[modmatrix.Random] = v.random
+		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.glideFreq/middleC)/5, 1))
 	}
 
 	glideCoef := 1.0
@@ -320,6 +498,26 @@ func (v *Voice) Synthesize() {
 		fenv := v.filterEnv.Generate()
 		penv := v.positionEnv.Generate()
 
+		// the matrix: the sources of this sample, and what each destination is moved by
+		if modded {
+			var l1, l2 float64
+			if lfo1Active {
+				l1 = sine.Cycle(v.lfo1Phase)
+				v.lfo1Phase += lfo1Rate * math.Exp2(mods.Mod(dLFO1Rate)) / sr
+				v.lfo1Phase -= math.Floor(v.lfo1Phase)
+			}
+			if lfo2Active {
+				l2 = sine.Cycle(v.lfo2Phase)
+				v.lfo2Phase += lfo2Rate * math.Exp2(mods.Mod(dLFO2Rate)) / sr
+				v.lfo2Phase -= math.Floor(v.lfo2Phase)
+			}
+			mv := &mods.Values
+			mv[modmatrix.FilterEnv], mv[modmatrix.AmpEnv] = fenv, amp
+			mv[modmatrix.LFO1], mv[modmatrix.LFO2] = l1, l2
+			mv[modmatrix.Wheel] = v.expr.Wheel()
+			mods.Eval(sr)
+		}
+
 		// pitch with glide and vibrato, and the bend
 		v.expr.Tick(sr)
 		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
@@ -329,33 +527,97 @@ func (v *Voice) Synthesize() {
 			v.vibPhase += cfg.VibratoRate / sr
 			v.vibPhase -= math.Floor(v.vibPhase)
 		}
+		if modded {
+			if m := mods.Mod(dPitch); m != 0 {
+				freq *= math.Exp2(m / 12)
+			}
+		}
 
 		// position: the smoothed setting plus envelope and LFO
 		v.position += (cfg.Position - v.position) * posCoef
-		pos := v.position + cfg.PositionEnvAmount*penv + 0.6*v.expr.Wheel()
+		pos := v.position + cfg.PositionEnvAmount*penv + 0.6*v.expr.Wheel() + mods.Mod(dPosition)
 		if cfg.PositionLFODepth != 0 && cfg.PositionLFORate > 0 {
 			pos += cfg.PositionLFODepth * sine.Cycle(v.lfoPhase)
 			v.lfoPhase += cfg.PositionLFORate / sr
 			v.lfoPhase -= math.Floor(v.lfoPhase)
 		}
 
-		// oscillators, the highest unison oscillator picks the band limited level for all
+		if unisonModded {
+			unison(n, math.Max(0, cfg.Detune+mods.Mod(dDetune)), math.Max(0, math.Min(cfg.Spread+mods.Mod(dSpread), 1)), stereo, &ratios, &gainL, &gainR)
+		}
+
+		// oscillator B (also the modulator of the FM warp)
 		inc := freq / sr
-		c := table.cursor(pos, inc*ratios[n-1])
+		levelB := cfg.OscBLevel
+		if bModded {
+			levelB += mods.Mod(dOscBLevel)
+		}
+		wmode := cfg.WarpMode
+		wamt := cfg.Warp
+		if warpModded {
+			wamt += mods.Mod(dWarp)
+		}
+		wamt = math.Max(0, math.Min(wamt, 1))
+		if wamt == 0 {
+			wmode = WarpOff
+		}
+		var oB, l, r float64
+		if levelB > 0 || (wmode == WarpFMB) {
+			posB, centsB := cfg.OscBPosition, cfg.OscBDetune
+			if bModded {
+				posB += mods.Mod(dOscBPosition)
+				centsB += mods.Mod(dOscBDetune)
+			}
+			incB := inc * baseRatioB * math.Exp2(centsB/1200)
+			cb := table.cursor(posB, incB)
+			gB := 1.0
+			if cfg.Normalize {
+				gB = cb.gain
+			}
+			pb := v.phaseB
+			if wmode != WarpFMB && wmode != WarpFMSine {
+				pb = warp(wmode, wamt, pb, 0)
+				cb = table.cursor(posB, incB*warpSlope(wmode, wamt))
+			}
+			oB = cb.read(pb) * gB
+			v.phaseB += incB
+			v.phaseB -= math.Floor(v.phaseB)
+		}
+
+		// oscillator A, the highest unison oscillator picks the band limited level for all
+		slope := warpSlope(wmode, wamt)
+		c := table.cursor(pos, inc*ratios[n-1]*slope)
 		frameGain := 1.0
 		if cfg.Normalize {
 			frameGain = c.gain
 		}
-		var l, r float64
+		mod := 0.0
+		switch wmode {
+		case WarpFMB:
+			mod = oB
+		case WarpFMSine:
+			mod = sine.Cycle(v.warpPhase)
+		}
 		for u := range n {
-			x := c.read(v.phases[u]) * frameGain
+			p := v.phases[u]
+			if wmode != WarpOff {
+				p = warp(wmode, wamt, p, mod)
+			}
+			x := c.read(p) * frameGain
 			l += x * gainL[u]
 			r += x * gainR[u]
 			v.phases[u] += inc * ratios[u]
 			v.phases[u] -= math.Floor(v.phases[u])
 		}
-		if cfg.SubLevel > 0 {
-			sub := cfg.SubLevel * sine.Cycle(v.subPhase)
+		v.warpPhase += inc
+		v.warpPhase -= math.Floor(v.warpPhase)
+		if levelB > 0 {
+			oB *= levelB
+			l += oB
+			r += oB
+		}
+		if sub := cfg.SubLevel + mods.Mod(dSubLevel); sub > 0 {
+			sub *= sine.Cycle(v.subPhase)
 			l += sub
 			r += sub
 		}
@@ -367,9 +629,13 @@ func (v *Voice) Synthesize() {
 			v.cutoff += cutoffInc
 			v.res += resInc
 			if v.count == 0 {
-				fc := v.cutoff * keyTrack * math.Exp2(cfg.FilterEnvAmount*fenv+1.5*v.expr.Wheel())
+				fc := v.cutoff * keyTrack * math.Exp2(cfg.FilterEnvAmount*fenv+1.5*v.expr.Wheel()+mods.Mod(dCutoff))
+				res := v.res
+				if modded {
+					res = math.Max(0, math.Min(res+mods.Mod(dResonance), 1))
+				}
 				for _, f := range v.filters {
-					f.Set(fc, v.res)
+					f.Set(fc, res)
 				}
 			}
 			v.count = (v.count + 1) % filterUpdate
@@ -386,7 +652,7 @@ func (v *Voice) Synthesize() {
 			}
 		}
 
-		g := amp * level
+		g := amp * math.Max(0, level+mods.Mod(dLevel))
 		outs[0][i] = float32(l * g)
 		if stereo {
 			outs[1][i] = float32(r * g)
@@ -396,6 +662,13 @@ func (v *Voice) Synthesize() {
 	v.cutoff = cfg.Cutoff
 	v.res = cfg.Resonance
 	v.waitSamps = 0
+}
+
+func orOneF(f float64) float64 {
+	if f <= 0 {
+		return 1
+	}
+	return f
 }
 
 // NewPoly creates a polyphonic wavetable synth

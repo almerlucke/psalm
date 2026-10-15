@@ -13,10 +13,13 @@ package waveguide
 import (
 	"math"
 
+	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -63,7 +66,57 @@ type Config struct {
 	Body    Body
 	BodyMix float64 // 0-1: how much of the sound is the body
 	Level   float64 // output level (0 is treated as 1)
+
+	Sympathetic float64 // 0-1: the sound fed into strings tuned to its octave and fifth, added back
+	LFO2Rate    float64 // Hz: the rate of the plain LFO of the matrix (0 is 2 Hz)
+
+	Filter voicefilter.Config              // a filter after the string and the body (off unless its Type is set)
+	Mods   [modmatrix.Slots]modmatrix.Slot // the matrix: a source to a destination (see Dests) over an amount
+	Ext    [modmatrix.Exts]float64         // the values 0-1 of the matrix's sources Ext 1 to 4 (cabled in on InExt1...)
 }
+
+// The destinations of the matrix (see Dests), by number
+const (
+	dDecay = iota
+	dDamping
+	dBrightness
+	dPickPosition
+	dPressure
+	dBowPosition
+	dVibratoDepth
+	dBodyMix
+	dPitch
+	dLevel
+	dCutoff
+)
+
+// Dests are the settings the matrix of a voice moves: by their keys, as described (Describe), with
+// how far a full source moves them (octaves of the decay time, semitones, octaves of the cutoff, or the
+// setting itself). The brightness and the pick position are those of the pluck, taken as a note
+// starts (so the sources that move them are the velocity, the key, the random value, the wheel and
+// the cabled values)
+var Dests = []modmatrix.Dest{
+	dDecay:        {Key: "decay", Label: "decay", Span: 2},
+	dDamping:      {Key: "damping", Label: "damping", Span: 0.5},
+	dBrightness:   {Key: "brightness", Label: "brightness", Span: 0.5},
+	dPickPosition: {Key: "pickPosition", Label: "pick position", Span: 0.25},
+	dPressure:     {Key: "bowPressure", Label: "pressure", Span: 0.5},
+	dBowPosition:  {Key: "bowPosition", Label: "bow position", Span: 0.2},
+	dVibratoDepth: {Key: "vibratoDepth", Label: "vibrato depth", Span: 1},
+	dBodyMix:      {Key: "bodyMix", Label: "body", Span: 1},
+	dPitch:        {Key: "pitch", Label: "pitch", Span: 12},
+	dLevel:        {Key: "level", Label: "level", Span: 1},
+	dCutoff:       {Key: "cutoff", Label: "cutoff", Span: 4},
+}
+
+// The value inputs of a voice: 1 is the bow pressure and 2 the vibrato depth, 3 to 6 the values of
+// the matrix (Ext 1 to 4) that a slot can move any setting by
+const InExt1 = 3 // to InExt1+3
+
+const middleC = 261.6255653005986
+
+// symRatios are the strings that sound along: an octave below, a fifth, an octave and an octave and a fifth above
+var symRatios = [...]float64{0.5, 1.5, 2, 3}
 
 // DefaultConfig is a nylon string guitar
 func DefaultConfig() Config {
@@ -120,6 +173,14 @@ type Voice struct {
 	body []*svf.SVF
 	rng  uint32
 
+	filter  *voicefilter.Filter
+	mods    *modmatrix.Matrix
+	random  float64 // a random value for the note, -1 to 1
+	penv    float64 // the level of a plucked string, 1 to 0 (the amp envelope for the matrix)
+	lfo2    float64 // phase
+	sym     []*svf.SVF
+	symFreq float64
+
 	expr    expression.Expression // the pitch bend; the mod wheel brings in a vibrato
 	period  float64               // samples of the pluck's period, unbent
 	tunedTo float64               // the ratio the pluck's loop is tuned for now
@@ -171,12 +232,31 @@ func New(cfg Config) *Voice {
 	v.neck.buf = make([]float64, size)
 	v.bridge.buf = make([]float64, size)
 	v.rng = uint32(v.Rand().Uint64())
+	v.filter = voicefilter.New(cfg.Filter, sr, cfg.NumChannels)
+	v.mods = modmatrix.New(Dests)
+	for i, sl := range cfg.Mods {
+		v.mods.Set(i, sl)
+	}
+	for i, e := range cfg.Ext {
+		v.mods.SetExt(i, e)
+	}
 	v.SetSelf(v)
 	return v
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	v.filter.Receive(msg)
+	v.cfg.Filter = v.filter.Config()
+	v.mods.Receive(msg)
+	for i := range v.cfg.Mods {
+		v.cfg.Mods[i] = v.mods.Slot(i)
+	}
+	for i := range v.cfg.Ext {
+		v.cfg.Ext[i] = v.mods.Ext(i)
+	}
+	msg.IfFltVal("sympathetic", func(f float64) { v.cfg.Sympathetic = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("lfo2Rate", func(f float64) { v.cfg.LFO2Rate = math.Max(0, f) })
 	// "ampAttack" the bow speeding up, "ampDecay" the ring of a plucked string, "ampRelease" a
 	// string let go (plucked or bowed)
 	envelope.Seconds(msg, "amp", &v.cfg.BowAttack, &v.cfg.Decay, &v.cfg.Release)
@@ -197,7 +277,8 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
 }
 
-// Receive takes messages, or the bow pressure on input 1 and the vibrato depth on input 2
+// Receive takes messages, or the bow pressure on input 1 and the vibrato depth on input 2, and on 3
+// to 6 (InExt1...) values 0-1 that the matrix takes as sources Ext 1 to 4
 func (v *Voice) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		v.ReceiveMessage(msg)
@@ -208,6 +289,9 @@ func (v *Voice) Receive(value any, index int) {
 		v.cfg.Pressure = psalm.FltVal[float64](value)
 	case 2:
 		v.cfg.VibratoDepth = psalm.FltVal[float64](value)
+	case InExt1, InExt1 + 1, InExt1 + 2, InExt1 + 3:
+		v.mods.SetExt(index-InExt1, psalm.FltVal[float64](value))
+		v.cfg.Ext[index-InExt1] = v.mods.Ext(index - InExt1)
 	}
 }
 
@@ -231,6 +315,30 @@ func (v *Voice) note(duration, amplitude float64, message psalm.Message, tick ps
 	if duration > 0 {
 		v.noteOff = max(1, int(duration*v.Config().SampleRate))
 	}
+	if !v.active {
+		v.vibPhase = 0
+		for _, b := range v.sym {
+			b.Clear()
+		}
+	}
+	v.random = v.Rand().Float64()*2 - 1
+	v.penv = 1
+	if v.mods.Active() {
+		// the pluck is shaped as it starts: the sources that are still are what moves it
+		mv := &v.mods.Values
+		*mv = [modmatrix.NumSources]float64{}
+		mv[modmatrix.AmpEnv] = v.penv
+		if v.cfg.Model == Bow {
+			mv[modmatrix.AmpEnv] = 0
+		}
+		v.fillStatic()
+		v.mods.Eval(v.Config().SampleRate)
+	}
+	mode := adsr.NoteOff
+	if duration > 0 {
+		mode = adsr.Duration
+	}
+	v.filter.Trigger(duration*1000, mode)
 	v.prepareBody()
 	if v.cfg.Model == Bow {
 		v.bowNote()
@@ -240,13 +348,35 @@ func (v *Voice) note(duration, amplitude float64, message psalm.Message, tick ps
 	v.active = true
 }
 
+// fillStatic sets the sources that are the same for the whole note
+func (v *Voice) fillStatic() {
+	mv := &v.mods.Values
+	mv[modmatrix.Velocity] = v.velocity
+	mv[modmatrix.Random] = v.random
+	mv[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.freq/middleC)/5, 1))
+	mv[modmatrix.Wheel] = v.expr.Wheel()
+}
+
+// setLoss sets the loop filter and the gain per loop for a damping and the seconds of decay at 220 Hz
+func (v *Voice) setLoss(damping, decay float64) {
+	sr := v.Config().SampleRate
+	f := v.freq
+	v.s = 0.05 + 0.45*math.Max(0, math.Min(damping, 1))
+	// the gain per loop that rings Decay seconds at 220 Hz (longer below, shorter above), over what
+	// the loop filter takes at the fundamental
+	t60 := math.Max(0.01, decay) * math.Sqrt(220/f)
+	w := math.Pi * f / sr
+	h := math.Sqrt(1 - 4*v.s*(1-v.s)*math.Sin(w)*math.Sin(w))
+	v.gain = math.Min(0.99999, math.Pow(10, -3/(f*t60))/h)
+}
+
 // pluck tunes the loop and fills the excitation: noise, as bright as the pluck, with the notch of
 // the pick position
 func (v *Voice) pluck() {
 	cfg := &v.cfg
 	sr := v.Config().SampleRate
 	f := v.freq
-	v.s = 0.05 + 0.45*math.Max(0, math.Min(cfg.Damping, 1))
+	v.setLoss(cfg.Damping+v.mods.Mod(dDamping), cfg.Decay*math.Exp2(v.mods.Mod(dDecay)))
 	// the loop: whole samples, the allpass for the fraction (0.5-1.5) and the filter's half sample
 	v.period = sr / f
 	n := int(math.Floor(v.period - v.s - 0.5))
@@ -255,19 +385,13 @@ func (v *Voice) pluck() {
 		v.prev, v.apX, v.apY = 0, 0, 0
 	}
 	v.tune(1)
-	// the gain per loop that rings Decay seconds at 220 Hz (longer below, shorter above), over what
-	// the loop filter takes at the fundamental
-	t60 := math.Max(0.01, cfg.Decay) * math.Sqrt(220/f)
-	w := math.Pi * f / sr
-	h := math.Sqrt(1 - 4*v.s*(1-v.s)*math.Sin(w)*math.Sin(w))
-	v.gain = math.Min(0.99999, math.Pow(10, -3/(f*t60))/h)
 
 	// the excitation, one loop long
 	if cap(v.excite) < n+1 {
 		v.excite = make([]float64, n+1)
 	}
 	ex := v.excite[:n+1]
-	bright := math.Max(0, math.Min(cfg.Brightness+0.4*(v.velocity-0.5), 1))
+	bright := math.Max(0, math.Min(cfg.Brightness+v.mods.Mod(dBrightness)+0.4*(v.velocity-0.5), 1))
 	coef := math.Exp(-2 * math.Pi * math.Min(f*(1+60*bright*bright), sr/3) / sr) // the pluck's lowpass, 12 dB/oct
 	lp, lp2 := 0.0, 0.0
 	mean := 0.0
@@ -286,7 +410,7 @@ func (v *Voice) pluck() {
 	}
 	// the pick position: the reflection off the near end cancels the partials with a node there
 	// (around the loop: the burst circulates)
-	if p := int(math.Round(math.Max(0, math.Min(cfg.PickPosition, 0.5)) * float64(n))); p > 0 {
+	if p := int(math.Round(math.Max(0, math.Min(cfg.PickPosition+v.mods.Mod(dPickPosition), 0.5)) * float64(n))); p > 0 {
 		v.comb = append(v.comb[:0], ex[:n]...)
 		for i := range n {
 			ex[i] -= v.comb[(i-p+n)%n]
@@ -322,7 +446,7 @@ func (v *Voice) tune(ratio float64) {
 // bowNote sets the two lines of the bow
 func (v *Voice) bowNote() {
 	sr := v.Config().SampleRate
-	pos := math.Max(0.02, math.Min(v.cfg.BowPosition, 0.5))
+	pos := math.Max(0.02, math.Min(v.cfg.BowPosition+v.mods.Mod(dBowPosition), 0.5))
 	// the loop is the two lines there and back, and the filter
 	// the loop is the lines, a sample each for reading them, and the filter
 	w := 2 * math.Pi * v.freq / sr
@@ -377,6 +501,7 @@ func (v *Voice) prepareBody() {
 }
 
 func (v *Voice) NoteOff() {
+	v.filter.Release()
 	v.released = true
 	v.noteOff = 0
 }
@@ -390,6 +515,10 @@ func (v *Voice) Clear() {
 	for _, b := range v.body {
 		b.Clear()
 	}
+	for _, b := range v.sym {
+		b.Clear()
+	}
+	v.filter.Clear()
 	v.Output(0).Clear()
 }
 
@@ -414,9 +543,36 @@ func (v *Voice) Synthesize() {
 	if cfg.Model == Pluck {
 		gain *= v.amp * (0.3 + 0.7*v.velocity)
 	}
-	mix := math.Max(0, math.Min(cfg.BodyMix, 1))
+	mods := v.mods
+	modded := mods.Active()
+	lossModded := modded && cfg.Model == Pluck && (mods.Targets(dDecay) || mods.Targets(dDamping))
+	pressModded := modded && mods.Targets(dPressure)
+	posModded := modded && cfg.Model == Bow && mods.Targets(dBowPosition)
+	filtered := v.filter.On()
+	tickFilter := filtered || (modded && mods.Uses(modmatrix.FilterEnv))
+	lfo1Used := modded && mods.Uses(modmatrix.LFO1)
+	lfo2Used := modded && mods.Uses(modmatrix.LFO2)
+	lfo2Inc := cfg.LFO2Rate / sr
+	if lfo2Inc <= 0 {
+		lfo2Inc = 2 / sr
+	}
+	penvStep := 1.0
+	if cfg.Model == Pluck && modded {
+		t60 := math.Max(0.01, cfg.Decay) * math.Sqrt(220/v.freq)
+		penvStep = math.Pow(10, -3/(t60*sr))
+	}
+	if modded {
+		v.fillStatic()
+	}
+	mixBase := math.Max(0, math.Min(cfg.BodyMix, 1))
 	if len(v.body) == 0 {
-		mix = 0
+		mixBase = 0
+	}
+	bodyModded := modded && len(v.body) > 0 && mods.Targets(dBodyMix)
+	mix := mixBase
+	sym := math.Max(0, math.Min(cfg.Sympathetic, 1))
+	if sym > 0 {
+		v.prepareSym()
 	}
 	channels := out.Channels
 	quiet := true
@@ -429,7 +585,8 @@ func (v *Voice) Synthesize() {
 	}
 	bowStep := 1 / math.Max(1, math.Max(0.005, cfg.BowAttack)*sr)
 	bowFall := 1 / math.Max(1, math.Max(0.005, cfg.BowRelease)*sr)
-	slope := 5 - 4*math.Max(0, math.Min(cfg.Pressure, 1))
+	pressure := cfg.Pressure
+	slope := 5 - 4*math.Max(0, math.Min(pressure, 1))
 	vibInc := cfg.VibratoRate / sr
 	filterPole := bowPole(sr)
 
@@ -438,6 +595,56 @@ func (v *Voice) Synthesize() {
 		var s float64
 		v.expr.Tick(sr)
 		bend := v.expr.VibratoRatio(sr, 5.5, 0.3)
+		depth := cfg.VibratoDepth
+		if modded {
+			mv := &mods.Values
+			if cfg.Model == Bow {
+				mv[modmatrix.AmpEnv] = v.bowEnv
+			} else {
+				v.penv *= penvStep
+				if v.released {
+					v.penv *= penvStep * penvStep * penvStep
+				}
+				mv[modmatrix.AmpEnv] = v.penv
+			}
+			mv[modmatrix.FilterEnv] = mv[modmatrix.AmpEnv]
+			if filtered {
+				mv[modmatrix.FilterEnv] = v.filter.Env()
+			}
+			mv[modmatrix.Wheel] = v.expr.Wheel()
+			if lfo1Used {
+				mv[modmatrix.LFO1] = math.Sin(2 * math.Pi * v.vibPhase)
+			}
+			if lfo2Used {
+				mv[modmatrix.LFO2] = math.Sin(2 * math.Pi * v.lfo2)
+				v.lfo2 += lfo2Inc
+				if v.lfo2 >= 1 {
+					v.lfo2--
+				}
+			}
+			mods.Eval(sr)
+			depth += mods.Mod(dVibratoDepth)
+			if m := mods.Mod(dPitch); m != 0 {
+				bend *= math.Exp2(m / 12)
+			}
+			if bodyModded {
+				mix = math.Max(0, math.Min(mixBase+mods.Mod(dBodyMix), 1))
+			}
+			if pressModded {
+				pressure = cfg.Pressure + mods.Mod(dPressure)
+				slope = 5 - 4*math.Max(0, math.Min(pressure, 1))
+			}
+			if lossModded && i&15 == 0 {
+				v.setLoss(cfg.Damping+mods.Mod(dDamping), cfg.Decay*math.Exp2(mods.Mod(dDecay)))
+				loopGain = v.gain
+				if v.released && cfg.Release > 0 {
+					loopGain = math.Min(loopGain, math.Pow(10, -3/(v.freq*cfg.Release)))
+				}
+			}
+			if posModded {
+				v.bridge.len = math.Max(v.baseDelay*math.Max(0.02, math.Min(cfg.BowPosition+mods.Mod(dBowPosition), 0.5)), minBridge)
+			}
+		}
 		if cfg.Model == Pluck {
 			if bend != v.tunedTo {
 				v.tune(bend)
@@ -460,6 +667,12 @@ func (v *Voice) Synthesize() {
 				v.pos = 0
 			}
 			s = in
+			if lfo1Used {
+				v.vibPhase += vibInc
+				if v.vibPhase >= 1 {
+					v.vibPhase--
+				}
+			}
 		} else {
 			// the bow speeds up while held, and slows down when let go
 			if !v.released {
@@ -470,15 +683,15 @@ func (v *Voice) Synthesize() {
 			// the vibrato stretches the neck side
 			if v.vibWait > 0 {
 				v.vibWait--
-			} else if cfg.VibratoDepth != 0 {
+			} else if depth != 0 || lfo1Used {
 				v.vibPhase += vibInc
 				if v.vibPhase >= 1 {
 					v.vibPhase--
 				}
 			}
 			ratio := 1.0
-			if cfg.VibratoDepth != 0 {
-				ratio = math.Exp2(-cfg.VibratoDepth * math.Sin(2*math.Pi*v.vibPhase) / 12)
+			if depth != 0 {
+				ratio = math.Exp2(-depth * math.Sin(2*math.Pi*v.vibPhase) / 12)
 			}
 			v.neck.len = v.baseDelay*ratio/bend - v.bridge.len
 			nut := -v.neck.out
@@ -512,9 +725,34 @@ func (v *Voice) Synthesize() {
 			}
 			s = s*(1-mix) + b*mix*1.5
 		}
-		val := float32(s * gain)
-		for _, ch := range channels {
-			ch[i] = val
+		if sym > 0 {
+			in := 0.0
+			for _, r := range v.sym {
+				_, band, _ := r.Tick(s)
+				in += band * r.K()
+			}
+			s += in * sym * 0.5
+		}
+		g := gain
+		if modded && mods.Targets(dLevel) {
+			g = gain / level * math.Max(0, level+mods.Mod(dLevel))
+		}
+		if tickFilter {
+			extra := 0.0
+			if modded {
+				extra = mods.Mod(dCutoff)
+			}
+			v.filter.Tick(v.freq*bend, extra, 0)
+		}
+		if filtered {
+			for c, ch := range channels {
+				ch[i] = float32(v.filter.Process(c, s*g))
+			}
+		} else {
+			val := float32(s * g)
+			for _, ch := range channels {
+				ch[i] = val
+			}
 		}
 		if math.Abs(s) > 1e-4 {
 			quiet = false
@@ -539,6 +777,21 @@ func (v *Voice) Synthesize() {
 	} else {
 		v.quiet = 0
 	}
+}
+
+// prepareSym tunes the strings that sound along to the note
+func (v *Voice) prepareSym() {
+	if len(v.sym) == len(symRatios) && v.symFreq == v.freq {
+		return
+	}
+	sr := v.Config().SampleRate
+	for len(v.sym) < len(symRatios) {
+		v.sym = append(v.sym, svf.New(1000, 0, sr))
+	}
+	for i, r := range symRatios {
+		v.sym[i].SetFrequencyQ(math.Min(v.freq*r, sr*0.45), 40)
+	}
+	v.symFreq = v.freq
 }
 
 // bowStop is the seconds a string dies in once the bow has stopped

@@ -859,6 +859,22 @@ for pads and leads, `MS 20 Pulse2 PS1` for basses, `OPFoldFMFB`, `MSelfFB02` and
 from soft to harsh for sweeps and growls, `Add Bell` and `Melda CustumWave3 IcarusBell` for keys,
 `KaossDrum2` (noise like, little below a few kHz) for hits.
 
+### Oscillator B, warp and the matrix
+
+A second oscillator, B, reads the same table at its own position, octave, semitone and detune
+(`oscBPosition`, `oscBOctave`, `oscBSemi`, `oscBDetune`) and is mixed in with `oscBLevel` (0 is off).
+`warpMode` and `warp` (0-1) bend the phase of oscillator A before the table is read: bend +, bend -,
+sync (the frame plays 1 to 8 times per cycle), mirror, fm b (oscillator B modulates the phase) and fm
+sine (`wavetable.WarpModes`). The band limited level of the table is chosen for the steepest slope of
+the warp, so warps stay mostly alias-safe. A wav becomes a table with `wavetable.Load` or
+`gen.LoadSound`.
+
+`Config.Mods` is an 8 slot [modulation matrix](#modulation-matrix): sources filter env, amp env, lfo 1,
+lfo 2 (plain sines, `lfo1Rate`, `lfo2Rate` in Hz, running when a slot uses them), velocity, key,
+random, wheel and `Ext1`...`Ext4` (value inputs 5 to 8, `wavetable.InExt1`); destinations `position`,
+`cutoff` (6 oct), `resonance`, `pitch` (24 st), `detune`, `spread`, `subLevel`, `level`, `warp`,
+`oscBLevel`, `oscBPosition`, `oscBDetune` and the two LFO rates (`wavetable.Dests`).
+
 ## piano
 
 `synths/piano`
@@ -1224,6 +1240,20 @@ friction's pull is measured and corrected). **Value inputs**: 1 pressure, 2 vibr
 
 **Messages**: `pitch`, `frequency`, `velocity`, `level`, `decay`, `damping`, `brightness`, `pickPosition`, `release`, `bowPressure`, `bowPosition`, `vibratoRate`, `vibratoDepth`, `bodyMix`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
 
+### Filter, matrix and sympathetic strings
+
+`Config.Filter` is the [voice filter](#the-voice-filter) after the string and body; `Config.Mods` an 8
+slot [modulation matrix](#modulation-matrix). Sources: amp env (the bow speed, or the level of a
+plucked string), filter env, lfo 1 (the vibrato), lfo 2 (a plain sine, `lfo2Rate`), velocity, key,
+random, wheel and ext 1-4 (value inputs 3 to 6, `waveguide.InExt1`). Destinations: `decay`, `damping`,
+`brightness`, `pickPosition`, `bowPressure`, `bowPosition`, `vibratoDepth`, `bodyMix`, `pitch`,
+`level`, `cutoff`. Brightness and pick position are the pluck itself: they are read at the start of
+the note, so velocity, key, random, wheel and ext are the sources for them.
+
+`sympathetic` (0-1) feeds the sound into four strings tuned an octave below, a fifth, an octave and
+an octave and a fifth above the note, and adds them back: a shimmering, resonant string. It costs
+nothing at 0.
+
 ## modal
 
 `synths/modal`
@@ -1355,6 +1385,18 @@ The first formant follows the pitch up when it is higher, as singers do. **Value
 | `babble` | A crowd of twelve, each jumping between vowels |
 
 **Messages**: `pitch`, `frequency`, `velocity`, `level`, `vowel`, `vowelGlide`, `brightness`, `breath`, `range`, `vibratoRate`, `vibratoDepth`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
+
+### Filter, matrix and consonants
+
+`Config.Filter` is the [voice filter](#the-voice-filter) after the formants; `Config.Mods` an 8 slot
+[modulation matrix](#modulation-matrix). Destinations: `vowel`, `brightness`, `breath`,
+`vibratoDepth`, `detune`, `spread`, `pitch`, `level`, `cutoff`. Sources: the envelopes, lfo 1 (the
+vibrato), lfo 2 (a plain sine at 2 Hz), velocity, key, random, wheel and ext 1-4 (value inputs 3 to
+6, `vocal.InExt1`).
+
+`consonant` (none, t, k, s, sh, f) with `consonantLevel` adds a short burst of filtered noise as the
+note starts: a clipped click for t and k, a swell of hiss for s, sh and f. It sits in the middle and
+is not shaped by the vowel or the filter, which makes syllables of the notes. The default is none.
 
 ## pd
 

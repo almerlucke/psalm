@@ -10,11 +10,14 @@ package vocal
 import (
 	"math"
 
+	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
+	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
+	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -54,6 +57,78 @@ type Config struct {
 	VowelDepth float64
 	VowelSteps bool
 	Level      float64 // output level (0 is treated as 1)
+
+	Consonant      Consonant // a burst of noise as the note starts (none unless set)
+	ConsonantLevel float64   // 0-1 (0 is treated as 0.5)
+
+	Filter voicefilter.Config              // a filter after the formants (off unless its Type is set)
+	Mods   [modmatrix.Slots]modmatrix.Slot // the matrix: a source to a destination (see Dests) over an amount
+	Ext    [modmatrix.Exts]float64         // the values 0-1 of the matrix's sources Ext 1 to 4 (cabled in on InExt1...)
+}
+
+// The destinations of the matrix (see Dests), by number
+const (
+	dVowel = iota
+	dBrightness
+	dBreath
+	dVibratoDepth
+	dDetune
+	dSpread
+	dPitch
+	dLevel
+	dCutoff
+)
+
+// Dests are the settings the matrix of a voice moves: by their keys, as described (Describe), with
+// how far a full source moves them (vowel steps, cents, semitones, octaves of the cutoff, or the
+// setting itself)
+var Dests = []modmatrix.Dest{
+	dVowel:        {Key: "vowel", Label: "vowel", Span: 2},
+	dBrightness:   {Key: "brightness", Label: "brightness", Span: 0.5},
+	dBreath:       {Key: "breath", Label: "breath", Span: 0.5},
+	dVibratoDepth: {Key: "vibratoDepth", Label: "vibrato depth", Span: 1},
+	dDetune:       {Key: "detune", Label: "detune", Span: 40},
+	dSpread:       {Key: "spread", Label: "spread", Span: 1},
+	dPitch:        {Key: "pitch", Label: "pitch", Span: 12},
+	dLevel:        {Key: "level", Label: "level", Span: 1},
+	dCutoff:       {Key: "cutoff", Label: "cutoff", Span: 4},
+}
+
+// The value inputs of a voice: 1 is the vowel and 2 the vibrato depth, 3 to 6 the values of the
+// matrix (Ext 1 to 4) that a slot can move any setting by
+const InExt1 = 3 // to InExt1+3
+
+const middleC = 261.6255653005986
+
+// Consonant is the burst of noise a note starts with
+type Consonant int
+
+const (
+	NoConsonant Consonant = iota
+	T
+	K
+	S
+	Sh
+	F
+	numConsonants
+)
+
+// ConsonantNames are the names of the consonants, by number
+var ConsonantNames = []string{"none", "t", "k", "s", "sh", "f"}
+
+// consonantShape is a burst: noise through a band (freq, q), as long as dur seconds, either
+// dying away at once (a plosive, with the time constant tau) or swelling and fading (a fricative)
+type consonantShape struct {
+	freq, q, dur, tau, gain float64
+	plosive                 bool
+}
+
+var consonants = [...]consonantShape{
+	T:  {freq: 5200, q: 1.2, dur: 0.05, tau: 0.01, gain: 3, plosive: true},
+	K:  {freq: 2000, q: 2, dur: 0.07, tau: 0.018, gain: 3, plosive: true},
+	S:  {freq: 7500, q: 1.5, dur: 0.12, gain: 2.5},
+	Sh: {freq: 3500, q: 1, dur: 0.14, gain: 2.5},
+	F:  {freq: 4500, q: 0.4, dur: 0.1, gain: 1.8},
 }
 
 // DefaultConfig is a solo voice
@@ -123,6 +198,8 @@ type singer struct {
 	delay   int     // samples it comes in late
 	gainL   float64
 	gainR   float64
+	pos     float64 // -1 to 1, where it stands in the choir
+	jitter  float64 // its own detune, as a fraction of the detune
 }
 
 // Voice sings one note
@@ -150,6 +227,12 @@ type Voice struct {
 	update    int
 	stepTo    float64               // the vowel a step of VowelSteps aims for
 	expr      expression.Expression // the pitch bend; the mod wheel opens the vowel (up to two steps)
+	filter    *voicefilter.Filter
+	mods      *modmatrix.Matrix
+	random    float64 // a random value for the note, -1 to 1
+	lfo2      float64 // phase
+	cons      *svf.SVF
+	consT     int // samples into the consonant (-1 none)
 }
 
 // randSource is a small fast random generator
@@ -178,12 +261,33 @@ func New(cfg Config) *Voice {
 		}
 	}
 	v.rng = &randSource{s: v.Rand().Uint64() | 1}
+	v.filter = voicefilter.New(cfg.Filter, sr, cfg.NumChannels)
+	v.cons = svf.New(1000, 0, sr)
+	v.consT = -1
+	v.mods = modmatrix.New(Dests)
+	for i, sl := range cfg.Mods {
+		v.mods.Set(i, sl)
+	}
+	for i, e := range cfg.Ext {
+		v.mods.SetExt(i, e)
+	}
 	v.SetSelf(v)
 	return v
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
+	v.filter.Receive(msg)
+	v.cfg.Filter = v.filter.Config()
+	v.mods.Receive(msg)
+	for i := range v.cfg.Mods {
+		v.cfg.Mods[i] = v.mods.Slot(i)
+	}
+	for i := range v.cfg.Ext {
+		v.cfg.Ext[i] = v.mods.Ext(i)
+	}
+	msg.IfIntVal("consonant", func(c int) { v.cfg.Consonant = Consonant(max(0, min(c, int(numConsonants)-1))) })
+	msg.IfFltVal("consonantLevel", func(f float64) { v.cfg.ConsonantLevel = math.Max(0, math.Min(f, 1)) })
 	envelope.Seconds(msg, "amp", &v.cfg.Attack, nil, &v.cfg.Release)
 	msg.IfFltVal("frequency", func(f float64) {
 		if f > 0 {
@@ -202,7 +306,8 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
 }
 
-// Receive takes messages, or the vowel on input 1 and the vibrato depth on input 2
+// Receive takes messages, or the vowel on input 1 and the vibrato depth on input 2, and on 3 to 6
+// (InExt1...) values 0-1 that the matrix takes as sources Ext 1 to 4
 func (v *Voice) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
 		v.ReceiveMessage(msg)
@@ -213,6 +318,9 @@ func (v *Voice) Receive(value any, index int) {
 		v.cfg.Vowel = psalm.FltVal[float64](value)
 	case 2:
 		v.cfg.VibratoDepth = psalm.FltVal[float64](value)
+	case InExt1, InExt1 + 1, InExt1 + 2, InExt1 + 3:
+		v.mods.SetExt(index-InExt1, psalm.FltVal[float64](value))
+		v.cfg.Ext[index-InExt1] = v.mods.Ext(index - InExt1)
 	}
 }
 
@@ -237,6 +345,13 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 		v.noteOff = max(1, int(duration*sr))
 	}
 	v.t = 0
+	v.random = v.Rand().Float64()*2 - 1
+	mode := adsr.NoteOff
+	if duration > 0 {
+		mode = adsr.Duration
+	}
+	v.filter.Trigger(duration*1000, mode)
+	v.startConsonant()
 	if !v.active {
 		v.env = 0
 		v.vowel = cfg.Vowel
@@ -260,11 +375,11 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 		if v.n > 1 {
 			pos = float64(i)/float64(v.n-1)*2 - 1
 		}
-		cents := pos * cfg.Detune / 2
+		s.pos, s.jitter = pos, 0
 		if v.n > 1 {
-			cents += (v.rng.float() - 0.5) * cfg.Detune * 0.3
+			s.jitter = (v.rng.float() - 0.5) * 0.3
 		}
-		s.detune = math.Exp2(cents / 1200)
+		s.detune = math.Exp2(s.cents(cfg.Detune) / 1200)
 		s.vibRate = math.Max(0, cfg.VibratoRate) * (1 + (v.rng.float()-0.5)*0.15)
 		s.vibPh = v.rng.float()
 		s.drift, s.driftTo = 0, 0
@@ -306,12 +421,71 @@ func (v *Voice) setFormants(f0 float64) {
 	}
 }
 
+// reshape sets the detune and the spread of the singers as the matrix moves them
+func (v *Voice) reshape() {
+	cfg := &v.cfg
+	detune := cfg.Detune + v.mods.Mod(dDetune)
+	spread := math.Max(0, math.Min(cfg.Spread+v.mods.Mod(dSpread), 1))
+	for i := range v.n {
+		s := &v.singers[i]
+		s.detune = math.Exp2(s.cents(detune) / 1200)
+		a := (s.pos*spread + 1) * math.Pi / 4
+		g := 1 / math.Sqrt(float64(v.n))
+		s.gainL, s.gainR = g*math.Cos(a)*math.Sqrt2, g*math.Sin(a)*math.Sqrt2
+	}
+}
+
+// cents is how far the singer is out of tune when the choir is detuned over a spread of cents
+func (s *singer) cents(detune float64) float64 { return s.pos*detune/2 + s.jitter*detune }
+
+// startConsonant starts the burst of the consonant
+func (v *Voice) startConsonant() {
+	v.consT = -1
+	c := v.cfg.Consonant
+	if c <= NoConsonant || c >= numConsonants {
+		return
+	}
+	sh := consonants[c]
+	v.cons.Clear()
+	v.cons.SetFrequencyQ(math.Min(sh.freq, v.Config().SampleRate*0.45), sh.q)
+	v.consT = 0
+}
+
+// consonant returns the next sample of the burst (0 once it is over)
+func (v *Voice) consonant(sr float64) float64 {
+	if v.consT < 0 {
+		return 0
+	}
+	sh := consonants[v.cfg.Consonant]
+	t := float64(v.consT) / sr
+	v.consT++
+	if t >= sh.dur {
+		v.consT = -1
+		return 0
+	}
+	var env float64
+	if sh.plosive {
+		env = math.Exp(-t/sh.tau) * math.Min(1, t/0.0008)
+	} else {
+		env = math.Sin(math.Pi * t / sh.dur)
+	}
+	_, band, _ := v.cons.Tick(v.rng.float()*2 - 1)
+	level := v.cfg.ConsonantLevel
+	if level <= 0 {
+		level = 0.5
+	}
+	return band * v.cons.K() * env * sh.gain * level
+}
+
 func (v *Voice) NoteOff() {
+	v.filter.Release()
 	v.released = true
 	v.noteOff = 0
 }
 
 func (v *Voice) Clear() {
+	v.filter.Clear()
+	v.consT = -1
 	v.active = false
 	v.env = 0
 	v.Output(0).Clear()
@@ -356,11 +530,53 @@ func (v *Voice) Synthesize() {
 		vowelInc = v.BPM() / 60 / cfg.VowelSync / sr
 	}
 	moving := vowelInc > 0 && cfg.VowelDepth != 0
+	mods := v.mods
+	modded := mods.Active()
+	filtered := v.filter.On()
+	tickFilter := filtered || (modded && mods.Uses(modmatrix.FilterEnv))
+	lfo2Used := modded && mods.Uses(modmatrix.LFO2)
+	brightModded := modded && mods.Targets(dBrightness)
+	reshape := modded && (mods.Targets(dDetune) || mods.Targets(dSpread))
+	if modded {
+		mv := &mods.Values
+		mv[modmatrix.Velocity] = v.velocity
+		mv[modmatrix.Random] = v.random
+		mv[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(f0/middleC)/5, 1))
+	}
 	for i := v.waitSamps; i < n; i++ {
 		// the vowel glides; the formants follow every 32 samples
 		v.expr.Tick(sr)
 		bend := v.expr.Ratio()
 		target := cfg.Vowel + 2*v.expr.Wheel()
+		vib0 := cfg.VibratoDepth
+		breathNow := breath
+		pitchMul := 1.0
+		if modded {
+			mv := &mods.Values
+			mv[modmatrix.AmpEnv] = v.env
+			mv[modmatrix.FilterEnv] = v.env
+			if filtered {
+				mv[modmatrix.FilterEnv] = v.filter.Env()
+			}
+			mv[modmatrix.Wheel] = v.expr.Wheel()
+			mv[modmatrix.LFO1] = math.Sin(2 * math.Pi * v.singers[0].vibPh)
+			if lfo2Used {
+				mv[modmatrix.LFO2] = math.Sin(2 * math.Pi * v.lfo2)
+				v.lfo2 += 2 / sr
+				if v.lfo2 >= 1 {
+					v.lfo2--
+				}
+			}
+			mods.Eval(sr)
+			target += mods.Mod(dVowel)
+			vib0 += mods.Mod(dVibratoDepth)
+			breathNow = math.Max(0, breath+mods.Mod(dBreath))
+			pitchMul = math.Exp2(mods.Mod(dPitch) / 12)
+			if brightModded {
+				b := math.Max(0, math.Min(cfg.Brightness+mods.Mod(dBrightness)+0.4*(v.velocity-0.5), 1))
+				tiltCoef = math.Exp(-2 * math.Pi * (300 + 4000*b*b) / sr)
+			}
+		}
 		if moving {
 			ph := vowelInc * float64(v.t)
 			if cfg.VowelSteps {
@@ -375,13 +591,16 @@ func (v *Voice) Synthesize() {
 		v.vowel += (target - v.vowel) * glide
 		if v.update == 0 {
 			v.setFormants(f0)
+			if reshape {
+				v.reshape()
+			}
 		}
 		v.update = (v.update + 1) % 32
 
 		// the vibrato comes in gently after its delay
 		vib := 0.0
 		if v.t > vibDelay {
-			vib = cfg.VibratoDepth * math.Min(1, float64(v.t-vibDelay)/(0.5*sr))
+			vib = vib0 * math.Min(1, float64(v.t-vibDelay)/(0.5*sr))
 		}
 		var src [2]float64
 		for k := range v.n {
@@ -399,7 +618,7 @@ func (v *Voice) Synthesize() {
 			}
 			s.drift += (s.driftTo - s.drift) * driftCoef
 			semis := vib*math.Sin(2*math.Pi*s.vibPh) + s.drift
-			s.osc.SetFrequency(f0*bend*s.detune*(1+semis*0.05776), sr) // 2^(x/12) for small x
+			s.osc.SetFrequency(f0*bend*pitchMul*s.detune*(1+semis*0.05776), sr) // 2^(x/12) for small x
 			x := s.osc.Tick(0, false, 0)
 			if stereo {
 				src[0] += x * s.gainL
@@ -420,26 +639,47 @@ func (v *Voice) Synthesize() {
 			chans = 2
 		}
 		air := 0.0
-		if breath > 0 {
+		if breathNow > 0 {
 			air = v.rng.float() - 0.5 // the breath is one, in the middle
 		}
 		for c := range chans {
 			v.tilt[c] = (1-tiltCoef)*src[c] + tiltCoef*v.tilt[c]
 			x := v.tilt[c]
-			if breath > 0 {
+			if breathNow > 0 {
 				v.breathLP[c] += (air - v.breathLP[c]) * 0.5
-				x += v.breathLP[c] * breath * 0.6
+				x += v.breathLP[c] * breathNow * 0.6
 			}
 			for k, f := range v.formants[c] {
 				_, band, _ := f.Tick(x)
 				y[c] += band * f.K() * v.gains[k]
 			}
 		}
+		g := gain
+		if modded && mods.Targets(dLevel) {
+			g = gain / level * math.Max(0, level+mods.Mod(dLevel))
+		}
+		if tickFilter {
+			extra := 0.0
+			if modded {
+				extra = mods.Mod(dCutoff)
+			}
+			v.filter.Tick(f0*bend*pitchMul, extra, 0)
+		}
+		cons := v.consonant(sr) * gain
 		if stereo {
-			channels[0][i] = float32(y[0] * v.env * gain)
-			channels[1][i] = float32(y[1] * v.env * gain)
+			if filtered {
+				y[0], y[1] = v.filter.Process(0, y[0]*v.env*g), v.filter.Process(1, y[1]*v.env*g)
+			} else {
+				y[0], y[1] = y[0]*v.env*g, y[1]*v.env*g
+			}
+			channels[0][i] = float32(y[0] + cons)
+			channels[1][i] = float32(y[1] + cons)
 		} else {
-			channels[0][i] = float32((y[0]) * v.env * gain)
+			x := y[0] * v.env * g
+			if filtered {
+				x = v.filter.Process(0, x)
+			}
+			channels[0][i] = float32(x + cons)
 		}
 		v.t++
 	}
@@ -451,7 +691,7 @@ func (v *Voice) Synthesize() {
 		}
 	}
 	v.waitSamps = 0
-	if v.released && v.env < 1e-4 {
+	if v.released && v.env < 1e-4 && v.consT < 0 {
 		v.active = false
 	}
 }
