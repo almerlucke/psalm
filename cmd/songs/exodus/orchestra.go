@@ -5,9 +5,14 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
+	"github.com/almerlucke/psalm/modules/effects/chorus"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
+	"github.com/almerlucke/psalm/modules/effects/granulator"
+	"github.com/almerlucke/psalm/modules/effects/pingpong"
+	"github.com/almerlucke/psalm/modules/effects/rotary"
 	"github.com/almerlucke/psalm/modules/effects/shimmer"
+	"github.com/almerlucke/psalm/modules/effects/tape"
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
@@ -21,6 +26,9 @@ import (
 // and the organ), on a mixer with a hall and a church
 type orchestra struct {
 	mix *mixer.Mixer
+
+	// the granulators on the glass harmonica and the shakuhachi, whose mix follows the story
+	glassCloud, shakuCloud *granulator.Granulator
 
 	// the low and solo winds, the plucked strings
 	low, solo, section, oud, harp psalm.Modular
@@ -88,15 +96,28 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	o.solo = wg("altoFlute", 2)
 	ch("alto flute", o.solo, mixer.StripConfig{Volume: -8, Pan: -0.25, Sends: sends{"hall": 0.45}})
 	o.section = wg("clarinet", 4)
-	ch("clarinets", o.section, mixer.StripConfig{Volume: -8, Pan: -0.35, Sends: sends{"hall": 0.45}})
+	sectionChorus := chorus.New(chorus.Config{Rate: 0.25, Depth: 4, Delay: 22, Voices: 2, Spread: 1, Tone: 7000, Mix: 0.3}).AddTo(p).In(o.section)
+	ch("clarinets", sectionChorus, mixer.StripConfig{Volume: -8, Pan: -0.35, Sends: sends{"hall": 0.45}})
 	o.glass = md("glassHarmonica", 6)
-	ch("glass harmonica", o.glass, mixer.StripConfig{Volume: 6, Pan: 0.35, Sends: sends{"hall": 0.5, "heavens": 0.2}})
+	gcfg := granulator.DefaultConfig()
+	gcfg.Mix = 0.15
+	gcfg.Delay = 350
+	gcfg.Spray = 300
+	gcfg.GrainSize = 260
+	gcfg.Density = 18
+	gcfg.Octave = 0.2
+	gcfg.StereoSpread = 0.8
+	gcfg.Feedback = 0.15
+	o.glassCloud = granulator.New(gcfg).AddTo(p).In(o.glass).(*granulator.Granulator)
+	ch("glass harmonica", o.glassCloud, mixer.StripConfig{Volume: 6, Pan: 0.35, Sends: sends{"hall": 0.5, "heavens": 0.2}})
 	o.marimba = md("marimba", 4)
 	ch("marimba", o.marimba, mixer.StripConfig{Pan: 0.3, Sends: sends{"hall": 0.3}})
 	o.oud = wg("oud", 4)
-	ch("oud", o.oud, mixer.StripConfig{Volume: 4, Pan: 0.4, Sends: sends{"hall": 0.3}})
+	oudEcho := tape.New(tape.Config{Time: 0.75, Feedback: 0.3, Wow: 0.25, Flutter: 0.15, HighCut: 3200, LowCut: 250, Mix: 0.2}).AddTo(p).In(o.oud)
+	ch("oud", oudEcho, mixer.StripConfig{Volume: 4, Pan: 0.4, Sends: sends{"hall": 0.3}})
 	o.harp = wg("celticHarp", 10)
-	ch("harp", o.harp, mixer.StripConfig{Pan: 0.5, Sends: sends{"hall": 0.45, "heavens": 0.1}})
+	harpChorus := chorus.New(chorus.Config{Rate: 0.2, Depth: 3, Delay: 20, Voices: 2, Spread: 1, Tone: 8000, Mix: 0.22}).AddTo(p).In(o.harp)
+	ch("harp", harpChorus, mixer.StripConfig{Pan: 0.5, Sends: sends{"hall": 0.45, "heavens": 0.1}})
 
 	// --- winds ---
 	o.bansuri = wg("bansuri", 2)
@@ -106,7 +127,16 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	o.clarinet = wg("bassClarinet", 2)
 	ch("bass clarinet", o.clarinet, mixer.StripConfig{Volume: -8, Pan: -0.4, Sends: sends{"hall": 0.4}})
 	o.shakuhachi = wg("shakuhachi", 2)
-	ch("shakuhachi", o.shakuhachi, mixer.StripConfig{Volume: -8, Pan: 0.2, Sends: sends{"hall": 0.5, "heavens": 0.15}})
+	scfg2 := granulator.DefaultConfig()
+	scfg2.Mix = 0
+	scfg2.Delay = 450
+	scfg2.Spray = 350
+	scfg2.GrainSize = 300
+	scfg2.Density = 14
+	scfg2.Octave = 0.15
+	scfg2.StereoSpread = 0.7
+	o.shakuCloud = granulator.New(scfg2).AddTo(p).In(o.shakuhachi).(*granulator.Granulator)
+	ch("shakuhachi", o.shakuCloud, mixer.StripConfig{Volume: -8, Pan: 0.2, Sends: sends{"hall": 0.5, "heavens": 0.15}})
 
 	// --- drums ---
 	o.frame = wg("frameDrum", 4)
@@ -142,7 +172,8 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	o.gong = md("gongAgeng", 2)
 	ch("gong", o.gong, mixer.StripConfig{Sends: sends{"hall": 0.4}})
 	o.kalimba = md("kalimba", 6)
-	ch("kalimba", o.kalimba, mixer.StripConfig{Volume: 4, Pan: -0.35, Sends: sends{"hall": 0.45, "heavens": 0.2}})
+	kalimbaEcho := pingpong.New(pingpong.Config{Time: 0.75, Feedback: 0.3, Mix: 0.18, HighCut: 5000, LowCut: 300}).AddTo(p).In(o.kalimba)
+	ch("kalimba", kalimbaEcho, mixer.StripConfig{Volume: 4, Pan: -0.35, Sends: sends{"hall": 0.45, "heavens": 0.2}})
 	o.glock = md("glockenspiel", 6)
 	ch("glockenspiel", o.glock, mixer.StripConfig{Pan: 0.4, Sends: sends{"hall": 0.4, "heavens": 0.3}})
 
@@ -153,7 +184,8 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	o.organLow = og("cathedral")
 	ch("organ (cathedral)", o.organLow, mixer.StripConfig{Group: "church"})
 	o.organSoft = og("softPad")
-	ch("organ (soft)", o.organSoft, mixer.StripConfig{Group: "church"})
+	organTurn := rotary.New(rotary.Config{Crossover: 800, Horn: 0.4, Spread: 0.8, Mix: 0.45}).AddTo(p).In(o.organSoft)
+	ch("organ (soft)", organTurn, mixer.StripConfig{Group: "church"})
 	o.organPlenum = og("churchPlenum")
 	ch("organ (plenum)", o.organPlenum, mixer.StripConfig{Group: "church"})
 	o.organBass = og("subBass")

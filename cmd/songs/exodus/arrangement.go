@@ -31,6 +31,15 @@ func (o *orchestra) arrangement() *arrange.Arrangement {
 			years:  pedal(years, 4, 8),
 			land:   pedal(land, 0, 16),
 		}, o.grand, "sustain").
+		// the granulators bloom where the story opens out (the sea, the desert, the years, the land) and
+		// stay at a whisper elsewhere
+		AutomateMessage(arrange.Sections{
+			night: arrange.Const(0.25), sea: arrange.Const(0.5), waters: arrange.Const(0.3), wilderness: arrange.Const(0.5),
+			sinai: arrange.Const(0.3), years: arrange.Const(0.6), land: arrange.Const(0.4),
+		}.Else(0.15), o.glassCloud, "mix").
+		AutomateMessage(arrange.Sections{
+			sea: arrange.Const(0.3), wilderness: arrange.Const(0.4), years: arrange.Const(0.45), land: arrange.Const(0.3),
+		}.Else(0), o.shakuCloud, "mix").
 		OnSection(func(pos arrange.Position) {
 			fmt.Printf("\n%s\n%s\n", pos.Section.Name, pos.Section.Params["verse"])
 		})
