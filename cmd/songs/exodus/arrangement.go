@@ -20,7 +20,7 @@ func (o *orchestra) arrangement() *arrange.Arrangement {
 	tempo[waters] = form.Span(waters).Last(1, arrange.Smooth(132, 90))
 
 	pedal := func(name string, from, to float64) arrange.Curve { return form.Span(name).Pedal(from, to) }
-	return arrange.NewArrangement(form).
+	arr := arrange.NewArrangement(form).
 		Tempo(tempo).
 		AutomateMessage(arrange.Sections{
 			egypt:  pedal(egypt, 0, 12),
@@ -31,15 +31,39 @@ func (o *orchestra) arrangement() *arrange.Arrangement {
 			years:  pedal(years, 4, 8),
 			land:   pedal(land, 0, 16),
 		}, o.grand, "sustain").
-		// the granulators bloom where the story opens out (the sea, the desert, the years, the land) and
-		// stay at a whisper elsewhere
+		// the granulators bloom where the story opens out and stay lower elsewhere
 		AutomateMessage(arrange.Sections{
-			night: arrange.Const(0.25), sea: arrange.Const(0.5), waters: arrange.Const(0.3), wilderness: arrange.Const(0.5),
-			sinai: arrange.Const(0.3), years: arrange.Const(0.6), land: arrange.Const(0.4),
-		}.Else(0.15), o.glassCloud, "mix").
+			night: arrange.Const(0.4), sea: arrange.Const(0.7), waters: arrange.Const(0.5), wilderness: arrange.Const(0.6),
+			sinai: arrange.Const(0.4), years: arrange.Const(0.7), land: arrange.Const(0.55),
+		}.Else(0.25), o.glassCloud, "mix").
 		AutomateMessage(arrange.Sections{
-			sea: arrange.Const(0.3), wilderness: arrange.Const(0.4), years: arrange.Const(0.45), land: arrange.Const(0.3),
-		}.Else(0), o.shakuCloud, "mix").
+			sea: arrange.Const(0.45), wilderness: arrange.Const(0.55), years: arrange.Const(0.65), land: arrange.Const(0.45),
+		}.Else(0), o.shakuCloud, "mix")
+	// the shimmer: the heavens open on the sea, the waters, the desert, the years and the land
+	for name, v := range map[string]struct {
+		base float64
+		in   map[string]float64
+	}{
+		"glass harmonica":  {0.2, map[string]float64{sea: 0.8, waters: 0.7, wilderness: 0.6, years: 0.6, land: 0.7}},
+		"bowed vibraphone": {0.2, map[string]float64{sea: 0.8, wilderness: 0.6, years: 0.6}},
+		"space tine":       {0.45, map[string]float64{sea: 0.85, waters: 0.95}},
+		"alto flute":       {0, map[string]float64{years: 0.3, land: 0.5}},
+		"bansuri":          {0.1, map[string]float64{sea: 0.5, wilderness: 0.45, land: 0.5}},
+		"shakuhachi":       {0.15, map[string]float64{years: 0.6, land: 0.4}},
+		"harp":             {0.1, map[string]float64{sea: 0.5, land: 0.5}},
+		"piano":            {0, map[string]float64{sea: 0.25, waters: 0.3, land: 0.3}},
+		"glockenspiel":     {0.3, map[string]float64{sea: 0.6, land: 0.6}},
+		"singing bowl":     {0.3, map[string]float64{wilderness: 0.6, years: 0.5}},
+	} {
+		secs := arrange.Sections{}
+		for sec, x := range v.in {
+			secs[sec] = arrange.Const(x)
+		}
+		arr = arr.AutomateMessage(secs.Else(v.base), o.mix.Strip(name), "send.heavens")
+	}
+	// the shimmer draws back over the last bars, so that what rings out at the end is the bells and the gong
+	arr = arr.AutomateMessage(arrange.Sections{land: form.Span(land).Last(6, arrange.Linear(0, -26))}.Else(0), o.mix.Strip("heavens"), "volume")
+	return arr.
 		OnSection(func(pos arrange.Position) {
 			fmt.Printf("\n%s\n%s\n", pos.Section.Name, pos.Section.Params["verse"])
 		})

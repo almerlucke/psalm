@@ -3,9 +3,11 @@ package main
 // "Exodus": the Israelites leave Egypt, the sea parts, they wander through the desert and come to the
 // promised land. Everything sounds from the physically modelled instruments of the library: the
 // waveguide plucked strings, pipes and drums, the modal bells and bars, the piano and the organ.
-// Nothing else (no samples, no oscillator synths). The effects are gentle: a granulator cloud on the
-// glass harmonica and the shakuhachi that opens out with the story, a light chorus on the clarinets and
-// the harp, tape and ping pong echoes on the oud and the kalimba, a slow rotary speaker on the soft organ.
+// Nothing else (no samples, no oscillator synths). The effects colour it without hardening it: granulator clouds on the
+// glass harmonica and the shakuhachi that open out with the story, a chorus on the clarinets and the harp,
+// tape and ping pong echoes on the oud and the kalimba, a slow rotary speaker on the soft organ, and the
+// shimmer (a reverb with an octave up in its tail) that the sea, the waters, the desert, the years and the
+// land send their bells, glass, flutes and harp into.
 //
 //	Egypt              slaves' lament in D minor: an organ pedal drone, the frame drum of the work, the anvil
 //	                   of the brick makers, an alto flute

@@ -120,7 +120,7 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 
 	part(o.oud, "oud", 0.7, 1.0, plays{
 		egypt: every(from(4, func(b int, br bar) []N {
-			return []N{score.N(root(br)+12, 1), score.Rest(1), score.N(br.mid[1], 1), score.Rest(1)}
+			return []N{{Pitches: []float64{root(br) + 12}, Beats: 2, Hold: 2}, {Pitches: []float64{br.mid[1]}, Beats: 2, Hold: 2}}
 		})),
 		wilderness: every(func(b int, br bar) []N { return arp8(br.mid) }),
 		years:      every(within(0, 8, func(b int, br bar) []N { return arp8(br.mid) })),
