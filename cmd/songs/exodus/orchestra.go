@@ -37,7 +37,7 @@ type orchestra struct {
 	// the drums
 	frame, taiko, bodhran, tom, tambourine psalm.Modular
 	// the bells and bars
-	tubular, bell, hand, anvil, vibe, bowedVibe, bowl, thunder, tamtam, gong, kalimba, glock, glass, marimba psalm.Modular
+	tubular, bell, hand, anvil, vibe, bowedVibe, bowl, thunder, tamtam, gong, kalimba, glock, glass, marimba, tine psalm.Modular
 	// the keys
 	grand                                                 psalm.Modular
 	organLow, organSoft, organPlenum, organRaw, organBass psalm.Modular
@@ -110,6 +110,8 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	gcfg.Feedback = 0.15
 	o.glassCloud = granulator.New(gcfg).AddTo(p).In(o.glass).(*granulator.Granulator)
 	ch("glass harmonica", o.glassCloud, mixer.StripConfig{Volume: 6, Pan: 0.35, Sends: sends{"hall": 0.5, "heavens": 0.2}})
+	o.tine = md("spaceTine", 16)
+	ch("space tine", o.tine, mixer.StripConfig{Volume: -11, Pan: 0.05, Sends: sends{"hall": 0.5, "heavens": 0.45}})
 	o.marimba = md("marimba", 4)
 	ch("marimba", o.marimba, mixer.StripConfig{Pan: 0.3, Sends: sends{"hall": 0.3}})
 	o.oud = wg("oud", 4)

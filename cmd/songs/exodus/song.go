@@ -94,6 +94,30 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 		sinai:   every(within(4, 8, func(b int, br bar) []N { return hold(br.high) })),
 	})
 
+	// long ringing tines, struck again and again in a roll: the wind rising over the water, the walls of
+	// water standing up, the stillness of the crossing, the sea closing over
+	part(o.tine, "space tine", 0.4, 1.0, plays{
+		sea: every(func(b int, br bar) []N {
+			switch {
+			case b < 4:
+				return roll([]float64{br.high[b%len(br.high)]}, 14+2*b, 4, 0.2, 0.7)
+			case b < 8:
+				return roll(br.high, 18+2*(b-4), 5, 0.4, 1.0)
+			case b == 11:
+				return roll(br.high, 12, 3, 0.2, 0.6)
+			case b%2 == 0:
+				return []N{{Pitches: []float64{br.high[0]}, Beats: 4, Hold: 0.3, Velocity: 0.55}}
+			}
+			return nil
+		}),
+		waters: every(func(b int, br bar) []N {
+			if b < 3 {
+				return roll(append([]float64{root(br) + 12}, br.high...), 24, 3, 0.6+0.1*float64(b), 1.0)
+			}
+			return []N{{Pitches: []float64{root(br) + 12}, Beats: 4, Hold: 0.3, Velocity: 1.0}}
+		}),
+	})
+
 	part(o.oud, "oud", 0.7, 1.0, plays{
 		egypt: every(from(4, func(b int, br bar) []N {
 			return []N{score.N(root(br)+12, 1), score.Rest(1), score.N(br.mid[1], 1), score.Rest(1)}
@@ -217,6 +241,8 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 	loose(o.hand, "handbells", 0.6, 1.0, plays{
 		miriam: every(from(8, func(b int, br bar) []N { return pat(1, br.high[len(br.high)-1]+12, 0, 0, 0) })),
 		land:   every(from(8, func(b int, br bar) []N { return arp8(br.high) })),
+		// the angel bells over the crossing
+		sea: every(from(8, func(b int, br bar) []N { return pat(1, br.high[len(br.high)-1], 0, br.high[1], br.high[0]) })),
 	})
 	part(o.vibe, "vibraphone", 0.3, 1.0, plays{
 		sea:    every(from(8, func(b int, br bar) []N { return arp8(br.high) })),
@@ -271,6 +297,7 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 		years: every(from(2, func(b int, br bar) []N { return pat(1, 0, br.high[b%3], 0, br.high[(b+1)%3]) })),
 	})
 	part(o.glock, "glockenspiel", 0.45, 1.0, plays{
+		sea:   every(from(8, func(b int, br bar) []N { return rep(pat(0.5, br.high[0]+24, 0, br.high[1]+24, 0), 2) })),
 		years: every(from(6, func(b int, br bar) []N { return pat(1, br.high[0]+12, 0, 0, 0) })),
 		land:  every(from(8, func(b int, br bar) []N { return rep(pat(0.5, br.high[0]+24, 0, br.high[1]+24, 0), 2) })),
 	})

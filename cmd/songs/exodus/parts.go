@@ -76,6 +76,23 @@ func hold(p []float64) []N { return []N{{Pitches: p, Beats: 4, Hold: 4}} }
 // held is a chord for a bar at an amplitude
 func held(p []float64, amp float64) []N { return []N{{Pitches: p, Beats: 4, Hold: 4, Amp: amp}} }
 
+// roll is a bar of one chord struck again and again, from slow and soft to fast and hard (speeding up
+// by the factor accel from the first stroke to the last), the strokes left to ring on their own
+func roll(p []float64, strokes int, accel, from, to float64) []N {
+	w := make([]float64, strokes)
+	sum := 0.0
+	for i := range w {
+		w[i] = 1 - (1-1/accel)*float64(i)/float64(max(strokes-1, 1))
+		sum += w[i]
+	}
+	var notes []N
+	for i := range w {
+		beats := 4 * w[i] / sum
+		notes = append(notes, N{Pitches: p, Beats: beats, Hold: min(beats, 0.15), Velocity: from + (to-from)*float64(i)/float64(max(strokes-1, 1))})
+	}
+	return notes
+}
+
 // arp8 is a bar of eighth notes up and down the notes of a chord
 func arp8(p []float64) []N {
 	ps := slices.Clone(p)

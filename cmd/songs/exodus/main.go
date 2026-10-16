@@ -13,9 +13,10 @@ package main
 //	The exodus         the march out: clarinets, recorder, marimba, taiko, bodhran and tambourine, the pillar of
 //	                   cloud and fire in the organ
 //	Pharaoh pursues    galloping drums, a rising glass harmonica, the cry to the LORD
-//	The sea            the wind (the piano sweeping the keyboard, the harp rising), the walls of water
-//	                   (the organ, the harp falling), the crossing on dry ground (a bansuri)
-//	The waters return  tam-tam, gong, drums, the piano falling, silence
+//	The sea            the wind (the piano sweeping the keyboard, the harp rising, space tines rolling), the walls
+//	                   of water (the organ, the harp falling, the tines rolling harder), the crossing on dry ground
+//	                   (a bansuri, angel bells)
+//	The waters return  tam-tam, gong, drums, a fast roll of space tines, the piano falling, silence
 //	Miriam's song      the dance on the far shore in F major: recorder, tambourines, bodhran, harp
 //	The wilderness     a bansuri alone, an oud, drops of manna (kalimba), a bowl; the heat
 //	Sinai              thunder, the ten words as ten strokes of a bell, the organ's full chorus
