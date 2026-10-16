@@ -365,12 +365,7 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 	})
 	organ(o.organPlenum, "organ (plenum)", 0.22, plays{
 		sinai: every(func(b int, br bar) []N { return hold(append([]float64{root(br)}, br.mid...)) }),
-		land: every(from(4, func(b int, br bar) []N {
-			if b == 15 {
-				return []N{{Pitches: append([]float64{root(br)}, br.mid...), Beats: 4, Hold: 12}}
-			}
-			return hold(append([]float64{root(br)}, br.mid...))
-		})),
+		land:  every(from(4, func(b int, br bar) []N { return hold(append([]float64{root(br)}, br.mid...)) })),
 	})
 	return clashes
 }
