@@ -17,22 +17,22 @@ import (
 )
 
 // orchestra is everything that sounds: the physically modelled instruments of the library and
-// nothing else (the waveguide strings, bows, pipes and drums, the modal bells and bars, the piano
+// nothing else (the waveguide plucked strings, pipes and drums, the modal bells and bars, the piano
 // and the organ), on a mixer with a hall and a church
 type orchestra struct {
 	mix *mixer.Mixer
 
-	// the strings
-	bass, cello, solo, section, tremolo, oud, harp psalm.Modular
+	// the low and solo winds, the plucked strings
+	low, solo, section, oud, harp psalm.Modular
 	// the winds
 	bansuri, recorder, clarinet, shakuhachi psalm.Modular
 	// the drums
 	frame, taiko, bodhran, tom, tambourine psalm.Modular
 	// the bells and bars
-	tubular, bell, hand, anvil, vibe, bowedVibe, bowl, thunder, tamtam, gong, kalimba, glock psalm.Modular
+	tubular, bell, hand, anvil, vibe, bowedVibe, bowl, thunder, tamtam, gong, kalimba, glock, glass, marimba psalm.Modular
 	// the keys
-	grand                                      psalm.Modular
-	organLow, organSoft, organPlenum, organRaw psalm.Modular
+	grand                                                 psalm.Modular
+	organLow, organSoft, organPlenum, organRaw, organBass psalm.Modular
 }
 
 type sends = map[string]float64
@@ -82,17 +82,17 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	}
 	ch := mix.Channel
 
-	// --- strings ---
-	o.bass = wg("contrabass", 3)
-	ch("contrabass", o.bass, mixer.StripConfig{Pan: -0.1, Sends: sends{"hall": 0.25}})
-	o.cello = wg("cello", 4)
-	ch("cello", o.cello, mixer.StripConfig{Pan: 0.3, Sends: sends{"hall": 0.35}})
-	o.solo = wg("violinSolo", 2)
-	ch("solo violin", o.solo, mixer.StripConfig{Pan: -0.25, Sends: sends{"hall": 0.4}})
-	o.section = wg("violinSection", 8)
-	ch("violins", o.section, mixer.StripConfig{Pan: -0.35, Sends: sends{"hall": 0.45}})
-	o.tremolo = wg("tremoloStrings", 6)
-	ch("tremolo strings", o.tremolo, mixer.StripConfig{Volume: -4, Pan: 0.35, Sends: sends{"hall": 0.4}})
+	// --- winds and plucked strings ---
+	o.low = wg("bassClarinet", 3)
+	ch("low clarinet", o.low, mixer.StripConfig{Volume: -8, Pan: 0.3, Sends: sends{"hall": 0.4}})
+	o.solo = wg("altoFlute", 2)
+	ch("alto flute", o.solo, mixer.StripConfig{Volume: -8, Pan: -0.25, Sends: sends{"hall": 0.45}})
+	o.section = wg("clarinet", 4)
+	ch("clarinets", o.section, mixer.StripConfig{Volume: -8, Pan: -0.35, Sends: sends{"hall": 0.45}})
+	o.glass = md("glassHarmonica", 6)
+	ch("glass harmonica", o.glass, mixer.StripConfig{Volume: 6, Pan: 0.35, Sends: sends{"hall": 0.5, "heavens": 0.2}})
+	o.marimba = md("marimba", 4)
+	ch("marimba", o.marimba, mixer.StripConfig{Pan: 0.3, Sends: sends{"hall": 0.3}})
 	o.oud = wg("oud", 4)
 	ch("oud", o.oud, mixer.StripConfig{Volume: 4, Pan: 0.4, Sends: sends{"hall": 0.3}})
 	o.harp = wg("celticHarp", 10)
@@ -156,18 +156,11 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	ch("organ (soft)", o.organSoft, mixer.StripConfig{Group: "church"})
 	o.organPlenum = og("churchPlenum")
 	ch("organ (plenum)", o.organPlenum, mixer.StripConfig{Group: "church"})
+	o.organBass = og("subBass")
+	ch("organ (pedal)", o.organBass, mixer.StripConfig{Volume: 3, Group: "church"})
 	o.organRaw = og("stringOrgan")
 	ch("organ (strings)", o.organRaw, mixer.StripConfig{Group: "church"})
 	return o
-}
-
-// warm makes the bowed strings' tunings before the first note (a friction bow looks its tuning up
-// per pitch; offline renders wait for them)
-func warm() {
-	for _, n := range []string{"contrabass", "cello", "violinSolo", "violinSection", "tremoloStrings"} {
-		waveguide.WarmBow(waveguide.Presets[n]())
-	}
-	waveguide.WaitBow()
 }
 
 var _ = arrange.Silent

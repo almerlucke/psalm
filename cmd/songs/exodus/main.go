@@ -2,15 +2,15 @@ package main
 
 // "Exodus": the Israelites leave Egypt, the sea parts, they wander through the desert and come to the
 // promised land. Everything sounds from the physically modelled instruments of the library: the
-// waveguide strings, bows, pipes and drums, the modal bells and bars, the piano and the organ.
+// waveguide plucked strings, pipes and drums, the modal bells and bars, the piano and the organ.
 // Nothing else (no samples, no oscillator synths).
 //
-//	Egypt              slaves' lament in D minor: a bowed drone, the frame drum of the work, the anvil of
-//	                   the brick makers, a solo violin
+//	Egypt              slaves' lament in D minor: an organ pedal drone, the frame drum of the work, the anvil
+//	                   of the brick makers, an alto flute
 //	The night          Passover: twelve strokes of a bell, a heart beating faster, midnight
-//	The exodus         the march out: violins, recorder, taiko, bodhran and tambourine, the pillar of
+//	The exodus         the march out: clarinets, recorder, marimba, taiko, bodhran and tambourine, the pillar of
 //	                   cloud and fire in the organ
-//	Pharaoh pursues    galloping drums, tremolo strings, the cry to the LORD
+//	Pharaoh pursues    galloping drums, a rising glass harmonica, the cry to the LORD
 //	The sea            the wind (the piano sweeping the keyboard, the harp rising), the walls of water
 //	                   (the organ, the harp falling), the crossing on dry ground (a bansuri)
 //	The waters return  tam-tam, gong, drums, the piano falling, silence
@@ -42,7 +42,7 @@ func main() {
 		renderTo = flag.String("render", "", "render one pass of the piece to this WAV file instead of playing it")
 		stems    = flag.Bool("stems", false, "with -render, also write every mixer strip to its own file")
 		profile  = flag.Bool("profile", false, "render the piece offline and report the time every module takes")
-		seed     = flag.Uint64("seed", 0, "seed for the random parts (feel, bows): the same seed plays the same, 0 is new every run")
+		seed     = flag.Uint64("seed", 0, "seed for the random parts (feel, breath): the same seed plays the same, 0 is new every run")
 	)
 	flag.Parse()
 	if *seed != 0 {
@@ -58,7 +58,6 @@ func main() {
 	}
 	defer p.Close()
 
-	warm()
 	o := newOrchestra(p)
 	if writeParts(p, o) == 0 {
 		fmt.Println("harmony check: every part fits its chords")

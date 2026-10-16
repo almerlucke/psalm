@@ -80,7 +80,7 @@ var form = func() *arrange.Form {
 // bar holds the chord and the voicings of a bar of the song
 type bar struct {
 	chord harmony.Chord
-	high  []float64 // upper voices (violins, harp)
+	high  []float64 // upper voices (harp, vibraphone)
 	mid   []float64 // middle voices (organ, piano)
 	root  float64   // the bass
 }

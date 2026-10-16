@@ -15,7 +15,6 @@ func TestExodusPlays(t *testing.T) {
 	psalm.Seed(7)
 	p := psalm.New(nil)
 	defer p.Close()
-	warm()
 	o := newOrchestra(p)
 	if n := writeParts(p, o); n != 0 {
 		t.Fatalf("%d notes clash with the chords", n)

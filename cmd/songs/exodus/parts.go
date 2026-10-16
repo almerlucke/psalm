@@ -16,10 +16,8 @@ type (
 // how every part plays: ensembles never start a chord exactly together, soloists breathe
 var feels = map[string]score.Feel{
 	"contrabass":        {Timing: 8, Velocity: 0.05},
-	"cello":             {Timing: 8, Velocity: 0.06},
-	"solo violin":       {Timing: 10, Push: 5, Velocity: 0.08},
-	"violins":           {Timing: 8, Spread: 12, Velocity: 0.06},
-	"tremolo strings":   {Timing: 8, Spread: 12},
+	"alto flute":        {Timing: 10, Push: 5, Velocity: 0.08},
+	"clarinets":         {Timing: 8, Spread: 12, Velocity: 0.06},
 	"oud":               {Timing: 8, Velocity: 0.1},
 	"harp":              {Timing: 5, Velocity: 0.1},
 	"bansuri":           {Timing: 10, Push: 6, Velocity: 0.08},

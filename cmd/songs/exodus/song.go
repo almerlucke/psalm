@@ -44,10 +44,10 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 	}
 	root := func(br bar) float64 { return br.root }
 
-	// ---- the strings ----
+	// ---- the pedal, the clarinets and the flute ----
 
-	// the bass: a drone under Egypt, the wilderness and the years, the roots of the chords elsewhere
-	part(o.bass, "contrabass", 0.3, 1.0, plays{
+	// the organ pedal: a drone under Egypt, the wilderness and the years, the roots of the chords elsewhere
+	part(o.organBass, "organ (pedal)", 0.3, 1.0, plays{
 		egypt:      every(func(b int, br bar) []N { return hold([]float64{root(br)}) }),
 		night:      every(from(2, func(b int, br bar) []N { return hold([]float64{root(br)}) })),
 		exodus:     every(from(4, func(b int, br bar) []N { return []N{score.N(root(br), 2), score.N(root(br)+7, 2)} })),
@@ -60,17 +60,21 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 		land:       every(func(b int, br bar) []N { return hold([]float64{root(br)}) }),
 	})
 
-	part(o.cello, "cello", 0.28, 0.95, plays{
+	part(o.low, "low clarinet", 0.28, 0.95, plays{
 		night:      every(within(4, 8, func(b int, br bar) []N { return hold([]float64{br.mid[0]}) })),
-		exodus:     every(from(4, func(b int, br bar) []N { return []N{score.N(root(br)+12, 2), score.N(root(br)+19, 2)} })),
 		sea:        every(from(8, func(b int, br bar) []N { return hold([]float64{br.mid[0]}) })),
-		miriam:     every(func(b int, br bar) []N { return []N{score.N(root(br)+12, 2), score.N(root(br)+12, 2)} }),
 		wilderness: every(from(4, func(b int, br bar) []N { return hold([]float64{br.mid[0]}) })),
 		years:      every(func(b int, br bar) []N { return hold([]float64{br.mid[0]}) }),
 		land:       every(func(b int, br bar) []N { return hold([]float64{br.mid[0]}) }),
 	})
 
-	part(o.solo, "solo violin", 0.3, 0.97, plays{
+	// the pulse of the march and the dance, on the marimba
+	part(o.marimba, "marimba", 0.4, 0.9, plays{
+		exodus: every(from(4, func(b int, br bar) []N { return []N{score.N(root(br)+12, 2), score.N(root(br)+19, 2)} })),
+		miriam: every(func(b int, br bar) []N { return []N{score.N(root(br)+12, 2), score.N(root(br)+12, 2)} }),
+	})
+
+	part(o.solo, "alto flute", 0.3, 0.97, plays{
 		egypt:   tune(lament),
 		night:   every(within(4, 8, func(b int, br bar) []N { return hold([]float64{br.high[len(br.high)-1]}) })),
 		pursuit: every(func(b int, br bar) []N { return arp8(br.high) }),
@@ -78,12 +82,12 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 		land:    tuneBars(promised, 0, 4, 16),
 	})
 
-	part(o.section, "violins", 0.26, 0.97, plays{
-		exodus: tune(score.Transpose(march, -12)), // the bow keeps its tune best below the E above the staff
+	part(o.section, "clarinets", 0.26, 0.97, plays{
+		exodus: tune(score.Transpose(march, -12)), // the clarinet's warm low register
 		land:   tuneBars(score.Transpose(promised, -12), 4, 16, 16),
 	})
-	// the section sustains under the tune, not on it
-	part(o.tremolo, "tremolo strings", 0.22, 1.0, plays{
+	// glass sustains under the tune, rising
+	part(o.glass, "glass harmonica", 0.3, 1.0, plays{
 		night:   every(within(4, 8, func(b int, br bar) []N { return held(br.high, 0.5+0.1*float64(b-4)) })),
 		pursuit: every(func(b int, br bar) []N { return held(br.high, 0.5+0.07*float64(b)) }),
 		sea:     every(within(4, 8, func(b int, br bar) []N { return held(br.high, 0.4+0.1*float64(b-4)) })),
