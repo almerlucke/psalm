@@ -112,4 +112,4 @@ chord** also clashes when it ends up a semitone from a chord tone, unless it onl
 moment (a quarter beat). When the part is longer than the timeline, the timeline repeats.
 
 Build a timeline for a whole song with `harmony.TimedChord{Beat, Beats, Chord}` per bar of the
-form, and check every part with `form.Compile(name, score)`, as the showcase does at its start.
+form, and check every part with `form.Compile(name, score)`, as morningstar does at its start.

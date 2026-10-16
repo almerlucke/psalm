@@ -1,6 +1,6 @@
 package main
 
-// "Aurora": a slow orchestral piece in D minor, the showcase of psalm. Every synth plays a part
+// "Morningstar": a slow orchestral piece in D minor, the showcase of psalm. Every synth plays a part
 // of the orchestra and every effect has a role:
 //
 //	violins     wavetable strings on a generated sawtooth table, chorus, an LFO on the position
@@ -16,7 +16,7 @@ package main
 //	bell pad    DX bell pad through a flanger (the mixer lines everything up with the vocoder)
 //	voices      speech vocoding a wavetable pad
 //	droplets    pulsar raindrops
-//	aurora      wavetable drone on a generated random spectra table
+//	dawn drone  wavetable drone on a generated random spectra table
 //	piano       the modelled grand: rolled chords at dawn, weight under the chorale, the last cadence
 //
 // The strings run through a ladder lowpass that opens at dawn (the prelude) and closes at dusk
@@ -30,9 +30,9 @@ package main
 // is written per section in beats (the melodies in score notation) and the arrangement automates
 // the string filter, the granulator and the tempo. The piece loops, the schedule is printed at start
 //
-//	go run ./cmd/songs/showcase                                    play it
-//	go run ./cmd/songs/showcase -render aurora.wav -stems -seed 7  render it, a stem per mixer strip
-//	go run ./cmd/songs/showcase -profile                           the time every module takes
+//	go run ./cmd/songs/morningstar                                         play it
+//	go run ./cmd/songs/morningstar -render morningstar.wav -stems -seed 7  render it, a stem per mixer strip
+//	go run ./cmd/songs/morningstar -profile                                the time every module takes
 //
 // The files: music.go (the chords, the form and the melodies), orchestra.go (the instruments on
 // the mixer), parts.go (what every instrument plays, section by section) and arrangement.go (the
@@ -75,7 +75,7 @@ func main() {
 	arrangement := o.arrangement()
 	arrangement.AddTo(p)
 
-	fmt.Println("Aurora")
+	fmt.Println("Morningstar")
 	fmt.Print(arrangement.Schedule())
 
 	p.Out(o.mix.Master())

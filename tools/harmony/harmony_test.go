@@ -183,7 +183,7 @@ func TestArp(t *testing.T) {
 	}
 }
 
-// The clashes of the showcase, found by hand while writing it, are found by Check
+// The clashes of morningstar, found by hand while writing it, are found by Check
 func TestCheck(t *testing.T) {
 	progression := Timeline(4, MustProgression("Dm Bb Gm A F C Gm A")...)
 	theme := score.MustParse(`A4:2 F4:1 E4 | D4:3 F4:1 | G4:2 Bb4:1 A4 | E4:2 C#4:1 E4 |

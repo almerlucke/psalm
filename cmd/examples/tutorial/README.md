@@ -79,4 +79,4 @@ its own (`playlist.Song`, a `Build` function returning what to hear and how long
 - [docs/controls.md](../../../docs/controls.md): `score` and `arrange` in full
 - [docs/harmony.md](../../../docs/harmony.md): chords, keys, the harmony check and tunings
 - [docs/controls.md#panel](../../../docs/controls.md#panel): the panel in full, its page and its API
-- The big examples use all of this: `../../songs/showcase` (an orchestral piece), `../../songs/creation` (the seven days of Genesis), `../instruments/piano` (a tour of the piano)
+- The big examples use all of this: `../../songs/morningstar` (an orchestral piece), `../../songs/creation` (the seven days of Genesis), `../instruments/piano` (a tour of the piano)

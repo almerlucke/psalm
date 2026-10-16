@@ -41,7 +41,7 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 
 	part := func(synth psalm.Modular, name string, amp float64, legato float64, sc arrange.Score) {
 		form.Part(p, synth, name, score.Config{Amp: amp, Legato: legato, Velocity: 0.8, Feel: feels[name]}, sc)
-		if name == "aurora" {
+		if name == "dawn drone" {
 			return // a pedal: it holds through the chords on purpose
 		}
 		issues := harmony.Check(form.Compile(name, sc), timeline)
@@ -173,7 +173,7 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 		return score.Notes(16, 7, 9) // drops per second
 	}))
 
-	part(o.aurora, "aurora", 0.111, 1.0, func(s S) []N {
+	part(o.dawnDrone, "dawn drone", 0.111, 1.0, func(s S) []N {
 		if !arrange.In(s, "Prelude", "Coda") {
 			return nil
 		}

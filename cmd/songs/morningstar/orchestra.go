@@ -38,7 +38,7 @@ type orchestra struct {
 
 	violins, celli, pizz, harp, flute, horns, hornSolo psalm.Modular
 	soprano, choir, ooh, celesta, bellPad, carrier     psalm.Modular
-	droplets, aurora, grand                            psalm.Modular
+	droplets, dawnDrone, grand                         psalm.Modular
 }
 
 type sends = map[string]float64
@@ -162,10 +162,10 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	droplets := pulsar.NewPoly(pulsar.RaindropsPreset(), 2).AddTo(p)
 	mix.Channel("droplets", droplets, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4, "sky": 0.2}})
 
-	// --- aurora: a drone on a table of random spectra, at dawn and dusk ---
+	// --- dawn drone: a drone on a table of random spectra, at dawn and dusk ---
 
-	aurora := wavetable.NewPoly(wavetable.DronePreset(gen.Random(64, 6, 32, 11)), 4).AddTo(p)
-	mix.Channel("aurora", aurora, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
+	dawnDrone := wavetable.NewPoly(wavetable.DronePreset(gen.Random(64, 6, 32, 11)), 4).AddTo(p)
+	mix.Channel("dawn drone", dawnDrone, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.4}})
 
 	// --- piano: the grand, its sustain pedal changed at every bar line ---
 
@@ -174,21 +174,21 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 
 	return &orchestra{
 		mix: mix, stringFilter: stringFilter, gran: gran, harpStrip: harpStrip,
-		violins:  violins,
-		celli:    celli,
-		pizz:     pizz,
-		harp:     harp,
-		flute:    flute,
-		horns:    horns,
-		hornSolo: hornSolo,
-		soprano:  soprano,
-		choir:    choir,
-		ooh:      ooh,
-		celesta:  celesta,
-		bellPad:  bellPad,
-		carrier:  carrier,
-		droplets: droplets,
-		aurora:   aurora,
-		grand:    grand,
+		violins:   violins,
+		celli:     celli,
+		pizz:      pizz,
+		harp:      harp,
+		flute:     flute,
+		horns:     horns,
+		hornSolo:  hornSolo,
+		soprano:   soprano,
+		choir:     choir,
+		ooh:       ooh,
+		celesta:   celesta,
+		bellPad:   bellPad,
+		carrier:   carrier,
+		droplets:  droplets,
+		dawnDrone: dawnDrone,
+		grand:     grand,
 	}
 }
