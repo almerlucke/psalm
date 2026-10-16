@@ -23,12 +23,14 @@ import (
 
 // orchestra is everything that sounds: the physically modelled instruments of the library and
 // nothing else (the waveguide plucked strings, pipes and drums, the modal bells and bars, the piano
-// and the organ), on a mixer with a hall and a church
+// and the organ), on a mixer with a hall and a church, and the voice that speaks the verses
 type orchestra struct {
 	mix *mixer.Mixer
 
 	// the granulators on the glass harmonica and the shakuhachi, whose mix follows the story
 	glassCloud, shakuCloud *granulator.Granulator
+	// the voice that speaks the verses
+	voice psalm.Modular
 
 	// the low and solo winds, the plucked strings
 	low, solo, section, oud, harp psalm.Modular
@@ -63,8 +65,10 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	scfg.Mix = 1
 	mix.Bus("heavens", mixer.StripConfig{}, shimmer.New(scfg).AddTo(p))
 
+	// everything of the music plays into one group, which gives way a little while the voice speaks
+	mix.Group("music", mixer.StripConfig{})
 	church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
-	mix.Group("church", mixer.StripConfig{Volume: -2},
+	mix.Group("church", mixer.StripConfig{Volume: -2, Group: "music"},
 		convolver.New(church, convolver.Config{PartitionSize: 4096, Mix: 0.4, Gain: 2.2}).AddTo(p))
 
 	wg := func(name string, voices int) psalm.Modular {
@@ -88,7 +92,12 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 		}
 		return organ.New(f()).AddTo(p)
 	}
-	ch := mix.Channel
+	ch := func(name string, source psalm.Modular, cfg mixer.StripConfig) *mixer.Strip {
+		if cfg.Group == "" {
+			cfg.Group = "music"
+		}
+		return mix.Channel(name, source, cfg)
+	}
 
 	// --- winds and plucked strings ---
 	o.low = wg("bassClarinet", 3)
@@ -197,6 +206,10 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	ch("organ (pedal)", o.organBass, mixer.StripConfig{Volume: 3, Group: "church"})
 	o.organRaw = og("stringOrgan")
 	ch("organ (strings)", o.organRaw, mixer.StripConfig{Group: "church"})
+
+	// --- the voice: not in the music, its own reverb sends ---
+	o.voice = newVoice(p)
+	mix.Channel("voice", o.voice, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.25, "heavens": 0.2}})
 	return o
 }
 

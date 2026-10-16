@@ -367,6 +367,9 @@ func writeParts(p *psalm.Psalm, o *orchestra) int {
 		sinai: every(func(b int, br bar) []N { return hold(append([]float64{root(br)}, br.mid...)) }),
 		land:  every(from(4, func(b int, br bar) []N { return hold(append([]float64{root(br)}, br.mid...)) })),
 	})
+
+	// the verses, spoken
+	loose(o.voice, "voice", 2.2, 1.0, voicePlays())
 	return clashes
 }
 
