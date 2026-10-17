@@ -29,6 +29,7 @@ package main
 //	go run ./cmd/songs/exodus                                      play it
 //	go run ./cmd/songs/exodus -render exodus.wav -stems -seed 7    render it, a stem per mixer strip
 //	go run ./cmd/songs/exodus -from sea                            start at a chapter (a name or a number)
+//	go run ./cmd/songs/exodus -lang nl                             the verses in Dutch (printed and spoken)
 //	go run ./cmd/songs/exodus -profile                             the time every module takes
 //
 // The files: form.go (the chapters, their chords and voicings), parts.go and song.go (the tunes
@@ -53,9 +54,14 @@ func main() {
 		stems    = flag.Bool("stems", false, "with -render, also write every mixer strip to its own file")
 		profile  = flag.Bool("profile", false, "render the piece offline and report the time every module takes")
 		from     = flag.String("from", "", "start at a chapter, by name or number (-from sea, -from 5): the chapters before it are skipped")
+		language = flag.String("lang", "en", "the language of the verses, printed and spoken: en (King James) or nl (Canisius)")
 		seed     = flag.Uint64("seed", 0, "seed for the random parts (feel, breath): the same seed plays the same, 0 is new every run")
 	)
 	flag.Parse()
+	if err := setLanguage(*language); err != nil {
+		fmt.Println(err)
+		os.Exit(2)
+	}
 	if *seed != 0 {
 		psalm.Seed(*seed)
 	}

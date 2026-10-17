@@ -67,6 +67,6 @@ func (o *orchestra) arrangement() *arrange.Arrangement {
 	arr = arr.AutomateMessage(voiceDips().Else(0), o.mix.Strip("music"), "volume")
 	return arr.
 		OnSection(func(pos arrange.Position) {
-			fmt.Printf("\n%s\n%s\n", pos.Section.Name, pos.Section.Params["verse"])
+			fmt.Printf("\n%s\n%s\n", lang.title(pos.Section.Name), lang.verse(pos.Section.Name))
 		})
 }

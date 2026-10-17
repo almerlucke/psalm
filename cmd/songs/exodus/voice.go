@@ -9,8 +9,8 @@ import (
 	"github.com/almerlucke/psalm/synths/sampler"
 )
 
-// the verses are spoken: a clip for every chapter (see assets/sounds/exodus), a synthesized voice
-// reading the King James text the song prints. The clip of a chapter starts a number of bars into it
+// the verses are spoken: a clip for every chapter in every language (see assets/sounds/exodus), a
+// synthesized voice reading the text the song prints. The clip of a chapter starts a number of bars into it
 
 // voiceDip is how far the music gives way (dB) while the voice speaks
 const voiceDip = 6.0
@@ -65,7 +65,7 @@ func spokenRMS(snd sampler.Sound) float64 {
 func newVoice(p *psalm.Psalm) psalm.Modular {
 	var regions []sampler.Region
 	for i, r := range readings {
-		snd, err := sampler.LoadFile(fmt.Sprintf("assets/sounds/exodus/%s.wav", r.file))
+		snd, err := sampler.LoadFile(fmt.Sprintf("assets/sounds/exodus/%s/%s.wav", lang.code, r.file))
 		if err != nil {
 			panic(err)
 		}

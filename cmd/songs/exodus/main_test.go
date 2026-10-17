@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -30,4 +32,28 @@ func TestExodusPlays(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log(stats)
+}
+
+// every language has a verse and a clip of the voice for every chapter, and a name for the choice
+func TestLanguages(t *testing.T) {
+	t.Chdir("../../..")
+	for _, l := range languages {
+		if err := setLanguage(l.code); err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range chapters {
+			if l.verse(c.name) == "" || l.title(c.name) == "" {
+				t.Errorf("%s: %s has no verse or title", l.code, c.name)
+			}
+		}
+		for _, r := range readings {
+			if _, err := os.Stat(fmt.Sprintf("assets/sounds/exodus/%s/%s.wav", l.code, r.file)); err != nil {
+				t.Errorf("%s: %v", l.code, err)
+			}
+		}
+	}
+	setLanguage("en")
+	if setLanguage("xx") == nil {
+		t.Error("an unknown language is accepted")
+	}
 }
