@@ -6,7 +6,9 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/effects/chorus"
+	"github.com/almerlucke/psalm/modules/effects/compressor"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
+	"github.com/almerlucke/psalm/modules/effects/eq"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
 	"github.com/almerlucke/psalm/modules/effects/granulator"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
@@ -66,7 +68,16 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 	mix.Bus("heavens", mixer.StripConfig{}, shimmer.New(scfg).AddTo(p))
 
 	// everything of the music plays into one group, which gives way a little while the voice speaks
-	mix.Group("music", mixer.StripConfig{})
+	// and is made to carry over small speakers: a parallel compressor (its detector deaf to the low end)
+	// lifts the quiet, light things (bells, harp, breath) towards the body, an EQ takes the rumble and
+	// the mud out and adds air
+	comp := compressor.Config{Threshold: -26, Ratio: 4, Knee: 10, Attack: 15, Release: 250, Makeup: 6, Mix: 0.5, SideCut: 300}
+	tone := eq.DefaultConfig()
+	tone.LowCut = 40
+	tone.Low = eq.Band{Freq: 150, Gain: -2}
+	tone.Mid2 = eq.Band{Freq: 3500, Gain: 1.5, Q: 0.8}
+	tone.High = eq.Band{Freq: 6500, Gain: 3}
+	mix.Group("music", mixer.StripConfig{}, compressor.New(comp).AddTo(p), eq.New(tone).AddTo(p))
 	church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
 	mix.Group("church", mixer.StripConfig{Volume: -2, Group: "music"},
 		convolver.New(church, convolver.Config{PartitionSize: 4096, Mix: 0.4, Gain: 2.2}).AddTo(p))
@@ -209,7 +220,7 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 
 	// --- the voice: not in the music, its own reverb sends ---
 	o.voice = newVoice(p)
-	mix.Channel("voice", o.voice, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.25, "heavens": 0.2}})
+	mix.Channel("voice", o.voice, mixer.StripConfig{Volume: -3, Sends: sends{"hall": 0.2, "heavens": 0.2}})
 	return o
 }
 
