@@ -208,8 +208,10 @@ starts) **before** `trigger` is called, so `song.section` is always the section 
 | `input(port)` | the last value that came in on `"a"` or `"b"` (`undefined` before one) |
 | `log(...)`, `console.log(...)` | shown under the module; arrays and objects as JSON. Only the last call is kept |
 | `pitch("C3")` | a note name as a number (numbers pass through) |
+| `chord("Dm7")` | a chord of a symbol ([Harmony](harmony.md): `m`, `7`, `maj7`, `sus4`, `m7b5`, `Dm/C` with a bass...): `close(lowest)` the chord in root position with the root at or above `lowest`, `bass(lowest)`, `tones(low, high)` every chord tone between two pitches, `contains(p)`, `voiceLead(prev)` the chord for the same number of voices as an array of pitches, moving as little as it can; `name`, `root` (a pitch class) |
 | `bpm()` | the tempo of the patch |
 | `scale("C minor")` | a key and a mode (as in [Harmony](harmony.md)) with `snap(p)` (nearest note), `pitch(degree, octave)`, `notes(lo, hi)` (all pitches between), `contains(p)`, `step(p, n)` (n scale steps from p) |
+| `chord("Dm7")` | a chord of a symbol (`m`, `7`, `maj7`, `sus4`, `m7b5`, `Dm/C` with a bass...; see [Harmony](harmony.md)): `close(lowest)` the chord in root position with the root at or above `lowest`, `bass(lowest)`, `tones(low, high)` every chord tone between two pitches, `contains(p)`, `voiceLead(prev)` the chord for the same number of voices as an array of pitches, moving as little as it can; `name`, `root` (a pitch class). A symbol that can't be read is an error of the script |
 | `shared` | an object every script of the patch sees; it lives as long as the patch's runtime |
 | `song` | `playing`, `section` (`""` when none), `index` (-1), `bar` (in the section), `bars`, `progress` (0-1 through the section), `loop`, `sections` (the names) |
 | `genny` | the generators below |

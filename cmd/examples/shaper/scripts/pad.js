@@ -1,38 +1,41 @@
-// PAD: a third voice of the shaper synth playing the chords, four bars of Dm, Bb, F, C over and over
-// (Dm: D F A C, Bb: Bb D F A, F: F A C E, C: C E G B). What it plays on changes with the section:
-// the script picks a family of chains (sine, folded, organ, vowel, a saw with a filter) for each and
-// sets them with set().
-const chords = [["D3", "F3", "A3", "C4"], ["Bb2", "D3", "F3", "A3"], ["F3", "A3", "C4", "E4"], ["C3", "E3", "G3", "B3"]]
+// PAD: the chords of the piece, voice led (each chord moves as little as it can from the one before), held as long
+// as the chord lasts, low and dull. A drone more than a chord: its sound is a preset for each section (a dark pad,
+// a drone in fifths, a pad that goes through four waves by itself, a choir far off, strings), and the script
+// moves it a little with every bar: the macro and the filter. The notes are low and the sound is dark, so the chains
+// are read once a sample (oversample 1): nothing of the edges of a saw or a pulse is left to fold back, and eight
+// voices of long releases are the cost of the piece.
 const walk = genny.rwalk(0.5, 0, 1, 0.2)
 
-const families = {
-  sines: { chainA: "sin", chainB: "par(sin, mult 2 | sin | mult 0.4)", chainC: "sin | mult 2 | mirror -1 1", chainD: "", filterType: 0 },
-  fold:  { chainA: "sin | mult m1[1.5,5] | mirror -1 1", chainB: "sin | mult m1[2,6] | mirror -1 1 | softclip 1.5", chainC: "", chainD: "", filterType: 1, cutoff: 3000, resonance: 0.15 },
-  organ: { chainA: "par(sin, mult 2 | sin | mult 0.5)", chainB: "par(sin, mult 2 | sin | mult 0.5, mult 3 | sin | mult 0.4, mult 4 | sin | mult 0.3)",
-           chainC: "par(sin, mult 2 | sin | mult 0.8, mult 3 | sin | mult 0.7, mult 4 | sin | mult 0.6, mult 6 | sin | mult 0.5)", chainD: "", filterType: 0 },
-  vowel: { chainA: "par(sin | mult 0.8, mult 2 | sin | mult 0.2, mult 4 | sin | mult 0.8, mult 5 | sin | mult 0.2)",
-           chainB: "par(sin | mult 0.7, mult 3 | sin | mult 0.2, mult 6 | sin | mult 0.5, mult 9 | sin | mult 0.5)", chainC: "", chainD: "", filterType: 0 },
-  saws:  { chainA: "bipolar | softclip 1.2", chainB: "bipolar | mult m1[1,2.5] | mirror -1 1", chainC: "", chainD: "", filterType: 1, cutoff: 1800, resonance: 0.25 },
+const parts = {
+  Drone:    { preset: "darkPad", trim: 2, cut: null },
+  Pulse:    { preset: "drone5", trim: -2, cut: null },
+  Depth:    { preset: "evolve", trim: -4, cut: [500, 1400] },
+  Hollow:   { preset: "choirPad", trim: -2, cut: null },
+  Return:   { preset: "stringPad", trim: -5, cut: [450, 1500] },
+  Dissolve: { preset: "darkPad", trim: 2, cut: null, fade: true },
 }
-const family = { Glass: "sines", Fold: "fold", Sync: "saws", Pulse: "fold", Morph: "sines", Metal: "organ",
-                 Vowel: "vowel", Crush: "saws", Rewrite: "organ", Chance: "fold", Bells: "vowel", Finale: "sines" }
 
-let name = "sines"
-function section(sectionName) {
-  name = family[sectionName] || "sines"
-  set({
-    macro1: 0.5, morph: 0.4, morphAmount: 0, shapeAmount: 0, width: 0.9, level2: 0.8, detune2: 9, octave2: 0, vibratoDepth: 0.04,
-    ampAttack: 700, ampDecay: 900, ampSustain: 0.85, ampRelease: 1500, level: 0.4,
-    filterEnvAmount: 0.6, filterAttack: 600, filterDecay: 800, filterSustain: 0.6, filterRelease: 1200,
-    ...families[name],
-  })
+let part = parts.Drone, voicing = null, last = null
+function section(name) {
+  part = parts[name] || parts.Drone
+  last = null
+  set({ preset: part.preset, trim: part.trim, oversample: 1 })
 }
 
 function trigger(ev) {
-  const k = ev.step % 16
-  if (k === 0) {
-    // the chord of the bar, and a new place in the morph and the macro to play it at
-    set({ morph: 0.15 + 0.7 * walk.next(), macro1: song.progress })
-    note(chords[song.bar % 4], 0.5, 15.5)
-  }
+  const k = ev.step % 16, bar = song.bar
+  if (k !== 0) return
+  const c = shared.chordFor(song.section, bar)
+  set({ macro1: song.progress })
+  if (part.cut) set("cutoff", part.cut[0] * Math.pow(part.cut[1] / part.cut[0], song.progress))
+  // the end: the pad fades out over the last bars
+  if (part.fade) set("trim", part.trim - 30 * Math.pow(Math.max(0, song.progress - 0.4) / 0.6, 1.5))
+  if (c === last) return                       // the same chord goes on
+  last = c
+  voicing = voicing ? c.voiceLead(voicing) : c.close(43)
+  // it lasts until the chord changes
+  let bars = 1
+  while (bars < 24 && shared.chordFor(song.section, bar + bars) === c) bars++
+  const toEnd = Math.min(bars, song.bars - bar)
+  note(voicing, 0.5, toEnd * 16 - 0.5)
 }

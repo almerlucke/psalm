@@ -1726,6 +1726,11 @@ a test holds them to genny's:
 | `pow p`, `tanh d` | `abs(x)^p` with the sign of `x`; `tanh(d x) / tanh(d)` (these two are not genny's) |
 | `par(a, b, ...)` | each chain on `x`, the results added |
 
+**FM** is a chain too: `par(thru, mult 3 | sin | mult 0.3) | sin` is a sine at the pitch whose phase a sine at three times the pitch
+moves by 0.3 of a turn (about 1.9 radians): phase modulation, the sound of a DX. The ratio is a whole number (`mult 1`, `2`, `3`,
+`4`...: the wave must come round once a cycle), the index a number, or a macro the envelope pulls down over the note
+(`mult m1[0,0.4]`): an electric piano, a bell, a bass.
+
 A number in a stage can be a **macro**: `m1` to `m4`, a value from 0 to 1 that the sound moves while it
 plays (`macro1`...`macro4`, the matrix, the `shapeEnv` envelope on `m1`). `m1` is 0..1, `m1[1,5]` maps
 it to 1..5, and `m1[5,1]` upside down. `mult m1[1,6] | mod 1 | bipolar` is a hard synced saw whose
@@ -1741,6 +1746,8 @@ the synth keeps the chain it had.
 | `MorphEnv`, `MorphAmount` | an envelope over the note that moves the morph by up to `MorphAmount` (-1 to 1); off at 0 |
 | `ShapeEnv`, `ShapeAmount` | the same on macro `m1` |
 | `AmpEnv`, `Width`, `Level` | the amp envelope; line 1 left and line 2 right; output level |
+| `PitchEnv`, `PitchAmount` | an envelope that bends the pitch over the note by up to `PitchAmount` semitones (-60 to 60): a kick that falls three octaves, a laser, a riser; off at 0 |
+| `Glide`, `Mono`, `Legato` | milliseconds a note takes to slide from the pitch the voice was at; with `Mono` (and `Legato`) `NewPoly` plays one note at a time, so a bass or lead slides from note to note (`set({mono: 1, legato: 1})` from a script does it too) |
 | `Oversample` | how many times a sample the chains are read: 0 (the start) is automatic, or 1 (off), 2, 4, 8 |
 | `VibratoRate/Depth/Delay`, `LFO1Rate`, `LFO1Sync`, `LFO2Rate`, `LFO2Shape` | a vibrato and the two LFOs of the matrix |
 | `Filter`, `Mods`, `Ext` | the [voice filter](#the-voice-filter) (off at first) and the [matrix](#modulation-matrix): filter env, amp env, lfo 1, lfo 2, velocity, key, random, wheel, Ext 1-4 to `morph`, `macro1`-`macro4`, `pitch`, `vibratoDepth`, `width`, `level`, `detune2`, `cutoff`, `resonance` |
@@ -1760,15 +1767,41 @@ roughly 0.2 to 0.5 microseconds a sample (1 to 2% of a core) with the chains of 
 of that for a sine alone; a test checks that a saw at 3 kHz has its alias more than three times lower at 4 times
 than at 1.
 
-**Messages**: `pitch`, `frequency`, `velocity`, `morph`, `macro1`-`macro4`, `chainA`-`chainD` (text, or a
+**Presets by message.** The message `preset` makes a voice a preset by name (`set({preset: "reese"})` from a script,
+`shaper.NewPoly(...).ReceiveMessage(psalm.Message{"preset": "reese"})`): every setting of it, the chains, envelopes, lines, filter,
+matrix and LFOs; the keys after it in the same message then change it (`{preset: "acid", cutoff: 600}`). What is not a preset's
+is left as it is: `trim` (dB, where it sits in a mix; the presets are all about the same loudness), and the mono play of
+the synth (`mono`, `legato`, of the poly: `acid` and the flute need them). A sounding voice goes on: the chains are faded to, the
+levels glide, a filter that comes is faded in and one that goes is left on, wide open.
+
+A note that starts on a voice still sounding (the next note of a mono synth) carries on from it: the old note sounds until the
+sample the new one starts at, and the wave, the envelope and the settings continue.
+
+**Changes under a sounding note.** A script (or a panel) can change `morph`, the macros, the levels and the width at any
+moment, as often as every step. They glide to the new value in 5 ms, so a change never makes a click, and a chain swapped for
+another is faded to over 12 ms while the old one fades out (a test changes each under a note and holds the second difference of
+the wave to a few thousandths). What cannot glide is the type of the filter (off, low pass, ladder): changing it under a note
+steps; keep a filter on, wide open, instead of off.
+
+A lopsided wave (a narrow pulse sits mostly on one side of zero) has its mean taken off before the envelope, worked out exactly at
+the start of each note and followed slowly after; otherwise the envelope would switch the offset on and off with every note, a thump
+that a small speaker plays as a tick.
+
+**Messages**: `preset`, `trim`, `pitch`, `frequency`, `velocity`, `glide`, `pitchAmount`, `morph`, `macro1`-`macro4`, `chainA`-`chainD` (text, or a
 `*shapechain.Chain` read already, which is what the patcher sends), `octave1/2`, `detune1/2`,
 `level1/2`, `morph1/2`, `morphAmount`, `shapeAmount`, `oversample` (0-4: auto, off, 2x, 4x, 8x), `width`,
 `level`, `vibratoDepth`, `vibratoRate`, `lfo1Rate`, `lfo2Rate`, `lfo2Shape`, the envelopes `amp`,
-`morphEnv`, `shapeEnv` and `filter`, the filter and the matrix, and the [pitch bend, mod wheel and
+`morphEnv`, `shapeEnv`, `pitchEnv` and `filter`, the filter and the matrix, and the [pitch bend, mod wheel and
 aftertouch](#pitch-bend-mod-wheel-and-aftertouch). **Value input** 1: the morph; 5 to 8: Ext 1-4.
 
-Presets: `glass`, `foldPad`, `syncLead`, `pwm`, `reed`, `morphPad`, `metal`, `organ`, `subFold`,
-`crush`, `pluck`, `vowel`, `bellMorph`, `swarm` (see [presets](presets.md#shaper)).
+Presets: 52 in seven families (see [presets](presets.md#shaper), and `go run ./cmd/examples/presets -synth shaper`
+plays them all): basses (`subSine`, `kickSub`, `reese`, `acid`, `wobble`, `pulseBass`, `fmBass`, `growl`, `subFold`),
+leads (`supersawLead`, `squareLead`, `syncLead`, `pluckLead`, `fmLead`, `fluteLead`, `brassLead`, `vowel`, `reed`), pads
+(`warmPad`, `stringPad`, `choirPad`, `airPad`, `darkPad`, `evolve`, `glassPad`, `foldPad`, `morphPad`, `swarm`, `organ`), keys and
+plucks (`pluck`, `harp`, `kalimba`, `marimba`, `ePiano`, `clav`, `vibes`, `stab`, `musicBox`, `pwm`), bells (`bellMorph`,
+`glassBell`, `churchBell`, `gong`, `metal`, `glass`), drones (`drone5`, `subDrone`, `crush`) and effects (`laser`, `riser`,
+`impact`, `zap`). A test plays every one and holds it to the same measures: no clipping, as loud as the others, nothing
+shrill, silent after the key is let go, and not like another.
 
 In the patcher the synth is a module of its own (Synths, "shaper"): its four chains are boxes in the
 side panel (Ctrl+Enter takes one, an error shows in red and the sound goes on; choosing a factory

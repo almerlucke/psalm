@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unicode"
 
 	"github.com/almerlucke/psalm/blocks/fft"
@@ -104,6 +105,11 @@ type fixed struct {
 
 func (f fixed) Shape(x float64) float64 { return f.c.Eval(x, &f.m) }
 
+var (
+	bandwidths     sync.Map // chain text -> its bandwidth
+	bandwidthsKept atomic.Int64
+)
+
 // Wide is what Bandwidth gives for a chain with a sharp edge (a saw, a pulse, steps): harmonics
 // without an end
 const Wide = 1 << 20
@@ -115,6 +121,18 @@ const Wide = 1 << 20
 // the chain must be read to keep what lies above the audible band from folding back
 func (c *Chain) Bandwidth() int {
 	c.bwOnce.Do(func() {
+		// a chain of the same text has been looked at already (a script sets the same chains again and
+		// again): its answer is kept, so the audio thread does the analysis once for a text
+		key := c.text
+		if v, ok := bandwidths.Load(key); ok {
+			c.bw = v.(int)
+			return
+		}
+		defer func() {
+			if bandwidthsKept.Add(1) < 4096 {
+				bandwidths.Store(key, c.bw)
+			}
+		}()
 		const n = 1024
 		f := fft.NewReal(n)
 		x, re, im := make([]float64, n), make([]float64, n/2+1), make([]float64, n/2+1)

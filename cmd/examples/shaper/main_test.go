@@ -12,18 +12,20 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/catalog"
 )
 
-// the tour plays: every section of it, a couple of bars each, without a script saying it went wrong
-// (a chain a script sets that can't be read is an error of the script) and with sound all the way
+// the piece plays: every bar of every section (at a fast tempo), without a script saying it went wrong
+// (a chain a script sets that can't be read is an error of the script, so is a chord) and with sound
 func TestTourPlays(t *testing.T) {
+	if testing.Short() {
+		t.Skip("plays 112 bars")
+	}
+	tempo = 300 // the fastest the patch goes: the 112 bars take 90 s
+	defer func() { tempo = 112 }()
 	psalm.PushConfig(psalm.Config{BPM: tempo, PPQ: 240, SampleRate: 44100, BufferSize: 256})
 	defer psalm.PopConfig()
-	for i := range sections {
-		sections[i].bars = 2
-	}
 	psalm.Seed(3)
 	p := psalm.New(nil)
 	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
-	scripts, err := buildPatch(pt, true)
+	ids, err := buildPatch(pt, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +44,7 @@ func TestTourPlays(t *testing.T) {
 		if peak < 0.02 || peak > 1.5 || math.IsNaN(energy) {
 			t.Errorf("section %d (%s): peak %v", i, s.name, peak)
 		}
-		for _, id := range scripts {
+		for _, id := range ids.scripts {
 			if st := pt.Status(id); strings.HasPrefix(st, "error") {
 				t.Fatalf("section %s, script %s: %s", s.name, id, st)
 			}

@@ -352,3 +352,269 @@ func TestAutoOversample(t *testing.T) {
 		t.Errorf("a saw sent to a sine: %d", v.osFactor)
 	}
 }
+
+// frequency of x by its rising zero crossings
+func crossings(x []float64) float64 {
+	n := 0
+	for i := 1; i < len(x); i++ {
+		if x[i-1] < 0 && x[i] >= 0 {
+			n++
+		}
+	}
+	return float64(n) * sr() / float64(len(x))
+}
+
+// the pitch envelope bends the pitch over the note: a kick that starts high and falls to the note
+func TestPitchEnvelope(t *testing.T) {
+	cfg := plain("sin")
+	cfg.PitchAmount, cfg.PitchEnv = 24, env(1, 120, 0, 100)
+	_, x := play(cfg, psalm.Message{"frequency": 110.0}, 0.6)
+	early, late := crossings(x[int(0.004*sr()):int(0.054*sr())]), crossings(x[len(x)-int(0.2*sr()):])
+	if early < 300 || math.Abs(late-110) > 6 {
+		t.Errorf("early %v Hz (the note is 110, 24 st up is 440), late %v", early, late)
+	}
+	// off at 0
+	cfg.PitchAmount = 0
+	_, x = play(cfg, psalm.Message{"frequency": 110.0}, 0.4)
+	if f := crossings(x[int(0.004*sr()):int(0.054*sr())]); math.Abs(f-110) > 12 {
+		t.Errorf("no pitch envelope: %v Hz", f)
+	}
+}
+
+// with a glide a note slides from the pitch the voice was at
+func TestGlide(t *testing.T) {
+	cfg := plain("sin")
+	cfg.Glide = 150
+	v := New(cfg)
+	v.NoteOn(1, psalm.Message{"frequency": 110.0}, psalm.CtrlTick{}, v.Config())
+	run(v, 0.4)
+	v.NoteOn(1, psalm.Message{"frequency": 440.0}, psalm.CtrlTick{}, v.Config())
+	x := run(v, 1.2)
+	first, last := crossings(x[int(0.01*sr()):int(0.06*sr())]), crossings(x[len(x)-int(0.2*sr()):])
+	if first > 200 || math.Abs(last-440) > 12 {
+		t.Errorf("slides from %v Hz (it was at 110) to %v (the note is 440)", first, last)
+	}
+	// the first note of a voice does not slide from nothing
+	w := New(cfg)
+	w.NoteOn(1, psalm.Message{"frequency": 440.0}, psalm.CtrlTick{}, w.Config())
+	y := run(w, 0.4)
+	if f := crossings(y[int(0.01*sr()):int(0.11*sr())]); math.Abs(f-440) > 20 {
+		t.Errorf("the first note: %v Hz", f)
+	}
+}
+
+// a config can say mono and legato: one note at a time on one voice
+func TestMonoConfig(t *testing.T) {
+	cfg := plain("sin")
+	cfg.Mono, cfg.Legato, cfg.Glide = true, true, 120
+	p := NewPoly(cfg, 4)
+	var out []float64
+	collect := func(seconds float64) {
+		for range int(seconds * sr() / float64(p.Config().BufferSize)) {
+			p.ResetRun()
+			p.Run()
+			for _, s := range p.Output(0).Channels[0] {
+				out = append(out, float64(s))
+			}
+		}
+	}
+	p.ReceiveMessage(psalm.Message{"command": "trigger", "noteOn": "a", "tick": psalm.CtrlTick{}, "amplitude": 1.0, "message": psalm.Message{"frequency": 200.0}})
+	collect(0.4)
+	p.ReceiveMessage(psalm.Message{"command": "trigger", "noteOn": "b", "tick": psalm.CtrlTick{}, "amplitude": 1.0, "message": psalm.Message{"frequency": 400.0}})
+	mark := len(out)
+	collect(0.8)
+	first, last := crossings(out[mark+int(0.01*sr()):mark+int(0.06*sr())]), crossings(out[len(out)-int(0.2*sr()):])
+	if !(first < 330 && math.Abs(last-400) < 12) {
+		t.Errorf("legato glide from %v Hz to %v (200 to 400)", first, last)
+	}
+}
+
+// d2 is the largest second difference of x: a smooth tone has a small one, a click (a step in the wave)
+// a big one
+func d2(x []float64) float64 {
+	m := 0.0
+	for i := 2; i < len(x); i++ {
+		m = math.Max(m, math.Abs(x[i]-2*x[i-1]+x[i-2]))
+	}
+	return m
+}
+
+// changing a setting under a sounding note never clicks: the macros, the morph, the levels and the width
+// glide, and a chain swapped for another is faded to. A script does all of these every step
+func TestNoClicksOnChange(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		msg  psalm.Message
+	}{
+		{"macro", psalm.Message{"macro1": 1.0}},
+		{"morph", psalm.Message{"morph": 1.0}},
+		{"level", psalm.Message{"level": 3.0}},
+		{"level of line 2", psalm.Message{"level2": 1.0}},
+		{"width", psalm.Message{"width": 1.0}},
+		{"chain", psalm.Message{"chainA": "mult 2 | sin"}},
+		{"chains", psalm.Message{"chainA": "mult 2 | sin", "chainB": "mult 5 | sin"}},
+		{"everything", psalm.Message{"macro1": 1.0, "morph": 0.7, "level": 2.0, "width": 1.0, "chainA": "par(sin, mult 3 | sin | mult 0.3)"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cfg := plain("par(sin, mult 2 | sin | mult m1[0,0.8])", "sin")
+			cfg.Macros[0] = 0
+			cfg.AmpEnv = env(5, 100, 1, 100)
+			cfg.Line2 = Line{Detune: 7, Level: 0.3}
+			cfg.Oversample = 1
+			v := New(cfg)
+			v.NoteOn(1, psalm.Message{"frequency": 217.3}, psalm.CtrlTick{}, v.Config()) // not a whole number of cycles by the change
+			run(v, 0.3)
+			before := run(v, 0.1)
+			v.ReceiveMessage(c.msg)
+			after := run(v, 0.1)
+			// across the change too: the step is between the last sample before it and the first after
+			base, got := d2(before), d2(append(append([]float64{}, before[len(before)-8:]...), after...))
+			if got > 0.02 {
+				t.Errorf("second difference %.4f after the change, %.4f before: a click", got, base)
+			}
+		})
+	}
+}
+
+// a lopsided wave (a narrow pulse, mostly one side of zero) does not carry its offset in with the envelope: the
+// mean of the sound stays near zero from the first cycle, where the offset used to come in with the
+// attack and go out again in the release, a thump with every note
+func TestNoOffsetThump(t *testing.T) {
+	cfg := plain("pulse 0.1 | bipolar")
+	cfg.Oversample = 1
+	cfg.AmpEnv = env(4, 100, 1, 100)
+	v := New(cfg)
+	v.NoteOn(1, psalm.Message{"frequency": 110.0}, psalm.CtrlTick{}, v.Config())
+	x := run(v, 0.4)
+	win := int(sr() * 2 / 110) // two cycles
+	worst := 0.0
+	for i := 0; i+win < len(x); i += win {
+		s, s2 := 0.0, 0.0
+		for _, y := range x[i : i+win] {
+			s += y
+			s2 += y * y
+		}
+		if s2 > 0 {
+			worst = math.Max(worst, math.Abs(s/float64(win))/math.Sqrt(s2/float64(win)))
+		}
+	}
+	if worst > 0.15 {
+		t.Errorf("the mean of the sound is %.0f%% of its rms in some window: an offset", worst*100)
+	}
+	v.NoteOff()
+	x = run(v, 0.4)
+	worst = 0
+	for i := 0; i+win < len(x); i += win {
+		s, s2 := 0.0, 0.0
+		for _, y := range x[i : i+win] {
+			s += y
+			s2 += y * y
+		}
+		if s2/float64(win) > 1e-4 { // louder than -40 dB: below it the offset is of the blocker settling, far below hearing
+			worst = math.Max(worst, math.Abs(s/float64(win))/math.Sqrt(s2/float64(win)))
+		}
+	}
+	if worst > 0.15 {
+		t.Errorf("in the release the mean is %.0f%% of the rms", worst*100)
+	}
+}
+
+// the message "preset" makes a voice a preset: its chains, envelopes, filter and matrix; later keys of the message
+// change it, a name that is not a preset changes nothing
+func TestPresetMessage(t *testing.T) {
+	v := New(Config{})
+	v.ReceiveMessage(psalm.Message{"preset": "kickSub"})
+	want := KickSub()
+	if v.cfg.Chains != want.Chains || v.cfg.PitchAmount != want.PitchAmount || v.cfg.AmpEnv != want.AmpEnv || v.cfg.Level != want.Level {
+		t.Errorf("the voice is not the preset: %+v", v.cfg.Chains)
+	}
+	v.ReceiveMessage(psalm.Message{"preset": "acid", "cutoff": 900.0})
+	acid := Acid()
+	if v.cfg.Chains != acid.Chains || v.cfg.Glide != acid.Glide || v.cfg.Filter.Resonance != acid.Filter.Resonance || v.cfg.Filter.Cutoff != 900 {
+		t.Errorf("acid with its cutoff changed: %v %v %+v", v.cfg.Chains, v.cfg.Glide, v.cfg.Filter)
+	}
+	if v.cfg.Mods[0].Dest != "cutoff" {
+		t.Errorf("the matrix: %+v", v.cfg.Mods[0])
+	}
+	v.ReceiveMessage(psalm.Message{"preset": "nothing"})
+	if v.cfg.Chains != acid.Chains {
+		t.Error("a name that is not a preset changed the voice")
+	}
+	// every preset can be made of any voice, and plays
+	for name := range Presets {
+		w := New(Config{})
+		w.NoteOn(1, psalm.Message{"preset": name, "pitch": 48.0}, psalm.CtrlTick{}, w.Config())
+		x := run(w, 0.5)
+		if peak(x) < 0.01 || math.IsNaN(peak(x)) {
+			t.Errorf("%s as a message: peak %v", name, peak(x))
+		}
+	}
+	// a sounding voice made another preset does not click: not past what the new sound has of its own (a fold has
+	// corners). The voice has no filter; the preset has one, which fades in
+	w := New(plain("par(sin, mult 2 | sin | mult 0.3)"))
+	w.NoteOn(1, psalm.Message{"frequency": 217.3}, psalm.CtrlTick{}, w.Config())
+	run(w, 0.3)
+	before := run(w, 0.1)
+	w.ReceiveMessage(psalm.Message{"preset": "foldPad"})
+	after := run(w, 0.1)
+	run(w, 1)
+	steady := d2(run(w, 0.1))
+	got := d2(append(append([]float64{}, before[len(before)-8:]...), after...))
+	if got > 3*steady+0.01 {
+		t.Errorf("second difference %.4f after a preset was loaded under a note, %.4f once settled: a click", got, steady)
+	}
+}
+
+// a note that starts on a voice that is still sounding, in the middle of a buffer (a mono synth's next note), goes on
+// from the sound: the old note sounds until the new one starts, and the wave, the envelope and the settings carry on
+func TestRetriggerOnSoundingVoice(t *testing.T) {
+	cfg := plain("sin")
+	cfg.Oversample = 1
+	cfg.AmpEnv = env(5, 100, 1, 300)
+	v := New(cfg)
+	v.NoteOn(1, psalm.Message{"frequency": 217.3}, psalm.CtrlTick{}, v.Config())
+	run(v, 0.3)
+	before := run(v, 0.05)
+	v.NoteOn(1, psalm.Message{"frequency": 311.1}, psalm.CtrlTick{SampleOffset: 100}, v.Config())
+	after := run(v, 0.2)
+	// the first 100 samples are the old note, not a gap
+	gap := 0
+	for _, y := range after[:100] {
+		if y == 0 {
+			gap++
+		}
+	}
+	if gap > 5 {
+		t.Errorf("%d silent samples before the new note: the old one was cut at the start of the buffer", gap)
+	}
+	if got := d2(append(append([]float64{}, before[len(before)-8:]...), after...)); got > 0.01 {
+		t.Errorf("second difference %.4f across the new note: a click", got)
+	}
+	// a voice that was silent starts its note at the offset as it always did
+	w := New(cfg)
+	w.NoteOn(1, psalm.Message{"frequency": 217.3}, psalm.CtrlTick{SampleOffset: 100}, w.Config())
+	x := run(w, 0.05)
+	for _, y := range x[:100] {
+		if y != 0 {
+			t.Fatal("a fresh note sounds before its offset")
+		}
+	}
+}
+
+// a preset without a filter loaded on a sounding voice that has one leaves the filter on, open: it does not step
+func TestPresetWithoutFilterUnderNote(t *testing.T) {
+	v := New(Config{})
+	v.NoteOn(1, psalm.Message{"preset": "warmPad", "frequency": 217.3}, psalm.CtrlTick{}, v.Config())
+	run(v, 0.5)
+	before := run(v, 0.05)
+	v.ReceiveMessage(psalm.Message{"preset": "choirPad"}) // no filter of its own
+	after := run(v, 0.2)
+	steady := d2(run(v, 0.2))
+	got := d2(append(append([]float64{}, before[len(before)-8:]...), after...))
+	if got > 4*steady+0.02 {
+		t.Errorf("second difference %.4f when the filter went, %.4f once settled: a click", got, steady)
+	}
+	if !v.filter.On() {
+		t.Error("the filter was switched off under the note")
+	}
+}

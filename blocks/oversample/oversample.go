@@ -125,6 +125,10 @@ func (o *Oversampler) Down(f func(k int) float64) float64 {
 	return o.filter()
 }
 
+// DownDelay is how many samples at the original rate Down delays what it is given: read a wave this far ahead
+// and the sample it gives is the wave at the moment
+func (o *Oversampler) DownDelay() float64 { return float64(len(o.taps)-1) / (2 * float64(o.Factor)) }
+
 // Reset clears the history
 func (o *Oversampler) Reset() {
 	clear(o.up)

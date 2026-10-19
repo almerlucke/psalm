@@ -24,6 +24,7 @@ import (
 //	mod(v)                                  // 0-1, to its mod output
 //	log(...)                                // under the module
 //	input(port)                             // the last value on "a" or "b"
+//	chord("Dm7")                           // close(lowest), bass(lowest), tones(lo, hi), contains(p), voiceLead(prev)
 //	pitch("C3"), scale("C minor"), bpm()    // scale: snap(p), pitch(degree, octave), notes(lo, hi), contains(p), step(p, n)
 //	genny.*, shared                         // generators (see Gen), what every script of the patch sees
 //	song.section, song.bar, song.progress  // where the song of the patch is (a song module); section(name, index) when one starts
@@ -361,6 +362,13 @@ func (s *Script) newAPI() *goja.Object {
 	})
 	set("scale", func(call goja.FunctionCall) goja.Value {
 		o, err := s.rt.scaleObject(call.Argument(0).String())
+		if err != nil {
+			panic(vm.NewGoError(err))
+		}
+		return o
+	})
+	set("chord", func(call goja.FunctionCall) goja.Value {
+		o, err := s.rt.chordObject(call.Argument(0).String())
 		if err != nil {
 			panic(vm.NewGoError(err))
 		}

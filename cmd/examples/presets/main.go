@@ -1,4 +1,4 @@
-// Presets: a tour of the showcase presets of the synths, each playing what suits it for two bars: a
+// Presets: a tour of the showcase presets of the synths (the shaper synth's all fifty-two), each playing what suits it for two bars: a
 // chord for pads and drones, a line for leads, an arpeggio for plucks, a bass line for basses, a beat
 // for the drum kits. The name of each prints as it starts.
 //
@@ -23,6 +23,7 @@ import (
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
 	"github.com/almerlucke/psalm/synths/pd"
+	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
 	"github.com/almerlucke/psalm/synths/waveguide"
@@ -87,6 +88,9 @@ func main() {
 	cz := func(f func() pd.Config) func(*psalm.Psalm) psalm.Modular {
 		return func(p *psalm.Psalm) psalm.Modular { return pd.NewPoly(f(), 8).AddTo(p) }
 	}
+	sh := func(f func() shaper.Config) func(*psalm.Psalm) psalm.Modular {
+		return func(p *psalm.Psalm) psalm.Modular { return shaper.NewPoly(f(), 8).AddTo(p) }
+	}
 	wc := func(f func() westcoast.Config) func(*psalm.Psalm) psalm.Modular {
 		return func(p *psalm.Psalm) psalm.Modular { return westcoast.NewPoly(f(), 8).AddTo(p) }
 	}
@@ -138,6 +142,58 @@ func main() {
 		{"supersaw", "breathing", pad, 0, ss(supersaw.Breathing, 8)},
 		{"supersaw", "swarm", pad, 0, ss(supersaw.Swarm, 8)},
 		{"supersaw", "glideLead", lead, 0, ss(supersaw.GlideLead, 1)}, // one voice: it glides note to note
+		{"shaper", "subSine", held, 0, sh(shaper.SubSine)},
+		{"shaper", "kickSub", hits, -3, sh(shaper.KickSub)},
+		{"shaper", "reese", held, 0, sh(shaper.Reese)},
+		{"shaper", "acid", bass, 0, sh(shaper.Acid)},
+		{"shaper", "wobble", held, 0, sh(shaper.Wobble)},
+		{"shaper", "pulseBass", bass, 0, sh(shaper.PulseBass)},
+		{"shaper", "fmBass", bass, 0, sh(shaper.FMBass)},
+		{"shaper", "growl", held, 0, sh(shaper.Growl)},
+		{"shaper", "subFold", held, 0, sh(shaper.SubFold)},
+		{"shaper", "supersawLead", lead, 0, sh(shaper.SupersawLead)},
+		{"shaper", "squareLead", lead, 0, sh(shaper.SquareLead)},
+		{"shaper", "syncLead", lead, 0, sh(shaper.SyncLead)},
+		{"shaper", "pluckLead", lead, 0, sh(shaper.PluckLead)},
+		{"shaper", "fmLead", lead, 0, sh(shaper.FMLead)},
+		{"shaper", "fluteLead", slow, 0, sh(shaper.FluteLead)},
+		{"shaper", "brassLead", lead, 0, sh(shaper.BrassLead)},
+		{"shaper", "vowel", slow, 0, sh(shaper.Vowel)},
+		{"shaper", "reed", lead, 0, sh(shaper.Reed)},
+		{"shaper", "warmPad", pad, 0, sh(shaper.WarmPad)},
+		{"shaper", "stringPad", pad, 0, sh(shaper.StringPad)},
+		{"shaper", "choirPad", pad, 0, sh(shaper.ChoirPad)},
+		{"shaper", "airPad", pad, 0, sh(shaper.AirPad)},
+		{"shaper", "darkPad", pad, -1, sh(shaper.DarkPad)},
+		{"shaper", "evolve", pad, 0, sh(shaper.Evolve)},
+		{"shaper", "glassPad", pad, 0, sh(shaper.GlassPad)},
+		{"shaper", "foldPad", pad, 0, sh(shaper.FoldPad)},
+		{"shaper", "morphPad", pad, 0, sh(shaper.MorphPad)},
+		{"shaper", "swarm", pad, 0, sh(shaper.Swarm)},
+		{"shaper", "organ", pad, 0, sh(shaper.Organ)},
+		{"shaper", "pluck", arp, 0, sh(shaper.Pluck)},
+		{"shaper", "harp", arp, 0, sh(shaper.Harp)},
+		{"shaper", "kalimba", arp, 1, sh(shaper.Kalimba)},
+		{"shaper", "marimba", arp, 0, sh(shaper.Marimba)},
+		{"shaper", "ePiano", pad, 0, sh(shaper.EPiano)},
+		{"shaper", "clav", arp, -1, sh(shaper.Clav)},
+		{"shaper", "vibes", arp, 0, sh(shaper.Vibes)},
+		{"shaper", "stab", pad, 0, sh(shaper.Stab)},
+		{"shaper", "musicBox", arp, 1, sh(shaper.MusicBox)},
+		{"shaper", "pwm", arp, -1, sh(shaper.PWM)},
+		{"shaper", "bellMorph", hits, 0, sh(shaper.BellMorph)},
+		{"shaper", "glassBell", hits, 0, sh(shaper.GlassBell)},
+		{"shaper", "churchBell", hits, -1, sh(shaper.ChurchBell)},
+		{"shaper", "gong", hits, -2, sh(shaper.Gong)},
+		{"shaper", "metal", hits, -1, sh(shaper.Metal)},
+		{"shaper", "glass", hits, 0, sh(shaper.Glass)},
+		{"shaper", "drone5", drone, 0, sh(shaper.Drone5)},
+		{"shaper", "subDrone", drone, -1, sh(shaper.SubDrone)},
+		{"shaper", "crush", arp, -1, sh(shaper.Crush)},
+		{"shaper", "laser", hits, 0, sh(shaper.Laser)},
+		{"shaper", "riser", drone, -1, sh(shaper.Riser)},
+		{"shaper", "impact", hits, -3, sh(shaper.Impact)},
+		{"shaper", "zap", hits, 0, sh(shaper.Zap)},
 		{"drumsynth", "electro", beat, 0, kit(drumsynth.KitElectro)},
 		{"drumsynth", "trap", beat, 0, kit(drumsynth.KitTrap)},
 		{"drumsynth", "industrial", beat, 0, kit(drumsynth.KitIndustrial)},

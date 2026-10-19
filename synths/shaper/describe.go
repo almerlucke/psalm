@@ -20,7 +20,7 @@ func Describe(cfg Config) params.Set {
 			over = i
 		}
 	}
-	amp, morph, shape := cfg.AmpEnv, cfg.MorphEnv, cfg.ShapeEnv
+	amp, morph, shape, pitch := cfg.AmpEnv, cfg.MorphEnv, cfg.ShapeEnv, cfg.PitchEnv
 	if amp == (adsr.Setting{}) {
 		amp = *adsr.NewSetting(1, 5, 0.8, 200, 1, 300)
 	}
@@ -29,6 +29,9 @@ func Describe(cfg Config) params.Set {
 	}
 	if shape == (adsr.Setting{}) {
 		shape = *adsr.NewSetting(1, 5, 0.5, 400, 1, 300)
+	}
+	if pitch == (adsr.Setting{}) {
+		pitch = *adsr.NewSetting(1, 2, 0, 80, 1, 100)
 	}
 	s := params.Set{Name: "shaper", Params: []params.Param{
 		params.K("Morph", "morph", 0, 1, cfg.Morph),
@@ -50,6 +53,8 @@ func Describe(cfg Config) params.Set {
 		params.K("Line 2", "morph2", -1, 1, l2.Morph, params.Label("morph offset")),
 
 		params.C("Voice", "oversample", OversampleNames, over),
+		params.K("Voice", "pitchAmount", -48, 48, cfg.PitchAmount, params.Unit("st"), params.Label("pitch env amount")),
+		params.K("Voice", "glide", 0, 1000, cfg.Glide, params.Unit("ms")),
 		params.K("Voice", "width", 0, 1, cfg.Width),
 		params.K("Voice", "vibratoDepth", 0, 2, cfg.VibratoDepth, params.Unit("st"), params.Label("vibrato")),
 		params.K("Voice", "vibratoRate", 0.1, 12, orDefault(cfg.VibratoRate, 5), params.Exp(), params.Unit("Hz"), params.Label("vibrato rate")),
@@ -57,10 +62,12 @@ func Describe(cfg Config) params.Set {
 		params.K("Voice", "lfo2Rate", 0, 20, cfg.LFO2Rate, params.Unit("Hz"), params.Label("lfo 2 rate")),
 		params.C("Voice", "lfo2Shape", []string{"sine", "triangle"}, max(0, min(cfg.LFO2Shape, 1)), params.Label("lfo 2 shape")),
 		params.K("Voice", "level", 0, 4, orOne(cfg.Level)),
+		params.K("Voice", "trim", -24, 12, cfg.Trim, params.Unit("dB")),
 	}, Envelopes: []params.Envelope{
 		params.E("Envelopes", "amp", "amp", amp.AttackDuration, amp.DecayDuration, amp.DecayLevel, amp.ReleaseDuration),
 		params.E("Envelopes", "morph", "morphEnv", morph.AttackDuration, morph.DecayDuration, morph.DecayLevel, morph.ReleaseDuration),
 		params.E("Envelopes", "m1", "shapeEnv", shape.AttackDuration, shape.DecayDuration, shape.DecayLevel, shape.ReleaseDuration),
+		params.E("Envelopes", "pitch", "pitchEnv", pitch.AttackDuration, pitch.DecayDuration, pitch.DecayLevel, pitch.ReleaseDuration),
 	}}
 	fp, fe := voicefilter.Describe(cfg.Filter, "Filter")
 	s.Params = append(s.Params, fp...)

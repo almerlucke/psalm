@@ -424,24 +424,94 @@ They were designed from knowledge of the classic sounds and checked by measureme
 
 ## shaper
 
-The chains of every preset are in the module's side panel in the patcher (see [synths](synths.md#shaper)).
+The chains of every preset are in the module's side panel in the patcher (see [synths](synths.md#shaper)). `go run ./cmd/examples/presets -synth shaper` plays all of them, two bars each. Every preset is held to the same measures by a test: no clipping, as loud as the others (a sustained sound at about -15 dB rms, a short one peaking near 0.5), under -18 dB of its energy above 6 kHz (the effects excepted), silent within 12 seconds of the key being let go, and not like any other preset.
+
+### Basses
 
 | Name | Function | Sound |
 |---|---|---|
-| glass | Glass | A sine that grows overtones as the note starts, folding into a glassy ring; an octave partner a little detuned |
-| foldPad | FoldPad | A sine folded back on itself more and more, slowly swelling and fading; two LFOs move the morph and the fold, a low pass opens with the note |
-| syncLead | SyncLead | A saw hard synced to a higher pitch that sweeps down as the note goes on (macro 1 by its envelope), the velocity sweeping it further |
-| pwm | PWM | A pulse whose width moves on an LFO, two lines apart |
-| reed | Reed | From a soft triangle to a bright squeezed saw with how hard the key is struck; the wheel brightens it |
-| morphPad | MorphPad | Four waves in a row, sine, triangle, saw, square, and back, on a slow LFO |
-| metal | Metal | Whole number partials that brighten and fade: a struck pipe |
-| organ | Organ | Drawbars as a sum of sines, the upper ones joining in with the morph; the wheel adds them |
-| subFold | SubFold | A deep sine folded into a growl, the fold closing over the note |
-| crush | Crush | A saw cut into steps, fewer of them as the note goes on |
-| pluck | Pluck | A bright start that falls to a mellow tone at once; the harder the key the brighter |
-| vowel | Vowel | Mouth shapes made of a few partials, moved by an LFO and by the key |
-| bellMorph | BellMorph | A bell struck and settling into a plain sine |
-| swarm | Swarm | A saw folded and detuned wide, restless on two LFOs |
+| subSine | SubSine | SubSine is a deep sine with a little thump at the start and a touch of odd harmonics, so a small speaker has something to play |
+| kickSub | KickSub | KickSub is a kick drum: a sine whose pitch falls three octaves in a flash. Play it low (C1 to C2) |
+| reese | Reese | Reese is two saws a few cents apart, beating slowly, under a low pass that breathes |
+| acid | Acid | Acid is the squelch: a saw (or a square) into a resonant low pass whose envelope snaps open on every note, a harder note opening it further and going square; it plays one note at a time and slides |
+| wobble | Wobble | Wobble is a saw and a fold through a low pass that an LFO sweeps up and down, about three times a second |
+| pulseBass | PulseBass | PulseBass is a pulse whose width narrows over the note, through a snapping low pass |
+| fmBass | FMBass | FMBass is a phase modulated sine with a lot of modulation at the start that falls away, a sine an octave under |
+| growl | Growl | Growl is FM with a low modulator folded hard, swelling and falling twice a second |
+| subFold | SubFold | SubFold is a deep sine folded into a growl by the filter's envelope, which here is the shape's |
+
+### Leads
+
+| Name | Function | Sound |
+|---|---|---|
+| supersawLead | SupersawLead | SupersawLead is the big trance saw: two saws a few cents apart, wide, through a low pass, a vibrato that comes in late |
+| squareLead | SquareLead | SquareLead is a hollow pulse with its width moving, one note at a time, sliding |
+| syncLead | SyncLead | SyncLead is a saw hard synced to a higher pitch that sweeps down as the note goes on |
+| pluckLead | PluckLead | PluckLead is a bright saw that mellows at once, a filter snapping shut: a sequence lead |
+| fmLead | FMLead | FMLead is an electric-organ-bright phase modulated lead: the harder the key the brighter, the wheel adds more |
+| fluteLead | FluteLead | FluteLead is a nearly pure tone with a breath of the second and third harmonic, slow to speak, with a vibrato |
+| brassLead | BrassLead | BrassLead swells in with its brightness: phase modulation that opens over the first tenth of a second |
+| vowel | Vowel | Vowel moves between mouth shapes made of a few partials, no filter needed |
+| reed | Reed | Reed goes from a soft triangle to a bright squeezed saw with how hard the key is struck |
+
+### Pads
+
+| Name | Function | Sound |
+|---|---|---|
+| warmPad | WarmPad | WarmPad is detuned saws behind a low pass that breathes, wide and slow |
+| stringPad | StringPad | StringPad is saw and pulse together, the morph between them drifting |
+| choirPad | ChoirPad | ChoirPad is mouth shapes moving slowly, a few people singing |
+| airPad | AirPad | AirPad is high, soft and moving, sines and a fold that comes and goes |
+| darkPad | DarkPad | DarkPad is a low pulse behind a closed filter that opens and shuts very slowly |
+| evolve | Evolve | Evolve goes through four waves by itself on two slow LFOs that never line up: sine, a fold, a saw, a pulse; no two bars sound the same |
+| glassPad | GlassPad | GlassPad is soft phase modulation, the glassy sheen of an old digital pad |
+| foldPad | FoldPad | FoldPad is a sine folded back on itself more and more, slowly swelling and fading |
+| morphPad | MorphPad | MorphPad goes through four waves, sine, triangle, saw, square, and back, on a slow LFO |
+| swarm | Swarm | Swarm is a saw folded and detuned wide, restless on two LFOs |
+| organ | Organ | Organ is drawbars as a sum of sines, the upper ones joining in with the morph |
+
+### Keys and plucks
+
+| Name | Function | Sound |
+|---|---|---|
+| pluck | Pluck | Pluck is a bright start that falls to a mellow tone at once |
+| harp | Harp | Harp is a plucked string: all the harmonics at the start, the high ones dying first |
+| kalimba | Kalimba | Kalimba is a thumb piano: a quick ping on top of the note that falls away |
+| marimba | Marimba | Marimba is wood: a sine with a hard partial at four times its pitch that dies in a moment |
+| ePiano | EPiano | EPiano is a tine piano: phase modulation, brighter the harder the key, the bright part dying first, a second, softer layer ringing a little out of tune |
+| clav | Clav | Clav is a clavinet: a narrow pulse and a filter that snaps shut in a few milliseconds |
+| vibes | Vibes | Vibes is a vibraphone: a sine with a bright partial that fades, and a tremolo |
+| stab | Stab | Stab is the chord stab of house: detuned saws, a filter that snaps shut, a short tail |
+| musicBox | MusicBox | MusicBox is a comb of metal: a sine and a partial at five times its pitch, tinkling |
+| pwm | PWM | PWM is a pulse whose width moves on an LFO, two lines apart |
+
+### Bells
+
+| Name | Function | Sound |
+|---|---|---|
+| bellMorph | BellMorph | BellMorph strikes a bell and lets it settle into a plain sine |
+| glassBell | GlassBell | GlassBell is phase modulation at three times the pitch, falling to a pure tone: a struck glass |
+| churchBell | ChurchBell | ChurchBell is partials that die one after the other: the high ones in a moment, the low ring on |
+| gong | Gong | Gong is a swell of a very bright, very low sound that settles over many seconds |
+| metal | Metal | Metal stacks whole number partials, brightening and fading: a struck pipe |
+| glass | Glass | Glass is a sine that grows overtones as the note starts, folding into a glassy ring |
+
+### Drones and textures
+
+| Name | Function | Sound |
+|---|---|---|
+| drone5 | Drone5 | Drone5 is a note and its fifth, folded softly, breathing: a drone to sit under a piece |
+| subDrone | SubDrone | SubDrone is a very low sine folded slowly into a growl and back |
+| crush | Crush | Crush is a saw cut into steps, fewer of them as the macro goes up |
+
+### Effects
+
+| Name | Function | Sound |
+|---|---|---|
+| laser | Laser | Laser falls from far above the note in a moment, a hard synced saw |
+| riser | Riser | Riser climbs for a long note: pitch, brightness and fold all going up, for the bars before a change |
+| impact | Impact | Impact is a low hit: a fold falling from high to low and a sine thump under it, ringing out |
+| zap | Zap | Zap is a short fall in pitch of an FM tone: a game sound |
 
 ## westcoast
 

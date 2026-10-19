@@ -273,3 +273,35 @@ function trigger(ev) {
 		}
 	}
 }
+
+// chord() gives a chord of a symbol, its voicings and its tones in a range
+func TestScriptChord(t *testing.T) {
+	r := newRig(t)
+	clock, s, syn := r.add("clock", ""), r.add("script", ""), r.add("rec", "")
+	r.code(s, `
+const c = chord("Dm7")
+const g = chord("Bb/D")
+let said = false
+function trigger(ev) {
+  if (said) return
+  said = true
+  log(JSON.stringify([c.close(50), c.bass(40), c.tones(60, 70), c.contains(62), c.contains(61), g.bass(40), c.voiceLead([57, 60, 64, 67]), c.name, c.root]))
+  note(c.close(50), 0.5, 1)
+}`)
+	r.connect(patcher.Cable{From: clock, To: s})
+	r.connect(patcher.Cable{From: s, To: syn, Type: patcher.Notes})
+	r.run(0.3)
+	// Dm7 from D3 (50): D F A C; its bass at or above 40 is D (50); the tones from 60 to 70: C D F A; D is in
+	// it, C# is not; Bb/D has D in the bass; voice led from A C E G: A C D F
+	want := `[[50,53,57,60],50,[60,62,65,69],true,false,50,[57,60,62,65],"Dm7",2]`
+	if st := r.status(s); st != want {
+		t.Fatalf("%s, want %s", st, want)
+	}
+	for _, bad := range []string{`chord("Hm")`, `chord("")`, `chord("Dm7wow")`} {
+		r.code(s, "function trigger() { "+bad+" }")
+		r.run(0.2)
+		if st := r.status(s); !strings.HasPrefix(st, "error") {
+			t.Errorf("%s: status %q, want an error", bad, st)
+		}
+	}
+}

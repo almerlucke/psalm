@@ -63,6 +63,9 @@ type Config struct {
 	Oversample int     // how many times a sample the chains are read: 1 (off), 2, 4 or 8; 0 is automatic: as many as the chains and the pitch ask for (see pickFactor), up to 4
 	Width      float64 // 0-1: line 1 to the left, line 2 to the right
 	Level      float64 // output level (0 is treated as 1)
+	// Trim is dB on top of Level for the mix: it is not a part of a preset (loading one leaves it), so a script can
+	// load a preset and set where it sits
+	Trim float64
 
 	AmpEnv adsr.Setting
 	// MorphEnv moves the morph over the note by MorphAmount (-1 to 1) at its peak; ShapeEnv moves
@@ -71,6 +74,15 @@ type Config struct {
 	MorphAmount float64
 	ShapeEnv    adsr.Setting
 	ShapeAmount float64
+
+	// PitchEnv bends the pitch over the note by PitchAmount semitones at its peak (a kick that falls, a
+	// laser, a riser); off at 0. Glide is the milliseconds a note takes to slide from the pitch the voice
+	// was at (for a synth played mono: Mono, Legato)
+	PitchEnv    adsr.Setting
+	PitchAmount float64
+	Glide       float64
+	Mono        bool
+	Legato      bool
 
 	VibratoRate  float64 // Hz
 	VibratoDepth float64 // semitones
@@ -162,10 +174,33 @@ type Voice struct {
 	amp       float64
 	phase     [2]float64
 	os        [2][len(Oversamples)]*oversample.Oversampler // by factor, made when one is first needed
+	osReady   [2][len(Oversamples)]bool                    // its history holds the wave just before now
 	osFactor  int                                          // how many times it reads the chain now
 	amped     *adsr.ADSR
 	morphEnv  *adsr.ADSR
 	shapeEnv  *adsr.ADSR
+	pitchEnv  *adsr.ADSR
+	pitchMul  float64 // 2^(the bend in semitones / 12), worked out every 4 samples
+	fBlend    float64 // how much of the filter is in the sound: 1, or less while a filter that was off fades in
+	pending   *pendingNote
+	dcEst     [2]float64 // the mean of the wave of each line, taken off before the envelope (see Synthesize)
+	glideOff  float64    // semitones the glide is still away from the pitch of the note
+	// what the sound is now: the morph, the macros, the levels and the width glide to what they are set to
+	// in a few milliseconds, so changing them under a sounding note (a script does it every step) never
+	// makes a click; snap says the next sample starts there (a new note)
+	smMorph  float64
+	smMacros shapechain.Macros
+	smLvl    [2]float64
+	smGain   float64
+	smWidth  float64
+	snap     bool
+	// a chain changed under a sounding note is faded to over xfLen samples: the old ones are kept to
+	// fade out
+	old       [NumChains]*shapechain.Chain
+	oldNum    int
+	xfLeft    int
+	xf        float64
+	lastFreq  float64 // the pitch the voice last sounded at, 0 for none
 	t         int
 	waitSamps int
 	dc, dcIn  [2]float64
@@ -191,12 +226,16 @@ func New(cfg Config) *Voice {
 	if cfg.ShapeEnv == (adsr.Setting{}) {
 		cfg.ShapeEnv = *adsr.NewSetting(1, 5, 0.5, 400, 1, 300)
 	}
+	if cfg.PitchEnv == (adsr.Setting{}) {
+		cfg.PitchEnv = *adsr.NewSetting(1, 2, 0, 80, 1, 100)
+	}
 	cfg.Oversample = oversampleFactor(cfg.Oversample)
-	v := &Voice{Module: psalm.NewModule(nil, []int{cfg.NumChannels}), cfg: cfg, freq: 220}
+	v := &Voice{Module: psalm.NewModule(nil, []int{cfg.NumChannels}), cfg: cfg, freq: 220, pitchMul: 1}
 	sr := v.Config().SampleRate
 	v.amped = adsr.New(&v.cfg.AmpEnv, adsr.NoteOff, sr)
 	v.morphEnv = adsr.New(&v.cfg.MorphEnv, adsr.NoteOff, sr)
 	v.shapeEnv = adsr.New(&v.cfg.ShapeEnv, adsr.NoteOff, sr)
+	v.pitchEnv = adsr.New(&v.cfg.PitchEnv, adsr.NoteOff, sr)
 	v.filter = voicefilter.New(cfg.Filter, sr, cfg.NumChannels)
 	v.mods = modmatrix.New(Dests)
 	for i, sl := range cfg.Mods {
@@ -237,6 +276,12 @@ func (v *Voice) setChain(i int, chain any) {
 		}
 	default:
 		return
+	}
+	if c != v.chains[i] && v.t > 0 && v.numChains > 0 && v.IsActive() {
+		if v.xfLeft == 0 { // fade from the chains as they are
+			v.old, v.oldNum = v.chains, v.numChains
+		}
+		v.xfLeft = int(chainFade * v.Config().SampleRate)
 	}
 	v.chains[i] = c
 	if c != nil {
@@ -282,17 +327,19 @@ func (v *Voice) pickFactor() {
 	if f != v.osFactor {
 		v.osFactor = f
 		for k := range v.os {
-			for _, o := range v.os[k] {
+			for i, o := range v.os[k] {
 				if o != nil {
 					o.Reset()
 				}
+				v.osReady[k][i] = false
 			}
 		}
 	}
 }
 
-// oversampler is the up and down sampler of a line at the factor now
-func (v *Voice) oversampler(line int) *oversample.Oversampler {
+// oversampler is the up and down sampler of a line at the factor now, and whether its history is the wave
+// just before now (it is not for one just made, or after the factor changed under a note: prime it)
+func (v *Voice) oversampler(line int) (*oversample.Oversampler, *bool) {
 	idx := 0
 	for i, f := range Oversamples {
 		if f == v.osFactor {
@@ -302,7 +349,61 @@ func (v *Voice) oversampler(line int) *oversample.Oversampler {
 	if v.os[line][idx] == nil {
 		v.os[line][idx] = oversample.New(v.osFactor, 16)
 	}
-	return v.os[line][idx]
+	return v.os[line][idx], &v.osReady[line][idx]
+}
+
+// apply makes the settings of a config the voice's: the chains (faded to if it is sounding), the envelopes, the
+// lines, the filter, the matrix, the LFOs. What sounds goes on: the settings glide, the envelopes are of the
+// next note
+func (v *Voice) apply(c Config) {
+	for i, text := range c.Chains {
+		v.setChain(i, text)
+	}
+	cfg := &v.cfg
+	cfg.Morph, cfg.Macros, cfg.Line1, cfg.Line2, cfg.Width, cfg.Level = c.Morph, c.Macros, c.Line1, c.Line2, c.Width, c.Level
+	cfg.Oversample = oversampleFactor(c.Oversample)
+	if c.AmpEnv != (adsr.Setting{}) {
+		cfg.AmpEnv = c.AmpEnv
+	}
+	if c.MorphEnv != (adsr.Setting{}) {
+		cfg.MorphEnv = c.MorphEnv
+	}
+	if c.ShapeEnv != (adsr.Setting{}) {
+		cfg.ShapeEnv = c.ShapeEnv
+	}
+	if c.PitchEnv != (adsr.Setting{}) {
+		cfg.PitchEnv = c.PitchEnv
+	}
+	cfg.MorphAmount, cfg.ShapeAmount, cfg.PitchAmount, cfg.Glide = c.MorphAmount, c.ShapeAmount, c.PitchAmount, c.Glide
+	cfg.VibratoRate, cfg.VibratoDepth, cfg.VibratoDelay = c.VibratoRate, c.VibratoDepth, c.VibratoDelay
+	cfg.LFO1Rate, cfg.LFO1Sync, cfg.LFO2Rate, cfg.LFO2Shape = c.LFO1Rate, c.LFO1Sync, c.LFO2Rate, c.LFO2Shape
+	if c.Filter.Type == voicefilter.Off && v.filter.On() && v.t > 0 && v.IsActive() {
+		// a filter switched off under a note steps: leave it on, and open it (it glides)
+		c.Filter = v.cfg.Filter
+		c.Filter.Cutoff, c.Filter.Resonance, c.Filter.EnvAmount, c.Filter.KeyTrack = 20000, 0, 0, 0
+	}
+	v.filter.SetConfig(c.Filter)
+	cfg.Filter = v.filter.Config()
+	for i, sl := range c.Mods {
+		v.mods.Set(i, sl)
+		cfg.Mods[i] = v.mods.Slot(i)
+	}
+	for i, e := range c.Ext {
+		v.mods.SetExt(i, e)
+		cfg.Ext[i] = v.mods.Ext(i)
+	}
+	v.pickFactor()
+}
+
+// setFreq changes the pitch of the voice; with a glide the sound slides there from where it was
+func (v *Voice) setFreq(f float64) {
+	if f <= 0 {
+		return
+	}
+	if v.cfg.Glide > 0 && v.lastFreq > 0 {
+		v.glideOff += 12 * math.Log2(v.freq/f)
+	}
+	v.freq = f
 }
 
 func (v *Voice) line(i int) *Line {
@@ -313,19 +414,29 @@ func (v *Voice) line(i int) *Line {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	// a preset by its name: every setting of it (but the mono play of a synth, which is the Poly's), before the
+	// other settings of the message, which then change it
+	if name, ok := msg.StrVal("preset"); ok {
+		if f, ok := Presets[name]; ok {
+			v.apply(f())
+		}
+	}
 	v.expr.Receive(msg)
 	v.filter.Receive(msg)
 	v.cfg.Filter = v.filter.Config()
 	envelope.Receive(msg, "amp", &v.cfg.AmpEnv)
 	envelope.Receive(msg, "morphEnv", &v.cfg.MorphEnv)
 	envelope.Receive(msg, "shapeEnv", &v.cfg.ShapeEnv)
+	envelope.Receive(msg, "pitchEnv", &v.cfg.PitchEnv)
 	for i, key := range ChainKeys {
 		if c, ok := msg[key]; ok {
 			v.setChain(i, c)
 		}
 	}
-	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
-	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
+	msg.IfFltVal("frequency", func(f float64) { v.setFreq(f) })
+	msg.IfFltVal("pitch", func(p float64) { v.setFreq(440 * math.Exp2((p-69)/12)) })
+	msg.IfFltVal("pitchAmount", func(f float64) { v.cfg.PitchAmount = math.Max(-60, math.Min(f, 60)) })
+	msg.IfFltVal("glide", func(f float64) { v.cfg.Glide = math.Max(0, math.Min(f, 3000)) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
 	msg.IfFltVal("morph", func(f float64) { v.cfg.Morph = math.Max(0, math.Min(f, 1)) })
 	for i := range v.cfg.Macros {
@@ -342,6 +453,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("oversample", func(o int) { v.cfg.Oversample = Oversamples[max(0, min(o, len(Oversamples)-1))] })
 	msg.IfFltVal("width", func(f float64) { v.cfg.Width = f })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
+	msg.IfFltVal("trim", func(f float64) { v.cfg.Trim = math.Max(-48, math.Min(f, 24)) })
 	msg.IfFltVal("morphAmount", func(f float64) { v.cfg.MorphAmount = math.Max(-1, math.Min(f, 1)) })
 	msg.IfFltVal("shapeAmount", func(f float64) { v.cfg.ShapeAmount = math.Max(-1, math.Min(f, 1)) })
 	msg.IfFltVal("vibratoRate", func(f float64) { v.cfg.VibratoRate = f })
@@ -384,19 +496,43 @@ func (v *Voice) Note(duration float64, amplitude float64, message psalm.Message,
 }
 
 func (v *Voice) note(mode adsr.ReleaseMode, duration, amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
+	if v.t > 0 && v.IsActive() && tick.SampleOffset > 0 {
+		v.pending = &pendingNote{at: tick.SampleOffset, mode: mode, duration: duration, amplitude: amplitude, message: message}
+		return
+	}
+	v.waitSamps = tick.SampleOffset
+	v.startNote(mode, duration, amplitude, message)
+}
+
+// startNote starts a note: the settings of it, the envelopes, the wave from its start. A note that starts on a voice
+// that sounds goes on from the sound it was: the phase, the envelope level (the envelope starts from where it is) and
+// the settings glide, so a mono synth's next note never clicks
+func (v *Voice) startNote(mode adsr.ReleaseMode, duration, amplitude float64, message psalm.Message) {
+	fresh := !(v.t > 0 && v.IsActive())
 	v.velocity = 0.8
 	v.ReceiveMessage(message)
-	v.pickFactor() // the pitch of the note
-	v.waitSamps = tick.SampleOffset
+	v.osReady = [2][len(Oversamples)]bool{} // the history of the oversamplers is the last note's: fill it again
+	v.pickFactor()                          // the pitch of the note
 	v.amp = amplitude
 	v.t = 0
-	v.phase = [2]float64{} // every note starts the wave at the same place
 	v.lfo1Ph, v.lfo2Ph = 0, 0
+	if fresh {
+		v.snap = true
+		v.xfLeft, v.xf = 0, 0
+		v.fBlend = 0
+		if v.filter.On() { // a note starts with its filter in
+			v.fBlend = 1
+		}
+		v.phase = [2]float64{} // every note starts the wave at the same place
+	}
 	// drawn only when a slot uses it: a voice that doesn't keeps the random stream it had
 	if v.mods.Uses(modmatrix.Random) {
 		v.random = v.Rand().Float64()*2 - 1
 	}
 	v.filter.Trigger(duration*1000, mode)
+	if v.cfg.PitchAmount != 0 {
+		v.pitchEnv.TriggerFull(duration*1000, 1, &v.cfg.PitchEnv, mode)
+	}
 	v.amped.TriggerFull(duration*1000, 1, &v.cfg.AmpEnv, mode)
 	if v.cfg.MorphAmount != 0 {
 		v.morphEnv.TriggerFull(duration*1000, 1, &v.cfg.MorphEnv, mode)
@@ -411,6 +547,7 @@ func (v *Voice) NoteOff() {
 	v.amped.Release()
 	v.morphEnv.Release()
 	v.shapeEnv.Release()
+	v.pitchEnv.Release()
 }
 
 func (v *Voice) Clear() {
@@ -418,6 +555,10 @@ func (v *Voice) Clear() {
 	v.amped.Clear()
 	v.morphEnv.Clear()
 	v.shapeEnv.Clear()
+	v.pitchEnv.Clear()
+	v.glideOff, v.lastFreq = 0, 0
+	v.xfLeft, v.xf = 0, 0
+	v.pending = nil
 	v.phase = [2]float64{}
 	for _, line := range v.os {
 		for _, o := range line {
@@ -432,27 +573,50 @@ func (v *Voice) Clear() {
 
 func (v *Voice) IsActive() bool { return !v.amped.Done() }
 
-// wave is the chains at a phase, blended at a place in the morph (0-1 over the chains in use)
+// wave is the chains at a phase, blended at a place in the morph (0-1 over the chains in use); while a
+// chain is being swapped, the chains it replaces fade out
 func (v *Voice) wave(ph, pos float64, m *shapechain.Macros) float64 {
-	n := v.numChains
+	y := waveOf(&v.chains, v.numChains, ph, pos, m)
+	if v.xf > 0 {
+		y += (waveOf(&v.old, v.oldNum, ph, pos, m) - y) * v.xf
+	}
+	return y
+}
+
+func waveOf(chains *[NumChains]*shapechain.Chain, n int, ph, pos float64, m *shapechain.Macros) float64 {
 	if n <= 1 {
-		return v.chains[0].Eval(ph, m)
+		return chains[0].Eval(ph, m)
 	}
 	f := pos * float64(n-1)
 	i := int(f)
 	if i >= n-1 {
-		return v.chains[n-1].Eval(ph, m)
+		return chains[n-1].Eval(ph, m)
 	}
-	a := v.chains[i].Eval(ph, m)
+	a := chains[i].Eval(ph, m)
 	frac := f - float64(i)
 	if frac <= 0 {
 		return a
 	}
-	return a + (v.chains[i+1].Eval(ph, m)-a)*frac
+	return a + (chains[i+1].Eval(ph, m)-a)*frac
 }
 
-// silent is the level of the amp envelope (-100 dB) below which a line makes no sound
-const silent = 1e-5
+// chainFade is the seconds a chain that is swapped under a sounding note takes to fade in
+const chainFade = 0.012
+
+// filterFade is the seconds a filter that is switched on under a note takes to come in
+const filterFade = 0.01
+
+// dcPoints is how many points of a cycle the mean of a wave is worked out from at the start of a note
+const dcPoints = 128
+
+// dcTrackHz is how fast the mean of the wave of a line follows it
+const dcTrackHz = 3
+
+// glideTime is the seconds the morph, the macros, the levels and the width take to reach a new setting
+const glideTime = 0.005
+
+// silent is the level of the amp envelope (-80 dB) below which a line makes no sound
+const silent = 1e-4
 
 func orOne(v float64) float64 {
 	if v == 0 {
@@ -461,18 +625,51 @@ func orOne(v float64) float64 {
 	return v
 }
 
-func clamp01(x float64) float64 { return math.Max(0, math.Min(x, 1)) }
+func clamp01(x float64) float64 {
+	if x < 0 {
+		return 0
+	}
+	if x > 1 {
+		return 1
+	}
+	return x
+}
+
+// pendingNote is a note that starts in the middle of a buffer on a voice that is still sounding
+type pendingNote struct {
+	at                  int
+	mode                adsr.ReleaseMode
+	duration, amplitude float64
+	message             psalm.Message
+}
 
 func (v *Voice) Synthesize() {
 	out := v.Output(0)
 	out.Clear()
+	n := v.Config().BufferSize
+	if p := v.pending; p != nil {
+		// a note starting on a voice that sounds (a mono synth's next note): the old one sounds until the
+		// sample the new one starts at, and does not stop at the start of the buffer
+		v.pending = nil
+		at := max(0, min(p.at, n))
+		v.render(out, 0, at)
+		v.startNote(p.mode, p.duration, p.amplitude, p.message)
+		v.render(out, at, n)
+		v.waitSamps = 0
+		return
+	}
+	v.render(out, v.waitSamps, n)
+	v.waitSamps = 0
+}
+
+// render makes the samples from one to another of the buffer
+func (v *Voice) render(out *psalm.Socket, from, to int) {
 	if !v.IsActive() {
 		return
 	}
 	cfg := &v.cfg
-	n := v.Config().BufferSize
 	sr := v.Config().SampleRate
-	level := orOne(cfg.Level)
+	level := orOne(cfg.Level) * math.Pow(10, cfg.Trim/20)
 	mods := v.mods
 	modded := mods.Active()
 	morphModded := modded && mods.Targets(dMorph)
@@ -482,21 +679,27 @@ func (v *Voice) Synthesize() {
 	}
 	pitchModded := modded && mods.Targets(dPitch)
 	vibModded := modded && mods.Targets(dVibrato)
-	widthModded := modded && mods.Targets(dWidth)
 	levelModded := modded && mods.Targets(dLevel)
 	detuneModded := modded && mods.Targets(dDetune)
 	filtered := v.filter.On()
 	filterTick := filtered || (modded && mods.Uses(modmatrix.FilterEnv))
 	morphEnvOn := cfg.MorphAmount != 0
 	shapeEnvOn := cfg.ShapeAmount != 0
+	pitchEnvOn := cfg.PitchAmount != 0
+	glideCoef := 0.0
+	if cfg.Glide > 0 {
+		glideCoef = 1 - math.Exp(-1/(cfg.Glide*0.001*sr))
+	}
 	gain := level * v.amp
-	width := math.Max(0, math.Min(cfg.Width, 1))
+	smooth := 1 - math.Exp(-1/(glideTime*sr))
+	dcTrack := 2 * math.Pi * dcTrackHz / sr
 	pan := func(p float64) (float64, float64) {
 		a := (p + 1) * math.Pi / 4
 		return math.Cos(a) * math.Sqrt2, math.Sin(a) * math.Sqrt2
 	}
-	l1L, l1R := pan(-width)
-	l2L, l2R := pan(width)
+	panned := v.smWidth
+	l1L, l1R := pan(-panned) // where the width is now (a new note starts it again)
+	l2L, l2R := pan(panned)
 	vibDelay := int(cfg.VibratoDelay * sr)
 	lfo1Inc := cfg.LFO1Rate / sr
 	if cfg.LFO1Sync > 0 {
@@ -506,7 +709,6 @@ func (v *Voice) Synthesize() {
 	lfo2On := modded && mods.Uses(modmatrix.LFO2) && cfg.LFO2Rate > 0
 	lfo2Inc := cfg.LFO2Rate / sr
 	dcCoef := 1 - 2*math.Pi*10/sr
-	line2On := cfg.Line2.Level > 0
 	var ratio [2]float64
 	for i := range ratio {
 		l := v.line(i)
@@ -522,7 +724,7 @@ func (v *Voice) Synthesize() {
 	var lfo1, lfo2, morphEnv, shapeEnv float64
 	channels := out.Channels
 	stereo := len(channels) > 1
-	for i := v.waitSamps; i < n; i++ {
+	for i := from; i < to; i++ {
 		v.expr.Tick(sr)
 		dca := v.amped.Generate()
 		if morphEnvOn {
@@ -569,7 +771,60 @@ func (v *Voice) Synthesize() {
 			}
 			macros[k] = clamp01(macros[k])
 		}
+		// the targets for this sample, and the sound gliding to them
+		gainT := gain
+		if levelModded {
+			gainT = math.Max(0, level+mods.Mod(dLevel)) * v.amp
+		}
+		widthT := math.Max(0, math.Min(cfg.Width+mods.Mod(dWidth), 1))
+		lvlT := [2]float64{orOne(cfg.Line1.Level), math.Max(0, cfg.Line2.Level)}
+		if v.snap {
+			v.snap = false
+			v.smMorph, v.smMacros, v.smGain, v.smWidth, v.smLvl = morph, macros, gainT, widthT, lvlT
+			panned = widthT
+			l1L, l1R = pan(-panned)
+			l2L, l2R = pan(panned)
+			// the mean of the wave of each line over one cycle: a lopsided wave (a narrow pulse) is not
+			// centred, and an envelope on it would switch the offset on and off with every note, a thump
+			for k := 0; k < 2; k++ {
+				pos := clamp01(v.smMorph + v.line(k).Morph)
+				sum := 0.0
+				for j := 0; j < dcPoints; j++ {
+					sum += math.Max(-2, math.Min(v.wave(float64(j)/dcPoints, pos, &v.smMacros), 2))
+				}
+				v.dcEst[k] = sum / dcPoints
+			}
+		} else {
+			v.smMorph += (morph - v.smMorph) * smooth
+			for k := range macros {
+				v.smMacros[k] += (macros[k] - v.smMacros[k]) * smooth
+			}
+			v.smGain += (gainT - v.smGain) * smooth
+			v.smWidth += (widthT - v.smWidth) * smooth
+			v.smLvl[0] += (lvlT[0] - v.smLvl[0]) * smooth
+			v.smLvl[1] += (lvlT[1] - v.smLvl[1]) * smooth
+			if v.t%4 == 0 && math.Abs(v.smWidth-panned) > 1e-5 {
+				panned = v.smWidth
+				l1L, l1R = pan(-panned)
+				l2L, l2R = pan(panned)
+			}
+		}
+		if v.xfLeft > 0 {
+			v.xf = float64(v.xfLeft) / (chainFade * sr)
+			v.xfLeft--
+		} else {
+			v.xf = 0
+		}
 		semis := v.expr.Semitones()
+		if pitchEnvOn {
+			semis += v.pitchEnv.Generate() * cfg.PitchAmount
+		}
+		if v.glideOff != 0 {
+			if v.glideOff *= 1 - glideCoef; math.Abs(v.glideOff) < 1e-4 || glideCoef == 0 {
+				v.glideOff = 0
+			}
+			semis += v.glideOff
+		}
 		if pitchModded {
 			semis += mods.Mod(dPitch)
 		}
@@ -578,7 +833,11 @@ func (v *Voice) Synthesize() {
 		}
 		f := v.freq
 		if semis != 0 {
-			f *= math.Exp2(semis / 12)
+			// the pitch moves slowly, a fourth of a millisecond at a time is plenty (Exp2 is not cheap)
+			if v.t%4 == 0 {
+				v.pitchMul = math.Exp2(semis / 12)
+			}
+			f *= v.pitchMul
 		}
 		if detuneModded {
 			ratio[1] = math.Exp2(float64(cfg.Line2.Octave) + (cfg.Line2.Detune+mods.Mod(dDetune))/1200)
@@ -586,14 +845,8 @@ func (v *Voice) Synthesize() {
 		var y [2]float64
 		for k := 0; k < 2; k++ {
 			l := v.line(k)
-			if k == 1 && !line2On {
-				continue
-			}
-			lvl := l.Level
-			if k == 0 {
-				lvl = orOne(lvl)
-			}
-			if lvl <= 0 {
+			lvl := v.smLvl[k]
+			if lvl < 1e-4 {
 				continue
 			}
 			inc := f * ratio[k] / sr
@@ -602,29 +855,45 @@ func (v *Voice) Synthesize() {
 				v.phase[k] = ph - math.Floor(ph)
 				continue
 			}
-			pos := clamp01(morph + l.Morph)
+			pos := clamp01(v.smMorph + l.Morph)
 			ph := v.phase[k]
 			var s float64
 			if factor == 1 {
-				s = v.wave(ph, pos, &macros)
+				s = v.wave(ph, pos, &v.smMacros)
 			} else {
 				step := inc * invFactor
-				s = v.oversampler(k).Down(func(j int) float64 {
-					p := ph + float64(j)*step
-					return v.wave(p-math.Floor(p), pos, &macros)
+				os, ready := v.oversampler(k)
+				// the sampler delays by its filter: read the wave that far ahead and what comes out is the
+				// wave of now, as the direct reading (factor 1) gives it, so the factor can change under a note
+				ahead := os.DownDelay() * inc
+				if !*ready {
+					for b := 20; b > 0; b-- { // fill its history with the wave just before now
+						pb := ph + ahead - float64(b)*inc
+						os.Down(func(j int) float64 {
+							p := pb + float64(j)*step
+							return v.wave(p-math.Floor(p), pos, &v.smMacros)
+						})
+					}
+					*ready = true
+				}
+				s = os.Down(func(j int) float64 {
+					p := ph + ahead + float64(j)*step
+					return v.wave(p-math.Floor(p), pos, &v.smMacros)
 				})
 			}
 			if s != s { // NaN: a chain that divided by nothing
 				s = 0
 			}
-			y[k] = math.Max(-2, math.Min(s, 2)) * dca * lvl
+			v.dcEst[k] += (s - v.dcEst[k]) * dcTrack // the mean moves with the macros, slowly
+			s -= v.dcEst[k]
+			if s > 2 {
+				s = 2
+			} else if s < -2 {
+				s = -2
+			}
+			y[k] = s * dca * lvl
 			ph += inc
 			v.phase[k] = ph - math.Floor(ph)
-		}
-		if widthModded && v.t%4 == 0 {
-			wd := math.Max(0, math.Min(cfg.Width+mods.Mod(dWidth), 1))
-			l1L, l1R = pan(-wd)
-			l2L, l2R = pan(wd)
 		}
 		var o [2]float64
 		if stereo {
@@ -633,10 +902,7 @@ func (v *Voice) Synthesize() {
 		} else {
 			o[0] = y[0] + y[1]
 		}
-		g := gain
-		if levelModded {
-			g = math.Max(0, level+mods.Mod(dLevel)) * v.amp
-		}
+		g := v.smGain
 		if filterTick {
 			v.filter.Tick(f, mods.Mod(dCutoff)+1.5*v.expr.Wheel(), mods.Mod(dResonance))
 		}
@@ -650,16 +916,23 @@ func (v *Voice) Synthesize() {
 			v.dcIn[c] = x
 			val := v.dc[c] * g * 0.5
 			if filtered {
-				val = v.filter.Process(c, val)
+				fv := v.filter.Process(c, val)
+				val += (fv - val) * v.fBlend // a filter switched on under a note fades in
 			}
 			channels[c][i] = float32(val)
 		}
+		if filtered && v.fBlend < 1 {
+			v.fBlend = math.Min(1, v.fBlend+1/(filterFade*sr))
+		} else if !filtered {
+			v.fBlend = 0
+		}
 		v.t++
 	}
-	v.waitSamps = 0
+	v.lastFreq = v.freq
 }
 
-// NewPoly creates a set of voices
+// NewPoly creates a set of voices (mono, and legato, if the config says: one note at a time, a new one
+// sliding there when the config has a glide)
 func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 	if cfg.NumChannels == 0 {
 		cfg.NumChannels = psalm.Stereo
@@ -668,5 +941,9 @@ func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 	for i := range numVoices {
 		voices[i] = New(cfg)
 	}
-	return poly.New[*Voice](cfg.NumChannels, voices)
+	p := poly.New[*Voice](cfg.NumChannels, voices)
+	if cfg.Mono {
+		p.SetMono(true, cfg.Legato)
+	}
+	return p
 }

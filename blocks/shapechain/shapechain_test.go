@@ -177,3 +177,32 @@ func TestBandwidth(t *testing.T) {
 		}
 	}
 }
+
+// par(thru, mult r | sin | mult i) | sin is phase modulation, sin(2π(x + i sin(2π r x))): FM in a chain
+func TestPhaseModulation(t *testing.T) {
+	// the index is in turns (a sine of amplitude 0.6 is 3.8 radians)
+	c := MustParse("par(thru, mult 3 | sin | mult m1[0,0.6]) | sin")
+	for _, idx := range []float64{0, 0.25, 1} {
+		m := Macros{idx}
+		for x := 0.0; x < 1; x += 0.0137 {
+			want := math.Sin(2 * math.Pi * (x + 0.6*idx*math.Sin(2*math.Pi*3*x)))
+			if got := c.Eval(x, &m); math.Abs(got-want) > 1e-5 {
+				t.Fatalf("index %v at %v: %v, want %v", idx, x, got, want)
+			}
+		}
+	}
+	// periodic: the end of the cycle meets the start, so it has a bandwidth of a few partials
+	if bw := c.Bandwidth(); bw < 10 || bw > 60 {
+		t.Errorf("bandwidth %d", bw)
+	}
+}
+
+func BenchmarkBandwidth(b *testing.B) {
+	for _, text := range []string{"sin", "sin | mult m1[1,5] | mirror -1 1", "mult m1[1,6] | mod 1 | bipolar", "par(sin, mult 2 | sin | mult 0.5, mult 3 | sin | mult 0.4, mult 4 | sin | mult 0.3)"} {
+		b.Run(text, func(b *testing.B) {
+			for range b.N {
+				MustParse(text).Bandwidth() // a new chain each time: the analysis is cached in the chain
+			}
+		})
+	}
+}

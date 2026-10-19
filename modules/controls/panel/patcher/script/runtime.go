@@ -15,6 +15,7 @@ package script
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sync"
 	"time"
@@ -59,7 +60,7 @@ func NewRuntime() *Runtime {
 // header and footer wrap a script in a function of its own: its scope, the api handed in; the
 // header is on the script's first line, so the lines of errors are the script's
 const (
-	header = `(function(api, shared, genny) { const {note, set, send, fire, mod, log, input, pitch, scale, bpm, song} = api; const console = {log: log}; `
+	header = `(function(api, shared, genny) { const {note, set, send, fire, mod, log, input, pitch, scale, chord, bpm, song} = api; const console = {log: log}; `
 	footer = "\n;return {trigger: typeof trigger === \"function\" ? trigger : undefined, value: typeof value === \"function\" ? value : undefined, section: typeof section === \"function\" ? section : undefined};\n})"
 )
 
@@ -144,5 +145,33 @@ func (r *Runtime) scaleObject(key string) (*goja.Object, error) {
 	_ = o.Set("notes", func(low, high float64) []float64 { return sc.Pitches(low, high) })
 	_ = o.Set("contains", func(p float64) bool { return sc.Contains(p) })
 	_ = o.Set("step", func(p float64, n int) float64 { return sc.Step(p, n) })
+	return o, nil
+}
+
+// chordObject is a chord for a script: close(lowest) the chord in root position from the root at or
+// above lowest, bass(lowest) its bass note, tones(low, high) every chord tone between two pitches,
+// contains(p), voiceLead(prev) the chord for the same number of voices as an array of pitches, moving
+// as little as it can; name and root (a pitch class)
+func (r *Runtime) chordObject(symbol string) (*goja.Object, error) {
+	c, err := harmony.ParseChord(symbol)
+	if err != nil {
+		return nil, err
+	}
+	o := r.vm.NewObject()
+	_ = o.Set("name", c.Name)
+	_ = o.Set("root", c.Root)
+	_ = o.Set("close", func(lowest float64) []float64 { return c.Close(lowest) })
+	_ = o.Set("bass", func(lowest float64) float64 { return c.BassPitch(lowest) })
+	_ = o.Set("contains", func(p float64) bool { return c.Contains(p) })
+	_ = o.Set("tones", func(low, high float64) []float64 {
+		out := []float64{}
+		for p := math.Ceil(low); p <= high; p++ {
+			if c.Contains(p) {
+				out = append(out, p)
+			}
+		}
+		return out
+	})
+	_ = o.Set("voiceLead", func(prev []float64) []float64 { return harmony.VoiceLead(prev, c) })
 	return o, nil
 }
