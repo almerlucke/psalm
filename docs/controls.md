@@ -998,9 +998,9 @@ module, how it describes its settings (for the editor and for modulation), and f
 notes or modulation what it plays (`Notes`) or what it is now (`Mod`, 0-1, asked once a buffer).
 `patcher.Sources()` are the patcher's own: an LFO (a rate or a number of beats, five waves), a
 random source (a new value at a rate, gliding to it) and a mixer of 4, 8 or 16 channels (its
-preset): every channel at a level, panned, muted or not and sent to two buses, A and B, after its
-level; its outputs are the main mix, send A and send B (patch a send into a reverb or a delay and its
-output back into return A or B, each at a level of its own);
+preset): every channel at a level, panned, muted or not and sent to four buses, A to D, after its
+level; its outputs are the main mix and sends A to D (patch a send into a reverb, a delay, a granulator or a shimmer and its
+output back into the return of the same letter, each at a level of its own);
 a note editor (`noteroll`, package `panel/noteroll`: a piano roll in the side panel to draw a loop of notes on, 1 to 64 beats, that plays with the patch's tempo and sends its notes to the synths it is cabled to; kept with the patch), a log (Tools) that shows the last 12 values and triggers sent to it in a box of its side panel (`Made.Log`), and sends them on;
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
 synth with its presets (the DX7 with its own editor), the drum machine (the `stepseq` grid of the

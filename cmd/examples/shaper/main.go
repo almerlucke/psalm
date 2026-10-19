@@ -1,13 +1,16 @@
 // Shaper: a piece of electronic music without drums, played by scripts, to hear what the shaper synth
-// can do: minimal and dark. Seven scripts: one holds the score (the chords of the piece, D minor with an Eb over
-// the D, a notation for lines), five play a shaper synth each: a sequencer (a short cycle of notes with rests in
-// it, a cycle of seven against sixteen steps, the filter opening a very little), an arpeggio (a euclidean rhythm
-// turned a step every bar), a pad (voice led chords, a drone more than a chord), a lead (a motif of four notes
-// with silence round it) and glass (a few low bells). Each rewrites its synth for every section with set():
-// the chains as text, the macros they read, the morph, the envelopes, the filter. Six sections at 100 bpm, about
-// four minutes: Drone (a pad, bells, a pulse far off), Pulse (the sequencer comes in note by note), Depth (an
-// arpeggio, the motif), Hollow (a choir far off, the pulse gone), Return (everything, five against sixteen) and
-// Dissolve (the layers leave one by one, the pad fades).
+// can do. Seven scripts: one holds the score (the chords of the piece, D minor with an Eb over the D and a lift to
+// Bb major, a notation for lines), five play a shaper synth each: a sequencer (a short cycle of notes with rests
+// in it, a cycle of seven against sixteen steps), an arpeggio (a euclidean rhythm turned a step every bar), a pad
+// (voice led chords), a lead (a motif of four notes with silence round it, a melody in the lift) and glass (a few
+// bells); a sixth plays the joins (hits and risers). Each rewrites its synth for every section with set(): a
+// preset of the synth, then the macros, the morph and the filter. The effects are on the mixer, four buses: a hall, an
+// echo of a dotted eighth, a granulator and a shimmer. Eight sections at 100 bpm, about five and a half minutes:
+// Drone (an airy pad, bells, a kalimba far off), Pulse (the sequencer comes in note by note, the lead at the end),
+// Glow (a gentle melody over a climbing pulse), Depth (everything, an octave higher in the second half), Hollow (a choir far
+// off, the pulse gone), Lift (the relative major, a melody, a harp five against sixteen), Bloom (the high one: a melody in
+// the upper octave, a marimba nine against sixteen) and Dissolve (the layers leave one by one and the
+// granulator keeps their grains).
 //
 // The scripts are in scripts/ (embedded); in the page double tap a script to read it and change it while
 // it plays (Ctrl+Enter takes it), the song's tiles play a section next. Every setting of the synths is

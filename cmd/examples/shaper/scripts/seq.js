@@ -2,7 +2,7 @@
 // it is a pulse more than a tune. A cycle of 8 notes comes round twice a bar; a cycle of 7 against 16 steps
 // shifts a step every bar and takes seven bars to come back, which is the whole of the movement. The sound is
 // a preset of the shaper synth for each section (set({preset})), a sub sine at first, then a narrowing pulse, an FM
-// bass, and the acid bass sliding in the return; the script moves its filter, very little, and its macro.
+// bass, and the pulse bass again, faster, in the lift; the script moves its filter, very little, and its macro.
 // Every note is fitted to the chord (shared.fit).
 const walk = genny.rwalk(0.5, 0, 1, 0.08)
 
@@ -22,8 +22,12 @@ const parts = {
            bars: bar => bar < 4 ? 0.25 : bar < 8 ? 0.5 : 1, tweak: { filterEnvAmount: 1, filterAttack: 6 } },
   Depth: { preset: "fmBass", trim: -7, cycle: "seven", cut: [700, 1800], macro: p => 0.1 + 0.3 * p, hits: 5, bars: bar => 1 },
   Hollow: { preset: "subSine", trim: -6, cycle: "eight", cut: [350, 700], macro: p => 0.3, hits: 3, bars: bar => bar < 8 ? 0 : 0.25 },
-  Return: { preset: "acid", mono: true, trim: -9, cycle: "nine", cut: [250, 450], macro: p => 0.5, hits: 5, bars: bar => 1,
-            tweak: { resonance: 0.35, filterEnvAmount: 1 } },
+  Lift: { preset: "pulseBass", trim: -7, cycle: "nine", cut: [900, 2400], macro: p => 0.3 + 0.3 * p, hits: 5,
+          bars: bar => bar < 2 ? 0.5 : 1, tweak: { filterEnvAmount: 1, filterAttack: 6 } },
+  Glow: { preset: "pulseBass", trim: -7, cycle: "seven", cut: [800, 2000], macro: p => 0.2 + 0.4 * p, hits: 5,
+          bars: bar => bar < 2 ? 0.5 : 1, tweak: { filterEnvAmount: 1, filterAttack: 6 } },
+  Bloom: { preset: "pulseBass", trim: -7, cycle: "nine", cut: [1200, 3000], macro: p => 0.4 + 0.4 * p, hits: 7,
+           bars: bar => 1, tweak: { filterEnvAmount: 1, filterAttack: 6 } },
   Dissolve: { preset: "pulseBass", trim: -8, cycle: "eight", cut: [1200, 300], macro: p => 0.2, hits: 3,
               bars: bar => bar < 2 ? 1 : bar < 5 ? 0.5 : bar < 8 ? 0.25 : 0, tweak: { filterEnvAmount: 1, filterAttack: 6 } },
 }

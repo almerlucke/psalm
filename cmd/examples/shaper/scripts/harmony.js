@@ -1,16 +1,18 @@
 // HARMONY: the score. This script plays nothing: at its start it puts the chords of the piece and a small
 // notation for lines into `shared`, the object every script of the patch sees, and the other scripts ask
-// it in the middle of their own work. The piece is in D minor, dark and slow to change: a section has a
+// it in the middle of their own work. The piece is in D minor, slow to change (the Lift goes to the relative major): a section has a
 // progression, each chord for a number of bars (an Eb over the D in the bass is the dark one).
 const progs = {
   Drone:    [["Dm9", 6], ["Ebmaj7/D", 3], ["Dm9", 3]],
   Pulse:    [["Dm7", 8], ["Ebmaj7/D", 4], ["Dm7", 4], ["Bbmaj7/D", 4]],
-  Depth:    [["Dm7", 4], ["Gm9", 4], ["Ebmaj7", 4], ["Dm7", 4], ["A7sus4", 2], ["Dm7", 2]],
+  Glow:     [["Dm9", 4], ["Bbmaj7", 4], ["Fmaj7", 4], ["Gm9", 2], ["A7sus4", 2]],
+  Depth:    [["Dm7", 4], ["Gm9", 4], ["Ebmaj7", 4], ["Dm7", 4], ["Bbmaj7", 4], ["A7sus4", 2], ["Dm7", 2]],
   Hollow:   [["Dm9", 4], ["Bbmaj7", 4], ["Dm9", 4]],
-  Return:   [["Dm7", 4], ["Ebmaj7/D", 4], ["Dm7", 4], ["Gm9", 4], ["Dm7", 4]],
+  Lift:     [["Bbmaj7", 4], ["Fmaj7", 4], ["Gm9", 4], ["Dm9", 4], ["Bbmaj7", 4]],
+  Bloom:    [["Gm9", 4], ["Ebmaj7", 4], ["Bbmaj7", 4], ["Fmaj7", 4], ["Dm9", 2], ["Bbmaj7", 2]],
   Dissolve: [["Dm9", 6], ["Ebmaj7/D", 3], ["Dm9", 3]],
 }
-const progOf = { Drone: "Drone", Pulse: "Pulse", Depth: "Depth", Hollow: "Hollow", Return: "Return", Dissolve: "Dissolve" }
+const progOf = { Drone: "Drone", Pulse: "Pulse", Depth: "Depth", Hollow: "Hollow", Glow: "Glow", Bloom: "Bloom", Lift: "Lift", Dissolve: "Dissolve" }
 
 const perBar = {}
 for (const [name, list] of Object.entries(progs)) {

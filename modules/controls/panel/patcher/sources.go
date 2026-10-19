@@ -163,31 +163,43 @@ func (r *Random) Describe() params.Set {
 	}}
 }
 
+// sends is the number of sends and returns of a mixer, named A to D
+const sends = 4
+
 // Mixer is a mixer of channels for a patch: every channel (a stereo input) at a level, panned,
-// muted or not, and sent to two buses, A and B (after its level: a reverb, a delay); the buses are
-// outputs of their own, to patch into effects whose outputs come back on the returns. Its inputs
-// are the channels, then return A and return B; its outputs main, send A and send B. Settings:
-// "level<n>", "pan<n>" (-1 to 1), "mute<n>", "sendA<n>", "sendB<n>" for every channel from 1,
-// "returnA", "returnB" and "level" (the main out)
+// muted or not, and sent to four buses, A to D (after its level: a reverb, a delay, a granulator,
+// a shimmer); the buses are outputs of their own, to patch into effects whose outputs come back on
+// the returns. Its inputs are the channels, then returns A to D; its outputs main, then sends A to D.
+// Settings: "level<n>", "pan<n>" (-1 to 1), "mute<n>", "sendA<n>" to "sendD<n>" for every channel from 1,
+// "returnA" to "returnD" and "level" (the main out)
 type Mixer struct {
 	*psalm.Module
-	Channels                 int
-	Level, Pan, SendA, SendB []float64
-	Mute                     []bool
-	ReturnA, ReturnB, Master float64
+	Channels   int
+	Level, Pan []float64
+	Sends      [sends][]float64 // the amount of every channel sent to each bus
+	Mute       []bool
+	Return     [sends]float64
+	Master     float64
 }
 
 // NewMixer returns a mixer of channels, every one at level 1 in the middle, the sends off, the
 // returns and the main out at 1
 func NewMixer(channels int) *Mixer {
 	channels = max(1, channels)
-	ins := make([]int, channels+2)
+	ins := make([]int, channels+sends)
 	for i := range ins {
 		ins[i] = psalm.Stereo
 	}
-	m := &Mixer{Module: psalm.NewModule(ins, []int{psalm.Stereo, psalm.Stereo, psalm.Stereo}), Channels: channels,
-		Level: make([]float64, channels), Pan: make([]float64, channels), SendA: make([]float64, channels),
-		SendB: make([]float64, channels), Mute: make([]bool, channels), ReturnA: 1, ReturnB: 1, Master: 1}
+	outs := make([]int, 1+sends)
+	for i := range outs {
+		outs[i] = psalm.Stereo
+	}
+	m := &Mixer{Module: psalm.NewModule(ins, outs), Channels: channels,
+		Level: make([]float64, channels), Pan: make([]float64, channels), Mute: make([]bool, channels), Master: 1}
+	for i := range m.Sends {
+		m.Sends[i] = make([]float64, channels)
+		m.Return[i] = 1
+	}
 	for i := range m.Level {
 		m.Level[i] = 1
 	}
@@ -195,18 +207,23 @@ func NewMixer(channels int) *Mixer {
 	return m
 }
 
+// busName is the letter of a send or a return
+func busName(i int) string { return string(rune('A' + i)) }
+
 func (m *Mixer) ReceiveMessage(msg psalm.Message) {
 	clamp := func(v, lo, hi float64) float64 { return math.Max(lo, math.Min(v, hi)) }
 	for i := range m.Channels {
 		n := strconv.Itoa(i + 1)
 		msg.IfFltVal("level"+n, func(f float64) { m.Level[i] = clamp(f, 0, 2) })
 		msg.IfFltVal("pan"+n, func(f float64) { m.Pan[i] = clamp(f, -1, 1) })
-		msg.IfFltVal("sendA"+n, func(f float64) { m.SendA[i] = clamp(f, 0, 1) })
-		msg.IfFltVal("sendB"+n, func(f float64) { m.SendB[i] = clamp(f, 0, 1) })
+		for b := range sends {
+			msg.IfFltVal("send"+busName(b)+n, func(f float64) { m.Sends[b][i] = clamp(f, 0, 1) })
+		}
 		msg.IfBoolVal("mute"+n, func(b bool) { m.Mute[i] = b })
 	}
-	msg.IfFltVal("returnA", func(f float64) { m.ReturnA = clamp(f, 0, 2) })
-	msg.IfFltVal("returnB", func(f float64) { m.ReturnB = clamp(f, 0, 2) })
+	for b := range sends {
+		msg.IfFltVal("return"+busName(b), func(f float64) { m.Return[b] = clamp(f, 0, 2) })
+	}
 	msg.IfFltVal("level", func(f float64) { m.Master = clamp(f, 0, 2) })
 }
 
@@ -217,10 +234,13 @@ func (m *Mixer) Receive(v any, _ int) {
 }
 
 func (m *Mixer) Synthesize() {
-	main, a, b := m.Output(0).Channels, m.Output(1).Channels, m.Output(2).Channels
+	main := m.Output(0).Channels
 	main.Clear()
-	a.Clear()
-	b.Clear()
+	var bus [sends]psalm.Channels
+	for b := range bus {
+		bus[b] = m.Output(1 + b).Channels
+		bus[b].Clear()
+	}
 	for i := range m.Channels {
 		in := m.Input(i)
 		if !in.IsConnected() || m.Mute[i] || m.Level[i] == 0 {
@@ -229,23 +249,25 @@ func (m *Mixer) Synthesize() {
 		// a constant power pan: the middle is as loud as either side
 		angle := (m.Pan[i] + 1) * math.Pi / 4
 		gains := [2]float32{float32(m.Level[i] * math.Cos(angle) * math.Sqrt2), float32(m.Level[i] * math.Sin(angle) * math.Sqrt2)}
-		sa, sb := float32(m.SendA[i]), float32(m.SendB[i])
+		var amount [sends]float32
+		for b := range amount {
+			amount[b] = float32(m.Sends[b][i])
+		}
 		for c := range 2 {
 			src := in.Channels[c%len(in.Channels)]
 			g := gains[c]
 			for j, x := range src {
 				v := x * g
 				main[c][j] += v
-				if sa > 0 {
-					a[c][j] += v * sa
-				}
-				if sb > 0 {
-					b[c][j] += v * sb
+				for b, s := range amount {
+					if s > 0 {
+						bus[b][c][j] += v * s
+					}
 				}
 			}
 		}
 	}
-	for r, level := range []float64{m.ReturnA, m.ReturnB} {
+	for r, level := range m.Return {
 		in := m.Input(m.Channels + r)
 		if !in.IsConnected() || level == 0 {
 			continue
@@ -274,15 +296,16 @@ func (m *Mixer) Describe() params.Set {
 		g := "Channel " + n
 		s.Params = append(s.Params,
 			params.K(g, "level"+n, 0, 2, m.Level[i], params.Label("level")),
-			params.K(g, "pan"+n, -1, 1, m.Pan[i], params.Label("pan")),
-			params.K(g, "sendA"+n, 0, 1, m.SendA[i], params.Label("send A")),
-			params.K(g, "sendB"+n, 0, 1, m.SendB[i], params.Label("send B")),
-			params.S(g, "mute"+n, m.Mute[i], params.Label("mute")))
+			params.K(g, "pan"+n, -1, 1, m.Pan[i], params.Label("pan")))
+		for b := range sends {
+			s.Params = append(s.Params, params.K(g, "send"+busName(b)+n, 0, 1, m.Sends[b][i], params.Label("send "+busName(b))))
+		}
+		s.Params = append(s.Params, params.S(g, "mute"+n, m.Mute[i], params.Label("mute")))
 	}
-	s.Params = append(s.Params,
-		params.K("Main", "returnA", 0, 2, m.ReturnA, params.Label("return A")),
-		params.K("Main", "returnB", 0, 2, m.ReturnB, params.Label("return B")),
-		params.K("Main", "level", 0, 2, m.Master, params.Label("level")))
+	for b := range sends {
+		s.Params = append(s.Params, params.K("Main", "return"+busName(b), 0, 2, m.Return[b], params.Label("return "+busName(b))))
+	}
+	s.Params = append(s.Params, params.K("Main", "level", 0, 2, m.Master, params.Label("level")))
 	return s
 }
 
@@ -291,8 +314,11 @@ func mixerPorts(channels int) (ins, outs []Port) {
 	for i := range channels {
 		ins = append(ins, Port{Name: strconv.Itoa(i + 1), Type: Audio, Index: i})
 	}
-	ins = append(ins, Port{Name: "return A", Type: Audio, Index: channels}, Port{Name: "return B", Type: Audio, Index: channels + 1})
-	outs = []Port{{Name: "main", Type: Audio, Index: 0}, {Name: "send A", Type: Audio, Index: 1}, {Name: "send B", Type: Audio, Index: 2}}
+	outs = []Port{{Name: "main", Type: Audio, Index: 0}}
+	for b := range sends {
+		ins = append(ins, Port{Name: "return " + busName(b), Type: Audio, Index: channels + b})
+		outs = append(outs, Port{Name: "send " + busName(b), Type: Audio, Index: 1 + b})
+	}
 	return ins, outs
 }
 

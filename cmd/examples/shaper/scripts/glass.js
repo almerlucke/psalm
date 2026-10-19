@@ -1,19 +1,21 @@
 // GLASS: a few low bells, far apart: two or three notes of the chord a bar on a rhythm that turns a step every bar.
-// The bells are presets of the shaper synth (a church bell, a struck glass, a vibraphone), and what the echo
-// does with them (a dotted eighth, from the second send) and the slow auto-pan is most of it. They come in during
+// The bells are presets of the shaper synth (a church bell, a struck glass), and what the mixer does with them
+// (the echo, a dotted eighth, and above all the granulator and the shimmer) is most of it. They come in during
 // the drone, go on through the piece and the last of them ring out the end.
 const parts = {
-  Drone:    { preset: "churchBell", trim: -6, hits: 2, lo: 50, hi: 69, on: bar => bar >= 4, vel: 0.5 },
-  Pulse:    { preset: "churchBell", trim: -6, hits: 2, lo: 50, hi: 69, on: bar => bar >= 8, vel: 0.45 },
-  Depth:    { preset: "churchBell", trim: -6, hits: 2, lo: 50, hi: 69, on: bar => bar % 4 === 3, vel: 0.5 },
-  Hollow:   { preset: "glassBell", trim: -7, hits: 3, lo: 50, hi: 71, on: bar => true, vel: 0.5 },
-  Return:   { preset: "vibes", trim: -9, hits: 3, lo: 50, hi: 71, on: bar => bar % 2 === 1, vel: 0.45 },
-  Dissolve: { preset: "churchBell", trim: -6, hits: 3, lo: 50, hi: 69, on: bar => bar < 10, vel: 0.45 },
+  Drone:    { preset: "churchBell", trim: -6, hits: 2, lo: 57, hi: 76, on: bar => bar >= 2, vel: 0.5 },
+  Pulse:    { preset: "churchBell", trim: -6, hits: 2, lo: 57, hi: 76, on: bar => bar >= 8, vel: 0.45 },
+  Glow:     { preset: "glassBell", trim: -7, hits: 3, lo: 62, hi: 84, on: bar => bar % 2 === 0, vel: 0.5 },
+  Depth:    { preset: "churchBell", trim: -6, hits: 3, lo: 57, hi: 78, on: bar => bar % 4 === 3 || bar >= 16, vel: 0.5 },
+  Hollow:   { preset: "glassBell", trim: -7, hits: 3, lo: 57, hi: 81, on: bar => true, vel: 0.5 },
+  Lift:     { preset: "glassBell", trim: -7, hits: 4, lo: 62, hi: 84, on: bar => true, vel: 0.5 },
+  Bloom:    { preset: "glassBell", trim: -7, hits: 5, lo: 62, hi: 86, on: bar => true, vel: 0.5 },
+  Dissolve: { preset: "churchBell", trim: -6, hits: 3, lo: 57, hi: 79, on: bar => bar < 14, vel: 0.5 },
 }
 let part = null, hits = null, order = null
 function section(name) {
   part = parts[name]
-  if (part) set({ preset: part.preset, trim: part.trim, filterType: 5, cutoff: 3200, resonance: 0.1, keyTrack: 0.3, filterEnvAmount: 0 })
+  if (part) set({ preset: part.preset, trim: part.trim, filterType: 5, cutoff: 7000, resonance: 0.1, keyTrack: 0.3, filterEnvAmount: 0 })
 }
 
 function trigger(ev) {

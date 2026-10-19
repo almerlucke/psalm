@@ -60,7 +60,7 @@ func TestPatch(t *testing.T) {
 	// an LFO on a mixer's first level, over all of its range
 	mix := must(pt.Add("mixer", "", 600, 10))
 	lfo := must(pt.Add("lfo", "", 600, 200))
-	mod := must(pt.Connect(patcher.Cable{From: lfo, Out: 0, To: mix, In: 10, Key: "level1", Lo: 0, Hi: 1})) // after 8 channels and 2 returns
+	mod := must(pt.Connect(patcher.Cable{From: lfo, Out: 0, To: mix, In: 12, Key: "level1", Lo: 0, Hi: 1})) // after 8 channels and 4 returns
 	pt.SettingsOf(lfo).Apply(map[string]float64{"rate": 10})
 	levels := map[float64]bool{}
 	for range 200 {
@@ -136,7 +136,7 @@ func TestMixerSends(t *testing.T) {
 	mix := must(pt.Add("mixer", "4 channels", 0, 0))
 	rev := must(pt.Add("reverb", "", 0, 0))
 	m := pt.Module(mix).(*patcher.Mixer)
-	if m.Channels != 4 || m.NumInputs() != 6 || m.NumOutputs() != 3 {
+	if m.Channels != 4 || m.NumInputs() != 8 || m.NumOutputs() != 5 {
 		t.Fatalf("a mixer of 4 channels: %d channels, %d inputs, %d outputs", m.Channels, m.NumInputs(), m.NumOutputs())
 	}
 	must(pt.Connect(patcher.Cable{From: kb, To: synth}))
