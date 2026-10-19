@@ -152,7 +152,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	// feeding back on itself, so what is left of the layers in the last section is their grains
 	pt.SettingsOf(grains).Apply(map[string]float64{"density": 24, "grainSize": 140, "jitter": 0.6, "spray": 220, "feedback": 0.6,
 		"pitchSpread": 3, "octave": 0.25, "stereoSpread": 1, "mix": 1})
-	// the shimmer: the reverb with an octave up in it, all of it wet
+	// the shimmer: the reverb with a fifth up in it (seven semitones), all of it wet
 	pt.SettingsOf(shine).Apply(map[string]float64{"shimmer": 0.4, "semitones": 7, "mix": 1, "decay": 6})
 	if once {
 		pt.SettingsOf(song).Apply(map[string]float64{"loop": 0})
