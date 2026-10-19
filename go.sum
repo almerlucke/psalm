@@ -2,6 +2,8 @@ github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAw
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/almerlucke/genny v0.0.0-20261014064337-e285bb34e03b h1:BaLMscc4PMYvHZTDcMyoXyhFj1px+C47k30hfNyblrc=
 github.com/almerlucke/genny v0.0.0-20261014064337-e285bb34e03b/go.mod h1:YwRDRT+rkPDkDJQZ1jzg3DR/AF7g9iPPCB0VgdXHA9E=
+github.com/almerlucke/genny v0.0.0-20261019080127-78bdb135f8cd h1:YvLYSyoKo6tVxTQ4Crh2L/TkJuP1exhjpRDeJteFXT0=
+github.com/almerlucke/genny v0.0.0-20261019080127-78bdb135f8cd/go.mod h1:YwRDRT+rkPDkDJQZ1jzg3DR/AF7g9iPPCB0VgdXHA9E=
 github.com/almerlucke/go-jack v0.0.0-20260928121326-3451e862d67e h1:o1z9touuz/VSx9rNr7kzMJVsF6E3p19Q/JrcOj6zTqo=
 github.com/almerlucke/go-jack v0.0.0-20260928121326-3451e862d67e/go.mod h1:YG4N4/vbPTKiqZGFHq7+pjm6mI/Y8IS5eHyAoLev1CY=
 github.com/almerlucke/sndfile v0.0.0-20261005172134-5c26a1818b2a h1:rI/gNlKGuj0056wv/38RWgEQMO/3qBw5s5CDKcBtKRw=

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/almerlucke/genny"
 )
 
 // Env is the environment of a patch: its config (sample rate, buffer size, PPQ), its live tempo
@@ -168,6 +170,7 @@ func (e *Env) setConfig(cfg Config) {
 // their first random number) repeat exactly with the same seed. Seed before building the patch
 func (e *Env) Seed(seed uint64) {
 	e.reseed(seed)
+	genny.Seed(seed) // the generators (genny) draw from one stream of their own
 }
 
 func (e *Env) reseed(seed uint64) {
@@ -202,6 +205,7 @@ func Seed(seed uint64) {
 	s := seed
 	nextSeed = &s
 	envMu.Unlock()
+	genny.Seed(seed) // the generators (genny) too: scripts, sequences and walks repeat with it
 	e := CurrentEnv()
 	e.mu.Lock()
 	fresh := e.streams == 0

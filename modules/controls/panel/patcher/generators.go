@@ -3,7 +3,6 @@ package patcher
 import (
 	"fmt"
 	"math"
-	"math/rand/v2"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,12 +49,11 @@ type Clock struct {
 	div     int     // the division it counts in
 	last    int64   // the tick timestamp of the last control tick
 	started bool
-	rng     *rand.Rand
 }
 
 // NewClock returns a clock of sixteenths, straight, every step a hit
 func NewClock() *Clock {
-	c := &Clock{Module: psalm.NewControl(), Division: 3, Swing: 0.5, Chance: 1, rng: rand.New(rand.NewPCG(rand.Uint64(), 3))}
+	c := &Clock{Module: psalm.NewControl(), Division: 3, Swing: 0.5, Chance: 1}
 	all, _ := ParsePattern("x")
 	c.pattern.Store(&patterns{rest: &all, hasRest: true})
 	c.SetSelf(c)
@@ -365,7 +363,7 @@ func (c *Clock) play(tick psalm.CtrlTick, hit func(h Hit, step int64, seconds fl
 		if at < t-1 { // missed (the tempo jumped): no burst of old hits
 			continue
 		}
-		if chance := h.Chance * c.Chance; chance < 1 && c.rng.Float64() >= chance {
+		if chance := h.Chance * c.Chance; chance < 1 && c.Rand().Float64() >= chance {
 			continue
 		}
 		hit(h, int64(math.Floor(at/l+1e-6)), h.Len*stepSeconds)

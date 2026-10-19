@@ -3,7 +3,7 @@ module github.com/almerlucke/psalm
 go 1.27
 
 require (
-	github.com/almerlucke/genny v0.0.0-20261014064337-e285bb34e03b
+	github.com/almerlucke/genny v0.0.0-20261019080127-78bdb135f8cd
 	github.com/almerlucke/go-jack v0.0.0-20260928121326-3451e862d67e
 	github.com/almerlucke/sndfile v0.0.0-20261005172134-5c26a1818b2a
 	github.com/dh1tw/gosamplerate v0.1.2

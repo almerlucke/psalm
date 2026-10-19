@@ -244,6 +244,8 @@ value (always that value). `genny.from(x)` makes a generator of any of these.
 | `genny.rwalk(origin, min, max, step, mode)` | a random walk from `origin` within `min`..`max`; each step moves by up to `step` times the range; at an edge `"clip"` holds, `"bounce"` turns back, `"jump"` goes back to the origin | `step = 0.1`, `"bounce"` |
 
 The list arguments of `and`, `or` and `combine` can be given as separate arguments or as one array.
+Every random choice in the generators (`rand`, `rwalk`, `bucket`, `arpeggio` `"random"`, `or`, `repeat` with two counts) draws from one stream that `psalm.Seed(n)` (and `Env.Seed`) also seeds, so a render with the same seed and patch repeats; from Go alone, `genny.Seed(n)`. The clock's chances and the arp's random mode use the module's own stream, seeded the same way.
+
 A wrong option name is an error that lists the names it knows.
 
 A `function*` ends like any other generator, and `genny.and`/`genny.repeat` use that:

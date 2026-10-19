@@ -2,7 +2,6 @@ package patcher
 
 import (
 	"math"
-	"math/rand/v2"
 	"slices"
 
 	"github.com/almerlucke/psalm"
@@ -37,13 +36,12 @@ type Arp struct {
 	pos     int
 	pending []Event
 	targets []psalm.Receiver
-	rng     *rand.Rand
 	now     int64 // the latest sample timestamp seen
 }
 
 // NewArp returns an arpeggiator going up over one octave, a note taking 0.8 of a step
 func NewArp() *Arp {
-	a := &Arp{Module: psalm.NewModule(nil, nil), Octaves: 1, Gate: 0.8, rng: rand.New(rand.NewPCG(rand.Uint64(), 11))}
+	a := &Arp{Module: psalm.NewModule(nil, nil), Octaves: 1, Gate: 0.8}
 	a.SetSelf(a)
 	return a
 }
@@ -168,7 +166,7 @@ func (a *Arp) next(pool []arpNote) []arpNote {
 	n := len(pool)
 	switch a.Mode {
 	case 5:
-		return pool[a.rng.IntN(n):][:1]
+		return pool[a.Rand().IntN(n):][:1]
 	case 6:
 		return pool
 	}
