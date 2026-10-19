@@ -52,6 +52,14 @@ func Describe(cfg Config) params.Set {
 		params.K("Line 2", "level2", 0, 2, l2.Level, params.Label("level (0: off)")),
 		params.K("Line 2", "morph2", -1, 1, l2.Morph, params.Label("morph offset")),
 
+		params.K("Fullness", "unison", 1, MaxUnison, float64(max(1, min(cfg.Unison, MaxUnison))), params.Step(1), params.Label("unison (copies)")),
+		params.K("Fullness", "spread", 0, 100, cfg.Spread, params.Unit("ct"), params.Label("detune spread")),
+		params.K("Fullness", "uniStereo", 0, 1, cfg.UniStereo, params.Label("stereo spread")),
+		params.K("Fullness", "drift", 0, 1, cfg.Drift),
+		params.K("Fullness", "sub", 0, 1, cfg.Sub, params.Label("sub (octave under)")),
+		params.K("Fullness", "noise", 0, 1, cfg.Noise),
+		params.K("Fullness", "noiseColor", -1, 1, cfg.NoiseColor, params.Label("noise colour (dark - bright)")),
+
 		params.C("Voice", "oversample", OversampleNames, over),
 		params.K("Voice", "pitchAmount", -48, 48, cfg.PitchAmount, params.Unit("st"), params.Label("pitch env amount")),
 		params.K("Voice", "glide", 0, 1000, cfg.Glide, params.Unit("ms")),

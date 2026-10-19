@@ -53,6 +53,7 @@ func auditOf(name string) audit {
 	if lowNames[name] {
 		pitch = 40
 	}
+	psalm.CurrentEnv().Seed(3) // a unison and the drift are random
 	v := New(cfg)
 	v.NoteOn(1, psalm.Message{"pitch": pitch}, psalm.CtrlTick{}, v.Config())
 	x := run(v, 8)

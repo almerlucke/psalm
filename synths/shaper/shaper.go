@@ -16,6 +16,7 @@ package shaper
 
 import (
 	"math"
+	"math/rand/v2"
 
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
@@ -60,6 +61,19 @@ type Config struct {
 	Line1  Line
 	Line2  Line
 
+	// Unison stacks copies of each line, spread in pitch by Spread cents (the outer copies that far under and over) and
+	// across the stereo field by UniStereo (0-1); 1 is one copy, up to MaxUnison. Drift (0-1) lets each copy, the
+	// morph and the cutoff wander slowly and at random, as the oscillators of an analog synth do. Sub is the level (0-1)
+	// of a sine an octave under the note, Noise the level (0-1) of white noise, which NoiseColor (-1 to 1) makes dark
+	// (under 0) or bright (over 0). The unison is taken when a note starts on a voice that is silent
+	Unison     int
+	Spread     float64
+	UniStereo  float64
+	Drift      float64
+	Sub        float64
+	Noise      float64
+	NoiseColor float64
+
 	Oversample int     // how many times a sample the chains are read: 1 (off), 2, 4 or 8; 0 is automatic: as many as the chains and the pitch ask for (see pickFactor), up to 4
 	Width      float64 // 0-1: line 1 to the left, line 2 to the right
 	Level      float64 // output level (0 is treated as 1)
@@ -99,6 +113,9 @@ type Config struct {
 	Mods [modmatrix.Slots]modmatrix.Slot // the matrix: a source to a destination (see Dests) over an amount
 	Ext  [modmatrix.Exts]float64         // the values 0-1 of the sources Ext 1 to 4 (cabled in on InExt1...)
 }
+
+// MaxUnison is the most copies of a line a unison stacks
+const MaxUnison = 7
 
 // MaxAuto is the most an automatic oversample goes to
 const MaxAuto = 4
@@ -172,10 +189,10 @@ type Voice struct {
 	freq      float64
 	velocity  float64
 	amp       float64
-	phase     [2]float64
-	os        [2][len(Oversamples)]*oversample.Oversampler // by factor, made when one is first needed
-	osReady   [2][len(Oversamples)]bool                    // its history holds the wave just before now
-	osFactor  int                                          // how many times it reads the chain now
+	phase     [2 * MaxUnison]float64                                   // of each copy of each line (line*MaxUnison + copy)
+	os        [2 * MaxUnison][len(Oversamples)]*oversample.Oversampler // by factor, made when one is first needed
+	osReady   [2 * MaxUnison][len(Oversamples)]bool                    // its history holds the wave just before now
+	osFactor  int                                                      // how many times it reads the chain now
 	amped     *adsr.ADSR
 	morphEnv  *adsr.ADSR
 	shapeEnv  *adsr.ADSR
@@ -210,6 +227,38 @@ type Voice struct {
 	random    float64
 	lfo1Ph    float64
 	lfo2Ph    float64
+	// the unison of the note: the copies of a line, their pan gains and pitch ratios
+	uni        int
+	smUniSt    float64
+	gL, gR     [2 * MaxUnison]float64
+	subPh      float64
+	smSub      float64
+	smNoise    float64
+	noiseRng   uint64
+	noiseLP    [2]float64
+	drifts     []drifter
+	copyDrift  [2 * MaxUnison]float64 // the pitch drift of each copy, a ratio
+	voiceDrift [3]float64             // morph, cutoff (octaves), pitch (ratio)
+}
+
+// drifter is a slow random wander in -1 to 1: a new target a few times a second, eased to
+type drifter struct{ cur, next, ph, inc float64 }
+
+func (d *drifter) init(r *rand.Rand, lo, hi float64) {
+	d.cur, d.next, d.ph = r.Float64()*2-1, r.Float64()*2-1, r.Float64()
+	d.inc = lo + (hi-lo)*r.Float64()
+}
+
+// step moves it on by n samples' worth (inc is per sample) and gives its value
+func (d *drifter) step(r *rand.Rand, n float64) float64 {
+	d.ph += d.inc * n
+	if d.ph >= 1 {
+		d.ph -= math.Floor(d.ph)
+		d.cur = d.next
+		d.next = r.Float64()*2 - 1
+	}
+	e := d.ph * d.ph * (3 - 2*d.ph)
+	return d.cur + (d.next-d.cur)*e
 }
 
 // New returns a voice
@@ -230,6 +279,7 @@ func New(cfg Config) *Voice {
 		cfg.PitchEnv = *adsr.NewSetting(1, 2, 0, 80, 1, 100)
 	}
 	cfg.Oversample = oversampleFactor(cfg.Oversample)
+	cfg.Unison = max(1, min(cfg.Unison, MaxUnison))
 	v := &Voice{Module: psalm.NewModule(nil, []int{cfg.NumChannels}), cfg: cfg, freq: 220, pitchMul: 1}
 	sr := v.Config().SampleRate
 	v.amped = adsr.New(&v.cfg.AmpEnv, adsr.NoteOff, sr)
@@ -306,9 +356,9 @@ func (v *Voice) pickFactor() {
 	f := v.cfg.Oversample
 	if f == 0 {
 		sr := v.Config().SampleRate
-		top := v.freq * 1.12
+		top := v.freq * 1.12 * math.Exp2(v.cfg.Spread/1200)
 		for k := range 2 {
-			top = math.Max(top, v.freq*1.12*math.Exp2(float64(v.line(k).Octave)+v.line(k).Detune/1200))
+			top = math.Max(top, v.freq*1.12*math.Exp2(float64(v.line(k).Octave)+(v.line(k).Detune+v.cfg.Spread)/1200))
 		}
 		f = 1
 		for i := 0; i < v.numChains; i++ {
@@ -339,7 +389,7 @@ func (v *Voice) pickFactor() {
 
 // oversampler is the up and down sampler of a line at the factor now, and whether its history is the wave
 // just before now (it is not for one just made, or after the factor changed under a note: prime it)
-func (v *Voice) oversampler(line int) (*oversample.Oversampler, *bool) {
+func (v *Voice) oversampler(line int) (*oversample.Oversampler, *bool) { // line: the copy, line*MaxUnison + j
 	idx := 0
 	for i, f := range Oversamples {
 		if f == v.osFactor {
@@ -362,6 +412,8 @@ func (v *Voice) apply(c Config) {
 	cfg := &v.cfg
 	cfg.Morph, cfg.Macros, cfg.Line1, cfg.Line2, cfg.Width, cfg.Level = c.Morph, c.Macros, c.Line1, c.Line2, c.Width, c.Level
 	cfg.Oversample = oversampleFactor(c.Oversample)
+	cfg.Unison, cfg.Spread, cfg.UniStereo = max(1, min(c.Unison, MaxUnison)), c.Spread, c.UniStereo
+	cfg.Drift, cfg.Sub, cfg.Noise, cfg.NoiseColor = c.Drift, c.Sub, c.Noise, c.NoiseColor
 	if c.AmpEnv != (adsr.Setting{}) {
 		cfg.AmpEnv = c.AmpEnv
 	}
@@ -451,6 +503,13 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	}
 	msg.IfFltVal("detune", func(f float64) { v.cfg.Line2.Detune = f }) // line 2, as on the other synths with two
 	msg.IfIntVal("oversample", func(o int) { v.cfg.Oversample = Oversamples[max(0, min(o, len(Oversamples)-1))] })
+	msg.IfIntVal("unison", func(n int) { v.cfg.Unison = max(1, min(n, MaxUnison)) })
+	msg.IfFltVal("spread", func(f float64) { v.cfg.Spread = math.Max(0, math.Min(f, 100)) })
+	msg.IfFltVal("uniStereo", func(f float64) { v.cfg.UniStereo = clamp01(f) })
+	msg.IfFltVal("drift", func(f float64) { v.cfg.Drift = clamp01(f) })
+	msg.IfFltVal("sub", func(f float64) { v.cfg.Sub = clamp01(f) })
+	msg.IfFltVal("noise", func(f float64) { v.cfg.Noise = clamp01(f) })
+	msg.IfFltVal("noiseColor", func(f float64) { v.cfg.NoiseColor = math.Max(-1, math.Min(f, 1)) })
 	msg.IfFltVal("width", func(f float64) { v.cfg.Width = f })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
 	msg.IfFltVal("trim", func(f float64) { v.cfg.Trim = math.Max(-48, math.Min(f, 24)) })
@@ -511,8 +570,8 @@ func (v *Voice) startNote(mode adsr.ReleaseMode, duration, amplitude float64, me
 	fresh := !(v.t > 0 && v.IsActive())
 	v.velocity = 0.8
 	v.ReceiveMessage(message)
-	v.osReady = [2][len(Oversamples)]bool{} // the history of the oversamplers is the last note's: fill it again
-	v.pickFactor()                          // the pitch of the note
+	v.osReady = [2 * MaxUnison][len(Oversamples)]bool{} // the history of the oversamplers is the last note's: fill it again
+	v.pickFactor()                                      // the pitch of the note
 	v.amp = amplitude
 	v.t = 0
 	v.lfo1Ph, v.lfo2Ph = 0, 0
@@ -523,7 +582,22 @@ func (v *Voice) startNote(mode adsr.ReleaseMode, duration, amplitude float64, me
 		if v.filter.On() { // a note starts with its filter in
 			v.fBlend = 1
 		}
-		v.phase = [2]float64{} // every note starts the wave at the same place
+		// the unison of the note; the first copy of a line starts the wave at the same place every time, the others
+		// anywhere (a unison that starts in phase is a single, loud oscillator for a moment)
+		v.uni = max(1, min(v.cfg.Unison, MaxUnison))
+		v.phase = [2 * MaxUnison]float64{}
+		v.subPh = 0
+		if v.uni > 1 {
+			r := v.Rand()
+			for k := range 2 {
+				for j := 1; j < v.uni; j++ {
+					v.phase[k*MaxUnison+j] = r.Float64()
+				}
+			}
+		}
+	}
+	if v.uni == 0 {
+		v.uni = 1
 	}
 	// drawn only when a slot uses it: a voice that doesn't keeps the random stream it had
 	if v.mods.Uses(modmatrix.Random) {
@@ -559,7 +633,9 @@ func (v *Voice) Clear() {
 	v.glideOff, v.lastFreq = 0, 0
 	v.xfLeft, v.xf = 0, 0
 	v.pending = nil
-	v.phase = [2]float64{}
+	v.phase = [2 * MaxUnison]float64{}
+	v.subPh = 0
+	v.noiseLP = [2]float64{}
 	for _, line := range v.os {
 		for _, o := range line {
 			if o != nil {
@@ -697,9 +773,66 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 		a := (p + 1) * math.Pi / 4
 		return math.Cos(a) * math.Sqrt2, math.Sin(a) * math.Sqrt2
 	}
-	panned := v.smWidth
-	l1L, l1R := pan(-panned) // where the width is now (a new note starts it again)
-	l2L, l2R := pan(panned)
+	// the copies of the unison: where each lies between -1 and 1, its pitch ratio from the spread
+	uni := max(1, v.uni)
+	var offs, spreadRatio [MaxUnison]float64
+	for j := range uni {
+		if uni > 1 {
+			offs[j] = 2*float64(j)/float64(uni-1) - 1
+		}
+		spreadRatio[j] = 1
+		if cfg.Spread > 0 {
+			spreadRatio[j] = math.Exp2(offs[j] * cfg.Spread / 1200)
+		}
+	}
+	uniNorm := 1 / math.Sqrt(float64(uni))
+	// setPans gives every copy its gains: its line to the left or the right by the width, and spread by the unison's stereo
+	setPans := func(width, spread float64) {
+		for k := range 2 {
+			base := width
+			if k == 0 {
+				base = -width
+			}
+			for j := range uni {
+				v.gL[k*MaxUnison+j], v.gR[k*MaxUnison+j] = pan(math.Max(-1, math.Min(base+offs[j]*spread, 1)))
+			}
+		}
+	}
+	panned, pannedU := v.smWidth, v.smUniSt // where the width is now (a new note starts it again)
+	setPans(panned, pannedU)
+	driftOn := cfg.Drift > 0
+	if driftOn && v.drifts == nil {
+		r := v.Rand()
+		v.drifts = make([]drifter, 3+2*MaxUnison)
+		for i := range v.drifts {
+			lo, hi := 0.2, 0.7
+			if i < 3 {
+				lo, hi = 0.12, 0.4
+			}
+			v.drifts[i].init(r, lo/sr, hi/sr)
+		}
+	}
+	if !driftOn {
+		v.voiceDrift = [3]float64{0, 0, 1}
+		for i := range v.copyDrift {
+			v.copyDrift[i] = 1
+		}
+	}
+	// the noise: white, made dark (a low pass) or bright (a high pass) by its colour
+	noiseOn := cfg.Noise > 0 || v.smNoise > 1e-4
+	var noiseA float64
+	if noiseOn {
+		if v.noiseRng == 0 {
+			v.noiseRng = v.Rand().Uint64() | 1
+		}
+		fc := 20000.0
+		if cfg.NoiseColor < 0 {
+			fc = 250 * math.Pow(80, 1+cfg.NoiseColor)
+		} else if cfg.NoiseColor > 0 {
+			fc = 250 * math.Pow(32, cfg.NoiseColor)
+		}
+		noiseA = 1 - math.Exp(-2*math.Pi*fc/sr)
+	}
 	vibDelay := int(cfg.VibratoDelay * sr)
 	lfo1Inc := cfg.LFO1Rate / sr
 	if cfg.LFO1Sync > 0 {
@@ -756,7 +889,20 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 			mv[modmatrix.Wheel] = v.expr.Wheel()
 			mods.Eval(sr)
 		}
-		morph := cfg.Morph + morphEnv
+		if driftOn && v.t%4 == 0 {
+			// the pitch of each copy, the morph and the cutoff wander (a ratio from cents: 1 cent is 5.776e-4)
+			r := v.Rand()
+			v.voiceDrift[0] = v.drifts[0].step(r, 4) * 0.04 * cfg.Drift
+			v.voiceDrift[1] = v.drifts[1].step(r, 4) * 0.25 * cfg.Drift
+			v.voiceDrift[2] = 1 + v.drifts[2].step(r, 4)*5*cfg.Drift*5.776e-4
+			for k := range 2 {
+				for j := range uni {
+					c := k*MaxUnison + j
+					v.copyDrift[c] = 1 + v.drifts[3+c].step(r, 4)*8*cfg.Drift*5.776e-4
+				}
+			}
+		}
+		morph := cfg.Morph + morphEnv + v.voiceDrift[0]
 		if morphModded {
 			morph += mods.Mod(dMorph)
 		}
@@ -781,9 +927,9 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 		if v.snap {
 			v.snap = false
 			v.smMorph, v.smMacros, v.smGain, v.smWidth, v.smLvl = morph, macros, gainT, widthT, lvlT
-			panned = widthT
-			l1L, l1R = pan(-panned)
-			l2L, l2R = pan(panned)
+			v.smUniSt, v.smSub, v.smNoise = cfg.UniStereo, cfg.Sub, cfg.Noise
+			panned, pannedU = widthT, v.smUniSt
+			setPans(panned, pannedU)
 			// the mean of the wave of each line over one cycle: a lopsided wave (a narrow pulse) is not
 			// centred, and an envelope on it would switch the offset on and off with every note, a thump
 			for k := 0; k < 2; k++ {
@@ -803,10 +949,12 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 			v.smWidth += (widthT - v.smWidth) * smooth
 			v.smLvl[0] += (lvlT[0] - v.smLvl[0]) * smooth
 			v.smLvl[1] += (lvlT[1] - v.smLvl[1]) * smooth
-			if v.t%4 == 0 && math.Abs(v.smWidth-panned) > 1e-5 {
-				panned = v.smWidth
-				l1L, l1R = pan(-panned)
-				l2L, l2R = pan(panned)
+			v.smUniSt += (cfg.UniStereo - v.smUniSt) * smooth
+			v.smSub += (cfg.Sub - v.smSub) * smooth
+			v.smNoise += (cfg.Noise - v.smNoise) * smooth
+			if v.t%4 == 0 && (math.Abs(v.smWidth-panned) > 1e-5 || math.Abs(v.smUniSt-pannedU) > 1e-5) {
+				panned, pannedU = v.smWidth, v.smUniSt
+				setPans(panned, pannedU)
 			}
 		}
 		if v.xfLeft > 0 {
@@ -839,72 +987,108 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 			}
 			f *= v.pitchMul
 		}
+		f *= v.voiceDrift[2]
 		if detuneModded {
 			ratio[1] = math.Exp2(float64(cfg.Line2.Octave) + (cfg.Line2.Detune+mods.Mod(dDetune))/1200)
 		}
-		var y [2]float64
+		var o [2]float64
 		for k := 0; k < 2; k++ {
 			l := v.line(k)
 			lvl := v.smLvl[k]
 			if lvl < 1e-4 {
 				continue
 			}
-			inc := f * ratio[k] / sr
+			base := f * ratio[k] / sr
 			if dca < silent { // the end of a long release: nothing to hear, nothing to work out
-				ph := v.phase[k] + inc
-				v.phase[k] = ph - math.Floor(ph)
+				for j := range uni {
+					ph := v.phase[k*MaxUnison+j] + base*spreadRatio[j]*v.copyDrift[k*MaxUnison+j]
+					v.phase[k*MaxUnison+j] = ph - math.Floor(ph)
+				}
 				continue
 			}
 			pos := clamp01(v.smMorph + l.Morph)
-			ph := v.phase[k]
-			var s float64
-			if factor == 1 {
-				s = v.wave(ph, pos, &v.smMacros)
-			} else {
-				step := inc * invFactor
-				os, ready := v.oversampler(k)
-				// the sampler delays by its filter: read the wave that far ahead and what comes out is the
-				// wave of now, as the direct reading (factor 1) gives it, so the factor can change under a note
-				ahead := os.DownDelay() * inc
-				if !*ready {
-					for b := 20; b > 0; b-- { // fill its history with the wave just before now
-						pb := ph + ahead - float64(b)*inc
-						os.Down(func(j int) float64 {
-							p := pb + float64(j)*step
-							return v.wave(p-math.Floor(p), pos, &v.smMacros)
-						})
+			var raw [MaxUnison]float64
+			mean := 0.0
+			for j := range uni {
+				c := k*MaxUnison + j
+				inc := base * spreadRatio[j] * v.copyDrift[c]
+				ph := v.phase[c]
+				var s float64
+				if factor == 1 {
+					s = v.wave(ph, pos, &v.smMacros)
+				} else {
+					step := inc * invFactor
+					os, ready := v.oversampler(c)
+					// the sampler delays by its filter: read the wave that far ahead and what comes out is the
+					// wave of now, as the direct reading (factor 1) gives it, so the factor can change under a note
+					ahead := os.DownDelay() * inc
+					if !*ready {
+						for b := 20; b > 0; b-- { // fill its history with the wave just before now
+							pb := ph + ahead - float64(b)*inc
+							os.Down(func(j int) float64 {
+								p := pb + float64(j)*step
+								return v.wave(p-math.Floor(p), pos, &v.smMacros)
+							})
+						}
+						*ready = true
 					}
-					*ready = true
+					s = os.Down(func(j int) float64 {
+						p := ph + ahead + float64(j)*step
+						return v.wave(p-math.Floor(p), pos, &v.smMacros)
+					})
 				}
-				s = os.Down(func(j int) float64 {
-					p := ph + ahead + float64(j)*step
-					return v.wave(p-math.Floor(p), pos, &v.smMacros)
-				})
+				if s != s { // NaN: a chain that divided by nothing
+					s = 0
+				}
+				raw[j] = s
+				mean += s
+				ph += inc
+				v.phase[c] = ph - math.Floor(ph)
 			}
-			if s != s { // NaN: a chain that divided by nothing
-				s = 0
+			v.dcEst[k] += (mean/float64(uni) - v.dcEst[k]) * dcTrack // the mean moves with the macros, slowly
+			amp := dca * lvl * uniNorm
+			for j := range uni {
+				s := raw[j] - v.dcEst[k]
+				if s > 2 {
+					s = 2
+				} else if s < -2 {
+					s = -2
+				}
+				c := k*MaxUnison + j
+				o[0] += s * amp * v.gL[c]
+				o[1] += s * amp * v.gR[c]
 			}
-			v.dcEst[k] += (s - v.dcEst[k]) * dcTrack // the mean moves with the macros, slowly
-			s -= v.dcEst[k]
-			if s > 2 {
-				s = 2
-			} else if s < -2 {
-				s = -2
-			}
-			y[k] = s * dca * lvl
-			ph += inc
-			v.phase[k] = ph - math.Floor(ph)
 		}
-		var o [2]float64
-		if stereo {
-			o[0] = y[0]*l1L + y[1]*l2L
-			o[1] = y[0]*l1R + y[1]*l2R
-		} else {
-			o[0] = y[0] + y[1]
+		if !stereo {
+			o[0] += o[1] // a mono output has the sum of both sides
+			o[1] = 0
+		}
+		if v.smSub > 1e-4 {
+			sub := 0.8 * v.smSub * dca * shapechain.SinTurns(v.subPh)
+			v.subPh += f * 0.5 / sr
+			v.subPh -= math.Floor(v.subPh)
+			o[0] += sub
+			o[1] += sub
+		}
+		if noiseOn {
+			for c := range 2 {
+				v.noiseRng ^= v.noiseRng << 13
+				v.noiseRng ^= v.noiseRng >> 7
+				v.noiseRng ^= v.noiseRng << 17
+				x := float64(int64(v.noiseRng)) / (1 << 63)
+				v.noiseLP[c] += (x - v.noiseLP[c]) * noiseA
+				switch {
+				case cfg.NoiseColor < 0:
+					x = v.noiseLP[c] * math.Min(6, math.Pow(20000/(250*math.Pow(80, 1+cfg.NoiseColor)), 0.35))
+				case cfg.NoiseColor > 0:
+					x -= v.noiseLP[c]
+				}
+				o[c] += 0.5 * v.smNoise * dca * x
+			}
 		}
 		g := v.smGain
 		if filterTick {
-			v.filter.Tick(f, mods.Mod(dCutoff)+1.5*v.expr.Wheel(), mods.Mod(dResonance))
+			v.filter.Tick(f, mods.Mod(dCutoff)+1.5*v.expr.Wheel()+v.voiceDrift[1], mods.Mod(dResonance))
 		}
 		for c := range o {
 			if c > 0 && !stereo {

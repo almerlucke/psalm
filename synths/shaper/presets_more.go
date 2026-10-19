@@ -25,6 +25,7 @@ func KickSub() Config {
 // Reese is two saws a few cents apart, beating slowly, under a low pass that breathes
 func Reese() Config {
 	return Config{
+		Unison: 3, Spread: 12, UniStereo: 0.6, Drift: 0.5, Sub: 0.35,
 		Chains: [NumChains]string{"bipolar | softclip 1.15"}, Line1: Line{Level: 1}, Line2: Line{Detune: 21, Level: 1},
 		AmpEnv: env(8, 500, 0.9, 200), Width: 0.5, Level: 0.484, LFO1Rate: 0.25,
 		Filter: lowpass(650, 0.25, 0.8, 5, 300, 0.7, 200),
@@ -57,6 +58,7 @@ func Wobble() Config {
 // PulseBass is a pulse whose width narrows over the note, through a snapping low pass
 func PulseBass() Config {
 	return Config{
+		Drift:  0.3,
 		Chains: [NumChains]string{"pulse m1[0.5,0.12] | bipolar"}, Macros: [4]float64{0.8}, ShapeAmount: -0.7, ShapeEnv: env(2, 380, 0.1, 100),
 		Line1: Line{Level: 1}, Line2: Line{Octave: -1, Level: 0.5},
 		AmpEnv: env(2, 450, 0.7, 120), Level: 0.625, Filter: lowpass(600, 0.2, 2.2, 1, 240, 0.1, 100),
@@ -84,10 +86,11 @@ func Growl() Config {
 
 // --- leads ---
 
-// SupersawLead is the big trance saw: two saws a few cents apart, wide, through a low pass, a vibrato that
+// SupersawLead is the big trance saw: five copies of two saws a few cents apart, spread wide, through a low pass, a vibrato that
 // comes in late
 func SupersawLead() Config {
 	return Config{
+		Unison: 5, Spread: 22, UniStereo: 0.9, Drift: 0.3,
 		Chains: [NumChains]string{"bipolar", "bipolar | softclip 1.4"}, Morph: 0.2,
 		Line1: Line{Level: 1, Detune: -9}, Line2: Line{Detune: 17, Level: 1, Morph: 0.1}, Width: 1,
 		AmpEnv: env(6, 400, 0.85, 350), Level: 0.605, VibratoRate: 5.3, VibratoDepth: 0.07, VibratoDelay: 0.45,
@@ -99,6 +102,7 @@ func SupersawLead() Config {
 // SquareLead is a hollow pulse with its width moving, one note at a time, sliding
 func SquareLead() Config {
 	return Config{
+		Unison: 3, Spread: 10, UniStereo: 0.6, Drift: 0.3,
 		Chains: [NumChains]string{"pulse m1[0.5,0.2] | bipolar"}, Macros: [4]float64{0.3},
 		Line1: Line{Level: 1}, Line2: Line{Detune: 8, Level: 0.6, Octave: 0},
 		AmpEnv: env(5, 300, 0.85, 200), Level: 0.342, Mono: true, Legato: true, Glide: 45, Width: 0.5, LFO1Rate: 0.7,
@@ -110,6 +114,7 @@ func SquareLead() Config {
 // PluckLead is a bright saw that mellows at once, a filter snapping shut: a sequence lead
 func PluckLead() Config {
 	return Config{
+		Unison: 3, Spread: 12, UniStereo: 0.8, Drift: 0.2,
 		Chains: [NumChains]string{"tri | bipolar", "bipolar | softclip 2"}, Morph: 0, MorphAmount: 1, MorphEnv: env(1, 200, 0.05, 150),
 		Line1: Line{Level: 1}, Line2: Line{Detune: 7, Level: 0.7}, Width: 0.5,
 		AmpEnv: env(1, 400, 0.12, 200), Level: 0.589, Filter: lowpass(900, 0.2, 3, 1, 190, 0.05, 150),
@@ -120,6 +125,7 @@ func PluckLead() Config {
 // FMLead is an electric-organ-bright phase modulated lead: the harder the key the brighter, the wheel adds more
 func FMLead() Config {
 	return Config{
+		Drift:  0.3,
 		Chains: [NumChains]string{pm(2, "m1[0.05,0.5]")}, Macros: [4]float64{0.15},
 		Line1: Line{Level: 1}, Line2: Line{Detune: 5, Level: 0.5, Octave: 0}, Width: 0.5,
 		AmpEnv: env(5, 300, 0.85, 220), Level: 0.49, VibratoRate: 5.4, VibratoDepth: 0.08, VibratoDelay: 0.25,
@@ -130,6 +136,7 @@ func FMLead() Config {
 // FluteLead is a nearly pure tone with a breath of the second and third harmonic, slow to speak, with a vibrato
 func FluteLead() Config {
 	return Config{
+		Drift:  0.35,
 		Chains: [NumChains]string{"par(sin, mult 2 | sin | mult 0.1, mult 3 | sin | mult 0.04)", "par(sin, mult 2 | sin | mult 0.22, mult 3 | sin | mult 0.1)"},
 		Line1:  Line{Level: 1}, Line2: Line{Octave: 1, Level: 0.07, Detune: 3}, Width: 0.2, Mono: true, Legato: true, Glide: 40,
 		AmpEnv: env(70, 300, 0.9, 220), Level: 0.474, VibratoRate: 5.1, VibratoDepth: 0.14, VibratoDelay: 0.35,
@@ -140,6 +147,7 @@ func FluteLead() Config {
 // BrassLead swells in with its brightness: phase modulation that opens over the first tenth of a second
 func BrassLead() Config {
 	return Config{
+		Unison: 3, Spread: 8, UniStereo: 0.5, Drift: 0.3,
 		Chains: [NumChains]string{pm(1, "m1[0.05,0.4]")}, Macros: [4]float64{0.1}, ShapeAmount: 0.8, ShapeEnv: env(90, 400, 0.55, 250),
 		Line1: Line{Level: 1}, Line2: Line{Detune: 6, Level: 0.5}, Width: 0.4,
 		AmpEnv: env(45, 300, 0.85, 220), Level: 0.478, VibratoRate: 5.2, VibratoDepth: 0.06, VibratoDelay: 0.4,
@@ -149,9 +157,10 @@ func BrassLead() Config {
 
 // --- pads ---
 
-// WarmPad is detuned saws behind a low pass that breathes, wide and slow
+// WarmPad is detuned saws (three copies each, drifting) behind a low pass that breathes, wide and slow, with a little sub
 func WarmPad() Config {
 	return Config{
+		Unison: 3, Spread: 14, UniStereo: 1, Drift: 0.5, Sub: 0.2,
 		Chains: [NumChains]string{"bipolar | softclip 1.1"}, Line1: Line{Level: 1, Detune: -7}, Line2: Line{Detune: 13, Level: 1}, Width: 1,
 		AmpEnv: env(1400, 900, 0.9, 1800), Level: 0.529, LFO1Rate: 0.12, Filter: lowpass(1100, 0.12, 0.7, 900, 1000, 0.7, 1500),
 		Mods: slots(modmatrix.Slot{Src: lfo1, Dest: "cutoff", Amount: 0.1}),
@@ -161,6 +170,7 @@ func WarmPad() Config {
 // StringPad is saw and pulse together, the morph between them drifting
 func StringPad() Config {
 	return Config{
+		Unison: 3, Spread: 12, UniStereo: 0.9, Drift: 0.5,
 		Chains: [NumChains]string{"bipolar | softclip 1.2", "pulse 0.4 | bipolar"}, Morph: 0.4,
 		Line1: Line{Level: 1, Detune: -6}, Line2: Line{Detune: 11, Level: 1, Morph: 0.15}, Width: 0.9,
 		AmpEnv: env(700, 900, 0.9, 1400), Level: 0.578, LFO2Rate: 0.18, VibratoRate: 5.2, VibratoDepth: 0.04, VibratoDelay: 0.8,
@@ -171,6 +181,7 @@ func StringPad() Config {
 // ChoirPad is mouth shapes moving slowly, a few people singing
 func ChoirPad() Config {
 	return Config{
+		Unison: 3, Spread: 10, UniStereo: 0.8, Drift: 0.5,
 		Chains: [NumChains]string{
 			"par(sin | mult 0.8, mult 2 | sin | mult 0.2, mult 4 | sin | mult 0.8, mult 5 | sin | mult 0.2)",
 			"par(sin | mult 0.7, mult 3 | sin | mult 0.2, mult 6 | sin | mult 0.5, mult 9 | sin | mult 0.5)",
@@ -182,9 +193,10 @@ func ChoirPad() Config {
 	}
 }
 
-// AirPad is high, soft and moving, sines and a fold that comes and goes
+// AirPad is high, soft and moving, sines and a fold that comes and goes, with a breath of bright noise on top
 func AirPad() Config {
 	return Config{
+		Unison: 3, Spread: 16, UniStereo: 1, Drift: 0.5, Noise: 0.01, NoiseColor: 0.3,
 		Chains: [NumChains]string{"par(sin, mult 2 | sin | mult 0.3)", "sin | mult m1[2,4] | mirror -1 1"}, Morph: 0.3, Macros: [4]float64{0.3},
 		Line1: Line{Level: 1}, Line2: Line{Detune: 8, Level: 0.8, Octave: 0}, Width: 1,
 		AmpEnv: env(1800, 900, 0.9, 2200), Level: 0.379, LFO1Rate: 0.2, LFO2Rate: 0.13,
@@ -195,6 +207,7 @@ func AirPad() Config {
 // DarkPad is a low pulse behind a closed filter that opens and shuts very slowly
 func DarkPad() Config {
 	return Config{
+		Unison: 3, Spread: 10, UniStereo: 0.8, Drift: 0.5, Sub: 0.25,
 		Chains: [NumChains]string{"pulse 0.5 | bipolar"}, Line1: Line{Level: 1}, Line2: Line{Octave: -1, Detune: 9, Level: 0.9}, Width: 0.8,
 		AmpEnv: env(1600, 900, 0.9, 2400), Level: 0.364, LFO1Rate: 0.07, Filter: lowpass(520, 0.22, 0.5, 1200, 1200, 0.7, 2000),
 		Mods: slots(modmatrix.Slot{Src: lfo1, Dest: "cutoff", Amount: 0.2}),
@@ -205,6 +218,7 @@ func DarkPad() Config {
 // pulse; no two bars sound the same
 func Evolve() Config {
 	return Config{
+		Unison: 3, Spread: 12, UniStereo: 1, Drift: 0.5,
 		Chains: [NumChains]string{"sin", "sin | mult m1[1.5,4] | mirror -1 1", "bipolar | softclip 1.2", "pulse m1[0.5,0.2] | bipolar"}, Morph: 0.5, Macros: [4]float64{0.5},
 		Line1: Line{Level: 1, Detune: -6}, Line2: Line{Detune: 10, Level: 0.9, Morph: 0.2}, Width: 1,
 		AmpEnv: env(1500, 900, 0.9, 2500), Level: 0.418, LFO1Rate: 0.05, LFO2Rate: 0.031,
@@ -217,6 +231,7 @@ func Evolve() Config {
 // GlassPad is soft phase modulation, the glassy sheen of an old digital pad
 func GlassPad() Config {
 	return Config{
+		Unison: 3, Spread: 8, UniStereo: 0.9, Drift: 0.4,
 		Chains: [NumChains]string{pm(3, "m1[0.02,0.25]"), pm(1, "m1[0.02,0.3]")}, Morph: 0.3, Macros: [4]float64{0.4},
 		Line1: Line{Level: 1, Detune: -4}, Line2: Line{Detune: 7, Level: 0.9}, Width: 0.9,
 		AmpEnv: env(1000, 900, 0.9, 1800), Level: 0.381, LFO1Rate: 0.14, LFO2Rate: 0.08,
@@ -286,6 +301,7 @@ func Vibes() Config {
 // Stab is the chord stab of house: detuned saws, a filter that snaps shut, a short tail
 func Stab() Config {
 	return Config{
+		Unison: 3, Spread: 14, UniStereo: 0.8,
 		Chains: [NumChains]string{"bipolar | softclip 1.2"}, Line1: Line{Level: 1, Detune: -8}, Line2: Line{Detune: 12, Level: 1}, Width: 0.9,
 		AmpEnv: env(2, 300, 0.12, 140), Level: 0.625, Filter: lowpass(700, 0.2, 2.8, 1, 260, 0.05, 120),
 		Mods: slots(modmatrix.Slot{Src: vel, Dest: "cutoff", Amount: 0.2}),
@@ -342,6 +358,7 @@ func Gong() Config {
 // Drone5 is a note and its fifth, folded softly, breathing: a drone to sit under a piece
 func Drone5() Config {
 	return Config{
+		Drift:  0.6,
 		Chains: [NumChains]string{"sin | mult m1[1,2.2] | mirror -1 1", "par(sin, mult 2 | sin | mult 0.5, mult 3 | sin | mult 0.3)"}, Morph: 0.3, Macros: [4]float64{0.3},
 		Line1: Line{Level: 1}, Line2: Line{Detune: 702, Level: 0.8, Morph: 0.4, Octave: -1}, Width: 1,
 		AmpEnv: env(3000, 900, 0.95, 4000), Level: 0.36, LFO1Rate: 0.06, LFO2Rate: 0.043,

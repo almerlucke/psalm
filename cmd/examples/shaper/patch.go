@@ -144,6 +144,8 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"level6": 0.7, "pan6": 0, "sendA6": 0.7, "sendB6": 0.2, "sendC6": 0.15,
 		"returnA": 1, "returnB": 0.9, "returnC": 0.8, "returnD": 0.55,
 	})
+	// the hall: a big room, mostly wet
+	pt.SettingsOf(hall).Apply(map[string]float64{"mix": 0.56, "decay": 4.6, "size": 0.72})
 	// the echo: a dotted eighth (0.75 of a beat), a few repeats, with the top left on
 	pt.SettingsOf(echo).Apply(map[string]float64{"time": 0.75, "feedback": 0.5, "stereo": 1, "highCut": 5000, "lowCut": 150, "mix": 1})
 	// the granulator: a cloud of what comes in, grains of a tenth of a second sprayed and an octave up now and then,
@@ -151,7 +153,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	pt.SettingsOf(grains).Apply(map[string]float64{"density": 24, "grainSize": 140, "jitter": 0.6, "spray": 220, "feedback": 0.6,
 		"pitchSpread": 3, "octave": 0.25, "stereoSpread": 1, "mix": 1})
 	// the shimmer: the reverb with an octave up in it, all of it wet
-	pt.SettingsOf(shine).Apply(map[string]float64{"shimmer": 0.5, "semitones": 12, "mix": 1, "decay": 6})
+	pt.SettingsOf(shine).Apply(map[string]float64{"shimmer": 0.4, "semitones": 7, "mix": 1, "decay": 6})
 	if once {
 		pt.SettingsOf(song).Apply(map[string]float64{"loop": 0})
 	}

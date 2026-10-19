@@ -247,6 +247,7 @@ func BellMorph() Config {
 // Swarm is a saw folded and detuned wide, restless on two LFOs
 func Swarm() Config {
 	return Config{
+		Unison: 3, Spread: 10, UniStereo: 1, Drift: 0.4,
 		Chains: [NumChains]string{"bipolar | mult m1[1,2.5] | mirror -1 1", "bipolar | mult m1[1.5,4] | mirror -0.8 0.8 | mult 1.2"},
 		Morph:  0.4, Macros: [4]float64{0.3},
 		Line1: Line{Level: 1}, Line2: Line{Detune: 13, Level: 1, Morph: 0.2},

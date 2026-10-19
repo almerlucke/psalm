@@ -1748,6 +1748,9 @@ the synth keeps the chain it had.
 | `AmpEnv`, `Width`, `Level` | the amp envelope; line 1 left and line 2 right; output level |
 | `PitchEnv`, `PitchAmount` | an envelope that bends the pitch over the note by up to `PitchAmount` semitones (-60 to 60): a kick that falls three octaves, a laser, a riser; off at 0 |
 | `Glide`, `Mono`, `Legato` | milliseconds a note takes to slide from the pitch the voice was at; with `Mono` (and `Legato`) `NewPoly` plays one note at a time, so a bass or lead slides from note to note (`set({mono: 1, legato: 1})` from a script does it too) |
+| `Unison`, `Spread`, `UniStereo` | copies of each line (1 to 7, taken when a note starts on a silent voice; the level stays the same), the outer ones `Spread` cents (0-100) under and over the pitch, and spread across the stereo field by `UniStereo` (0-1). Each copy costs as much as a line, so a pad of eight voices at 3 copies is six times the work of one; keep `Oversample` at 1 there |
+| `Drift` | 0-1: every copy, the morph and the cutoff wander slowly and at random (a few cents, a few hundredths of the morph), as the oscillators of an analog synth do, so chords are never the same twice |
+| `Sub`, `Noise`, `NoiseColor` | a sine an octave under the note (0-1); white noise (0-1) made dark (under 0) or bright (over 0) by `NoiseColor` (-1 to 1): breath in a flute, air on a pad, grit on a bass. Both go through the voice filter |
 | `Oversample` | how many times a sample the chains are read: 0 (the start) is automatic, or 1 (off), 2, 4, 8 |
 | `VibratoRate/Depth/Delay`, `LFO1Rate`, `LFO1Sync`, `LFO2Rate`, `LFO2Shape` | a vibrato and the two LFOs of the matrix |
 | `Filter`, `Mods`, `Ext` | the [voice filter](#the-voice-filter) (off at first) and the [matrix](#modulation-matrix): filter env, amp env, lfo 1, lfo 2, velocity, key, random, wheel, Ext 1-4 to `morph`, `macro1`-`macro4`, `pitch`, `vibratoDepth`, `width`, `level`, `detune2`, `cutoff`, `resonance` |
@@ -1790,6 +1793,7 @@ that a small speaker plays as a tick.
 **Messages**: `preset`, `trim`, `pitch`, `frequency`, `velocity`, `glide`, `pitchAmount`, `morph`, `macro1`-`macro4`, `chainA`-`chainD` (text, or a
 `*shapechain.Chain` read already, which is what the patcher sends), `octave1/2`, `detune1/2`,
 `level1/2`, `morph1/2`, `morphAmount`, `shapeAmount`, `oversample` (0-4: auto, off, 2x, 4x, 8x), `width`,
+`unison` (1-7), `spread`, `uniStereo`, `drift`, `sub`, `noise`, `noiseColor`,
 `level`, `vibratoDepth`, `vibratoRate`, `lfo1Rate`, `lfo2Rate`, `lfo2Shape`, the envelopes `amp`,
 `morphEnv`, `shapeEnv`, `pitchEnv` and `filter`, the filter and the matrix, and the [pitch bend, mod wheel and
 aftertouch](#pitch-bend-mod-wheel-and-aftertouch). **Value input** 1: the morph; 5 to 8: Ext 1-4.

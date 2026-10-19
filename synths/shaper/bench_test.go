@@ -8,7 +8,7 @@ import (
 
 // the cost of a voice: a second of a held note of each preset's sound
 func BenchmarkVoice(b *testing.B) {
-	for _, name := range []string{"glass", "foldPad", "syncLead", "morphPad", "metal", "organ", "vowel", "swarm"} {
+	for _, name := range []string{"glass", "foldPad", "syncLead", "morphPad", "metal", "organ", "vowel", "swarm", "supersawLead", "warmPad", "airPad", "stringPad", "reese", "evolve"} {
 		b.Run(name, func(b *testing.B) {
 			cfg := Presets[name]()
 			cfg.AmpEnv = env(1, 100, 1, 50) // held at full, so every buffer costs the same

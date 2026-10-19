@@ -270,10 +270,12 @@ func TestSafe(t *testing.T) {
 	}
 }
 
-// the same notes sound the same
+// the same notes sound the same (the phases of a unison and the drift are random: from the seed of the environment)
 func TestRepeatable(t *testing.T) {
 	for name, f := range Presets {
+		psalm.CurrentEnv().Seed(5)
 		_, a := play(f(), psalm.Message{"pitch": 64.0}, 0.4)
+		psalm.CurrentEnv().Seed(5)
 		_, b := play(f(), psalm.Message{"pitch": 64.0}, 0.4)
 		for i := range a {
 			if a[i] != b[i] {
