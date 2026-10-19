@@ -339,5 +339,6 @@ func (r *Runtime) gennyObject() *goja.Object {
 	r.moreGenny(set, float)
 	// from(v): a generator of anything (a function, a function*, an iterator, an array)
 	set("from", func(call goja.FunctionCall) goja.Value { return r.wrap(r.gen(call.Argument(0))) })
+	_ = o.Set("shapers", r.shapersObject())
 	return o
 }

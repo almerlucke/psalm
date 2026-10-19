@@ -1,6 +1,6 @@
 # Synths
 
-Synths (the presets of each are listed in [presets](presets.md)): [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [dx](#dx) (6 operator FM, SysEx, and the 4 operator FM presets), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [westcoast](#westcoast), [supersaw](#supersaw).
+Synths (the presets of each are listed in [presets](presets.md)): [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [dx](#dx) (6 operator FM, SysEx, and the 4 operator FM presets), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [shaper](#shaper) (waves from chains of shapers, morphing), [westcoast](#westcoast), [supersaw](#supersaw).
 
 Every synth describes its settings: `<synth>.Describe(cfg)` (`params`: each message key it takes,
 its range, unit and group, where it is in the config, and its envelopes), so an editor on the panel
@@ -36,6 +36,7 @@ map[int]string{midi.CCModWheel: "modWheel"}}`.
 | drumsynth | longer decays (new hits); the bend moves the sounds ringing |
 | vocal | opens the vowel |
 | pd | more distortion |
+| shaper | opens the filter (when it is on); a slot of the matrix can send it to the morph or a macro |
 | westcoast | folds further |
 | supersaw | opens the filter, three octaves |
 
@@ -54,6 +55,7 @@ while the key is down (0-1). A change takes effect from the next note.
 | wavetable | `amp`, `filter`, `position` |
 | pulsar | `amp`, `formant` |
 | pd | `amp` (the loudness of both lines), `dcw` (their brightness) |
+| shaper | `amp`, `morphEnv` (the morph), `shapeEnv` (macro 1), `filter` |
 | dx (exact operators) | `amp` (the carriers: the operators heard), `op1` to `op6` (each operator) |
 | grains | `amp` |
 | sampler | `amp`: over the envelopes of the regions (each part set replaces theirs) |
@@ -1686,6 +1688,92 @@ semitones, stages `dcoAttack`...`dcoRelease`) bends the pitch over the note, e.g
 depth envelope (`depthAmount` 0-1, stages `depthAttack`...`depthRelease`) adds distortion to both
 lines on top of their own DCW envelopes. Both are off at amount 0. `detune1` and `detune2` (cents)
 detune the lines against each other (`detune2` is the older `detune`).
+
+## shaper
+
+`synths/shaper`, the chain language in `blocks/shapechain`
+
+A synth that builds its wave from a **chain of shapers** (genny's `float/shape`): a phase from 0 to 1
+goes in, the chain bends it into a wave. Up to four chains, A to D, are written as text, and the
+**morph** (0-1) goes through them: 0 is chain A, 1 the last chain, in between a blend of two
+neighbours. An envelope, an LFO, the velocity or the wheel can pull the morph, so the wave itself
+moves. Two lines (octave, detune, level, a morph offset of their own) read the same chains, then go
+through the [voice filter](#the-voice-filter) of every synth and an amp envelope.
+
+```go
+cfg := shaper.Glass()
+cfg.Chains[1] = "bipolar | mirror -0.4 0.4 | mult 2.5 | sin" // chain B
+v := shaper.NewPoly(cfg, 8).AddTo(p)
+v.ReceiveMessage(psalm.Message{"chainC": "par(sin, mult 3 | sin | mult 0.4)", "morph": 0.7})
+```
+
+**A chain** is stages joined by `|`: `bipolar` is a saw, `sin` a sine, `mult 3 | sin` a sine of three
+cycles, `bipolar | mirror -0.5 0.5` a saw folded back, `par(sin, mult 3 | sin | mult 0.4)` two
+chains side by side with their results added. The stages are genny's shapers by the same names, and
+a test holds them to genny's:
+
+| Stage | x becomes |
+|---|---|
+| `thru`, `add a`, `mult m`, `linear scale shift` | `x`, `x + a`, `x * m`, `x * scale + shift` |
+| `mod m`, `ripple m` | the remainder of `x / m` (`m` not 0); `x` plus it |
+| `bipolar`, `unipolar` | 0..1 to -1..1, and back |
+| `abs`, `sin`, `tri` | `abs(x)`; `sin(2πx)`; a triangle over 0..1 |
+| `mirror lo hi` | folded back into the range, as a ball bounces (0 1 to start) |
+| `pulse w`, `quantize q` | 1 below `w`, else 0; the nearest multiple of `q` |
+| `clip lo hi`, `softclip a` | cut off at the edges (-1 1 to start); an arctangent curve |
+| `cheby 1:1 3:0.3` | Chebyshev harmonics (1 to 64) at their levels |
+| `table sine 256`, `table 0 1 0.5 -1` | a wave (`sine`, `cosine`, `sawtooth`, `triangle`, `square`, and `uni-` for 0..1) read over 0..1, or your points with straight lines between them |
+| `pow p`, `tanh d` | `abs(x)^p` with the sign of `x`; `tanh(d x) / tanh(d)` (these two are not genny's) |
+| `par(a, b, ...)` | each chain on `x`, the results added |
+
+A number in a stage can be a **macro**: `m1` to `m4`, a value from 0 to 1 that the sound moves while it
+plays (`macro1`...`macro4`, the matrix, the `shapeEnv` envelope on `m1`). `m1` is 0..1, `m1[1,5]` maps
+it to 1..5, and `m1[5,1]` upside down. `mult m1[1,6] | mod 1 | bipolar` is a hard synced saw whose
+sync ratio the macro sweeps. Numbers are separated by spaces or commas, new lines count as spaces,
+and `#` starts a comment. A chain that can't be read is an error with its column (`shapechain.Parse`);
+the synth keeps the chain it had.
+
+| Setting | |
+|---|---|
+| `Chains` | the text of chains A to D; the list ends at the first empty one; chain A is a sine when empty |
+| `Morph`, `Macros` | 0-1, where in the chains it is; the values of `m1` to `m4` |
+| `Line1`, `Line2` | `Octave`, `Detune` (cents), `Level` (line 2 is off at 0), `Morph` (-1 to 1, added to the morph) |
+| `MorphEnv`, `MorphAmount` | an envelope over the note that moves the morph by up to `MorphAmount` (-1 to 1); off at 0 |
+| `ShapeEnv`, `ShapeAmount` | the same on macro `m1` |
+| `AmpEnv`, `Width`, `Level` | the amp envelope; line 1 left and line 2 right; output level |
+| `Oversample` | how many times a sample the chains are read: 0 (the start) is automatic, or 1 (off), 2, 4, 8 |
+| `VibratoRate/Depth/Delay`, `LFO1Rate`, `LFO1Sync`, `LFO2Rate`, `LFO2Shape` | a vibrato and the two LFOs of the matrix |
+| `Filter`, `Mods`, `Ext` | the [voice filter](#the-voice-filter) (off at first) and the [matrix](#modulation-matrix): filter env, amp env, lfo 1, lfo 2, velocity, key, random, wheel, Ext 1-4 to `morph`, `macro1`-`macro4`, `pitch`, `vibratoDepth`, `width`, `level`, `detune2`, `cutoff`, `resonance` |
+
+**Aliasing and cost.** Folds, `mod`, `quantize` and steep curves make harmonics far above the pitch. The
+synth reads the chain several times a sample (`Oversample`) and low-passes the result before it keeps
+one (`blocks/oversample`), so most of what would fold back is gone. Reading costs time, so by default
+(`Oversample` 0, "auto") the synth works out how much it needs: `Chain.Bandwidth()` looks at the
+spectrum of each chain (with each macro it uses at 0, half and 1) and finds the highest harmonic
+that has a say, and from that and the pitch of the note (and its lines) the voice reads the chain
+once a sample when everything stays under half the sample rate (a sine, a few partials: the organ,
+the vowels and the metal presets), twice for a fold, and four times for a sharp edge (a saw, a
+pulse, steps, hard sync: those have harmonics without an end). A chain sent to a sounding voice
+changes it. Set `Oversample` yourself to fix it (8 costs twice what 4 does). A voice also stops
+working out a line once its amp envelope is below -100 dB, the end of a long release. A voice costs
+roughly 0.2 to 0.5 microseconds a sample (1 to 2% of a core) with the chains of the presets, a tenth
+of that for a sine alone; a test checks that a saw at 3 kHz has its alias more than three times lower at 4 times
+than at 1.
+
+**Messages**: `pitch`, `frequency`, `velocity`, `morph`, `macro1`-`macro4`, `chainA`-`chainD` (text, or a
+`*shapechain.Chain` read already, which is what the patcher sends), `octave1/2`, `detune1/2`,
+`level1/2`, `morph1/2`, `morphAmount`, `shapeAmount`, `oversample` (0-4: auto, off, 2x, 4x, 8x), `width`,
+`level`, `vibratoDepth`, `vibratoRate`, `lfo1Rate`, `lfo2Rate`, `lfo2Shape`, the envelopes `amp`,
+`morphEnv`, `shapeEnv` and `filter`, the filter and the matrix, and the [pitch bend, mod wheel and
+aftertouch](#pitch-bend-mod-wheel-and-aftertouch). **Value input** 1: the morph; 5 to 8: Ext 1-4.
+
+Presets: `glass`, `foldPad`, `syncLead`, `pwm`, `reed`, `morphPad`, `metal`, `organ`, `subFold`,
+`crush`, `pluck`, `vowel`, `bellMorph`, `swarm` (see [presets](presets.md#shaper)).
+
+In the patcher the synth is a module of its own (Synths, "shaper"): its four chains are boxes in the
+side panel (Ctrl+Enter takes one, an error shows in red and the sound goes on; choosing a factory
+preset puts that preset's chains in the boxes). The same text is a shaper in a script:
+`genny.shapers.chain("mult 3 | sin")` (see [scripting](scripting.md#shapers)).
 
 ## westcoast
 

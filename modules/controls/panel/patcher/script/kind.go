@@ -89,9 +89,9 @@ function value(v, port) {
 // Help is what to know to write a script, shown above it in its side panel
 const Help = "its top level runs when it starts: make its generators there\n" +
 	"`function trigger(ev)` on every trigger (`ev.step`, `ev.seconds`); `function value(v, port)` for a value on `a` or `b`\n" +
-	"`note(pitch, velocity, steps)` (a pitch: `48`, `\"C3\"`, a chord `[48, 51]`), `send(\"a\", v)`, `fire()`, `mod(0 to 1)`, `log(...)`\n" +
+	"`note(pitch, velocity, steps)` (a pitch: `48`, `\"C3\"`, a chord `[48, 51]`), `set(\"morph\", 0.4)` or `set({cutoff: 900})`: settings of the synths it plays, `send(\"a\", v)`, `fire()`, `mod(0 to 1)`, `log(...)`\n" +
 	"`pitch(\"C3\")`, `scale(\"C minor\").snap(p)`, `bpm()`, `input(\"a\")`, `shared` (every script of the patch sees it)\n" +
-	"`genny.sequence`, `bucket`, `arpeggio`, `repeat`, `and`, `or`, `choice`, `markov`, `walk`, `euclid`, `ramp`, `rand`, `rwalk`, `logistic`, `henon`, `map`, `from(function* ...)`: `.next()`, `.map(f)`\n" +
+	"`genny.sequence`, `bucket`, `arpeggio`, `repeat`, `and`, `or`, `choice`, `markov`, `walk`, `euclid`, `ramp`, `rand`, `rwalk`, `logistic`, `henon`, `map`, `from(function* ...)`: `.next()`, `.map(f)`, `.shape(genny.shapers.quantize(1))`\n" +
 	"with a song: `song.section`, `song.bar`, `song.bars`, `song.progress`, `song.sections`; `function section(name, index)` when one starts\n" +
 	"Ctrl+Enter (or Run) runs it; an error (its line) or what it logs is below; a call may take 5 ms"
 

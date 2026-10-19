@@ -422,6 +422,27 @@ They were designed from knowledge of the classic sounds and checked by measureme
 | sawLead | SawLeadPreset | Classic saw lead out of pulses: all the harmonics, a formant opening at the start, a touch of slide |
 | zapLead | ZapLeadPreset | Lead with a zap in it: tapered pulses and a formant swung fast and wide by its LFO, pitch and wheel sending it further |
 
+## shaper
+
+The chains of every preset are in the module's side panel in the patcher (see [synths](synths.md#shaper)).
+
+| Name | Function | Sound |
+|---|---|---|
+| glass | Glass | A sine that grows overtones as the note starts, folding into a glassy ring; an octave partner a little detuned |
+| foldPad | FoldPad | A sine folded back on itself more and more, slowly swelling and fading; two LFOs move the morph and the fold, a low pass opens with the note |
+| syncLead | SyncLead | A saw hard synced to a higher pitch that sweeps down as the note goes on (macro 1 by its envelope), the velocity sweeping it further |
+| pwm | PWM | A pulse whose width moves on an LFO, two lines apart |
+| reed | Reed | From a soft triangle to a bright squeezed saw with how hard the key is struck; the wheel brightens it |
+| morphPad | MorphPad | Four waves in a row, sine, triangle, saw, square, and back, on a slow LFO |
+| metal | Metal | Whole number partials that brighten and fade: a struck pipe |
+| organ | Organ | Drawbars as a sum of sines, the upper ones joining in with the morph; the wheel adds them |
+| subFold | SubFold | A deep sine folded into a growl, the fold closing over the note |
+| crush | Crush | A saw cut into steps, fewer of them as the note goes on |
+| pluck | Pluck | A bright start that falls to a mellow tone at once; the harder the key the brighter |
+| vowel | Vowel | Mouth shapes made of a few partials, moved by an LFO and by the key |
+| bellMorph | BellMorph | A bell struck and settling into a plain sine |
+| swarm | Swarm | A saw folded and detuned wide, restless on two LFOs |
+
 ## westcoast
 
 ### Plucks

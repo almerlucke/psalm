@@ -17,6 +17,7 @@ side panel, and the **script** module, which runs JavaScript with genny's genera
   - [How a script runs](#how-a-script-runs)
   - [The API](#the-api)
   - [Generators](#generators)
+  - [Shapers](#shapers)
   - [Limits and errors](#limits-and-errors)
   - [The presets](#the-presets)
 - [From Go](#from-go)
@@ -200,6 +201,7 @@ starts) **before** `trigger` is called, so `song.section` is always the section 
 | `value(v, port)` | `v` is the value, `port` is `"a"` or `"b"` |
 | `section(name, index)` | a section of the song starts (also again after a restart of the song) |
 | `note(pitch, velocity = 0.8, steps = 1)` | a note, or a chord (an array), to the synths its notes cable goes to. Velocity is clamped to 0-1. Steps are of the last trigger's `ev.seconds` (a sixteenth at the tempo when there has been none); the shortest note is 5 ms |
+| `set(key, value)`, `set({key: value, ...})` | settings of the synths its notes cable goes to, by the keys of their pages (`morph`, `macro1`, `cutoff`, `ampAttack`, `filterType`...), sent at the end of the tick before its notes: numbers, `true`/`false` (1/0) and strings. `chainA` to `chainD` take the text of a chain of the [shaper synth](synths.md#shaper), read by the script first: a chain that can't be read is an error of the script with its column. At most 256 a tick |
 | `send(port, v)` | a value on output `"a"` or `"b"`: a number, a note name (sent as its pitch), or an array (a chord) |
 | `fire()` | a trigger on the trigger output, carrying the event being handled |
 | `mod(v)` | the value of the mod output, clamped to 0-1; it stays until set again |
@@ -268,6 +270,51 @@ const notes = genny.repeat(genny.from(phrase), 2)  // the phrase twice, then don
 
 A generator made from a `function*` or an iterator is one value ahead: `done()` is true right after
 its last value has come out. After the end it keeps giving that last value.
+
+### Shapers
+
+A shaper is a function of a number to a number. Put one after a generator to bend its values, or call
+it by hand. They work on any number (a pitch, a velocity, a walk), not only on audio: `genny.shapers`
+are genny's shapers.
+
+```js
+const walk = genny.rwalk(0.5, 0, 1, 0.2)
+const pitches = walk.shape(genny.shapers.series(
+  genny.shapers.mult(24),       // 0..1 to two octaves
+  genny.shapers.add(48),        // from C3
+  genny.shapers.quantize(1),    // whole semitones
+))
+// or with a function: walk.shape(x => 48 + Math.round(x * 24))
+
+function trigger() { note(pitches.next()) }
+```
+
+`gen.shape(s)` and `genny.shape(gen, s)` give a generator of the values through `s`; `s.shape(x)`
+shapes one value: a number, a note name, or a chord (every pitch of it). Wherever a shaper is wanted a
+function of a number works too. A shaper that gives NaN or infinity (a division by 0) is an error of
+the script, shown on the module.
+
+| `genny.shapers.` | `x` becomes |
+|---|---|
+| `add(a)`, `mult(m)` | `x + a`, `m * x` |
+| `linear(scale, shift)`, `bipolar()`, `unipolar()` | `x * scale + shift`; 0..1 to -1..1; -1..1 to 0..1 |
+| `mod(m)`, `ripple(m)` | the remainder after dividing by `m` (not 0); `x` plus it |
+| `abs()`, `sin()`, `tri()` | the absolute value; `sin(2π x)`; a triangle over 0..1 |
+| `mirror(bottom, top)` | folded back into the range, as a ball bounces |
+| `clip("hard", low, high)`, `clip("soft", amount)` | cut off at the edges (-1 to 1 by default); an arctangent curve |
+| `pulse(w)` | 1 below `w`, else 0 |
+| `quantize(q)` | the nearest multiple of `q` (not 0): `quantize(12)` to octaves |
+| `chebyshev({1: 1, 3: 0.3})` | the harmonics (1 to 64) at their levels: a waveshaper |
+| `table("sine", n)` or `table([0, 3, 1])` | read over 0..1: a wave (`sine`, `cosine`, `sawtooth`, `triangle`, `square`, each also `uni ...` for 0..1; `n` points, 256 to start; the end is the start again) or your values, with the points between them drawn straight |
+| `fn(f)` | a function of a number as a shaper (also what a function stands for) |
+| `chain(text, macros)` | a chain written as text, as the [shaper synth](synths.md#shaper) reads it: `chain("mult 3 \| sin")`, `chain("mult m1[1,5] \| sin", [0.3])` (the macros `m1` to `m4`, 0.5 to start); a text that can't be read is an error of the script |
+| `thru()` | `x` |
+| `series(a, b, ...)` | `x` through each in turn |
+| `parallel(a, b, ...)` | `x` through each, the results added |
+| `mixer([a, b], [la, lb])` | the results added at levels (1 to start) |
+| `interp(index, a, b, ...)` | between neighbours: index 0 is the first, 1 the last |
+| `route(i, a, b, ...)` | the shaper at index `i` |
+| `supersaw(a1, m1, m2)`, `hardsync(a1)`, `softsync(a1)`, `trimod(m)`, `voyager()`, `pwmod()` | the waves of synth emulations over a phase 0..1 |
 
 ### Limits and errors
 

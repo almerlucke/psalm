@@ -7,11 +7,14 @@
 package catalog
 
 import (
+	"errors"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/shapechain"
 	"github.com/almerlucke/psalm/midi"
 	"github.com/almerlucke/psalm/modules/controls/keyboard"
 	"github.com/almerlucke/psalm/modules/controls/panel"
@@ -47,6 +50,7 @@ import (
 	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
+	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
@@ -86,6 +90,48 @@ func synth(name string, presets []string, make func(preset string, voices int) p
 	}}
 }
 
+// shaperKind is the shaper synth: the usual presets and settings, and the four chains it morphs
+// through as text in its side panel
+func shaperKind(voices int) patcher.Kind {
+	texts := func(preset string) map[string]string {
+		cfg := shaper.Presets[preset]()
+		out := map[string]string{}
+		for i, key := range shaper.ChainKeys {
+			out[key] = cfg.Chains[i]
+		}
+		return out
+	}
+	return patcher.Kind{Name: "shaper", Group: "Synths", Presets: sorted(shaper.Presets), Ins: note, Outs: outs,
+		Make: func(preset string) (*patcher.Made, error) {
+			mk := func(name string, v int) psalm.Modular { return shaper.NewPoly(shaper.Presets[name](), v) }
+			made := &patcher.Made{Module: mk(preset, voices),
+				Describe:    func(n string) params.Set { return shaper.Describe(shaper.Presets[n]()) },
+				Rebuild:     func(n string) psalm.Modular { return mk(n, voices) },
+				PresetTexts: texts,
+				TextMessage: func(key, value string) (psalm.Message, error) {
+					if !slices.Contains(shaper.ChainKeys[:], key) {
+						return nil, errors.New("no such chain")
+					}
+					if strings.TrimSpace(value) == "" {
+						if key == shaper.ChainKeys[0] {
+							return nil, errors.New("chain A can't be empty")
+						}
+						return psalm.Message{key: ""}, nil
+					}
+					c, err := shapechain.Parse(value)
+					if err != nil {
+						return nil, err
+					}
+					return psalm.Message{key: c}, nil
+				}}
+			t := texts(preset)
+			for i, key := range shaper.ChainKeys {
+				made.Texts = append(made.Texts, patcher.Text{Key: key, Label: "chain " + string(rune('A'+i)), Value: t[key], Lines: 3, Help: shaper.ChainHelp})
+			}
+			return made, nil
+		}}
+}
+
 func sorted[T any](m map[string]T) []string { return slices.Sorted(maps.Keys(m)) }
 
 // effect is a kind of effect: how one is made, and described as it is
@@ -120,6 +166,7 @@ func Kinds(cfg Config) []patcher.Kind {
 			func(n string) params.Set { return supersaw.Describe(supersaw.Presets[n]()) }, v),
 		synth("pd", sorted(pd.Presets), func(n string, v int) psalm.Modular { return pd.NewPoly(pd.Presets[n](), v) },
 			func(n string) params.Set { return pd.Describe(pd.Presets[n]()) }, v),
+		shaperKind(v),
 		synth("pulsar", sorted(pulsar.Presets), func(n string, v int) psalm.Modular { return pulsar.NewPoly(pulsar.Presets[n](), v) },
 			func(n string) params.Set { return pulsar.Describe(pulsar.Presets[n]()) }, v),
 		synth("westcoast", sorted(westcoast.Presets), func(n string, v int) psalm.Modular { return westcoast.NewPoly(westcoast.Presets[n](), v) },

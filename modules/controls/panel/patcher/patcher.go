@@ -129,6 +129,13 @@ type Made struct {
 	// parses there, the module takes what it made on the audio thread); an error leaves it as it was
 	Texts   []Text
 	SetText func(key, value string) error
+	// TextMessage is SetText for a module that takes its text as a message on the audio thread (a
+	// synth's chains): it reads the text off the audio thread and returns the message to send to
+	// the module between two buffers; an error leaves the module as it was
+	TextMessage func(key, value string) (psalm.Message, error)
+	// PresetTexts gives the texts a preset of the kind has (by key), asked when a factory preset is
+	// chosen in the editor, so the boxes show the text of the new sound
+	PresetTexts func(preset string) map[string]string
 	// Late is called on every control tick after every module had its own (a Notes module plays the
 	// triggers of the tick there, when the values feeding it are up to date)
 	Late func(tick psalm.CtrlTick)
@@ -456,6 +463,12 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 					ed.FactoryApply(k.Presets, made.Describe, func(name string) {
 						pt.mu.Lock()
 						n.Preset = name // what the module is made at, for a patch kept
+						if made.PresetTexts != nil {
+							for key, text := range made.PresetTexts(name) {
+								n.texts[key] = text
+								delete(n.textErr, key)
+							}
+						}
 						pt.mu.Unlock()
 						sw.Load(name)
 					})
@@ -806,10 +819,18 @@ func (pt *Patcher) SetText(id, key, value string) error {
 	pt.mu.Lock()
 	n := pt.node(id)
 	pt.mu.Unlock()
-	if n == nil || n.made.SetText == nil {
+	if n == nil || (n.made.SetText == nil && n.made.TextMessage == nil) {
 		return errors.New("no such setting")
 	}
-	err := n.made.SetText(key, value)
+	var err error
+	if n.made.TextMessage != nil {
+		var msg psalm.Message
+		if msg, err = n.made.TextMessage(key, value); err == nil {
+			pt.do(func() { n.made.Module.Receive(msg, 0) })
+		}
+	} else {
+		err = n.made.SetText(key, value)
+	}
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
 	n.texts[key] = value

@@ -14,7 +14,7 @@ type Oversampler struct {
 	Factor int
 	taps   []float64 // the lowpass, at the oversampled rate
 	up     []float64 // the history of the zero stuffed input (a ring of len(taps))
-	down   []float64 // the history of the processed samples
+	down   []float64 // the history of the processed samples, written twice (n apart): the last n are always one run
 	upPos  int
 	dnPos  int
 	buf    []float64 // the oversampled block of one sample
@@ -49,7 +49,7 @@ func New(factor, tapsPerPhase int) *Oversampler {
 	for i := range taps {
 		taps[i] /= sum
 	}
-	return &Oversampler{Factor: factor, taps: taps, up: make([]float64, n), down: make([]float64, n), buf: make([]float64, factor)}
+	return &Oversampler{Factor: factor, taps: taps, up: make([]float64, n), down: make([]float64, 2*n), buf: make([]float64, factor)}
 }
 
 // Latency returns the delay of up and down, in samples at the original rate
@@ -79,23 +79,55 @@ func (o *Oversampler) Process(x float64, f func(float64) float64) float64 {
 	}
 	// down: the processed samples through the lowpass, keeping one
 	for k := range o.Factor {
-		o.down[o.dnPos] = o.buf[k]
-		o.dnPos = (o.dnPos + 1) % n
+		o.push(o.buf[k])
 	}
-	acc := 0.0
-	pos := o.dnPos - 1
-	for j := range n {
-		idx := pos - j
-		if idx < 0 {
-			idx += n
-		}
-		acc += o.taps[j] * o.down[idx]
+	return o.filter()
+}
+
+// push puts a processed sample in the history
+func (o *Oversampler) push(v float64) {
+	n := len(o.taps)
+	o.down[o.dnPos] = v
+	o.down[o.dnPos+n] = v
+	if o.dnPos++; o.dnPos == n {
+		o.dnPos = 0
 	}
-	return acc
+}
+
+// filter is the history through the lowpass. The taps are symmetric, so the newest sample meets the
+// last of them either way round, and the run of the last n samples is a plain dot product
+func (o *Oversampler) filter() float64 {
+	n := len(o.taps)
+	w := o.down[o.dnPos : o.dnPos+n] // oldest first
+	taps := o.taps[:n]
+	var a0, a1, a2, a3 float64
+	i := 0
+	for ; i+4 <= n; i += 4 {
+		a0 += taps[i] * w[i]
+		a1 += taps[i+1] * w[i+1]
+		a2 += taps[i+2] * w[i+2]
+		a3 += taps[i+3] * w[i+3]
+	}
+	for ; i < n; i++ {
+		a0 += taps[i] * w[i]
+	}
+	return (a0 + a1) + (a2 + a3)
+}
+
+// Down runs f for each of the factor oversampled points of one sample (k from 0 to factor-1, in
+// time) and returns the one sample at the original rate that they make, through the same lowpass:
+// for a source that can be asked for its value at any moment (a wave read at a phase), where Process
+// would first have to make the points from a sample
+func (o *Oversampler) Down(f func(k int) float64) float64 {
+	for k := range o.Factor {
+		o.push(f(k))
+	}
+	return o.filter()
 }
 
 // Reset clears the history
 func (o *Oversampler) Reset() {
 	clear(o.up)
 	clear(o.down)
+	o.dnPos = 0
 }

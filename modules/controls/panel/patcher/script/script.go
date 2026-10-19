@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/shapechain"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/dop251/goja"
 )
@@ -17,6 +18,7 @@ import (
 // triggers (fire) and a value for mod cables (mod):
 //
 //	note(pitch, velocity = 0.8, steps = 1)  // a pitch (48, "C3") or a chord ([48, 51, 55])
+//	set(key, value)  or  set({key: value})  // settings of the synths it plays, by their keys (morph, macro1, chainA...)
 //	send(port, v)                           // "a" or "b"
 //	fire()                                  // a trigger on its trigger output
 //	mod(v)                                  // 0-1, to its mod output
@@ -47,6 +49,7 @@ type Script struct {
 	tick           psalm.CtrlTick
 	inputs         [2]goja.Value
 	notes          []queued
+	sets           []psalm.Message // settings to send to the synths at the end of the tick
 	targets        []psalm.Receiver
 }
 
@@ -197,6 +200,12 @@ func (s *Script) Receive(v any, index int) {
 
 // late plays the notes of the tick
 func (s *Script) late(psalm.CtrlTick) {
+	for _, m := range s.sets { // the settings first: the notes of the tick sound with them
+		for _, t := range s.targets {
+			t.ReceiveMessage(m)
+		}
+	}
+	s.sets = s.sets[:0]
 	for _, n := range s.notes {
 		for _, pitch := range n.pitches {
 			msg := psalm.Message{"command": "trigger", "tick": n.tick, "duration": n.seconds, "amplitude": n.velocity,
@@ -270,6 +279,49 @@ func (s *Script) newAPI() *goja.Object {
 		s.notes = append(s.notes, queued{tick: s.tick, pitches: s.pitches(call.Argument(0)),
 			velocity: math.Max(0, math.Min(number(call, 1, 0.8), 1)),
 			seconds:  math.Max(0.005, number(call, 2, 1)*step)})
+		return goja.Undefined()
+	})
+	// set(key, value) or set({key: value, ...}): settings of the synths the notes go to, by their
+	// keys as on their pages (morph, macro1, cutoff, ampAttack...); a number, a string (a shaper
+	// synth's chains: set("chainB", "mult 3 | sin")) or true/false
+	set("set", func(call goja.FunctionCall) goja.Value {
+		msg := psalm.Message{}
+		add := func(key string, v goja.Value) {
+			switch x := v.Export().(type) {
+			case float64:
+				msg[key] = x
+			case int64:
+				msg[key] = float64(x)
+			case string:
+				// a chain of the shaper synth is read here: a chain that can't be read is an error of
+				// the script (with its place), and the synth gets it read
+				if len(key) == 6 && key[:5] == "chain" && key[5] >= 'A' && key[5] <= 'D' && strings.TrimSpace(x) != "" {
+					c, err := shapechain.Parse(x)
+					if err != nil {
+						panic(vm.NewTypeError(fmt.Sprintf("set %s: %v", key, err)))
+					}
+					msg[key] = c
+				} else {
+					msg[key] = x
+				}
+			case bool:
+				msg[key] = map[bool]float64{true: 1, false: 0}[x]
+			default:
+				panic(vm.NewTypeError(fmt.Sprintf("set: %q is a number, a string or true/false", key)))
+			}
+		}
+		if o, ok := call.Argument(0).(*goja.Object); ok && o.ClassName() == "Object" {
+			for _, k := range o.Keys() {
+				add(k, o.Get(k))
+			}
+		} else if k := call.Argument(0); !goja.IsUndefined(k) && len(call.Arguments) >= 2 {
+			add(k.String(), call.Argument(1))
+		} else {
+			panic(vm.NewTypeError("set(key, value) or set({key: value})"))
+		}
+		if len(msg) > 0 && len(s.sets) < 256 {
+			s.sets = append(s.sets, msg)
+		}
 		return goja.Undefined()
 	})
 	set("send", func(call goja.FunctionCall) goja.Value {

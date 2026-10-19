@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/shapechain"
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
@@ -19,12 +20,17 @@ type played struct {
 	*psalm.Module
 	pitches, seconds []float64
 	at               []int64
+	settings         []psalm.Message
+	order            []string
 }
 
 func (r *played) ReceiveMessage(m psalm.Message) {
 	if m["command"] != "trigger" {
+		r.settings = append(r.settings, m)
+		r.order = append(r.order, "set")
 		return
 	}
+	r.order = append(r.order, "note")
 	r.pitches = append(r.pitches, m.MustMsg("message").MustFltVal("pitch"))
 	r.at = append(r.at, m.MustTickVal("tick").SampleTimestamp)
 	r.seconds = append(r.seconds, m.MustFltVal("duration"))
@@ -225,5 +231,45 @@ function trigger() { fired++ }`)
 	}
 	if len(r.rec.pitches) < 4 || r.rec.pitches[0] != 48 || r.rec.pitches[1] != 52 {
 		t.Errorf("notes played %v: want the chord of step 0 first", r.rec.pitches)
+	}
+}
+
+// set() sends settings to the synths the notes go to, before the notes of the tick
+func TestScriptSet(t *testing.T) {
+	r := newRig(t)
+	clock, s, syn := r.add("clock", ""), r.add("script", ""), r.add("rec", "")
+	r.code(s, `
+function trigger(ev) {
+  if (ev.step === 0) set("morph", 0.25)
+  if (ev.step === 1) set({cutoff: 900, chainB: "mult 3 | sin", on: true, steps: ev.step})
+  note(48)
+}`)
+	r.connect(patcher.Cable{From: clock, To: s})
+	r.connect(patcher.Cable{From: s, To: syn, Type: patcher.Notes})
+	r.run(0.4)
+	if st := r.status(s); strings.HasPrefix(st, "error") {
+		t.Fatal(st)
+	}
+	if len(r.rec.settings) < 2 {
+		t.Fatalf("%d settings", len(r.rec.settings))
+	}
+	if m := r.rec.settings[0]; m["morph"] != 0.25 || len(m) != 1 {
+		t.Errorf("first %v", m)
+	}
+	if c, ok := r.rec.settings[1]["chainB"].(*shapechain.Chain); !ok || c.Text() != "mult 3 | sin" {
+		t.Errorf("a chain is sent read: %T", r.rec.settings[1]["chainB"])
+	}
+	if m := r.rec.settings[1]; m["cutoff"] != 900.0 || m["on"] != 1.0 || m["steps"] != 1.0 {
+		t.Errorf("second %v", m)
+	}
+	if r.rec.order[0] != "set" || r.rec.order[1] != "note" {
+		t.Errorf("the settings come before the notes of their tick: %v", r.rec.order[:4])
+	}
+	for _, code := range []string{`function trigger() { set("chainA", "wobble 3") }`, `function trigger() { set("x", [1, 2]) }`, `function trigger() { set("x") }`, `function trigger() { set() }`} {
+		r.code(s, code)
+		r.run(0.2)
+		if st := r.status(s); !strings.HasPrefix(st, "error") {
+			t.Errorf("%s: status %q, want an error", code, st)
+		}
 	}
 }

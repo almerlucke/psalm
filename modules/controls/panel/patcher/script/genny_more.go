@@ -215,6 +215,10 @@ func (r *Runtime) moreGenny(set func(string, func(goja.FunctionCall) goja.Value)
 		return r.wrap(flatten.New[goja.Value](arrays))
 	})
 
+	// shape(gen, shaper): a generator through a shaper (also gen.shape(s)); r.shapersObject has them
+	set("shape", func(call goja.FunctionCall) goja.Value {
+		return r.wrap((&Gen{g: r.gen(call.Argument(0)), vm: vm, r: r}).Shape(call.Argument(1)).g)
+	})
 	// map(gen, f): the values of a generator through a function (also gen.map(f))
 	set("map", func(call goja.FunctionCall) goja.Value {
 		f, ok := goja.AssertFunction(call.Argument(1))
