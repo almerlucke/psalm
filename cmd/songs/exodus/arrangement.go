@@ -62,7 +62,7 @@ func (o *orchestra) arrangement() *arrange.Arrangement {
 		arr = arr.AutomateMessage(secs.Else(v.base), o.mix.Strip(name), "send.heavens")
 	}
 	// the shimmer draws back over the last bars, so that what rings out at the end is the bells and the gong
-	arr = arr.AutomateMessage(arrange.Sections{land: form.Span(land).Last(6, arrange.Linear(0, -26))}.Else(0), o.mix.Strip("heavens"), "volume")
+	arr = arr.AutomateMessage(arrange.Sections{land: form.Span(land).Last(6, arrange.Linear(heavensLevel, heavensLevel-26))}.Else(heavensLevel), o.mix.Strip("heavens"), "volume")
 	// the music gives way while the voice speaks
 	arr = arr.AutomateMessage(voiceDips().Else(0), o.mix.Strip("music"), "volume")
 	return arr.

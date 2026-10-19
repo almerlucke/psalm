@@ -47,6 +47,14 @@ type orchestra struct {
 	organLow, organSoft, organPlenum, organRaw, organBass psalm.Modular
 }
 
+// the shimmer: how much of the shifted tail is fed back, the interval of the shift (12 is an octave: it adds no
+// notes outside the chords, other intervals do) and the level of the bus (dB)
+const (
+	shimmerAmount    = 0.3
+	shimmerSemitones = 12
+	heavensLevel     = -4
+)
+
 type sends = map[string]float64
 
 func newOrchestra(p *psalm.Psalm) *orchestra {
@@ -63,7 +71,8 @@ func newOrchestra(p *psalm.Psalm) *orchestra {
 
 	scfg := shimmer.DefaultConfig()
 	scfg.Reverb.Decay = 7
-	scfg.Shimmer = 0.55
+	scfg.Shimmer = shimmerAmount
+	scfg.Semitones = shimmerSemitones
 	scfg.Mix = 1
 	mix.Bus("heavens", mixer.StripConfig{}, shimmer.New(scfg).AddTo(p))
 
