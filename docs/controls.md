@@ -948,6 +948,8 @@ playlist.Song{Name: name, Build: func(sp *psalm.Psalm) playlist.Built {
 One song a patch: the last made; `patcher.SongOf(env)` is the song of a patch for modules of your
 own (`At(tick, ppq)`: where it is).
 
+The full reference for generators and scripts (every setting, default and option) is in [Scripting](scripting.md).
+
 **Scripts** (`patcher/script`) are modules of JavaScript (goja). A script's top level runs when it
 starts, to make its generators; then `trigger(ev)` on every trigger (`ev.step`, the step of the
 clock, and `ev.seconds`, how long a step is) and `value(v, port)` on every value on its input `a` or
