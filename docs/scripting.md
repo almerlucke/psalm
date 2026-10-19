@@ -240,11 +240,20 @@ value (always that value). `genny.from(x)` makes a generator of any of these.
 | `genny.combine(...gens)` | a value of each at once, as an array | |
 | `genny.continuous(gen)` | one that ends, started over every time it does | |
 | `genny.constant(v)` | always v | |
-| `genny.rand(lo, hi)` | a random number in the range (give both) | `hi = 1` |
+| `genny.choice(values, weights)` | any one every time, the more weight the more often (`choice(["C3", "G3"], [3, 1])`); weights default to equal | |
+| `genny.markov(table, start)` | a chain: `table` is `{state: {next: weight, ...}}`, every state a value (its name: `"C3"`, `"60"`), every state must go somewhere. `start` defaults to the first state; keys that look like numbers sort first in JavaScript, so give `start` for those | first key |
+| `genny.walk(dims, values)` | a random walk through a grid, one step along one dimension at a time (`walk([4, 3], twelveValues)`, first dimension first); every dimension needs 2 values or more | |
+| `genny.logistic(a, x0)` | the logistic map, 0 to 1; chaotic above about 3.57 | `a = 3.9`, `x0 = 0.5` |
+| `genny.henon(a, b)` | the x of the Hénon map, about -1.3 to 1.3 | `1.4`, `0.3` |
+| `genny.ramp(steps, from, to, curve, loop)` | `steps` values from one to the other (2 or more), along a curve (1 straight, above 1 slow to start); then it ends and `done()` is true, or with `loop` it stays on `to` | `0`, `1`, `1`, `false` |
+| `genny.euclid(hits, steps, rotate)` | `true` on `hits` spread evenly over `steps` (3 of 8: `x..x..x.`), `false` between, looping; `rotate` moves the start | `0` |
+| `genny.flatten(gen)` | a generator of arrays (chords, bars) as their values one by one | |
+| `genny.map(gen, f)`, `gen.map(f)` | the values of a generator through a function | |
+| `genny.rand(lo, hi)` | a random number in the range | `lo = 0`, `hi = 1` |
 | `genny.rwalk(origin, min, max, step, mode)` | a random walk from `origin` within `min`..`max`; each step moves by up to `step` times the range; at an edge `"clip"` holds, `"bounce"` turns back, `"jump"` goes back to the origin | `step = 0.1`, `"bounce"` |
 
 The list arguments of `and`, `or` and `combine` can be given as separate arguments or as one array.
-Every random choice in the generators (`rand`, `rwalk`, `bucket`, `arpeggio` `"random"`, `or`, `repeat` with two counts) draws from one stream that `psalm.Seed(n)` (and `Env.Seed`) also seeds, so a render with the same seed and patch repeats; from Go alone, `genny.Seed(n)`. The clock's chances and the arp's random mode use the module's own stream, seeded the same way.
+Every random choice in the generators (`rand`, `rwalk`, `bucket`, `choice`, `markov`, `walk`, `arpeggio` `"random"`, `or`, `repeat` with two counts) draws from one stream that `psalm.Seed(n)` (and `Env.Seed`) also seeds, so a render with the same seed and patch repeats; from Go alone, `genny.Seed(n)`. The clock's chances and the arp's random mode use the module's own stream, seeded the same way.
 
 A wrong option name is an error that lists the names it knows.
 
@@ -254,6 +263,8 @@ A `function*` ends like any other generator, and `genny.and`/`genny.repeat` use 
 function* phrase() { for (const p of ["C3", "D3", "Eb3", "G3"]) yield pitch(p) }
 const notes = genny.repeat(genny.from(phrase), 2)  // the phrase twice, then done()
 ```
+
+`gen.map(f)` works on any generator: `genny.sequence(pitches).map(p => p + 12)`.
 
 A generator made from a `function*` or an iterator is one value ahead: `done()` is true right after
 its last value has come out. After the end it keeps giving that last value.
@@ -274,7 +285,7 @@ line number. A script with an infinite loop therefore cannot hang the sound.
 
 `walk` (a random walk snapped to a scale, with shuffled lengths), `arpeggio` (chords arpeggiated with
 a bass note under each), `function*` (a phrase twice and an answer, with `and` and `repeat`),
-`values` (a pitch on `a`, a trigger and a wave on `mod`, to other modules), `song` (a chord a bar,
+`chain` (a markov chain of notes, an euclidean rhythm and weighted lengths), `values` (a pitch on `a`, a trigger and a wave on `mod`, to other modules), `song` (a chord a bar,
 others in the chorus). They are in `patcher/script/kind.go` and a good place to start.
 
 ```js

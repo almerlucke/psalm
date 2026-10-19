@@ -5,7 +5,7 @@ import (
 )
 
 // Presets are scripts to start from
-var Presets = []string{"walk", "arpeggio", "function*", "values", "song"}
+var Presets = []string{"walk", "arpeggio", "function*", "chain", "values", "song"}
 
 var codes = map[string]string{
 	"walk": `// every trigger: a note of a random walk, in C minor
@@ -57,6 +57,20 @@ function section(name, index) {
   log("now:", name)
 }
 `,
+	"chain": `// a markov chain of notes on an euclidean rhythm: 5 hits in 8 steps, lengths by weight
+const chain = genny.markov({
+  C3: {Eb3: 3, G3: 2, C3: 1},
+  Eb3: {G3: 3, C3: 2, Bb3: 1},
+  G3: {Bb3: 2, Eb3: 2, C3: 3},
+  Bb3: {G3: 3, C3: 1},
+})
+const rhythm = genny.euclid(5, 8)
+const lengths = genny.choice([0.5, 1, 2], [2, 3, 1])
+
+function trigger(ev) {
+  if (rhythm.next()) note(chain.next(), 0.8, lengths.next())
+}
+`,
 	"values": `// to other modules: a pitch on a (to a notes' pitch), a trigger every 4th step, a wave on mod
 const walk = genny.rwalk(0.5, 0, 1, 0.1)
 
@@ -77,7 +91,7 @@ const Help = "its top level runs when it starts: make its generators there\n" +
 	"`function trigger(ev)` on every trigger (`ev.step`, `ev.seconds`); `function value(v, port)` for a value on `a` or `b`\n" +
 	"`note(pitch, velocity, steps)` (a pitch: `48`, `\"C3\"`, a chord `[48, 51]`), `send(\"a\", v)`, `fire()`, `mod(0 to 1)`, `log(...)`\n" +
 	"`pitch(\"C3\")`, `scale(\"C minor\").snap(p)`, `bpm()`, `input(\"a\")`, `shared` (every script of the patch sees it)\n" +
-	"`genny.sequence`, `bucket`, `arpeggio`, `repeat`, `and`, `or`, `rand`, `rwalk`, `from(function* ...)`: `.next()`\n" +
+	"`genny.sequence`, `bucket`, `arpeggio`, `repeat`, `and`, `or`, `choice`, `markov`, `walk`, `euclid`, `ramp`, `rand`, `rwalk`, `logistic`, `henon`, `map`, `from(function* ...)`: `.next()`, `.map(f)`\n" +
 	"with a song: `song.section`, `song.bar`, `song.bars`, `song.progress`, `song.sections`; `function section(name, index)` when one starts\n" +
 	"Ctrl+Enter (or Run) runs it; an error (its line) or what it logs is below; a call may take 5 ms"
 

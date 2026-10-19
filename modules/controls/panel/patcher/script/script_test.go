@@ -125,7 +125,7 @@ func TestPresets(t *testing.T) {
 			if st := r.status(s); strings.HasPrefix(st, "error") {
 				t.Fatal(st)
 			}
-			if preset != "values" && len(r.rec.pitches) < 7 {
+			if preset != "values" && len(r.rec.pitches) < 4 {
 				t.Fatalf("%d notes", len(r.rec.pitches))
 			}
 		})

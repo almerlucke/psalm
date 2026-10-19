@@ -3,6 +3,8 @@ package script
 import (
 	"strings"
 	"testing"
+
+	"github.com/almerlucke/genny"
 )
 
 // eval runs JavaScript with genny, what its last expression is as JSON
@@ -69,5 +71,67 @@ func TestGennyErrors(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v, want an error of %q", c.code, err, c.want)
 		}
+	}
+}
+
+func TestGennyMore(t *testing.T) {
+	for _, c := range []struct{ name, code, want string }{
+		{"rand default", `return genny.rand().take(50).every(v => v >= 0 && v < 1)`, `true`},
+		{"choice", `return genny.choice(["a", "b", "c"], [0, 1, 0]).take(4)`, `["b","b","b","b"]`},
+		{"choice even", `return new Set(genny.choice([1, 2]).take(200)).size`, `2`},
+		{"markov", `return genny.markov({C3: {E3: 1}, E3: {G3: 1}, G3: {C3: 1}}).take(5)`, `["C3","E3","G3","C3","E3"]`},
+		{"markov start", `return genny.markov({a: {b: 1}, b: {a: 1}}, "b").take(3)`, `["b","a","b"]`},
+		{"walk", `return genny.walk([5], [1, 2, 3, 4, 5]).take(100).every(v => v >= 1 && v <= 5)`, `true`},
+		{"walk 2d", `return genny.walk([2, 3], [1, 2, 3, 4, 5, 6]).take(100).every(v => v >= 1 && v <= 6)`, `true`},
+		{"logistic", `return genny.logistic(3.9).take(200).every(v => v >= 0 && v <= 1)`, `true`},
+		{"henon", `return genny.henon().take(200).every(v => Math.abs(v) < 2)`, `true`},
+		{"ramp", `const g = genny.ramp(5, 0, 8); return [g.take(5), g.done()]`, `[[0,2,4,6,8],true]`},
+		{"ramp loop", `return genny.ramp(3, 0, 1, 1, true).take(5)`, `[0,0.5,1,1,1]`},
+		{"euclid 3 of 8", `return genny.euclid(3, 8).take(8).map(x => x ? "x" : ".").join("")`, `"x..x..x."`},
+		{"euclid rotate", `return genny.euclid(3, 8, 1).take(8).filter(x => x).length`, `3`},
+		{"euclid loops", `return genny.euclid(1, 2).take(4)`, `[true,false,true,false]`},
+		{"flatten", `return genny.flatten(genny.sequence([[1, 2], [3]])).take(5)`, `[1,2,3,1,2]`},
+		{"map", `return genny.sequence([1, 2]).map(v => v * 10).take(3)`, `[10,20,10]`},
+		{"map function", `return genny.map([1, 2], v => v + 1).take(2)`, `[2,3]`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := eval(t, c.code)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != c.want {
+				t.Errorf("%s: %s, want %s", c.code, got, c.want)
+			}
+		})
+	}
+	for _, c := range []struct{ code, want string }{
+		{`genny.choice([1, 2], [1])`, "weights"},
+		{`genny.markov({a: {z: 1}})`, "not a state"},
+		{`genny.markov({a: {}})`, "needs"},
+		{`genny.walk([1], [1])`, "2 values"},
+		{`genny.walk([2], [1])`, "grid"},
+		{`genny.ramp(1, 0, 1)`, "2 steps"},
+		{`genny.euclid(9, 8)`, "euclid"},
+		{`genny.map([1], 3)`, "function"},
+	} {
+		if _, err := eval(t, "return "+c.code); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v, want an error of %q", c.code, err, c.want)
+		}
+	}
+}
+
+// the same seed gives the same draws
+func TestGennySeeded(t *testing.T) {
+	code := `return [genny.choice([1,2,3,4]).take(8), genny.rand().take(3), genny.markov({a:{a:1,b:1},b:{a:1,b:1}}).take(8)]`
+	seed := func() string {
+		genny.Seed(3)
+		v, err := eval(t, code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	if a, b := seed(), seed(); a != b {
+		t.Fatalf("%s != %s", a, b)
 	}
 }

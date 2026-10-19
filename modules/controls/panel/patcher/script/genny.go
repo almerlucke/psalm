@@ -30,6 +30,7 @@ import (
 type Gen struct {
 	g  genny.Generator[goja.Value]
 	vm *goja.Runtime
+	r  *Runtime
 }
 
 // Generator is the generator in Go (genny), to use it from Go
@@ -221,7 +222,7 @@ func (r *Runtime) gens(args []goja.Value) []genny.Generator[goja.Value] {
 
 // wrap makes a generator a Gen of the script
 func (r *Runtime) wrap(g genny.Generator[goja.Value]) goja.Value {
-	return r.vm.ToValue(&Gen{g: g, vm: r.vm})
+	return r.vm.ToValue(&Gen{g: g, vm: r.vm, r: r})
 }
 
 // option is an option of a string (by its name), def if it is not given
@@ -316,11 +317,14 @@ func (r *Runtime) gennyObject() *goja.Object {
 	set("constant", func(call goja.FunctionCall) goja.Value { return r.wrap(constant.New(call.Argument(0))) })
 	// rand(lo = 0, hi = 1): a random number
 	set("rand", func(call goja.FunctionCall) goja.Value {
-		hi := 1.0
+		lo, hi := 0.0, 1.0
+		if a := call.Argument(0); !goja.IsUndefined(a) {
+			lo = a.ToFloat()
+		}
 		if a := call.Argument(1); !goja.IsUndefined(a) {
 			hi = a.ToFloat()
 		}
-		return float(rand.New(call.Argument(0).ToFloat(), hi))
+		return float(rand.New(lo, hi))
 	})
 	// rwalk(origin, min, max, step = 0.1, mode = "bounce"): a random walk, steps of up to a part of
 	// the range; at the edges "clip", "bounce" or "jump" (back to the origin)
@@ -332,6 +336,7 @@ func (r *Runtime) gennyObject() *goja.Object {
 		mode := option(vm, call, 4, "rwalk", map[string]rwalk.Mode{"clip": rwalk.Clip, "bounce": rwalk.Bounce, "jump": rwalk.Jump}, rwalk.Bounce)
 		return float(rwalk.New(call.Argument(0).ToFloat(), call.Argument(1).ToFloat(), call.Argument(2).ToFloat(), step, mode))
 	})
+	r.moreGenny(set, float)
 	// from(v): a generator of anything (a function, a function*, an iterator, an array)
 	set("from", func(call goja.FunctionCall) goja.Value { return r.wrap(r.gen(call.Argument(0))) })
 	return o
