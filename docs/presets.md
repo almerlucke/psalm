@@ -434,6 +434,14 @@ The chains of every preset are in the module's side panel in the patcher (see [s
 | impact | Impact | Impact is a low hit: a fold falling from high to low and a sine thump under it, ringing out |
 | zap | Zap | Zap is a short fall in pitch of an FM tone: a game sound |
 
+### Cross modulation
+
+| Name | Function | Sound |
+|---|---|---|
+| xmodBell | XModBell | XModBell is an FM bell: a silent line at 3.5 times the pitch bends the phase of a sine, and the bend dies with the note, so the strike is bright and metallic and the ring is a clean tone |
+| xmodGrowl | XModGrowl | XModGrowl is a bass from a saw-like carrier bent by a line an octave under it, the bend breathing on a slow LFO: the growl of a talking bass |
+| ringMetal | RingMetal | RingMetal is two lines a tritone apart multiplied together: the sum and the difference of their partials, a clang that belongs to no pitch |
+
 ## dx
 
 ### Electric pianos

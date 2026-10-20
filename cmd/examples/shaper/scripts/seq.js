@@ -37,7 +37,7 @@ function section(name) {
   part = parts[name]
   if (!part) return
   pitches = genny.sequence(cycles[part.cycle])
-  set({ preset: part.preset, mono: part.mono ? 1 : 0, legato: part.mono ? 1 : 0, trim: part.trim, oversample: 2, ...(part.tweak || {}) })
+  set({ preset: part.preset, mono: part.mono ? 1 : 0, legato: part.mono ? 1 : 0, trim: part.trim, ...(part.tweak || {}) })
 }
 
 function trigger(ev) {

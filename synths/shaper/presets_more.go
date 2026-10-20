@@ -380,7 +380,7 @@ func Laser() Config {
 	return Config{
 		Chains: [NumChains]string{"mult m1[1,5] | mod 1 | bipolar"}, Macros: [4]float64{0.2}, ShapeAmount: 0.8, ShapeEnv: env(1, 200, 0, 60),
 		PitchAmount: 48, PitchEnv: env(1, 150, 0, 60), Line1: Line{Level: 1},
-		AmpEnv: env(1, 300, 0, 80), Level: 1.44, Filter: lowpass(1500, 0.2, 0.6, 1, 150, 0.2, 60),
+		AmpEnv: env(1, 300, 0, 80), Level: 1.7, Filter: lowpass(1500, 0.2, 0.6, 1, 150, 0.2, 60),
 	}
 }
 
@@ -408,5 +408,39 @@ func Zap() Config {
 	return Config{
 		Chains: [NumChains]string{pm(3, "m1[0,0.5]")}, Macros: [4]float64{0.4}, ShapeAmount: -0.3, ShapeEnv: env(1, 160, 0, 60),
 		PitchAmount: 24, PitchEnv: env(1, 120, 0, 50), Line1: Line{Level: 1}, AmpEnv: env(1, 260, 0, 80), Level: 0.823, Width: 0.3,
+	}
+}
+
+// --- cross modulation ---
+
+// XModBell is an FM bell: a silent line at 3.5 times the pitch bends the phase of a sine, and the bend dies with the
+// note, so the strike is bright and metallic and the ring is a clean tone
+func XModBell() Config {
+	return Config{
+		Chains: [NumChains]string{"sin"},
+		Line1:  Line{Level: 1, Octave: 1, Detune: 968}, Line2: Line{Level: 1}, Width: 0.3,
+		XMod: 0.04, XModSilent: true, AmpEnv: env(1, 2400, 0, 1600), Level: 1.15,
+		Mods: slots(modmatrix.Slot{Src: modmatrix.AmpEnv, Dest: "xmod", Amount: 0.32}),
+	}
+}
+
+// XModGrowl is a bass from a saw-like carrier bent by a line an octave under it, the bend breathing on a slow LFO:
+// the growl of a talking bass
+func XModGrowl() Config {
+	return Config{
+		Chains: [NumChains]string{"sin | softclip 1.8"}, LFO1Rate: 0.4,
+		Line1: Line{Level: 1, Octave: -1}, Line2: Line{Level: 1}, XMod: 0.1, XModSilent: true, Drift: 0.3,
+		AmpEnv: env(4, 300, 0.85, 160), Level: 0.6, Filter: lowpass(1700, 0.2, 0.5, 4, 280, 0.6, 160),
+		Mods: slots(modmatrix.Slot{Src: modmatrix.LFO1, Dest: "xmod", Amount: 0.18}, modmatrix.Slot{Src: modmatrix.Velocity, Dest: "xmod", Amount: 0.15}),
+	}
+}
+
+// RingMetal is two lines a tritone apart multiplied together: the sum and the difference of their partials, a clang that
+// belongs to no pitch
+func RingMetal() Config {
+	return Config{
+		Chains: [NumChains]string{"par(sin, mult 3 | sin | mult 0.3)"},
+		Line1:  Line{Level: 1, Detune: 600}, Line2: Line{Level: 1, Detune: -3}, XMod: 1, XModType: 1, XModSilent: true, Width: 0.4, Drift: 0.2,
+		AmpEnv: env(1, 1800, 0, 1100), Level: 1.2,
 	}
 }

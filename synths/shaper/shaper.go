@@ -74,7 +74,18 @@ type Config struct {
 	Noise      float64
 	NoiseColor float64
 
-	Oversample int     // how many times a sample the chains are read: 1 (off), 2, 4 or 8; 0 is automatic: as many as the chains and the pitch ask for (see pickFactor), up to 4
+	// XMod lets line 1 act on line 2 (0 is off): XModType 0 bends the phase of line 2 by the wave of line 1 (an FM sound; the
+	// amount is the index, up to a whole turn, and the octave and detune of the lines the ratio), 1 multiplies the two (a ring
+	// modulator, the amount blends it in). XModSilent hides line 1 itself: it only modulates. The amount is a destination
+	// of the matrix ("xmod")
+	XMod       float64
+	XModType   int
+	XModSilent bool
+
+	// Oversample is how many times a sample the chains are read: 1 (off), 2, 4 or 8. 0 is automatic: a chain that fits under half
+	// the sample rate at the pitch is read as it is, and one that doesn't is read from tables (see tables.go), which hold only the
+	// harmonics that fit
+	Oversample int
 	Width      float64 // 0-1: line 1 to the left, line 2 to the right
 	Level      float64 // output level (0 is treated as 1)
 	// Trim is dB on top of Level for the mix: it is not a part of a preset (loading one leaves it), so a script can
@@ -150,6 +161,7 @@ const (
 	dDetune
 	dCutoff
 	dResonance
+	dXmod
 	numDests
 )
 
@@ -169,6 +181,7 @@ var Dests = []modmatrix.Dest{
 	dDetune:    {Key: "detune2", Label: "detune 2", Span: 100},
 	dCutoff:    {Key: "cutoff", Label: "cutoff", Span: 6},
 	dResonance: {Key: "resonance", Label: "resonance", Span: 1},
+	dXmod:      {Key: "xmod", Label: "cross mod", Span: 1},
 }
 
 // The value inputs of a voice: 1 sets the morph, 5 to 8 the values of the matrix (Ext 1 to 4)
@@ -239,6 +252,14 @@ type Voice struct {
 	drifts     []drifter
 	copyDrift  [2 * MaxUnison]float64 // the pitch drift of each copy, a ratio
 	voiceDrift [3]float64             // morph, cutoff (octaves), pitch (ratio)
+	// the tables of the lines (see tables.go), used when table says so; bwEff is the harmonics the chains hold
+	tables    [2]lineTables
+	table     bool
+	bwEff     int
+	macroUsed [shapechain.NumMacros]bool
+	scratch   tableScratch
+	smXmod    float64
+	swapGen   int // counts the swaps of a chain under a note: a table fades to the new chains
 }
 
 // drifter is a slow random wander in -1 to 1: a new target a few times a second, eased to
@@ -332,6 +353,7 @@ func (v *Voice) setChain(i int, chain any) {
 			v.old, v.oldNum = v.chains, v.numChains
 		}
 		v.xfLeft = int(chainFade * v.Config().SampleRate)
+		v.swapGen++
 	}
 	v.chains[i] = c
 	if c != nil {
@@ -374,6 +396,16 @@ func (v *Voice) pickFactor() {
 			f = max(f, need)
 		}
 	}
+	v.bwEff = 1
+	v.macroUsed = [shapechain.NumMacros]bool{}
+	for i := 0; i < v.numChains; i++ {
+		v.bwEff = max(v.bwEff, v.chains[i].Bandwidth())
+		for m := range v.macroUsed {
+			v.macroUsed[m] = v.macroUsed[m] || v.chains[i].Uses(m+1)
+		}
+	}
+	// from tables: when the chains need more than one time a sample, and for a unison, which reads one table for all its copies
+	v.table = v.cfg.Oversample == 0 && (f > 1 || v.cfg.Unison > 1)
 	if f != v.osFactor {
 		v.osFactor = f
 		for k := range v.os {
@@ -414,6 +446,7 @@ func (v *Voice) apply(c Config) {
 	cfg.Oversample = oversampleFactor(c.Oversample)
 	cfg.Unison, cfg.Spread, cfg.UniStereo = max(1, min(c.Unison, MaxUnison)), c.Spread, c.UniStereo
 	cfg.Drift, cfg.Sub, cfg.Noise, cfg.NoiseColor = c.Drift, c.Sub, c.Noise, c.NoiseColor
+	cfg.XMod, cfg.XModType, cfg.XModSilent = c.XMod, c.XModType, c.XModSilent
 	if c.AmpEnv != (adsr.Setting{}) {
 		cfg.AmpEnv = c.AmpEnv
 	}
@@ -510,6 +543,9 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("sub", func(f float64) { v.cfg.Sub = clamp01(f) })
 	msg.IfFltVal("noise", func(f float64) { v.cfg.Noise = clamp01(f) })
 	msg.IfFltVal("noiseColor", func(f float64) { v.cfg.NoiseColor = math.Max(-1, math.Min(f, 1)) })
+	msg.IfFltVal("xmod", func(f float64) { v.cfg.XMod = clamp01(f) })
+	msg.IfIntVal("xmodType", func(n int) { v.cfg.XModType = max(0, min(n, 1)) })
+	msg.IfBoolVal("xmodSilent", func(b bool) { v.cfg.XModSilent = b })
 	msg.IfFltVal("width", func(f float64) { v.cfg.Width = f })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
 	msg.IfFltVal("trim", func(f float64) { v.cfg.Trim = math.Max(-48, math.Min(f, 24)) })
@@ -587,6 +623,7 @@ func (v *Voice) startNote(mode adsr.ReleaseMode, duration, amplitude float64, me
 		v.uni = max(1, min(v.cfg.Unison, MaxUnison))
 		v.phase = [2 * MaxUnison]float64{}
 		v.subPh = 0
+		v.tables[0].valid, v.tables[1].valid = false, false
 		if v.uni > 1 {
 			r := v.Rand()
 			for k := range 2 {
@@ -635,6 +672,7 @@ func (v *Voice) Clear() {
 	v.pending = nil
 	v.phase = [2 * MaxUnison]float64{}
 	v.subPh = 0
+	v.tables[0].valid, v.tables[1].valid = false, false
 	v.noiseLP = [2]float64{}
 	for _, line := range v.os {
 		for _, o := range line {
@@ -757,6 +795,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 	vibModded := modded && mods.Targets(dVibrato)
 	levelModded := modded && mods.Targets(dLevel)
 	detuneModded := modded && mods.Targets(dDetune)
+	xmodModded := modded && mods.Targets(dXmod)
 	filtered := v.filter.On()
 	filterTick := filtered || (modded && mods.Uses(modmatrix.FilterEnv))
 	morphEnvOn := cfg.MorphAmount != 0
@@ -923,11 +962,19 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 			gainT = math.Max(0, level+mods.Mod(dLevel)) * v.amp
 		}
 		widthT := math.Max(0, math.Min(cfg.Width+mods.Mod(dWidth), 1))
+		xmodT := cfg.XMod
+		if xmodModded {
+			xmodT += mods.Mod(dXmod)
+		}
+		xmodT = clamp01(xmodT)
 		lvlT := [2]float64{orOne(cfg.Line1.Level), math.Max(0, cfg.Line2.Level)}
+		if cfg.XModSilent && xmodT > 1e-4 {
+			lvlT[0] = 0 // line 1 is heard only in line 2
+		}
 		if v.snap {
 			v.snap = false
 			v.smMorph, v.smMacros, v.smGain, v.smWidth, v.smLvl = morph, macros, gainT, widthT, lvlT
-			v.smUniSt, v.smSub, v.smNoise = cfg.UniStereo, cfg.Sub, cfg.Noise
+			v.smUniSt, v.smSub, v.smNoise, v.smXmod = cfg.UniStereo, cfg.Sub, cfg.Noise, xmodT
 			panned, pannedU = widthT, v.smUniSt
 			setPans(panned, pannedU)
 			// the mean of the wave of each line over one cycle: a lopsided wave (a narrow pulse) is not
@@ -950,6 +997,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 			v.smLvl[0] += (lvlT[0] - v.smLvl[0]) * smooth
 			v.smLvl[1] += (lvlT[1] - v.smLvl[1]) * smooth
 			v.smUniSt += (cfg.UniStereo - v.smUniSt) * smooth
+			v.smXmod += (xmodT - v.smXmod) * smooth
 			v.smSub += (cfg.Sub - v.smSub) * smooth
 			v.smNoise += (cfg.Noise - v.smNoise) * smooth
 			if v.t%4 == 0 && (math.Abs(v.smWidth-panned) > 1e-5 || math.Abs(v.smUniSt-pannedU) > 1e-5) {
@@ -992,10 +1040,13 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 			ratio[1] = math.Exp2(float64(cfg.Line2.Octave) + (cfg.Line2.Detune+mods.Mod(dDetune))/1200)
 		}
 		var o [2]float64
+		// the cross modulation: what line 1 is this sample (the mean of its copies, no level, no envelope) acts on line 2
+		xmodOn := v.smXmod > 1e-4 && v.smLvl[1] > 1e-4
+		modSig := 0.0
 		for k := 0; k < 2; k++ {
 			l := v.line(k)
 			lvl := v.smLvl[k]
-			if lvl < 1e-4 {
+			if lvl < 1e-4 && !(k == 0 && xmodOn) {
 				continue
 			}
 			base := f * ratio[k] / sr
@@ -1007,16 +1058,53 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 				continue
 			}
 			pos := clamp01(v.smMorph + l.Morph)
+			// from tables: made when the line has none, and again when the wave or the pitch has moved from what the
+			// current one was made for; the sound fades from the old table to the new one
+			w := 1.0
+			var tcur, tprev *waveTable
+			if v.table {
+				lt := &v.tables[k]
+				fTop := f * ratio[k] * spreadRatio[uni-1] * 1.01
+				switch {
+				case !lt.valid:
+					v.buildTable(lt, pos, &v.smMacros, fTop)
+				case lt.gen != v.swapGen: // a chain was swapped: fade to the table of the new chains as the voice does
+					v.rebuildTable(lt, pos, &v.smMacros, fTop, true)
+				case v.t%4 == 0 && v.tableDue(lt, pos, &v.smMacros, fTop):
+					v.rebuildTable(lt, pos, &v.smMacros, fTop, false)
+				}
+				if lt.blend < 1 {
+					lt.blend = math.Min(1, lt.blend+lt.blendInc)
+					w = lt.blend
+					tprev = &lt.buf[lt.prev]
+				}
+				tcur = &lt.buf[lt.cur]
+			}
+			pm := 0.0 // the phase of line 2 bent by line 1, in turns
+			if k == 1 && xmodOn && cfg.XModType == 0 {
+				pm = v.smXmod * modSig
+			}
 			var raw [MaxUnison]float64
 			mean := 0.0
 			for j := range uni {
 				c := k*MaxUnison + j
 				inc := base * spreadRatio[j] * v.copyDrift[c]
 				ph := v.phase[c]
+				rd := ph // where the wave is read
+				if pm != 0 {
+					rd = ph + pm
+					rd -= math.Floor(rd)
+				}
 				var s float64
-				if factor == 1 {
-					s = v.wave(ph, pos, &v.smMacros)
-				} else {
+				switch {
+				case tcur != nil:
+					s = tcur.read(rd)
+					if tprev != nil {
+						s = tprev.read(rd)*(1-w) + s*w
+					}
+				case factor == 1:
+					s = v.wave(rd, pos, &v.smMacros)
+				default:
 					step := inc * invFactor
 					os, ready := v.oversampler(c)
 					// the sampler delays by its filter: read the wave that far ahead and what comes out is the
@@ -1024,7 +1112,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 					ahead := os.DownDelay() * inc
 					if !*ready {
 						for b := 20; b > 0; b-- { // fill its history with the wave just before now
-							pb := ph + ahead - float64(b)*inc
+							pb := rd + ahead - float64(b)*inc
 							os.Down(func(j int) float64 {
 								p := pb + float64(j)*step
 								return v.wave(p-math.Floor(p), pos, &v.smMacros)
@@ -1033,7 +1121,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 						*ready = true
 					}
 					s = os.Down(func(j int) float64 {
-						p := ph + ahead + float64(j)*step
+						p := rd + ahead + float64(j)*step
 						return v.wave(p-math.Floor(p), pos, &v.smMacros)
 					})
 				}
@@ -1045,14 +1133,25 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 				ph += inc
 				v.phase[c] = ph - math.Floor(ph)
 			}
-			v.dcEst[k] += (mean/float64(uni) - v.dcEst[k]) * dcTrack // the mean moves with the macros, slowly
+			if tcur != nil {
+				v.dcEst[k] = 0 // a table has no offset
+			} else {
+				v.dcEst[k] += (mean/float64(uni) - v.dcEst[k]) * dcTrack // the mean moves with the macros, slowly
+			}
+			if k == 0 && xmodOn {
+				modSig = math.Max(-1.5, math.Min((mean/float64(uni))-v.dcEst[0], 1.5))
+			}
 			amp := dca * lvl * uniNorm
+			ring := k == 1 && xmodOn && cfg.XModType == 1
 			for j := range uni {
 				s := raw[j] - v.dcEst[k]
 				if s > 2 {
 					s = 2
 				} else if s < -2 {
 					s = -2
+				}
+				if ring {
+					s *= 1 - v.smXmod + v.smXmod*1.6*modSig
 				}
 				c := k*MaxUnison + j
 				o[0] += s * amp * v.gL[c]

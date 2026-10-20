@@ -1705,24 +1705,29 @@ the synth keeps the chain it had.
 | `Unison`, `Spread`, `UniStereo` | copies of each line (1 to 7, taken when a note starts on a silent voice; the level stays the same), the outer ones `Spread` cents (0-100) under and over the pitch, and spread across the stereo field by `UniStereo` (0-1). Each copy costs as much as a line, so a pad of eight voices at 3 copies is six times the work of one; keep `Oversample` at 1 there |
 | `Drift` | 0-1: every copy, the morph and the cutoff wander slowly and at random (a few cents, a few hundredths of the morph), as the oscillators of an analog synth do, so chords are never the same twice |
 | `Sub`, `Noise`, `NoiseColor` | a sine an octave under the note (0-1); white noise (0-1) made dark (under 0) or bright (over 0) by `NoiseColor` (-1 to 1): breath in a flute, air on a pad, grit on a bass. Both go through the voice filter |
-| `Oversample` | how many times a sample the chains are read: 0 (the start) is automatic, or 1 (off), 2, 4, 8 |
+| `XMod`, `XModType`, `XModSilent` | line 1 acting on line 2 (0 is off): type 0 bends the phase of line 2 by the wave of line 1 (FM: the amount is the index, up to a whole turn, and the octave and detune of the lines are the ratio, 3.5 for a bell with `Octave: 1, Detune: 968`), type 1 multiplies the two (a ring modulator, the amount blends it in). `XModSilent` hides line 1: it only modulates. `xmod` is also a destination of the matrix (an envelope that dies with the note makes a bell, an LFO a growl) |
+| `Oversample` | how many times a sample the chains are read: 0 (the start) is automatic (see below), or 1 (off), 2, 4, 8 |
 | `VibratoRate/Depth/Delay`, `LFO1Rate`, `LFO1Sync`, `LFO2Rate`, `LFO2Shape` | a vibrato and the two LFOs of the matrix |
-| `Filter`, `Mods`, `Ext` | the [voice filter](#the-voice-filter) (off at first) and the [matrix](#modulation-matrix): filter env, amp env, lfo 1, lfo 2, velocity, key, random, wheel, Ext 1-4 to `morph`, `macro1`-`macro4`, `pitch`, `vibratoDepth`, `width`, `level`, `detune2`, `cutoff`, `resonance` |
+| `Filter`, `Mods`, `Ext` | the [voice filter](#the-voice-filter) (off at first) and the [matrix](#modulation-matrix): filter env, amp env, lfo 1, lfo 2, velocity, key, random, wheel, Ext 1-4 to `morph`, `macro1`-`macro4`, `pitch`, `vibratoDepth`, `width`, `level`, `detune2`, `cutoff`, `resonance`, `xmod` |
 
-**Aliasing and cost.** Folds, `mod`, `quantize` and steep curves make harmonics far above the pitch. The
-synth reads the chain several times a sample (`Oversample`) and low-passes the result before it keeps
-one (`blocks/oversample`), so most of what would fold back is gone. Reading costs time, so by default
-(`Oversample` 0, "auto") the synth works out how much it needs: `Chain.Bandwidth()` looks at the
-spectrum of each chain (with each macro it uses at 0, half and 1) and finds the highest harmonic
-that has a say, and from that and the pitch of the note (and its lines) the voice reads the chain
-once a sample when everything stays under half the sample rate (a sine, a few partials: the organ,
-the vowels and the metal presets), twice for a fold, and four times for a sharp edge (a saw, a
-pulse, steps, hard sync: those have harmonics without an end). A chain sent to a sounding voice
-changes it. Set `Oversample` yourself to fix it (8 costs twice what 4 does). A voice also stops
-working out a line once its amp envelope is below -100 dB, the end of a long release. A voice costs
-roughly 0.2 to 0.5 microseconds a sample (1 to 2% of a core) with the chains of the presets, a tenth
-of that for a sine alone; a test checks that a saw at 3 kHz has its alias more than three times lower at 4 times
-than at 1.
+**Aliasing and cost.** Folds, `mod`, `quantize` and steep curves make harmonics far above the pitch. By default
+(`Oversample` 0, "auto") the synth works out what it needs: `Chain.Bandwidth()` looks at the spectrum of each chain (with
+each macro it uses at 0, half and 1) and finds the highest harmonic that has a say, and from that and the pitch of the
+note (and its lines) the voice reads the chain once a sample when everything stays under half the sample rate (a sine, a
+few partials: the organ, the vowels and the metal presets). A chain with more than that, a fold or a sharp edge (a saw, a
+pulse, steps, hard sync: harmonics without an end), is read from **tables**: one cycle of the wave of each line is worked
+out (the chains at the morph and the macros it has now), cut with an FFT to the harmonics that fit under half the sample
+rate at the pitch, and played by a cubic reading, which is a few multiplications. All the copies of a unison read the same
+table, so a unison with a narrow chain uses one too. When the morph or a macro has moved a little (0.01) a new table is
+made and the sound fades from the old one to it, so a sweep or an LFO is a series of small steps no one hears (a line makes a table at most once every half table of samples, so a fast envelope on a macro costs a couple of chain evaluations a sample and not more, and the fades between the tables keep it smooth); a chain
+swapped under a note fades over the twelve milliseconds it always did; a pitch that rises until the table would fold back,
+or falls far enough to make it dull, gets a new one. A table has no aliasing and keeps the harmonics of the chain to a
+tenth of a decibel (a test compares them with the wave read eight times a sample), and costs a fifth of reading it
+four times: `supersawLead` costs 0.3 microseconds a sample against 2.0 with 4 times oversampling. Set `Oversample` yourself to
+fix it: 1 reads the chain once a sample whatever it is (cheap, and it folds), 2, 4 and 8 read it that many times and low-pass
+the result (`blocks/oversample`; 8 costs twice what 4 does). A voice also stops working out a line once its amp envelope
+is below -100 dB, the end of a long release. The cross modulation does not take care of what it makes above half the sample
+rate: keep the index moderate for high notes.
 
 **Presets by message.** The message `preset` makes a voice a preset by name (`set({preset: "reese"})` from a script,
 `shaper.NewPoly(...).ReceiveMessage(psalm.Message{"preset": "reese"})`): every setting of it, the chains, envelopes, lines, filter,
@@ -1748,17 +1753,17 @@ that a small speaker plays as a tick.
 `*shapechain.Chain` read already, which is what the patcher sends), `octave1/2`, `detune1/2`,
 `level1/2`, `morph1/2`, `morphAmount`, `shapeAmount`, `oversample` (0-4: auto, off, 2x, 4x, 8x), `width`,
 `unison` (1-7), `spread`, `uniStereo`, `drift`, `sub`, `noise`, `noiseColor`,
-`level`, `vibratoDepth`, `vibratoRate`, `lfo1Rate`, `lfo2Rate`, `lfo2Shape`, the envelopes `amp`,
+`level`, `xmod`, `xmodType`, `xmodSilent`, `vibratoDepth`, `vibratoRate`, `lfo1Rate`, `lfo2Rate`, `lfo2Shape`, the envelopes `amp`,
 `morphEnv`, `shapeEnv`, `pitchEnv` and `filter`, the filter and the matrix, and the [pitch bend, mod wheel and
 aftertouch](#pitch-bend-mod-wheel-and-aftertouch). **Value input** 1: the morph; 5 to 8: Ext 1-4.
 
-Presets: 52 in seven families (see [presets](presets.md#shaper), and `go run ./cmd/examples/presets -synth shaper`
+Presets: 55 in eight families (see [presets](presets.md#shaper), and `go run ./cmd/examples/presets -synth shaper`
 plays them all): basses (`subSine`, `kickSub`, `reese`, `acid`, `wobble`, `pulseBass`, `fmBass`, `growl`, `subFold`),
 leads (`supersawLead`, `squareLead`, `syncLead`, `pluckLead`, `fmLead`, `fluteLead`, `brassLead`, `vowel`, `reed`), pads
 (`warmPad`, `stringPad`, `choirPad`, `airPad`, `darkPad`, `evolve`, `glassPad`, `foldPad`, `morphPad`, `swarm`, `organ`), keys and
 plucks (`pluck`, `harp`, `kalimba`, `marimba`, `ePiano`, `clav`, `vibes`, `stab`, `musicBox`, `pwm`), bells (`bellMorph`,
 `glassBell`, `churchBell`, `gong`, `metal`, `glass`), drones (`drone5`, `subDrone`, `crush`) and effects (`laser`, `riser`,
-`impact`, `zap`). A test plays every one and holds it to the same measures: no clipping, as loud as the others, nothing
+`impact`, `zap`) and cross modulation (`xmodBell`, `xmodGrowl`, `ringMetal`). A test plays every one and holds it to the same measures: no clipping, as loud as the others, nothing
 shrill, silent after the key is let go, and not like another.
 
 In the patcher the synth is a module of its own (Synths, "shaper"): its four chains are boxes in the

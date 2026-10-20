@@ -13,7 +13,11 @@ p := psalm.New(nil)
 
 stats, err := render.ToFile(p, "song.wav", render.Options{Seconds: 180, Tail: 10})
 fmt.Println(stats) // rendered 184.2 s in 31.0 s: 5.9x real time (17% of a core live), peak -1.3 dB, ...
+                   // buffers: 99% under 2.3 ms, the longest 5.3 ms, 0 of 58227 over the 5.8 ms a buffer lasts
 ```
+
+The last line is the time every buffer took (`P99`, `Worst`, `Late` of the `Stats`): the average of a whole render hides
+the buffers that take longer than they last, and live those are dropouts. `Late` should be 0.
 
 `Options`: `Seconds` to render, `Tail` up to this many seconds more while the output still sounds
 (it stops once it is silent, `Silence` dB, -80), and `Until`: a function that keeps the render

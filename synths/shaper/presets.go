@@ -28,6 +28,8 @@ var Presets = map[string]func() Config{
 	"drone5": Drone5, "subDrone": SubDrone, "crush": Crush,
 	// effects
 	"laser": Laser, "riser": Riser, "impact": Impact, "zap": Zap,
+	// cross modulation: line 1 on line 2
+	"xmodBell": XModBell, "xmodGrowl": XModGrowl, "ringMetal": RingMetal,
 }
 
 // env is an envelope: attack to 1, decay to a level, release (milliseconds)

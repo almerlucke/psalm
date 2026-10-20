@@ -40,6 +40,13 @@ type Stats struct {
 	Peak     float64       // dB, of the output
 	RMS      float64       // dB, of the output
 	Loudness float64       // LUFS integrated, of the output
+
+	// the time every buffer took to make: the 99th percentile, the longest, and how many took longer than the buffer lasts
+	// (live, those are dropouts: the average of a whole render hides them)
+	P99, Worst time.Duration
+	Late       int
+	Buffers    int
+	Budget     time.Duration // the length of a buffer
 }
 
 // Speed returns how many times faster than real time the render ran
@@ -56,8 +63,11 @@ func (s Stats) Load() float64 {
 }
 
 func (s Stats) String() string {
-	return fmt.Sprintf("rendered %.1f s in %.1f s: %.1fx real time (%.0f%% of a core live), peak %.1f dB, rms %.1f dB, %.1f LUFS",
-		s.Seconds, s.Elapsed.Seconds(), s.Speed(), 100*s.Load(), s.Peak, s.RMS, s.Loudness)
+	ms := func(d time.Duration) float64 { return d.Seconds() * 1000 }
+	return fmt.Sprintf("rendered %.1f s in %.1f s: %.1fx real time (%.0f%% of a core live), peak %.1f dB, rms %.1f dB, %.1f LUFS\n"+
+		"buffers: 99%% under %.1f ms, the longest %.1f ms, %d of %d over the %.1f ms a buffer lasts",
+		s.Seconds, s.Elapsed.Seconds(), s.Speed(), 100*s.Load(), s.Peak, s.RMS, s.Loudness,
+		ms(s.P99), ms(s.Worst), s.Late, s.Buffers, ms(s.Budget))
 }
 
 // Run renders a patch offline, calling each (when not nil) with the output after every buffer
@@ -74,6 +84,7 @@ func Run(p *psalm.Psalm, opts Options, each func(out psalm.Channels)) Stats {
 		start      = time.Now()
 		rendered   = 0
 		quietCount = 0
+		took       []time.Duration // every buffer
 	)
 	if silence == 0 {
 		silence = -80
@@ -91,7 +102,9 @@ func Run(p *psalm.Psalm, opts Options, each func(out psalm.Channels)) Stats {
 			}
 		}
 		p.ResetRun()
+		t0 := time.Now()
 		p.Run()
+		took = append(took, time.Since(t0))
 		out := p.Output(0).Channels
 		m.Input(0).Channels.Copy(out)
 		m.Synthesize()
@@ -118,13 +131,25 @@ func Run(p *psalm.Psalm, opts Options, each func(out psalm.Channels)) Stats {
 		}
 	}
 
-	return Stats{
+	st := Stats{
 		Seconds:  float64(rendered*bs) / sr,
 		Elapsed:  time.Since(start),
 		Peak:     m.Peak(),
 		RMS:      m.RMS(),
 		Loudness: m.Loudness().Integrated(),
+		Buffers:  len(took),
+		Budget:   time.Duration(float64(bs) / sr * float64(time.Second)),
 	}
+	if len(took) > 0 {
+		for _, d := range took {
+			if d > st.Budget {
+				st.Late++
+			}
+		}
+		slices.Sort(took)
+		st.P99, st.Worst = took[len(took)*99/100], took[len(took)-1]
+	}
+	return st
 }
 
 // fileWriter writes stereo 32 bit float WAV files

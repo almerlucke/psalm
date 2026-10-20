@@ -8,7 +8,7 @@ import (
 )
 
 // OversampleNames are the names of the Oversamples, by number
-var OversampleNames = []string{"auto", "off", "2x", "4x", "8x"}
+var OversampleNames = []string{"auto (tables)", "off", "2x", "4x", "8x"}
 
 // Describe describes the settings of a voice set as cfg: every message that changes one, its range,
 // and where it is in cfg (see params). The chains are text (ChainKeys), not described
@@ -59,6 +59,10 @@ func Describe(cfg Config) params.Set {
 		params.K("Fullness", "sub", 0, 1, cfg.Sub, params.Label("sub (octave under)")),
 		params.K("Fullness", "noise", 0, 1, cfg.Noise),
 		params.K("Fullness", "noiseColor", -1, 1, cfg.NoiseColor, params.Label("noise colour (dark - bright)")),
+
+		params.K("Cross", "xmod", 0, 1, cfg.XMod, params.Label("cross mod (line 1 on line 2)")),
+		params.C("Cross", "xmodType", []string{"phase", "ring"}, max(0, min(cfg.XModType, 1)), params.Label("cross mod type")),
+		params.S("Cross", "xmodSilent", cfg.XModSilent, params.Label("line 1 silent (only modulates)")),
 
 		params.C("Voice", "oversample", OversampleNames, over),
 		params.K("Voice", "pitchAmount", -48, 48, cfg.PitchAmount, params.Unit("st"), params.Label("pitch env amount")),
