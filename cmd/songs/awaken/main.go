@@ -1,4 +1,4 @@
-// Shaper: a piece of electronic music without drums, played by scripts, to hear what the shaper synth
+// Awaken: a piece of electronic music without drums, played by scripts, to hear what the shaper synth
 // can do. Seven scripts: one holds the score (the chords of the piece, D minor with an Eb over the D and a lift to
 // Bb major, a notation for lines), five play a shaper synth each: a sequencer (a short cycle of notes with rests
 // in it, a cycle of seven against sixteen steps), an arpeggio (a euclidean rhythm turned a step every bar), a pad
@@ -16,10 +16,10 @@
 // it plays (Ctrl+Enter takes it), the song's tiles play a section next. Every setting of the synths is
 // in their side panels, their chains too.
 //
-//	go run ./cmd/examples/shaper
-//	go run ./cmd/examples/shaper -render shaper.wav -seed 7      render it to a file (-stems: the five parts too)
-//	go run ./cmd/examples/shaper -profile                        the time every module takes
-//	go run ./cmd/examples/shaper -theme midnight -addr localhost:8088
+//	go run ./cmd/songs/awaken
+//	go run ./cmd/songs/awaken -render awaken.wav -seed 7      render it to a file (-stems: the five parts too)
+//	go run ./cmd/songs/awaken -profile                        the time every module takes
+//	go run ./cmd/songs/awaken -theme midnight -addr localhost:8088
 package main
 
 import (
@@ -66,7 +66,7 @@ func main() {
 	if !ok {
 		log.Fatalf("theme %q: one of %v", *theme, slices.Sorted(maps.Keys(panel.Themes)))
 	}
-	ctl := panel.New(p, "Shaper")
+	ctl := panel.New(p, "Awaken")
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
 	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}), patcher.Theme(t))
