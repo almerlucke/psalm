@@ -56,3 +56,6 @@ setlist-midi.json
 
 # sample libraries kept locally (large)
 assets/Virtual-Playing-Orchestra3/
+
+# renders in the root of the repository
+/*.wav
