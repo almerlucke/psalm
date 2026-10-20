@@ -442,6 +442,24 @@ The chains of every preset are in the module's side panel in the patcher (see [s
 | xmodGrowl | XModGrowl | XModGrowl is a bass from a saw-like carrier bent by a line an octave under it, the bend breathing on a slow LFO: the growl of a talking bass |
 | ringMetal | RingMetal | RingMetal is two lines a tritone apart multiplied together: the sum and the difference of their partials, a clang that belongs to no pitch |
 
+### Beyond
+
+Sounds only this synth makes: the wave itself travels, changes with the key or the touch, is drawn anew with every note, rings with partials that belong to no pitch, or is a drum.
+
+| Name | Function | Sound |
+|---|---|---|
+| rainbow | Rainbow | a pad that travels through four colours in one held chord (a sine, a bend of two sines, a fold, the partials 1, 3, 7 and 12): the morph envelope takes six seconds and a slow wander rides on it |
+| crystalSea | CrystalSea | a pad that does not repeat: waves of twelve and seven seconds move the morph and a macro, every note a third, so it never comes back to the same place |
+| fourBeasts | FourBeasts | four instruments on the keys: the note pulls the morph, a lion (folded FM) low, an ox (a hollow square), a man (a voice with its overtones) and an eagle (bright partials) high |
+| trumpetVoice | TrumpetVoice | a hollow breath played softly and brass played hard: the strength of the touch bends the wave, folds it and opens the filter, and the swell of the morph lags the note |
+| sevenLamps | SevenLamps | a bell of fire: one sine bends the phase of another at seven to three, so its partials fall where no harmonic series puts them, and the bend flickers as it dies |
+| crownsCast | CrownsCast | a clatter of gold: two lines multiplied, the sums and differences of all their partials, dying in a second |
+| thunder | Thunder | a sine falling two octaves with a fold and a rumble: a kick low, a tom higher |
+| lightning | Lightning | noise through a band that follows the key: a snare low, a hat high (the thunder and the lightning are a drum kit from one synth) |
+| lionBass | LionBass | a purr when touched softly and a roar when hard: the velocity folds the wave |
+| throneDrone | ThroneDrone | a drone of the partials 1, 3, 7 and 12 whose levels breathe against one another on waves of twelve and seven seconds |
+| manyEyes | ManyEyes | a lead that draws itself anew with every note (morph, fold and bend from a random value for the note) |
+
 ## dx
 
 ### Electric pianos

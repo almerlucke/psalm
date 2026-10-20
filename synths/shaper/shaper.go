@@ -871,7 +871,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 	}
 	// the noise: white, made dark (a low pass) or bright (a high pass) by its colour
 	noiseOn := cfg.Noise > 0 || v.smNoise > 1e-4
-	var noiseA float64
+	var noiseA, noiseDark float64 // the one pole's coefficient, and the make-up gain of dark noise
 	if noiseOn {
 		if v.noiseRng == 0 {
 			v.noiseRng = v.Rand().Uint64() | 1
@@ -879,6 +879,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 		fc := 20000.0
 		if cfg.NoiseColor < 0 {
 			fc = 250 * math.Pow(80, 1+cfg.NoiseColor)
+			noiseDark = math.Min(6, math.Pow(20000/fc, 0.35))
 		} else if cfg.NoiseColor > 0 {
 			fc = 250 * math.Pow(32, cfg.NoiseColor)
 		}
@@ -1190,7 +1191,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 				v.noiseLP[c] += (x - v.noiseLP[c]) * noiseA
 				switch {
 				case cfg.NoiseColor < 0:
-					x = v.noiseLP[c] * math.Min(6, math.Pow(20000/(250*math.Pow(80, 1+cfg.NoiseColor)), 0.35))
+					x = v.noiseLP[c] * noiseDark
 				case cfg.NoiseColor > 0:
 					x -= v.noiseLP[c]
 				}

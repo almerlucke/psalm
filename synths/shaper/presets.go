@@ -30,6 +30,10 @@ var Presets = map[string]func() Config{
 	"laser": Laser, "riser": Riser, "impact": Impact, "zap": Zap,
 	// cross modulation: line 1 on line 2
 	"xmodBell": XModBell, "xmodGrowl": XModGrowl, "ringMetal": RingMetal,
+	// beyond: what only this synth does
+	"rainbow": Rainbow, "crystalSea": CrystalSea, "fourBeasts": FourBeasts, "trumpetVoice": TrumpetVoice, "sevenLamps": SevenLamps,
+	"crownsCast": CrownsCast, "thunder": Thunder, "lightning": Lightning, "lionBass": LionBass, "throneDrone": ThroneDrone,
+	"manyEyes": ManyEyes,
 }
 
 // env is an envelope: attack to 1, decay to a level, release (milliseconds)

@@ -1757,13 +1757,13 @@ that a small speaker plays as a tick.
 `morphEnv`, `shapeEnv`, `pitchEnv` and `filter`, the filter and the matrix, and the [pitch bend, mod wheel and
 aftertouch](#pitch-bend-mod-wheel-and-aftertouch). **Value input** 1: the morph; 5 to 8: Ext 1-4.
 
-Presets: 55 in eight families (see [presets](presets.md#shaper), and `go run ./cmd/examples/presets -synth shaper`
+Presets: 66 in nine families (see [presets](presets.md#shaper), and `go run ./cmd/examples/presets -synth shaper`
 plays them all): basses (`subSine`, `kickSub`, `reese`, `acid`, `wobble`, `pulseBass`, `fmBass`, `growl`, `subFold`),
 leads (`supersawLead`, `squareLead`, `syncLead`, `pluckLead`, `fmLead`, `fluteLead`, `brassLead`, `vowel`, `reed`), pads
 (`warmPad`, `stringPad`, `choirPad`, `airPad`, `darkPad`, `evolve`, `glassPad`, `foldPad`, `morphPad`, `swarm`, `organ`), keys and
 plucks (`pluck`, `harp`, `kalimba`, `marimba`, `ePiano`, `clav`, `vibes`, `stab`, `musicBox`, `pwm`), bells (`bellMorph`,
 `glassBell`, `churchBell`, `gong`, `metal`, `glass`), drones (`drone5`, `subDrone`, `crush`) and effects (`laser`, `riser`,
-`impact`, `zap`) and cross modulation (`xmodBell`, `xmodGrowl`, `ringMetal`). A test plays every one and holds it to the same measures: no clipping, as loud as the others, nothing
+`impact`, `zap`) cross modulation (`xmodBell`, `xmodGrowl`, `ringMetal`) and beyond, what only this synth does (`rainbow`, `crystalSea`, `fourBeasts`, `trumpetVoice`, `sevenLamps`, `crownsCast`, `thunder`, `lightning`, `lionBass`, `throneDrone`, `manyEyes`). A test plays every one and holds it to the same measures: no clipping, as loud as the others, nothing
 shrill, silent after the key is let go, and not like another.
 
 In the patcher the synth is a module of its own (Synths, "shaper"): its four chains are boxes in the

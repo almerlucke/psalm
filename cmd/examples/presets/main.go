@@ -1,4 +1,4 @@
-// Presets: a tour of the showcase presets of the synths (the shaper synth's all fifty-two), each playing what suits it for two bars: a
+// Presets: a tour of the showcase presets of the synths (the shaper synth's all sixty-six), each playing what suits it for two bars: a
 // chord for pads and drones, a line for leads, an arpeggio for plucks, a bass line for basses, a beat
 // for the drum kits. The name of each prints as it starts.
 //
@@ -177,6 +177,17 @@ func main() {
 		{"shaper", "xmodBell", arp, 0, sh(shaper.XModBell)},
 		{"shaper", "xmodGrowl", held, -1, sh(shaper.XModGrowl)},
 		{"shaper", "ringMetal", hits, 0, sh(shaper.RingMetal)},
+		{"shaper", "rainbow", pad, 0, sh(shaper.Rainbow)},
+		{"shaper", "crystalSea", pad, 0, sh(shaper.CrystalSea)},
+		{"shaper", "fourBeasts", lead, 0, sh(shaper.FourBeasts)},
+		{"shaper", "trumpetVoice", lead, 0, sh(shaper.TrumpetVoice)},
+		{"shaper", "sevenLamps", arp, 0, sh(shaper.SevenLamps)},
+		{"shaper", "crownsCast", hits, 0, sh(shaper.CrownsCast)},
+		{"shaper", "thunder", hits, -3, sh(shaper.Thunder)},
+		{"shaper", "lightning", hits, 1, sh(shaper.Lightning)},
+		{"shaper", "lionBass", bass, 0, sh(shaper.LionBass)},
+		{"shaper", "throneDrone", drone, -1, sh(shaper.ThroneDrone)},
+		{"shaper", "manyEyes", lead, 0, sh(shaper.ManyEyes)},
 		{"drumsynth", "electro", beat, 0, kit(drumsynth.KitElectro)},
 		{"drumsynth", "trap", beat, 0, kit(drumsynth.KitTrap)},
 		{"drumsynth", "industrial", beat, 0, kit(drumsynth.KitIndustrial)},

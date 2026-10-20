@@ -19,7 +19,7 @@ func TestTourPlays(t *testing.T) {
 		t.Skip("plays 112 bars")
 	}
 	tempo = 300 // the fastest the patch goes: the 112 bars take 90 s
-	defer func() { tempo = 112 }()
+	defer func() { tempo = 100 }()
 	psalm.PushConfig(psalm.Config{BPM: tempo, PPQ: 240, SampleRate: 44100, BufferSize: 256})
 	defer psalm.PopConfig()
 	psalm.Seed(3)
