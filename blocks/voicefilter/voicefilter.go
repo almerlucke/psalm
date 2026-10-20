@@ -142,6 +142,19 @@ func (f *Filter) Clear() {
 	f.count = 0
 }
 
+// Snap empties the memory of the filter and moves the cutoff and the resonance to their settings at once, the envelope
+// goes on: a filter that comes in under a sound starts where it is going, and not from a cutoff it had a while ago
+func (f *Filter) Snap() {
+	for _, s := range f.svf {
+		s.Clear()
+	}
+	for _, l := range f.ladder {
+		l.Clear()
+	}
+	f.cutoff, f.res = f.cfg.Cutoff, f.cfg.Resonance
+	f.count = 0
+}
+
 // Env returns the value of the envelope at the last Tick, 0-1
 func (f *Filter) Env() float64 { return f.lastEnv }
 

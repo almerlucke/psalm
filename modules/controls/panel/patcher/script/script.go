@@ -114,7 +114,7 @@ func (s *Script) start() {
 		return
 	}
 	f, _ := goja.AssertFunction(wrapper)
-	res, err := s.rt.call(StartBudget, f, s.api, s.rt.shared, s.rt.genny)
+	res, err := s.rt.call(budget(s.Live(), StartBudget), f, s.api, s.rt.shared, s.rt.genny)
 	if err != nil {
 		s.fail(err)
 		return
@@ -161,7 +161,7 @@ func (s *Script) run(fn goja.Callable, args ...goja.Value) {
 	if fn == nil || s.stopped {
 		return
 	}
-	if _, err := s.rt.call(CallBudget, fn, args...); err != nil {
+	if _, err := s.rt.call(budget(s.Live(), CallBudget), fn, args...); err != nil {
 		s.fail(err)
 		s.stopped = strings.HasPrefix(err.Error(), "it took too long")
 	}

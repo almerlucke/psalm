@@ -259,6 +259,8 @@ type Voice struct {
 	macroUsed [shapechain.NumMacros]bool
 	scratch   tableScratch
 	smXmod    float64
+	openCfg   voicefilter.Config // the open filter that a filter switched off under a note goes to, openIn samples from now
+	openIn    int
 	swapGen   int // counts the swaps of a chain under a note: a table fades to the new chains
 }
 
@@ -462,12 +464,21 @@ func (v *Voice) apply(c Config) {
 	cfg.MorphAmount, cfg.ShapeAmount, cfg.PitchAmount, cfg.Glide = c.MorphAmount, c.ShapeAmount, c.PitchAmount, c.Glide
 	cfg.VibratoRate, cfg.VibratoDepth, cfg.VibratoDelay = c.VibratoRate, c.VibratoDepth, c.VibratoDelay
 	cfg.LFO1Rate, cfg.LFO1Sync, cfg.LFO2Rate, cfg.LFO2Shape = c.LFO1Rate, c.LFO1Sync, c.LFO2Rate, c.LFO2Shape
-	if c.Filter.Type == voicefilter.Off && v.filter.On() && v.t > 0 && v.IsActive() {
-		// a filter switched off under a note steps: leave it on, and open it (it glides)
+	sounding := v.t > 0 && v.IsActive()
+	wasOn := v.filter.On()
+	v.openIn = 0
+	if c.Filter.Type == voicefilter.Off && wasOn && sounding {
+		// a filter switched off under a note steps: leave it on, as it is while the chains of the old sound fade out (the
+		// edges of a saw would come through an open filter), then open it (it glides)
 		c.Filter = v.cfg.Filter
-		c.Filter.Cutoff, c.Filter.Resonance, c.Filter.EnvAmount, c.Filter.KeyTrack = 20000, 0, 0, 0
+		v.openCfg = c.Filter
+		v.openCfg.Cutoff, v.openCfg.Resonance, v.openCfg.EnvAmount, v.openCfg.KeyTrack = 20000, 0, 0, 0
+		v.openIn = int(chainFade*v.Config().SampleRate) + 1
 	}
 	v.filter.SetConfig(c.Filter)
+	if !wasOn && v.filter.On() && sounding {
+		v.filter.Snap() // a filter that comes in under a note starts empty and where it is going, and is crossfaded in quickly
+	}
 	cfg.Filter = v.filter.Config()
 	for i, sl := range c.Mods {
 		v.mods.Set(i, sl)
@@ -624,6 +635,7 @@ func (v *Voice) startNote(mode adsr.ReleaseMode, duration, amplitude float64, me
 		v.phase = [2 * MaxUnison]float64{}
 		v.subPh = 0
 		v.tables[0].valid, v.tables[1].valid = false, false
+		v.openIn = 0
 		if v.uni > 1 {
 			r := v.Rand()
 			for k := range 2 {
@@ -718,7 +730,7 @@ func waveOf(chains *[NumChains]*shapechain.Chain, n int, ph, pos float64, m *sha
 const chainFade = 0.012
 
 // filterFade is the seconds a filter that is switched on under a note takes to come in
-const filterFade = 0.01
+const filterFade = 0.002
 
 // dcPoints is how many points of a cycle the mean of a wave is worked out from at the start of a note
 const dcPoints = 128
@@ -1186,6 +1198,12 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 			}
 		}
 		g := v.smGain
+		if v.openIn > 0 {
+			if v.openIn--; v.openIn == 0 {
+				v.filter.SetConfig(v.openCfg)
+				cfg.Filter = v.filter.Config()
+			}
+		}
 		if filterTick {
 			v.filter.Tick(f, mods.Mod(dCutoff)+1.5*v.expr.Wheel()+v.voiceDrift[1], mods.Mod(dResonance))
 		}

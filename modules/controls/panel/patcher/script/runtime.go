@@ -30,7 +30,18 @@ import (
 var (
 	StartBudget = 50 * time.Millisecond
 	CallBudget  = 5 * time.Millisecond
+	// RenderBudget is what a call may take when the patch renders and does not play: there is no deadline, so the budget
+	// only stops a script that never ends (a busy machine or a pause of the garbage collector must not stop one)
+	RenderBudget = 20 * time.Second
 )
+
+// budget is the time a call of a script may take: the budget given when the patch plays, RenderBudget when it renders
+func budget(live bool, b time.Duration) time.Duration {
+	if live {
+		return b
+	}
+	return max(b, RenderBudget)
+}
 
 // Runtime is the JavaScript of a patch: every script in it, each in a scope of its own; a shared
 // object they can all see. It is used on one goroutine (the audio thread), but for Compile

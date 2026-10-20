@@ -512,6 +512,10 @@ func (m *Module) Env() *Env {
 }
 
 // BPM returns the current tempo of the module's patch
+// Live says whether the patch plays in real time (through an audio engine), or renders: what a module does on the audio
+// thread only has a deadline when it plays
+func (m *Module) Live() bool { return m.env.Live() }
+
 func (m *Module) BPM() float64 {
 	return m.env.BPM()
 }

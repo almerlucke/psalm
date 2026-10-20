@@ -324,6 +324,7 @@ the script, shown on the module.
 |---|---|
 | `script.StartBudget` | 50 ms for the top level |
 | `script.CallBudget` | 5 ms for every `trigger`, `value` and `section` call |
+| `script.RenderBudget` | 20 s, instead of the two above, when the patch renders (`psalm.New(nil)`): there is no deadline offline, so a busy machine or a pause of the garbage collector must not stop a script; only one that never ends is |
 
 A call that runs longer is stopped, its error is shown on the module (`it took too long`), and the
 script is **not called again until it is typed anew**. The rest of the patch plays on. Errors thrown by

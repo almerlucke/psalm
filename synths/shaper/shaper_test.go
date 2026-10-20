@@ -620,3 +620,47 @@ func TestPresetWithoutFilterUnderNote(t *testing.T) {
 		t.Error("the filter was switched off under the note")
 	}
 }
+
+// a preset swapped under a sounding note never ticks, whether a filter comes in (the saw of the new sound must not come
+// through before the filter is there) or goes (the saw of the old one must not come through the opening one)
+func TestPresetSwapsDoNotTick(t *testing.T) {
+	maxd2 := func(x []float64) float64 {
+		m := 0.0
+		for i := 2; i < len(x); i++ {
+			m = math.Max(m, math.Abs(x[i]-2*x[i-1]+x[i-2]))
+		}
+		return m
+	}
+	for _, p := range [][2]string{{"choirPad", "warmPad"}, {"warmPad", "choirPad"}, {"evolve", "choirPad"}, {"warmPad", "evolve"}, {"airPad", "stringPad"}} {
+		v := New(Config{})
+		v.NoteOn(1, psalm.Message{"preset": p[0], "frequency": 98.0}, psalm.CtrlTick{}, v.Config())
+		run(v, 1)
+		before := run(v, 0.1)
+		v.ReceiveMessage(psalm.Message{"preset": p[1]})
+		after := run(v, 0.5)
+		x := append(append([]float64{}, before[len(before)-8:]...), after...)
+		early, steady := maxd2(x[:int(0.03*sr())]), maxd2(x[int(0.2*sr()):])
+		if early > 4*math.Max(steady, maxd2(before))+0.003 {
+			t.Errorf("%s to %s: second difference %.4f in the first 30 ms, %.4f in the sound once settled, %.4f before: a tick", p[0], p[1], early, steady, maxd2(before))
+		}
+	}
+}
+
+// a bass note does not start with a click: the attack of FMBass takes the onset down to the level of the note
+func TestFMBassOnset(t *testing.T) {
+	v := New(FMBass())
+	v.NoteOn(1, psalm.Message{"pitch": 38.0, "velocity": 0.95}, psalm.CtrlTick{}, v.Config())
+	x := run(v, 0.5)
+	on, body := 0.0, 0.0
+	for i := 2; i < len(x); i++ {
+		d := math.Abs(x[i] - 2*x[i-1] + x[i-2])
+		if i < int(0.02*sr()) {
+			on = math.Max(on, d)
+		} else if i > int(0.1*sr()) {
+			body = math.Max(body, d)
+		}
+	}
+	if on > 4*body {
+		t.Errorf("the onset of FMBass has a second difference of %.4f, %.1f times the body of the note", on, on/body)
+	}
+}

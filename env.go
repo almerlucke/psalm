@@ -25,6 +25,7 @@ type Env struct {
 	streams uint64
 	shared  *rand.Rand
 	onTempo []func()
+	live    atomic.Bool // the patch plays through an audio engine, in real time (not a render)
 }
 
 // randomStream separates psalm's random numbers from other PCG streams with the same seed
@@ -116,6 +117,10 @@ func SetCurrentEnv(e *Env) {
 	currentEnv = e
 	envMu.Unlock()
 }
+
+// Live says whether the patch plays in real time, through an audio engine: what runs on the audio thread has a deadline.
+// A render (psalm.New(nil)) has none: it takes the time it takes
+func (e *Env) Live() bool { return e.live.Load() }
 
 // Config returns the config with the current tempo
 func (e *Env) Config() Config {

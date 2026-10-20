@@ -61,16 +61,16 @@ func PulseBass() Config {
 		Drift:  0.3,
 		Chains: [NumChains]string{"pulse m1[0.5,0.12] | bipolar"}, Macros: [4]float64{0.8}, ShapeAmount: -0.7, ShapeEnv: env(2, 380, 0.1, 100),
 		Line1: Line{Level: 1}, Line2: Line{Octave: -1, Level: 0.5},
-		AmpEnv: env(2, 450, 0.7, 120), Level: 0.625, Filter: lowpass(600, 0.2, 2.2, 1, 240, 0.1, 100),
+		AmpEnv: env(4, 450, 0.7, 120), Level: 0.625, Filter: lowpass(600, 0.2, 2.2, 1, 240, 0.1, 100),
 	}
 }
 
 // FMBass is a phase modulated sine with a lot of modulation at the start that falls away, a sine an octave under
 func FMBass() Config {
 	return Config{
-		Chains: [NumChains]string{pm(1, "m1[0.05,0.38]")}, ShapeAmount: 0.9, ShapeEnv: env(1, 380, 0.1, 100), Macros: [4]float64{0.05},
+		Chains: [NumChains]string{pm(1, "m1[0.05,0.38]")}, ShapeAmount: 0.9, ShapeEnv: env(5, 380, 0.1, 100), Macros: [4]float64{0.05},
 		Line1: Line{Level: 1}, Line2: Line{Octave: -1, Level: 0.55},
-		AmpEnv: env(1, 600, 0.55, 140), Level: 0.769,
+		AmpEnv: env(5, 600, 0.55, 140), Level: 0.769,
 	}
 }
 

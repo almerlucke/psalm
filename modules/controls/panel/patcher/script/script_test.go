@@ -141,6 +141,9 @@ func TestPresets(t *testing.T) {
 // errors: of compiling (its line, the script before it plays on), of running (on the module), of
 // a script that goes on too long (stopped; the rest plays on)
 func TestScriptErrors(t *testing.T) {
+	// the rig renders, which has a long budget: the test shortens it to stop the scripts that never end quickly
+	defer func(b time.Duration) { script.RenderBudget = b }(script.RenderBudget)
+	script.RenderBudget = script.CallBudget
 	r := newRig(t)
 	clock, s, syn := r.add("clock", ""), r.add("script", ""), r.add("rec", "")
 	r.connect(patcher.Cable{From: clock, To: s})
@@ -303,5 +306,22 @@ function trigger(ev) {
 		if st := r.status(s); !strings.HasPrefix(st, "error") {
 			t.Errorf("%s: status %q, want an error", bad, st)
 		}
+	}
+}
+
+// a patch that renders has no deadline: a call that takes longer than the budget of one that plays (a busy machine, a
+// pause of the garbage collector) is not stopped
+func TestScriptRenderHasNoDeadline(t *testing.T) {
+	r := newRig(t)
+	clock, s, syn := r.add("clock", ""), r.add("script", ""), r.add("rec", "")
+	r.connect(patcher.Cable{From: clock, To: s})
+	r.connect(patcher.Cable{From: s, To: syn, Type: patcher.Notes})
+	r.code(s, "function trigger(ev) { const t = Date.now(); while (Date.now() - t < 3 * 5) {} note(60) }") // three times the budget
+	r.run(0.3)
+	if st := r.status(s); st != "" {
+		t.Errorf("a slow call of a script in a render: status %q", st)
+	}
+	if len(r.rec.pitches) == 0 {
+		t.Error("the slow script did not play")
 	}
 }

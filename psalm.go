@@ -165,7 +165,9 @@ func (p *Psalm) NewSub() *Psalm {
 	cfg := CurrentStackConfig()
 	cfg.SampleRate, cfg.BufferSize = p.config.SampleRate, p.config.BufferSize
 	sub := &Psalm{host: p}
-	return sub.init(cfg)
+	sub.init(cfg)
+	CurrentEnv().live.Store(p.Live())
+	return sub
 }
 
 // NewSubWith is NewSub for building on another goroutine (a song built in the background): it has a
@@ -180,6 +182,7 @@ func (p *Psalm) NewSubWith(cfg Config) *Psalm {
 	cfg.SampleRate, cfg.BufferSize = p.config.SampleRate, p.config.BufferSize
 	sub := &Psalm{host: p}
 	env := NewEnv(cfg)
+	env.live.Store(p.Live())
 	within(env, func() { sub.build(env) })
 	return sub
 }
@@ -223,6 +226,7 @@ func (p *Psalm) CtrlTick(CtrlTick) {}
 // init creates the environment and the patch, and makes the environment current
 func (p *Psalm) init(cfg Config) *Psalm {
 	env := NewEnv(cfg)
+	env.live.Store(p.engine != nil)
 	SetCurrentEnv(env)
 	return p.build(env)
 }
@@ -341,7 +345,7 @@ func (p *Psalm) AudioStop() error {
 func (p *Psalm) Running() bool { return p.running.Load() }
 
 // Live tells whether the patch has an audio engine to play through (it renders offline without)
-func (p *Psalm) Live() bool { return p.engine != nil }
+func (p *Psalm) Live() bool { return p.engine != nil || (p.host != nil && p.host.Live()) }
 
 func (p *Psalm) Listen() error {
 	err := p.AudioStart()
