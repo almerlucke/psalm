@@ -17,16 +17,15 @@ import (
 	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/sampler"
+	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
 	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
-	"github.com/almerlucke/psalm/synths/westcoast"
 )
 
 // describer describes a synth at its presets: their names, and one described by name
@@ -54,8 +53,6 @@ var describers = map[string]describer{
 		func(n string) psalm.Modular { return waveguide.NewPoly(waveguide.Presets[n](), 12) }),
 	"modal": describing(modal.Presets, func(n string) params.Set { return modal.Describe(modal.Presets[n]()) },
 		func(n string) psalm.Modular { return modal.NewPoly(modal.Presets[n](), 16) }),
-	"westcoast": describing(westcoast.Presets, func(n string) params.Set { return westcoast.Describe(westcoast.Presets[n]()) },
-		func(n string) psalm.Modular { return westcoast.NewPoly(westcoast.Presets[n](), 12) }),
 	"subtractive": describing(subtractive.Presets, func(n string) params.Set { return subtractive.Describe(subtractive.Presets[n]()) },
 		func(n string) psalm.Modular { return subtractive.NewPoly(subtractive.Presets[n](), 12) }),
 	"supersaw": describing(supersaw.Presets, func(n string) params.Set { return supersaw.Describe(supersaw.Presets[n]()) },
@@ -63,8 +60,8 @@ var describers = map[string]describer{
 	"wavetable": describing(wavetable.Presets, func(n string) params.Set {
 		return wavetable.Describe(wavetable.Presets[n](wavetableTable))
 	}, func(n string) psalm.Modular { return wavetable.NewPoly(wavetable.Presets[n](wavetableTable), 12) }),
-	"pd": describing(pd.Presets, func(n string) params.Set { return pd.Describe(pd.Presets[n]()) },
-		func(n string) psalm.Modular { return pd.NewPoly(pd.Presets[n](), 12) }),
+	"shaper": describing(shaper.Presets, func(n string) params.Set { return shaper.Describe(shaper.Presets[n]()) },
+		func(n string) psalm.Modular { return shaper.NewPoly(shaper.Presets[n](), 12) }),
 	"pulsar": describing(pulsar.Presets, func(n string) params.Set { return pulsar.Describe(pulsar.Presets[n]()) },
 		func(n string) psalm.Modular { return pulsar.NewPoly(pulsar.Presets[n](), 12) }),
 	"vocal": describing(vocal.Presets, func(n string) params.Set { return vocal.Describe(vocal.Presets[n]()) },

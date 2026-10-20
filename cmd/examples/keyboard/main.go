@@ -1,14 +1,14 @@
 // Keyboard: play the synths from a MIDI keyboard, live, in the Musikverein.
 //
 // Every synth that plays notes is there: the piano, subtractive, pulsar, wavetable, fm, dx, organ,
-// waveguide (plucked and bowed strings), modal (mallets and bells), vocal, pd, westcoast, supersaw,
+// waveguide (plucked and bowed strings), modal (mallets and bells), vocal, supersaw, shaper,
 // drumsynth (its kits are its presets) and grains, each with all its presets. Bank select
 // (controller 0) switches the synth (in the order above) and a program change its preset (in
 // alphabetical order); typed in the terminal, a synth or a preset name (or both: "wavetable
 // glass") switches too, "list" shows them all.
 //
 // The notes play with the velocity curve chosen (-curve). The piano takes the velocity itself and
-// has its pedals (sustain with half pedaling, sostenuto, soft); fm, dx, waveguide, modal, westcoast
+// has its pedals (sustain with half pedaling, sostenuto, soft); fm, dx, waveguide, modal
 // and drumsynth take the velocity too, the organ doesn't feel it (as a real one), the other synths
 // play it as the amplitude, and the sustain pedal holds their notes. The pitch bend bends every
 // synth but the piano (two semitones), the mod wheel does something of its own on each: opens the
@@ -36,8 +36,8 @@
 //	go run ./cmd/examples/keyboard -device /dev/snd/midiC1D0 -preset felt -curve soft
 //	go run ./cmd/examples/keyboard -synth subtractive -preset brass
 //	go run ./cmd/examples/keyboard -synth supersaw -preset glideLead -mono   one note at a time, sliding
-//	go run ./cmd/examples/keyboard -synth westcoast -route 1:fold:0:1 -route pressure:fm:0:3
-//	                                                      the wheel on the fold, the aftertouch on the FM index
+//	go run ./cmd/examples/keyboard -synth shaper -route 1:morph:0:1 -route pressure:macro1:0:1
+//	                                                      the wheel on the morph, the aftertouch on the first macro
 //	go run ./cmd/examples/keyboard -jack                  JACK audio and a JACK MIDI port (sample accurate)
 //	go run ./cmd/examples/keyboard -demo                  no keyboard: a phrase played as MIDI
 //	go run ./cmd/examples/keyboard -record                record what is played to a MIDI file
@@ -73,16 +73,15 @@ import (
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
+	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
 	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
-	"github.com/almerlucke/psalm/synths/westcoast"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -143,21 +142,19 @@ type destination struct {
 // aftertouch). A synth that doesn't take a setting doesn't hear it
 var destinations = []destination{
 	{"built in", nil, 0, 0, false},
-	{"cutoff (subtractive, wavetable, supersaw)", []string{"cutoff"}, 200, 12000, true},
-	{"resonance (subtractive, wavetable, supersaw, westcoast)", []string{"resonance"}, 0, 0.95, false},
+	{"cutoff (subtractive, wavetable, supersaw, shaper)", []string{"cutoff"}, 200, 12000, true},
+	{"resonance (subtractive, wavetable, supersaw, shaper)", []string{"resonance"}, 0, 0.95, false},
 	{"filter envelope (subtractive, wavetable, supersaw)", []string{"filterEnvAmount"}, 0, 6, false},
 	{"vowel (vocal, subtractive formant)", []string{"vowel"}, 0, 4, false},
 	{"brightness (fm, dx)", []string{"modDepth", "modScale"}, 0.2, 2, false},
 	{"brightness (vocal, waveguide pluck)", []string{"brightness"}, 0, 1, false},
-	{"vibrato depth (fm, wavetable, pulsar, vocal, pd, waveguide)", []string{"vibratoDepth"}, 0, 1, false},
+	{"vibrato depth (fm, wavetable, pulsar, vocal, shaper, waveguide)", []string{"vibratoDepth"}, 0, 1, false},
 	{"position (wavetable table, grains sample)", []string{"position"}, 0, 1, false},
 	{"detune (supersaw)", []string{"detune"}, 0, 1, false},
-	{"detune cents (wavetable, pd)", []string{"detune"}, 0, 50, false},
+	{"detune cents (wavetable)", []string{"detune"}, 0, 50, false},
 	{"saw mix (supersaw)", []string{"mix"}, 0, 1, false},
-	{"distortion (pd)", []string{"dcw1", "dcw2"}, 0, 1, false},
-	{"fold (westcoast)", []string{"fold"}, 0, 1, false},
-	{"symmetry (westcoast)", []string{"symmetry"}, -1, 1, false},
-	{"fm index (westcoast)", []string{"fm"}, 0, 3, false},
+	{"morph (shaper)", []string{"morph"}, 0, 1, false},
+	{"macro 1 (shaper)", []string{"macro1"}, 0, 1, false},
 	{"formant (pulsar)", []string{"formant"}, 200, 4000, true},
 	{"grain density (grains)", []string{"density"}, 2, 80, true},
 	{"grain spray (grains)", []string{"spray"}, 0, 0.5, false},
@@ -255,7 +252,7 @@ func main() {
 	device := flag.String("device", "", "the raw MIDI device (empty is the first keyboard)")
 	useJack := flag.Bool("jack", false, "play through JACK, with a JACK MIDI input port")
 	demo := flag.Bool("demo", false, "play a phrase as MIDI instead of reading a keyboard")
-	synth := flag.String("synth", "piano", "the synth to start with: piano, subtractive, pulsar, wavetable, fm, dx, organ, waveguide, modal, vocal, pd, westcoast, supersaw, drumsynth or grains")
+	synth := flag.String("synth", "piano", "the synth to start with: piano, subtractive, pulsar, wavetable, fm, dx, organ, waveguide, modal, vocal, supersaw, shaper, drumsynth or grains")
 	preset := flag.String("preset", "", "the preset to start with (empty: felt for the piano, else the first)")
 	curve := flag.String("curve", "linear", "the velocity curve: soft, linear, hard or an exponent")
 	channel := flag.Int("channel", 0, "the MIDI channel (1-16), 0 is all")
@@ -645,14 +642,11 @@ func newInstruments(p *psalm.Psalm) []*instrument {
 		build("vocal", slices.Collect(maps.Keys(vocal.Presets)), func(n string) psalm.Modular {
 			return vocal.NewPoly(vocal.Presets[n](), 8).AddTo(p)
 		}, synthKeys, 0.35),
-		build("pd", slices.Collect(maps.Keys(pd.Presets)), func(n string) psalm.Modular {
-			return pd.NewPoly(pd.Presets[n](), 12).AddTo(p)
-		}, synthKeys, 0.3),
-		build("westcoast", slices.Collect(maps.Keys(westcoast.Presets)), func(n string) psalm.Modular {
-			return westcoast.NewPoly(westcoast.Presets[n](), 12).AddTo(p)
-		}, velocityKeys, 0.3),
 		build("supersaw", slices.Collect(maps.Keys(supersaw.Presets)), func(n string) psalm.Modular {
 			return supersaw.NewPoly(supersaw.Presets[n](), 12).AddTo(p)
+		}, synthKeys, 0.3),
+		build("shaper", slices.Collect(maps.Keys(shaper.Presets)), func(n string) psalm.Modular {
+			return shaper.NewPoly(shaper.Presets[n](), 12).AddTo(p)
 		}, synthKeys, 0.3),
 		build("drumsynth", slices.Collect(maps.Keys(drumsynth.Kits)), func(n string) psalm.Modular {
 			return drumsynth.NewPoly(drumsynth.Config{Kit: drumsynth.Kits[n]()}, 16).AddTo(p)

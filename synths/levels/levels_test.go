@@ -10,7 +10,6 @@ import (
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/subtractive"
@@ -19,7 +18,6 @@ import (
 	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
-	"github.com/almerlucke/psalm/synths/westcoast"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -153,20 +151,6 @@ func TestVocal(t *testing.T) {
 	for n, f := range vocal.Presets {
 		fresh()
 		check(t, n, vocal.New(f()), note)
-	}
-}
-
-func TestPD(t *testing.T) {
-	for n, f := range pd.Presets {
-		fresh()
-		check(t, n, pd.New(f()), note)
-	}
-}
-
-func TestWestcoast(t *testing.T) {
-	for n, f := range westcoast.Presets {
-		fresh()
-		check(t, n, westcoast.New(f()), note)
 	}
 }
 

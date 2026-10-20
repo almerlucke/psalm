@@ -8,8 +8,7 @@ import (
 )
 
 // TestEnvelopeMessages: every synth with an amplitude envelope takes it by message the same way:
-// a long "ampRelease" rings on after the note, a short one doesn't (with a quick attack, and
-// westcoast's low pass gate quick to let go: its own slow response would hide it)
+// a long "ampRelease" rings on after the note, a short one doesn't (with a quick attack)
 func TestEnvelopeMessages(t *testing.T) {
 	skip := map[string]bool{"drumsynth": true, "organ": true, "dx": true}
 	for _, e := range expressives(t) {

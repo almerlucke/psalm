@@ -22,12 +22,10 @@ import (
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
 	"github.com/almerlucke/psalm/synths/waveguide"
-	"github.com/almerlucke/psalm/synths/westcoast"
 	"github.com/almerlucke/psalm/tools/harmony"
 	"github.com/almerlucke/psalm/tools/render"
 )
@@ -85,14 +83,8 @@ func main() {
 	vc := func(f func() vocal.Config) func(*psalm.Psalm) psalm.Modular {
 		return func(p *psalm.Psalm) psalm.Modular { return vocal.NewPoly(f(), 6).AddTo(p) }
 	}
-	cz := func(f func() pd.Config) func(*psalm.Psalm) psalm.Modular {
-		return func(p *psalm.Psalm) psalm.Modular { return pd.NewPoly(f(), 8).AddTo(p) }
-	}
 	sh := func(f func() shaper.Config) func(*psalm.Psalm) psalm.Modular {
 		return func(p *psalm.Psalm) psalm.Modular { return shaper.NewPoly(f(), 8).AddTo(p) }
-	}
-	wc := func(f func() westcoast.Config) func(*psalm.Psalm) psalm.Modular {
-		return func(p *psalm.Psalm) psalm.Modular { return westcoast.NewPoly(f(), 8).AddTo(p) }
 	}
 	ss := func(f func() supersaw.Config, voices int) func(*psalm.Psalm) psalm.Modular {
 		return func(p *psalm.Psalm) psalm.Modular { return supersaw.NewPoly(f(), voices).AddTo(p) }
@@ -125,18 +117,6 @@ func main() {
 		{"vocal", "whisper", pad, 0, vc(vocal.Whisper)},
 		{"vocal", "alien", lead, 0, vc(vocal.Alien)},
 		{"vocal", "babble", pad, 0, vc(vocal.Babble)},
-		{"pd", "wahBass", held, 0, cz(pd.WahBass)},
-		{"pd", "digiChoir", pad, 0, cz(pd.DigiChoir)},
-		{"pd", "zap", hits, 0, cz(pd.Zap)},
-		{"pd", "glassPad", pad, 0, cz(pd.GlassPad)},
-		{"pd", "resoArp", arp, -1, cz(pd.ResoArp)},
-		{"pd", "metalDrone", drone, 1, cz(pd.MetalDrone)},
-		{"westcoast", "gong", hits, -1, wc(westcoast.Gong)},
-		{"westcoast", "waterDrop", arp, 0, wc(westcoast.WaterDrop)},
-		{"westcoast", "growl", held, 0, wc(westcoast.Growl)},
-		{"westcoast", "foldSweep", drone, 1, wc(westcoast.FoldSweep)},
-		{"westcoast", "laserPing", arp, 0, wc(westcoast.LaserPing)},
-		{"westcoast", "livingDrone", drone, 1, wc(westcoast.LivingDrone)},
 		{"supersaw", "hypersaw", pad, 0, ss(supersaw.Hypersaw, 8)},
 		{"supersaw", "wobbleBass", held, 0, ss(supersaw.WobbleBass, 2)},
 		{"supersaw", "breathing", pad, 0, ss(supersaw.Breathing, 8)},

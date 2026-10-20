@@ -47,7 +47,6 @@ import (
 	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/shaper"
@@ -57,7 +56,6 @@ import (
 	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
-	"github.com/almerlucke/psalm/synths/westcoast"
 )
 
 // Config is what the kinds need from outside
@@ -164,13 +162,9 @@ func Kinds(cfg Config) []patcher.Kind {
 			func(n string) params.Set { return wavetable.Describe(wavetable.Presets[n](table)) }, v),
 		synth("supersaw", sorted(supersaw.Presets), func(n string, v int) psalm.Modular { return supersaw.NewPoly(supersaw.Presets[n](), v) },
 			func(n string) params.Set { return supersaw.Describe(supersaw.Presets[n]()) }, v),
-		synth("pd", sorted(pd.Presets), func(n string, v int) psalm.Modular { return pd.NewPoly(pd.Presets[n](), v) },
-			func(n string) params.Set { return pd.Describe(pd.Presets[n]()) }, v),
 		shaperKind(v),
 		synth("pulsar", sorted(pulsar.Presets), func(n string, v int) psalm.Modular { return pulsar.NewPoly(pulsar.Presets[n](), v) },
 			func(n string) params.Set { return pulsar.Describe(pulsar.Presets[n]()) }, v),
-		synth("westcoast", sorted(westcoast.Presets), func(n string, v int) psalm.Modular { return westcoast.NewPoly(westcoast.Presets[n](), v) },
-			func(n string) params.Set { return westcoast.Describe(westcoast.Presets[n]()) }, v),
 		synth("organ", sorted(organ.Presets), func(n string, _ int) psalm.Modular { return organ.New(organ.Presets[n]()) },
 			func(n string) params.Set { return organ.Describe(organ.Presets[n]()) }, v),
 		synth("piano", sorted(piano.Presets), func(n string, v int) psalm.Modular { return piano.NewPoly(piano.Presets[n](), 2*v) },

@@ -3,9 +3,9 @@
 //
 //	Intro     a church bell, a choir on "u", a harp, a singing bowl
 //	Groove    the 909 (drumsynth), a fingered bass (waveguide), a marimba (modal), the jazz organ
-//	          through a rotary speaker, west coast bongos, a sampled kalimba-ish tine (sampler)
-//	Lift      a trance supersaw pad and plucks, the 808, the cello bowing the melody, the CZ
-//	          (phase distortion) electric piano
+//	          through a rotary speaker, a wood block (modal), a sampled kalimba-ish tine (sampler)
+//	Lift      a trance supersaw pad and plucks, the 808, the cello bowing the melody, the shaper
+//	          synth's electric piano
 //	Outro     slow strings, tubular bells, the choir again on "a"
 //
 //	go run ./cmd/examples/ensemble                       play it
@@ -28,12 +28,11 @@ import (
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/sampler"
+	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
 	"github.com/almerlucke/psalm/synths/waveguide"
-	"github.com/almerlucke/psalm/synths/westcoast"
 	"github.com/almerlucke/psalm/tools/harmony"
 	"github.com/almerlucke/psalm/tools/render"
 )
@@ -126,10 +125,10 @@ func main() {
 	cello := waveguide.NewPoly(waveguide.Cello(), 2).AddTo(p)
 	strings := waveguide.NewPoly(waveguide.SlowStrings(), 8).AddTo(p)
 	jazz := organ.New(organ.Jazz()).AddTo(p)
-	bongos := westcoast.NewPoly(westcoast.Bongo(), 6).AddTo(p)
+	blocks := modal.NewPoly(modal.WoodBlock(), 6).AddTo(p)
 	pad := supersaw.NewPoly(supersaw.TrancePad(), 8).AddTo(p)
 	plucks := supersaw.NewPoly(supersaw.Pluck(), 8).AddTo(p)
-	ePiano := pd.NewPoly(pd.EPiano(), 8).AddTo(p)
+	ePiano := shaper.NewPoly(shaper.EPiano(), 8).AddTo(p)
 
 	// a tine, sampled from a percussion hit, played over the keys
 	tine, err := sampler.LoadFile("assets/sounds/drums/percussion/Cymatics - Odyssey Percussion 3.wav")
@@ -189,7 +188,7 @@ func main() {
 			return []N{score.Rest(0.5), c, score.Rest(0.75), c, score.Rest(0.5), c}
 		})
 	}))
-	form.Part(p, bongos, "bongos", score.Config{Feel: played}, arrange.Only("Groove", func(s S) []N {
+	form.Part(p, blocks, "wood block", score.Config{Feel: played}, arrange.Only("Groove", func(s S) []N {
 		return arrange.PerBar(s, func(bar int) []N {
 			return score.Shape(score.Notes(0.25, 62, 0, 67, 62, 0, 62, 67, 0, 62, 0, 67, 0, 62, 67, 69, 67),
 				score.Velocities(0.8, 0, 0.5, 0.6, 0, 0.7, 0.5, 0, 0.8, 0, 0.5, 0, 0.7, 0.5, 0.6, 0.5))
@@ -255,7 +254,7 @@ func main() {
 		{"bass", bass, -10, 0, 0.05},
 		{"marimba", marimba, -15, -0.3, 0.25},
 		{"organ", leslie, -16, 0, 0.2},
-		{"bongos", bongos, -10, 0.35, 0.2},
+		{"wood block", blocks, -10, 0.35, 0.2},
 		{"tines", tinesEcho, -10, 0.2, 0.3},
 		{"pad", pad, -17, 0, 0.3},
 		{"plucks", plucks, -20, 0, 0.3},

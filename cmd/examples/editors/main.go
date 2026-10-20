@@ -60,16 +60,15 @@ import (
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
+	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
 	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
-	"github.com/almerlucke/psalm/synths/westcoast"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -201,15 +200,12 @@ func main() {
 	add("supersaw", presetsOf(supersaw.Presets), "lead",
 		func(n string) psalm.Modular { return supersaw.NewPoly(supersaw.Presets[n](), 12) },
 		func(n string) params.Set { return supersaw.Describe(supersaw.Presets[n]()) })
-	add("pd", presetsOf(pd.Presets), "brass",
-		func(n string) psalm.Modular { return pd.NewPoly(pd.Presets[n](), 12) },
-		func(n string) params.Set { return pd.Describe(pd.Presets[n]()) })
+	add("shaper", presetsOf(shaper.Presets), "glass",
+		func(n string) psalm.Modular { return shaper.NewPoly(shaper.Presets[n](), 12) },
+		func(n string) params.Set { return shaper.Describe(shaper.Presets[n]()) })
 	add("pulsar", presetsOf(pulsar.Presets), "vowelLead",
 		func(n string) psalm.Modular { return pulsar.NewPoly(pulsar.Presets[n](), 12) },
 		func(n string) params.Set { return pulsar.Describe(pulsar.Presets[n]()) })
-	add("westcoast", presetsOf(westcoast.Presets), "pluck",
-		func(n string) psalm.Modular { return westcoast.NewPoly(westcoast.Presets[n](), 12) },
-		func(n string) params.Set { return westcoast.Describe(westcoast.Presets[n]()) })
 	add("organ", presetsOf(organ.Presets), "jazz",
 		func(n string) psalm.Modular { return organ.New(organ.Presets[n]()) },
 		func(n string) params.Set { return organ.Describe(organ.Presets[n]()) })

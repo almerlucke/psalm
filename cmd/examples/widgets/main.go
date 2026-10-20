@@ -23,7 +23,6 @@ import (
 	"github.com/almerlucke/psalm/modules/mixer"
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/dx"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/supersaw"
@@ -101,7 +100,6 @@ func main() {
 		{"supersaw lead", supersaw.NewPoly(supersaw.Lead(), 12).AddTo(p)},
 		{"wavetable pad", wavetable.NewPoly(wavetable.PadPreset(table), 12).AddTo(p)},
 		{"dx electric piano", dx.NewPoly(dx.EPianoPreset(), 12, psalm.Stereo).AddTo(p)},
-		{"pd brass", pd.NewPoly(pd.Brass(), 12).AddTo(p)},
 		{"pulsar vowel lead", pulsar.NewPoly(pulsar.VowelLeadPreset(), 12).AddTo(p)},
 		{"vocal choir", vocal.NewPoly(vocal.Choir(), 8).AddTo(p)},
 		{"waveguide violin", waveguide.NewPoly(waveguide.Violin(), 8).AddTo(p)},

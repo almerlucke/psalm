@@ -1,6 +1,6 @@
 # Synths
 
-Synths (the presets of each are listed in [presets](presets.md)): [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [dx](#dx) (6 operator FM, SysEx, and the 4 operator FM presets), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [pd](#pd) (phase distortion), [shaper](#shaper) (waves from chains of shapers, morphing), [westcoast](#westcoast), [supersaw](#supersaw).
+Synths (the presets of each are listed in [presets](presets.md)): [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch), [envelopes by message](#envelopes-by-message), [poly](#poly) (voice allocation, mono and legato), [subtractive](#subtractive), [dx](#dx) (6 operator FM, SysEx, and the 4 operator FM presets), [grains](#grains) (granular sampler), [pulsar](#pulsar), [wavetable](#wavetable), [piano](#piano), [drums](#drums), [sampler](#sampler) (SFZ), [organ](#organ), [waveguide](#waveguide) (plucked and bowed strings), [modal](#modal) (mallets and bells), [drumsynth](#drumsynth), [vocal](#vocal) (voices and choirs), [shaper](#shaper) (waves from chains of shapers, morphing), [supersaw](#supersaw).
 
 Every synth describes its settings: `<synth>.Describe(cfg)` (`params`: each message key it takes,
 its range, unit and group, where it is in the config, and its envelopes), so an editor on the panel
@@ -35,9 +35,7 @@ map[int]string{midi.CCModWheel: "modWheel"}}`.
 | modal | a tremolo |
 | drumsynth | longer decays (new hits); the bend moves the sounds ringing |
 | vocal | opens the vowel |
-| pd | more distortion |
 | shaper | opens the filter (when it is on); a slot of the matrix can send it to the morph or a macro |
-| westcoast | folds further |
 | supersaw | opens the filter, three octaves |
 
 The code of it is `blocks/expression`, for synths of your own.
@@ -54,13 +52,11 @@ while the key is down (0-1). A change takes effect from the next note.
 | subtractive, supersaw | `amp`, `filter` |
 | wavetable | `amp`, `filter`, `position` |
 | pulsar | `amp`, `formant` |
-| pd | `amp` (the loudness of both lines), `dcw` (their brightness) |
 | shaper | `amp`, `morphEnv` (the morph), `shapeEnv` (macro 1), `filter` |
 | dx (exact operators) | `amp` (the carriers: the operators heard), `op1` to `op6` (each operator) |
 | grains | `amp` |
 | sampler | `amp`: over the envelopes of the regions (each part set replaces theirs) |
 | vocal | `ampAttack`, `ampRelease` |
-| westcoast | `ampAttack`, `ampDecay` (the function generator; a held note falls in it once let go, so `ampRelease` sets it too) |
 | modal | `ampDecay` (how long it rings), `ampRelease` (damped once let go) |
 | waveguide | `ampAttack` (the bow), `ampDecay` (a plucked string's ring), `ampRelease` (let go) |
 
@@ -1647,48 +1643,6 @@ p b d g z zh v). `subglottal` adds a faint windpipe pole and zero at 600 and 150
 makes the vibrato rate 5 to 6.5 Hz, rising with pitch and wandering slowly, with a wandering extent
 and a late onset. The new features use a private noise stream.
 
-## pd
-
-`synths/pd`
-
-Phase distortion after the Casio CZ: a cosine read at a bent speed. Bent a little it stays a sine;
-bent further it turns into a saw, a square, a pulse or a resonant sweep, and the DCW envelope bends
-it over the note the way a filter envelope opens a subtractive synth. Two lines of an oscillator,
-its DCW and its amp (DCA) envelope sound together, detuned or ring modulated. The bends never get
-steeper than a few samples: no aliasing high up.
-
-```go
-cz := pd.NewPoly(pd.ResoBass(), 4).AddTo(p)
-```
-
-A `Line` has `Waveform` (`Saw`, `Square`, `Pulse`, `SawPulse`, `Reso1`-`Reso3`), `Second` and
-`Alternate` (another waveform every other cycle), `Octave`, `Detune` (cents), `Level`, `DCW` (0-1,
-the distortion at the top of `DCWEnv`), `KeyFollow` (higher notes distorted less), `Velocity` and
-`DCAEnv`. The `Config` has `Line1`, `Line2`, `Ring`, `PitchSweep`/`PitchTime`, a vibrato and
-`Width` (the lines apart in stereo), and `SweepRate` or `SweepSync` (beats) with `SweepDepth`: an LFO
-on the distortion of both lines, the CZ's wah. **Value input** 1: the distortion of both lines.
-
-Presets: `wahBass` (the resonance swept in quarter notes), `digiChoir` (the CZ's glassy choir), `zap`
-(a laser), `glassPad`, `resoArp` (snapping resonance for arpeggios), `metalDrone` (ring modulated
-saws a tritone apart), `brass`, `strings`, `ePiano`, `bass`, `resoBass`, `organ`, `bell` (ring modulated),
-`lead` (saw and pulse alternating), `sweep`, `clav`.
-
-**Messages**: `pitch`, `frequency`, `velocity`, `level`, `dcw1`, `dcw2`, `waveform1`, `waveform2`, `detune`, `vibratoDepth`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
-
-### Filter, matrix, CZ envelopes
-
-After the two lines the voice has the [voice filter](#the-voice-filter) (off by default) and an 8 slot
-[modulation matrix](#modulation-matrix): filter env, amp env (line 1's DCA), lfo 1 (the sweep LFO),
-lfo 2 (a plain sine or triangle, `lfo2Rate`/`lfo2Shape`), velocity, key, random, wheel and Ext 1-4
-(value inputs 5-8) to `dcw1`, `dcw2`, `pitch`, `vibratoDepth`, `width`, `level`, `cutoff`,
-`resonance`, `detune` (line 2), `sweepRate` and `sweepDepth`.
-
-Two CZ-style envelopes sit beside the per-line DCW and DCA envelopes. The DCO envelope (`dcoAmount`
-semitones, stages `dcoAttack`...`dcoRelease`) bends the pitch over the note, e.g. a falling zap. The
-depth envelope (`depthAmount` 0-1, stages `depthAttack`...`depthRelease`) adds distortion to both
-lines on top of their own DCW envelopes. Both are off at amount 0. `detune1` and `detune2` (cents)
-detune the lines against each other (`detune2` is the older `detune`).
-
 ## shaper
 
 `synths/shaper`, the chain language in `blocks/shapechain`
@@ -1811,57 +1765,6 @@ In the patcher the synth is a module of its own (Synths, "shaper"): its four cha
 side panel (Ctrl+Enter takes one, an error shows in red and the sound goes on; choosing a factory
 preset puts that preset's chains in the boxes). The same text is a shaper in a script:
 `genny.shapers.chain("mult 3 | sin")` (see [scripting](scripting.md#shapers)).
-
-## westcoast
-
-`synths/westcoast`
-
-A synth in the Buchla way: rich sounds made, not filtered out. A complex oscillator (a principal
-sine, frequency and amplitude modulated by a second oscillator) goes into a wave folder, then
-through a low pass gate: a filter and an amplifier opened together by a vactrol that lights up at
-once and fades slowly, darker as it closes. Struck short, the gate rings like a hand drum.
-
-```go
-wc := westcoast.NewPoly(westcoast.Bongo(), 8).AddTo(p)
-wc.ValueIn(lfo.New(true, 0.2, 0, 0.6, lfo.Sine).AddTo(p), 0, 1) // the fold breathing
-```
-
-| Setting | Meaning |
-|---|---|
-| `ModWave`, `ModRatio` | The modulator: `ModSine`, `ModTriangle`, `ModSaw`, `ModSquare`; its frequency over the note's |
-| `FM`, `AM` | The index of the frequency modulation; 0-1 amplitude modulation |
-| `Fold`, `Symmetry` | 0-1 how far the wave folds; -1 to 1 off center (even overtones) |
-| `Attack`, `Decay`, `Sustain` | The function generator (seconds); `Sustain` holds while the key is down |
-| `EnvToFold`, `EnvToFM` | What the function adds to the fold and the index |
-| `Gate` | `Combo` (filter and amplifier), `LowPass`, `VCA` |
-| `Resonance`, `Response`, `Color` | The gate: how it rings, how slowly the vactrol lets go, how bright it opens |
-| `KeyTrack` | 0-1: how much the gate opens brighter for higher notes (0 is 0.6, negative none), so high notes don't come out dull |
-| `LFORate`, `LFOSync`, `LFOFold`, `LFOFM` | An LFO (Hz, or beats a cycle) on the fold and the FM index |
-
-**Value inputs**: 1 fold, 2 FM index. Presets: `gong`, `waterDrop` (a pinged drop), `growl` (a bass
-folded in eighth notes), `foldSweep`, `laserPing`, `livingDrone`, `bongo`, `pluck`, `marimba`, `bell`, `bass`,
-`drone`, `metal`, `wobble`.
-
-**Messages**: `pitch`, `frequency`, `velocity`, `level`, `fold`, `symmetry`, `fm`, `am`, `modRatio`, `decay`, `resonance`, and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
-
-### Matrix, a second oscillator, cycling
-
-An 8 slot [modulation matrix](#modulation-matrix) (`mod1Src`...`mod8Amount`) joins a source (the
-function generator as filter env, the vactrol as amp env, the LFO, a second LFO at `lfo2Rate`,
-velocity, key, random, wheel, or a value cabled in on inputs 5-8 as Ext 1-4) to `fold`, `symmetry`,
-`fm`, `am`, `modRatio` (octaves), `pitch` (semitones), `level`, `color`, `response`, `resonance` or
-`lfoRate`. LFO 1 needs `LFORate` (or `LFOSync`) set to run.
-
-A second complex oscillator ("Osc 2") has its own modulator (`osc2ModWave`, `osc2ModRatio`), a detune
-in semitones (`osc2Detune`) and a mix (`osc2Mix`, 0 is off) and goes into the folder along with the
-first. The function generator can cycle (`cycle`, `cycleRate` in Hz): it retriggers itself like an LFO,
-never sustains, and keeps the voice sounding until the key is released. `strike` (0-1) lights the
-vactrol at once at a note, so the gate opens with a hit even with a slow attack. `color` and `modWave`
-are messages too.
-
-`strikeDecay` (seconds): the hit of `strike` decays on its own envelope (by 60 dB in that time) instead of
-the lamp's `response`, so a long gate can have a short, sharp hit. 0 keeps the old lamp kick.
-`lfo2Sync` (beats per cycle, 0 is off) makes the second LFO follow the tempo like `lfoSync`.
 
 ## supersaw
 

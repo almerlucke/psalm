@@ -13,7 +13,6 @@ import (
 	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/sampler"
 	"github.com/almerlucke/psalm/synths/subtractive"
@@ -22,7 +21,6 @@ import (
 	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
-	"github.com/almerlucke/psalm/synths/westcoast"
 	"github.com/almerlucke/sndfile"
 )
 
@@ -60,8 +58,6 @@ func expressives(t *testing.T) []expressive {
 		{"waveguide pluck", func() played { return waveguide.New(waveguide.Harp()) }, a4},
 		{"modal", func() played { return modal.New(modal.Vibraphone()) }, a4},
 		{"vocal", func() played { return vocal.New(vocal.Solo()) }, a4},
-		{"pd", func() played { return pd.New(pd.Brass()) }, a4},
-		{"westcoast", func() played { return westcoast.New(westcoast.Drone()) }, a4},
 		{"supersaw", func() played { return supersaw.New(supersaw.Lead()) }, a4},
 		{"sampler", func() played { return sampler.New(sampler.DefaultConfig(inst)) }, a4},
 		{"drumsynth", func() played {

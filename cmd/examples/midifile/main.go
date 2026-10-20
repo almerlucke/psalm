@@ -3,8 +3,8 @@
 // Every channel of the file gets a synth of its own, chosen by the General MIDI program it plays: a
 // piano for the pianos, dx for the electric pianos, the harpsichord and the brass and reeds, the
 // organ for the organs, waveguide for the guitars and the bowed strings, modal for the mallets and
-// bells, vocal for the choirs, subtractive, supersaw, wavetable and pd for the synth leads and
-// pads, pulsar and westcoast for the effects; channel 10 plays the drumsynth (-kit). A program
+// bells, vocal for the choirs, subtractive, supersaw, wavetable and shaper for the synth leads and
+// pads, pulsar and shaper for the effects; channel 10 plays the drumsynth (-kit). A program
 // change in the middle of the file switches the synth of its channel. With -orchestra (the folder
 // of the Virtual Playing Orchestra) the strings, brass, woodwinds, choirs, harp, timpani and
 // mallets play its samples instead. -synth gives a channel a
@@ -59,17 +59,16 @@ import (
 	"github.com/almerlucke/psalm/synths/dx"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
-	"github.com/almerlucke/psalm/synths/pd"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/sampler"
+	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
 	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
-	"github.com/almerlucke/psalm/synths/westcoast"
 	"github.com/almerlucke/psalm/tools/render"
 	"github.com/almerlucke/sndfile"
 )
@@ -85,29 +84,29 @@ var generalMIDI = [128]string{
 	// guitar
 	"waveguide/guitar", "waveguide/steel", "waveguide/muted", "waveguide/steel", "waveguide/muted", "dx/overdriveGuitar", "dx/overdriveGuitar", "waveguide/harp",
 	// bass
-	"waveguide/bass", "waveguide/bass", "dx/bass", "dx/fretlessBass", "dx/slapBass", "dx/slapBass", "subtractive/bass", "pd/resoBass",
+	"waveguide/bass", "waveguide/bass", "dx/bass", "dx/fretlessBass", "dx/slapBass", "dx/slapBass", "subtractive/bass", "shaper/pulseBass",
 	// strings
 	"waveguide/violin", "waveguide/violin", "waveguide/cello", "waveguide/cello", "waveguide/slowStrings", "waveguide/pizzicato", "waveguide/harp", "dx/timpani",
 	// ensemble
-	"dx/strings", "waveguide/slowStrings", "subtractive/strings", "pd/strings", "vocal/aah", "vocal/ooh", "vocal/choir", "supersaw/stab",
+	"dx/strings", "waveguide/slowStrings", "subtractive/strings", "shaper/stringPad", "vocal/aah", "vocal/ooh", "vocal/choir", "supersaw/stab",
 	// brass
-	"dx/trumpet", "pd/brass", "pd/brass", "dx/trumpet", "dx/frenchHorn", "dx/softBrass", "subtractive/brass", "wavetable/brass",
+	"dx/trumpet", "shaper/brassLead", "shaper/brassLead", "dx/trumpet", "dx/frenchHorn", "dx/softBrass", "subtractive/brass", "wavetable/brass",
 	// reed
 	"dx/saxophone", "dx/saxophone", "dx/saxophone", "dx/saxophone", "dx/oboe", "dx/oboe", "dx/clarinet", "dx/clarinet",
 	// pipe
 	"dx/flute", "dx/flute", "organ/flute", "dx/panFlute", "subtractive/wind", "subtractive/flute", "organ/whistle", "subtractive/flute",
 	// synth lead
-	"subtractive/chipLead", "supersaw/lead", "organ/flute", "subtractive/lead", "pd/lead", "vocal/solo", "wavetable/lead", "subtractive/ladderLead",
+	"subtractive/chipLead", "supersaw/lead", "organ/flute", "subtractive/lead", "shaper/squareLead", "vocal/solo", "wavetable/lead", "subtractive/ladderLead",
 	// synth pad
-	"wavetable/pad", "subtractive/pad", "supersaw/trancePad", "vocal/choir", "waveguide/ghostBow", "pd/glassPad", "vocal/angels", "wavetable/sweep",
+	"wavetable/pad", "subtractive/pad", "supersaw/trancePad", "vocal/choir", "waveguide/ghostBow", "shaper/glassPad", "vocal/angels", "wavetable/sweep",
 	// synth effects
-	"pulsar/raindrops", "wavetable/drone", "modal/crystal", "subtractive/hollowPad", "wavetable/glass", "pulsar/insects", "modal/spaceTine", "westcoast/laserPing",
+	"pulsar/raindrops", "wavetable/drone", "modal/crystal", "subtractive/hollowPad", "wavetable/glass", "pulsar/insects", "modal/spaceTine", "shaper/laser",
 	// ethnic
 	"dx/sitar", "waveguide/steel", "dx/koto", "dx/koto", "modal/kalimba", "organ/reed", "waveguide/violin", "dx/oboe",
 	// percussive
-	"modal/glockenspiel", "westcoast/bell", "modal/steelPan", "modal/woodBlock", "dx/taiko", "westcoast/bongo", "subtractive/synthTom", "subtractive/riser",
+	"modal/glockenspiel", "shaper/glassBell", "modal/steelPan", "modal/woodBlock", "dx/taiko", "shaper/marimba", "subtractive/synthTom", "subtractive/riser",
 	// sound effects
-	"waveguide/scrape", "vocal/whisper", "westcoast/livingDrone", "pulsar/insects", "westcoast/laserPing", "pulsar/motor", "pulsar/crackle", "westcoast/metal",
+	"waveguide/scrape", "vocal/whisper", "shaper/subDrone", "pulsar/insects", "shaper/zap", "pulsar/motor", "pulsar/crackle", "shaper/metal",
 }
 
 // orchestral are the programs the Virtual Playing Orchestra plays with -orchestra: its SFZ files,
@@ -237,12 +236,6 @@ func newSound(name string) (*sound, error) {
 			return nil, missing(slices.Collect(maps.Keys(modal.Presets)))
 		}
 		s.synth = modal.NewPoly(f(), 16)
-	case "westcoast":
-		f, ok := westcoast.Presets[preset]
-		if !ok {
-			return nil, missing(slices.Collect(maps.Keys(westcoast.Presets)))
-		}
-		s.synth = westcoast.NewPoly(f(), 12)
 	case "subtractive":
 		f, ok := subtractive.Presets[preset]
 		if !ok {
@@ -261,12 +254,12 @@ func newSound(name string) (*sound, error) {
 			return nil, missing(slices.Collect(maps.Keys(wavetable.Presets)))
 		}
 		s.synth, s.keys = wavetable.NewPoly(f(wavetableTable), 12), synthKeys
-	case "pd":
-		f, ok := pd.Presets[preset]
+	case "shaper":
+		f, ok := shaper.Presets[preset]
 		if !ok {
-			return nil, missing(slices.Collect(maps.Keys(pd.Presets)))
+			return nil, missing(slices.Collect(maps.Keys(shaper.Presets)))
 		}
-		s.synth, s.keys = pd.NewPoly(f(), 12), synthKeys
+		s.synth, s.keys = shaper.NewPoly(f(), 12), synthKeys
 	case "pulsar":
 		f, ok := pulsar.Presets[preset]
 		if !ok {
@@ -286,7 +279,7 @@ func newSound(name string) (*sound, error) {
 		}
 		s.synth, s.keys, s.hall = drumsynth.NewPoly(drumsynth.Config{Kit: f()}, 16), drumKeys, 0.12
 	default:
-		return nil, fmt.Errorf("no synth %q: sfz, piano, fm, dx, organ, waveguide, modal, westcoast, subtractive, supersaw, wavetable, pd, pulsar, vocal or drumsynth", synth)
+		return nil, fmt.Errorf("no synth %q: sfz, piano, fm, dx, organ, waveguide, modal, subtractive, supersaw, wavetable, shaper, pulsar, vocal or drumsynth", synth)
 	}
 	return s, nil
 }
@@ -712,11 +705,10 @@ func soundNames() []string {
 	add("organ", slices.Collect(maps.Keys(organ.Presets)))
 	add("waveguide", slices.Collect(maps.Keys(waveguide.Presets)))
 	add("modal", slices.Collect(maps.Keys(modal.Presets)))
-	add("westcoast", slices.Collect(maps.Keys(westcoast.Presets)))
 	add("subtractive", slices.Collect(maps.Keys(subtractive.Presets)))
 	add("supersaw", slices.Collect(maps.Keys(supersaw.Presets)))
 	add("wavetable", slices.Collect(maps.Keys(wavetable.Presets)))
-	add("pd", slices.Collect(maps.Keys(pd.Presets)))
+	add("shaper", slices.Collect(maps.Keys(shaper.Presets)))
 	add("pulsar", slices.Collect(maps.Keys(pulsar.Presets)))
 	add("vocal", slices.Collect(maps.Keys(vocal.Presets)))
 	add("drumsynth", slices.Collect(maps.Keys(drumsynth.Kits)))
