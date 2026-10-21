@@ -16,7 +16,8 @@ shared.verse = () => Math.min(25, Math.floor(shared.globalBar() / 4))
 shared.verseBar = () => shared.globalBar() % 4
 // the step in the verse, 0 to 63
 shared.step = ev => shared.verseBar() * 16 + (ev.step % 16)
-shared.known = () => song.section in starts
+// (the coda, the last four bars of Heaven, is no verse: the scripts keep quiet and only what was started rings out)
+shared.known = () => song.section in starts && !(song.section === "Heaven" && song.bar >= 4)
 
 // the chord of each verse (F minor): the bass of the verse is its root
 const symbols = [
@@ -43,15 +44,17 @@ shared.layer = {
 shared.birds = [4, 5, 7, 8, 21, 22, 24, 25]
 // the horn calls (a fifth up and a fourth) and the shofar sounds
 shared.horn = [0, 9, 12, 14, 25]
-shared.shofar = { 0: 0, 9: 0, 12: 0, 14: 3, 25: 3 }       // the verse: the bar it sounds in
+shared.shofar = { 0: 0, 9: 0, 12: 0, 14: 3, 25: 0 }       // the verse: the bar it sounds in
 
 // the fade: the piece begins out of the quiet it ended in, and ends in it
 shared.fade = () => {
   const v = shared.verse(), b = shared.verseBar()
   if (v === 0) return [0.6, 0.75, 0.9, 1][b]               // (the sampler's velocity goes in squares: 0.6 is a third of the level)
-  if (v === 25) return [1, 0.9, 0.8, 0.7][b]
+  if (v === 25) return [1, 0.9, 0.75, 0.6][b]
   return 1
 }
+// the voice does not fade in the last verse: its refrain is the end, and has to be heard
+shared.voiceFade = () => shared.verse() === 25 ? 1 : shared.fade()
 
 // THE RECORDING: the psalm spoken, the 26 verses each followed by its refrain, cut at the pauses (52 pieces, patch.go): verse n of the song says verse n of
 // the recording, at the start of the verse (after the shofar when that sounds in the first bar), and its refrain in the last bar, the refrain bar, over the choir and the tabla loop as it was.

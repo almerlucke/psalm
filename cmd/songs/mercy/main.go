@@ -8,8 +8,8 @@
 // was, the refrain that returns. The recording is the psalm spoken, each verse with its refrain, cut at its pauses: verse n of the song says verse n of the recording, and its refrain is said in the last bar, the refrain bar. The
 // wooden tubes wander through their file by a markov chain (on to the next piece, a skip, back, the same again). The verses are
 // the six parts of the psalm (sections): give thanks (3 verses), creation (6), the Egyptians and the sea (6), the wilderness and the
-// kings (7), "he remembered us" (3) and "the God of heaven" (1): 12, 24, 24, 28, 12 and 4 bars at 90 beats a minute, about 4 1/2 minutes,
-// and it loops. The key is F minor.
+// kings (7), "he remembered us" (3) and "the God of heaven" (1): 12, 24, 24, 28, 12 and 8 bars at 90 beats a minute, about 4 1/2 minutes,
+// and it loops. The last verse is followed by a coda of four bars: the choir holds the chord under the last refrain and goes out, then the quiet before it begins again. The key is F minor.
 //
 //	go run ./cmd/songs/mercy
 //	go run ./cmd/songs/mercy -render mercy.wav -seed 7      render it to a file (-stems: the parts too)

@@ -62,7 +62,7 @@ var sections = []struct {
 	name string
 	bars int
 }{
-	{"Thanks", 12}, {"Creation", 24}, {"Egypt", 24}, {"Wilderness", 28}, {"Remembered", 12}, {"Heaven", 4},
+	{"Thanks", 12}, {"Creation", 24}, {"Egypt", 24}, {"Wilderness", 28}, {"Remembered", 12}, {"Heaven", 8},
 }
 
 // tourSeconds is how long the piece lasts
@@ -122,7 +122,7 @@ var (
 	tabla = sound{name: "tabla", path: "assets/sounds/various/tabla_loop_4bars_90bpm-86005.wav", mode: "hits", first: 36, args: []float64{9, 0.08}, extra: "vol=10"}
 	chant = sound{name: "chant", path: "assets/sounds/goedertierenheid.wav", mode: "verses", first: 36, args: []float64{26, 20}}
 	tubes = sound{name: "tubes", path: "assets/sounds/various/wooden-tubes-32138.wav", mode: "hits", first: 24, args: []float64{8, 0.15}, extra: "vol=12"}
-	birds = sound{name: "birds", path: "assets/sounds/various/birdfish-happy-loop-6199.wav", mode: "hits", first: 0, args: []float64{8, 0.1}, extra: "vol=6"}
+	birds = sound{name: "birds", path: "assets/sounds/various/birdfish-happy-loop-6199.wav", mode: "hits", first: 0, args: []float64{8, 0.1}, extra: "vol=3"}
 )
 
 // the congas and the rest of the percussion, whole, a key each
