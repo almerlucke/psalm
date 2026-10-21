@@ -2,6 +2,7 @@ package sampler
 
 import (
 	"math"
+	"slices"
 
 	"github.com/almerlucke/psalm/blocks/fft"
 )
@@ -199,6 +200,204 @@ func quietest(x []float64, at, reach, n int) int64 {
 		}
 	}
 	return int64(best)
+}
+
+// PauseCuts returns the cuts at the pauses of a recording, for speech and phrases: where the level stays more than depth dB (20 to 40) under
+// the loud parts for minPause seconds or longer, the cut is in the middle of the pause. A piece that is still longer than maxLen seconds
+// (0: no limit) is divided into equal parts, each cut moved to the quietest place near it. The first cut is 0 and the last the end.
+func PauseCuts(snd Sound, depth, minPause, maxLen float64) []int64 {
+	total := snd.NumFrames()
+	sr := snd.SampleRate()
+	hop := max(16, int(sr*0.01))
+	nh := int(total) / hop
+	if nh < 2 {
+		return []int64{0, total}
+	}
+	level := make([]float64, nh)
+	for h := range level {
+		sum, count := 0.0, 0
+		for c := range snd.NumChannels() {
+			for _, v := range snd.Buffer(c, 0)[h*hop : (h+1)*hop] {
+				sum += float64(v) * float64(v)
+				count++
+			}
+		}
+		level[h] = 10 * math.Log10(sum/float64(count)+1e-12)
+	}
+	// the loud level: the 95th percentile
+	sorted := append([]float64(nil), level...)
+	slices.Sort(sorted)
+	threshold := sorted[int(0.95*float64(nh-1))] - depth
+	cuts := []int64{0}
+	need := max(1, int(minPause*sr)/hop)
+	start := -1
+	flush := func(end int) {
+		if start >= 0 && end-start >= need {
+			if at := int64((start+end)/2) * int64(hop); at > cuts[len(cuts)-1] && at < total {
+				cuts = append(cuts, at)
+			}
+		}
+		start = -1
+	}
+	for h := range level {
+		if level[h] < threshold {
+			if start < 0 {
+				start = h
+			}
+		} else {
+			flush(h)
+		}
+	}
+	flush(nh)
+	cuts = append(cuts, total)
+	// the pieces that are too long
+	if maxLen > 0 {
+		var out []int64
+		for i := 0; i+1 < len(cuts); i++ {
+			out = append(out, cuts[i])
+			length := float64(cuts[i+1]-cuts[i]) / sr
+			if length <= maxLen {
+				continue
+			}
+			parts := int(math.Ceil(length / maxLen))
+			for j := 1; j < parts; j++ {
+				target := cuts[i] + (cuts[i+1]-cuts[i])*int64(j)/int64(parts)
+				reach := (cuts[i+1] - cuts[i]) / int64(parts) / 6
+				best, bestL := target, math.MaxFloat64
+				for h := int(max(0, target-reach)) / hop; h <= int(min(total-1, target+reach))/hop && h < nh; h++ {
+					if level[h] < bestL {
+						best, bestL = int64(h*hop+hop/2), level[h]
+					}
+				}
+				out = append(out, best)
+			}
+		}
+		cuts = append(out, total)
+	}
+	return snapCuts(snd, cuts)
+}
+
+// VerseCuts returns the cuts of a recitation of `verses` verses, each followed by a refrain (a psalm said with its response): 2*verses+1
+// cuts, so the pieces are the first verse, its refrain, the second verse, its refrain and so on. The verses are about equally long, so
+// their ends are found among the pauses (a level under the loud parts by depth dB, 20 to 30, of 0.3 seconds or more) by the sequence of
+// them that fits best: nearly equal verses, ending in long pauses. Each verse is then divided at the pause nearest its middle, or where it is
+// quietest there when it has none. The first cut is 0 and the last the end.
+func VerseCuts(snd Sound, verses int, depth float64) []int64 {
+	total := snd.NumFrames()
+	sr := snd.SampleRate()
+	hop := max(16, int(sr*0.01))
+	nh := int(total) / hop
+	verses = max(1, verses)
+	if nh < 2*verses {
+		return EvenCuts(snd, 2*verses)
+	}
+	level := make([]float64, nh)
+	for h := range level {
+		sum, count := 0.0, 0
+		for c := range snd.NumChannels() {
+			for _, v := range snd.Buffer(c, 0)[h*hop : (h+1)*hop] {
+				sum += float64(v) * float64(v)
+				count++
+			}
+		}
+		level[h] = 10 * math.Log10(sum/float64(count)+1e-12)
+	}
+	sorted := append([]float64(nil), level...)
+	slices.Sort(sorted)
+	threshold := sorted[int(0.95*float64(nh-1))] - depth
+	// the pauses: where they are (in hops) and how long they last (seconds)
+	type pause struct {
+		at  int
+		dur float64
+	}
+	var pauses []pause
+	start := -1
+	for h := 0; h <= nh; h++ {
+		if h < nh && level[h] < threshold {
+			if start < 0 {
+				start = h
+			}
+			continue
+		}
+		if start >= 0 {
+			if d := float64(h-start) * float64(hop) / sr; d >= 0.08 {
+				pauses = append(pauses, pause{(start + h) / 2, d})
+			}
+			start = -1
+		}
+	}
+	// the ends of the verses: the long pauses, with the start and the end of the recording; the cheapest way through them in `verses` steps
+	// (the cost of a verse is its length against the mean, squared, and a pause is worth its length up to a second)
+	cand := []pause{{0, 0}}
+	for _, p := range pauses {
+		if p.dur >= 0.3 && p.at > 0 && p.at < nh-1 {
+			cand = append(cand, p)
+		}
+	}
+	cand = append(cand, pause{nh, 0})
+	m := len(cand)
+	mean := float64(nh) / float64(verses)
+	inf := math.MaxFloat64
+	cost := make([][]float64, verses+1)
+	from := make([][]int, verses+1)
+	for k := range cost {
+		cost[k] = make([]float64, m)
+		from[k] = make([]int, m)
+		for j := range cost[k] {
+			cost[k][j] = inf
+		}
+	}
+	cost[0][0] = 0
+	for k := 1; k <= verses; k++ {
+		for j := 1; j < m; j++ {
+			for i := 0; i < j; i++ {
+				if cost[k-1][i] == inf {
+					continue
+				}
+				dev := (float64(cand[j].at-cand[i].at) - mean) / mean
+				c := cost[k-1][i] + dev*dev - 0.3*min(cand[j].dur, 1)
+				if c < cost[k][j] {
+					cost[k][j], from[k][j] = c, i
+				}
+			}
+		}
+	}
+	ends := make([]int, verses+1)
+	j := m - 1
+	if cost[verses][j] == inf { // fewer pauses than verses: equal verses
+		return EvenCuts(snd, 2*verses)
+	}
+	for k := verses; k >= 1; k-- {
+		ends[k] = cand[j].at
+		j = from[k][j]
+	}
+	// each verse in two, at the pause near its middle
+	cuts := []int64{0}
+	for k := 1; k <= verses; k++ {
+		a, b := ends[k-1], ends[k]
+		mid := (a + b) / 2
+		best, bestScore := -1, -math.MaxFloat64
+		for _, p := range pauses {
+			if p.at <= a+(b-a)/5 || p.at >= b-(b-a)/5 {
+				continue
+			}
+			if score := min(p.dur, 0.6) - math.Abs(float64(p.at-mid))/float64(b-a)*2; score > bestScore {
+				best, bestScore = p.at, score
+			}
+		}
+		if best < 0 || bestScore < -0.5 {
+			best = mid
+			quiet := math.MaxFloat64
+			for h := a + (b-a)*3/10; h <= b-(b-a)*3/10 && h < nh; h++ {
+				if level[h] < quiet {
+					best, quiet = h, level[h]
+				}
+			}
+		}
+		cuts = append(cuts, int64(best*hop+hop/2), int64(min(b*hop, int(total))))
+	}
+	cuts[len(cuts)-1] = total
+	return snapCuts(snd, cuts)
 }
 
 // snapCuts moves each cut but the first and last to the nearest zero crossing of the sound within five milliseconds

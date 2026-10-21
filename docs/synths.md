@@ -1096,7 +1096,7 @@ inst = sampler.MustInstrument(low, high)
 
 A recording cut into pieces, each on a key of its own: a drum loop becomes a kit, a phrase a set of syllables.
 `OnsetCuts(snd, rise, minGap)` finds the cuts where the level jumps (`rise` dB over the 50 ms before it, 6 to 12 is
-usual; `minGap` seconds between two), `ChangeCuts(snd, sensitivity, minGap)` cuts where the spectrum changes, for what has no hits (a sung line, speech; `sensitivity` 1.1 to 2, the lower the more cuts), `EvenCuts(snd, n)` divides it in equal pieces; both return the frames of the
+usual; `minGap` seconds between two), `VerseCuts(snd, verses, depth)` cuts a recitation of verses each followed by a refrain in two pieces for each (the verses are found among the long pauses, about equally long); `PauseCuts(snd, depth, minPause, maxLen)` cuts at the pauses of speech (a pause is under the loud level by `depth` dB, 20 to 40, for `minPause` seconds; a piece over `maxLen` seconds is divided), `ChangeCuts(snd, sensitivity, minGap)` cuts where the spectrum changes, for what has no hits (a sung line, speech; `sensitivity` 1.1 to 2, the lower the more cuts), `EvenCuts(snd, n)` divides it in equal pieces; both return the frames of the
 cuts, moved to the nearest zero crossing, the first 0 and the last the end. `Slices(snd, firstKey, cuts)` makes a
 region for every piece: from `firstKey` up, each plays its piece to the end at the pitch it was recorded (`OneShot`). A piece fades in over 5 ms and runs 5 ms past its end, fading out, which is where the next piece fades in: no clicks, and
 the pieces played one right after the other are the recording again, with no gaps. The regions can be changed (tune, envelope, loop) before the instrument is made.
@@ -1107,7 +1107,7 @@ inst := sampler.MustInstrument(sampler.Slices(snd, 36, sampler.OnsetCuts(snd, 9,
 ```
 
 `go run ./cmd/examples/slicer -demo` plays the tabla loop cut at its hits, in order and then shuffled (`-file`,
-`-by change` for a sung line, `-rise`, `-gap`, `-slices n`, `-first`); without `-demo` the pieces are on a MIDI keyboard.
+`-by change` for a sung line, `-by pauses -max 4` for speech, `-by verses -verses 26` for a recitation, `-rise`, `-gap`, `-slices n`, `-first`); without `-demo` the pieces are on a MIDI keyboard.
 
 `sampler.New(cfg)` is a single voice, `sampler.NewPoly(cfg, n)` a `poly` synth whose voices share
 the round robin turns and the choke groups. An instrument doesn't change once built: one can play

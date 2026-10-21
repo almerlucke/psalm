@@ -1,15 +1,15 @@
 // Mercy: Psalm 136, "O give thanks unto the LORD; for his mercy endureth for ever", twenty-six verses, each ending with the same
-// refrain, made of sounds cut into pieces: a tabla loop, a Gregorian hymn (Johannes), wooden tubes, birds and a congas
+// refrain, made of sounds cut into pieces: a tabla loop, the whole psalm spoken (goedertierenheid), wooden tubes, birds and a congas
 // kit, played by a sampler for each (the pieces of a sound are on the keys of its sampler), with the grains synth, the choirs and
 // the horn of the Virtual Playing Orchestra (shaper synths instead when it is not in assets) and a drone and a harp of the shaper.
 //
 // Every verse is four bars, the length of the tabla loop. The loop is cut at its hits and remixed as the verse goes: beats thrown to
 // other places, a few repeated (a stutter, a roll), bars swapped, turned round, thinned; the last bar is always the loop as it
-// was, the refrain that returns. The hymn is cut at its syllables and told over the verses, a few at a time, in the order it was sung. The
+// was, the refrain that returns. The recording is the psalm spoken, each verse with its refrain, cut at its pauses: verse n of the song says verse n of the recording, and its refrain is said in the last bar, the refrain bar. The
 // wooden tubes wander through their file by a markov chain (on to the next piece, a skip, back, the same again). The verses are
 // the six parts of the psalm (sections): give thanks (3 verses), creation (6), the Egyptians and the sea (6), the wilderness and the
 // kings (7), "he remembered us" (3) and "the God of heaven" (1): 12, 24, 24, 28, 12 and 4 bars at 90 beats a minute, about 4 1/2 minutes,
-// and it loops. The key is F minor around the Ab of the hymn.
+// and it loops. The key is F minor.
 //
 //	go run ./cmd/songs/mercy
 //	go run ./cmd/songs/mercy -render mercy.wav -seed 7      render it to a file (-stems: the parts too)

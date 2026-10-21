@@ -109,14 +109,18 @@ func (s sound) cuts() ([]int64, sampler.Sound, error) {
 		return sampler.OnsetCuts(snd, s.args[0], s.args[1]), snd, nil
 	case "change":
 		return sampler.ChangeCuts(snd, s.args[0], s.args[1]), snd, nil
+	case "verses":
+		return sampler.VerseCuts(snd, int(s.args[0]), s.args[1]), snd, nil
+	case "pauses":
+		return sampler.PauseCuts(snd, s.args[0], s.args[1], s.args[2]), snd, nil
 	}
 	return nil, snd, fmt.Errorf("%s: no pieces", s.name)
 }
 
-// the sounds that are cut: the tabla loop at its hits, the hymn at its syllables, the wooden tubes and the birds at their hits
+// the sounds that are cut: the tabla loop at its hits, the spoken recording at its pauses, the wooden tubes and the birds at their hits
 var (
 	tabla = sound{name: "tabla", path: "assets/sounds/various/tabla_loop_4bars_90bpm-86005.wav", mode: "hits", first: 36, args: []float64{9, 0.08}, extra: "vol=10"}
-	chant = sound{name: "chant", path: "assets/sounds/chants/Johannes.Hymnus.wav", mode: "change", first: 36, args: []float64{1.1, 0.3}, extra: "vol=-2"}
+	chant = sound{name: "chant", path: "assets/sounds/goedertierenheid.wav", mode: "verses", first: 36, args: []float64{26, 20}}
 	tubes = sound{name: "tubes", path: "assets/sounds/various/wooden-tubes-32138.wav", mode: "hits", first: 24, args: []float64{8, 0.15}, extra: "vol=12"}
 	birds = sound{name: "birds", path: "assets/sounds/various/birdfish-happy-loop-6199.wav", mode: "hits", first: 0, args: []float64{8, 0.1}, extra: "vol=6"}
 )
@@ -224,7 +228,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		{name: "perc", kind: "sampler", sounds: perc},
 		{name: "chant", kind: "sampler", sounds: chant.line()},
 		{name: "color", kind: "sampler", sounds: tubes.line() + "\n" + birds.line()},
-		{name: "bed", kind: "grains", preset: "choirPad", sounds: "chant " + chant.path + " 56"},
+		{name: "bed", kind: "grains", preset: "choirPad", sounds: "chant " + chant.path + " 48"},
 		{name: "pad", kind: "shaper", preset: "throneDrone"},
 		{name: "harp", kind: "shaper", preset: "harp"},
 		hornPart, choirPart,

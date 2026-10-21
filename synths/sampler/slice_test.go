@@ -184,3 +184,82 @@ func TestParseBanks(t *testing.T) {
 		t.Errorf("still the constant sound of the old instrument: %g", x[len(x)-1])
 	}
 }
+
+func TestPauseCuts(t *testing.T) {
+	// three phrases of a tone with a pause of half a second between, the last long (3 s)
+	var buf []float32
+	add := func(freq, seconds float64) {
+		for i := 0; i < int(seconds*sr); i++ {
+			buf = append(buf, float32(0.5*math.Sin(2*math.Pi*freq*float64(i)/sr)))
+		}
+	}
+	rest := func(seconds float64) { buf = append(buf, make([]float32, int(seconds*sr))...) }
+	add(300, 1)
+	rest(0.5)
+	add(400, 1)
+	rest(0.5)
+	add(500, 3)
+	snd := NewSound(sr, buf)
+	cuts := PauseCuts(snd, 30, 0.3, 0)
+	if len(cuts) != 4 {
+		t.Fatalf("cuts %v, want the two pauses", cuts)
+	}
+	for i, want := range []float64{1.25, 2.75} {
+		if d := math.Abs(float64(cuts[i+1])/sr - want); d > 0.02 {
+			t.Errorf("pause %d cut at %.3f s, want %.2f", i, float64(cuts[i+1])/sr, want)
+		}
+	}
+	// the long phrase is divided into pieces of about 1.5 seconds at most
+	cuts = PauseCuts(snd, 30, 0.3, 1.5)
+	if len(cuts) != 6 {
+		t.Fatalf("cuts %v, want the third phrase (3.25 s) in three", cuts)
+	}
+	for i := 0; i+1 < len(cuts); i++ {
+		if float64(cuts[i+1]-cuts[i])/sr > 1.6 {
+			t.Errorf("piece %d is %.2f s", i, float64(cuts[i+1]-cuts[i])/sr)
+		}
+	}
+	inst, _, err := ParseBanks("40 x.wav pauses 30 0.3 1.5", func(string) (Sound, error) { return snd, nil })
+	if err != nil || len(inst.Regions) != 5 {
+		t.Errorf("pauses in a bank: %v, %d regions", err, len(inst.Regions))
+	}
+}
+
+func TestVerseCuts(t *testing.T) {
+	// five verses with a refrain each: the verse and the refrain a second long each, half a second between them in the later verses (none
+	// in the first two), a second between verses
+	var buf []float32
+	add := func(freq, seconds float64) {
+		for i := 0; i < int(seconds*sr); i++ {
+			buf = append(buf, float32(0.5*math.Sin(2*math.Pi*freq*float64(i)/sr)))
+		}
+	}
+	rest := func(seconds float64) { buf = append(buf, make([]float32, int(seconds*sr))...) }
+	var starts []float64 // where each verse and refrain begins
+	for k := range 5 {
+		starts = append(starts, float64(len(buf))/sr)
+		add(300+50*float64(k), 1.2+0.3*float64(k%2))
+		if k >= 2 {
+			rest(0.5)
+		}
+		starts = append(starts, float64(len(buf))/sr)
+		add(250, 1.1)
+		rest(1)
+	}
+	snd := NewSound(sr, buf)
+	cuts := VerseCuts(snd, 5, 25)
+	if len(cuts) != 11 {
+		t.Fatalf("%d cuts, want 11", len(cuts))
+	}
+	for i, want := range starts[1:] {
+		got := float64(cuts[i+1]) / sr
+		// a cut is in the pause before the piece it ends or in the middle of it
+		if got < want-1.1 || got > want+0.05 {
+			t.Errorf("cut %d at %.2f s, the piece after it begins at %.2f", i+1, got, want)
+		}
+	}
+	inst, _, err := ParseBanks("40 x.wav verses 5 25", func(string) (Sound, error) { return snd, nil })
+	if err != nil || len(inst.Regions) != 10 {
+		t.Errorf("verses in a bank: %v, %d regions", err, len(inst.Regions))
+	}
+}

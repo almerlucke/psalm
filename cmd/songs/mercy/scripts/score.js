@@ -1,7 +1,7 @@
 // SCORE: Psalm 136, twenty-six verses of four bars (the length of the tabla loop), each ending with the same refrain, "for his mercy
 // endureth for ever". This script plays nothing: at its start it puts what the others need into `shared` (before this line shared.slices
 // is there, the patch has put it: where the pieces of every cut sound are, in sixteenths of the tempo). Where in the psalm the piece is
-// (shared.verse, shared.verseBar, shared.step), the chord of each verse, how much of each layer plays in it, how the hymn is told over the verses,
+// (shared.verse, shared.verseBar, shared.step), the chord of each verse, how much of each layer plays in it, how the recording is told over the verses,
 // and the fade at the start and the end, so the piece loops without a seam.
 //
 //  1-3    give thanks, to the God of gods, the Lord of lords              Thanks     12 bars
@@ -18,7 +18,7 @@ shared.verseBar = () => shared.globalBar() % 4
 shared.step = ev => shared.verseBar() * 16 + (ev.step % 16)
 shared.known = () => song.section in starts
 
-// the chord of each verse (F minor, with the Ab of the hymn): the bass of the verse is its root
+// the chord of each verse (F minor): the bass of the verse is its root
 const symbols = [
   "Fm9", "Dbmaj7", "Abmaj7",                                            // thanks
   "Abmaj7", "Dbmaj7", "Abmaj7", "Fm9", "Dbmaj9", "Cm7",                 // creation
@@ -48,39 +48,22 @@ shared.shofar = { 0: 0, 9: 0, 12: 0, 14: 3, 25: 3 }       // the verse: the bar 
 // the fade: the piece begins out of the quiet it ended in, and ends in it
 shared.fade = () => {
   const v = shared.verse(), b = shared.verseBar()
-  if (v === 0) return [0.35, 0.55, 0.8, 1][b]
-  if (v === 25) return [1, 0.8, 0.5, 0.25][b]
+  if (v === 0) return [0.6, 0.75, 0.9, 1][b]               // (the sampler's velocity goes in squares: 0.6 is a third of the level)
+  if (v === 25) return [1, 0.9, 0.8, 0.7][b]
   return 1
 }
 
-// THE HYMN, told over the verses: each verse takes the next pieces of the hymn (the syllables, in the order they were sung) at the
-// distances they were sung at, to about the number of steps the verse's call has; the hymn comes round again when it is told; the last
-// verse has its end
-const target = [14, 16, 18, 22, 22, 22, 22, 22, 22, 20, 20, 20, 26, 20, 24, 30, 30, 30, 30, 30, 30, 30, 24, 24, 24, 32]
-// a piece that sounds (the ends of a file are silent), and the loudness it is told at: the quiet syllables a little louder, the loud ones
-// a little softer (the velocity goes in squares, 40 dB to a factor ten)
+// THE RECORDING: the psalm spoken, the 26 verses each followed by its refrain, cut at the pauses (52 pieces, patch.go): verse n of the song says verse n of
+// the recording, at the start of the verse (after the shofar when that sounds in the first bar), and its refrain in the last bar, the refrain bar, over the choir and the tabla loop as it was.
+// A piece that is quiet is told a little louder, a loud one a little softer (the velocity goes in squares, 40 dB to a factor ten).
 shared.loud = p => p.db > -50
 shared.evenOut = (p, ref) => Math.max(0.6, Math.min(1.4, Math.pow(10, (ref - p.db) / 40)))
 const pieces = shared.slices.chant
 shared.calls = []
-{
-  let cursor = 0
-  for (let v = 0; v < 26; v++) {
-    if (v === 25) cursor = Math.max(0, pieces.length - 8)
-    while (cursor < pieces.length - 1 && !shared.loud(pieces[cursor])) cursor++        // not into a silence
-    if (!shared.loud(pieces[cursor])) { cursor = 0; while (!shared.loud(pieces[cursor])) cursor++ }      // the hymn is told again from its beginning
-    const notes = []
-    const base = pieces[cursor].at
-    let i = cursor
-    while (i < pieces.length && notes.length < 6) {
-      const p = pieces[i]
-      const at = Math.round(p.at - base)
-      if (notes.length > 0 && at + p.len > 50) break
-      if (shared.loud(p)) notes.push({ key: p.key, at, len: Math.min(p.len, 56), gain: shared.evenOut(p, -22) })
-      i++
-      if (at + p.len >= target[v]) break
-    }
-    cursor = i >= pieces.length ? 0 : i
-    shared.calls.push(notes)
-  }
+for (let v = 0; v < 26; v++) {
+  const verse = pieces[2 * v], refrain = pieces[2 * v + 1]
+  shared.calls.push([
+    { key: verse.key, at: shared.shofar[v] === 0 ? 16 : 2, len: Math.min(verse.len, 44), gain: shared.evenOut(verse, -22) },
+    { key: refrain.key, at: 48, len: Math.min(refrain.len, 16), gain: shared.evenOut(refrain, -22) },
+  ])
 }

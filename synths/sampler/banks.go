@@ -12,11 +12,12 @@ import (
 //	# the first key, the file, how to cut it, and anything of: vol=dB pan=-1..1 name=word
 //	36 assets/sounds/various/tabla_loop_4bars_90bpm-86005.wav hits 9 0.08      44 pieces on the keys from 36
 //	84 assets/sounds/chants/Johannes.Hymnus.wav change 1.1 0.25 vol=-3        pieces of a sung line, cut where it changes
+//	36 assets/sounds/goedertierenheid.wav verses 26 20                         26 verses and their refrains, two pieces each, found by the pauses
 //	0  assets/sounds/various/wooden-tubes-32138.wav even 16                    sixteen equal pieces
 //	60 assets/sounds/various/birdfish-happy-loop-6199.wav whole 72 66          the whole sound on keys 60 to 72, in tune at 66
 //	0  assets/Virtual-Playing-Orchestra3/Strings/harp-sustain.sfz sfz          an SFZ instrument as it is
 //
-// The modes are hits (rise dB, least gap seconds: OnsetCuts), change (sensitivity, least gap seconds: ChangeCuts), even (the number of
+// The modes are hits (rise dB, least gap seconds: OnsetCuts), change (sensitivity, least gap seconds: ChangeCuts), pauses (depth dB, least pause seconds, longest piece seconds: PauseCuts), verses (the number of verses, depth dB: VerseCuts, two pieces for each: the verse and its refrain), even (the number of
 // pieces: EvenCuts) and whole (the highest key, the key it is in tune at; default the first key for both, so it plays on one key). Pieces
 // are made by Slices, one key each from the first key up. Empty lines and lines that begin with # are left out. load reads the sounds. The
 // second result describes what every line made, to show where the keys are.
@@ -92,6 +93,10 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 				made = Slices(snd, first, OnsetCuts(snd, arg(0, 9), arg(1, 0.08)))
 			case "change":
 				made = Slices(snd, first, ChangeCuts(snd, arg(0, 1.1), arg(1, 0.25)))
+			case "pauses":
+				made = Slices(snd, first, PauseCuts(snd, arg(0, 30), arg(1, 0.3), arg(2, 0)))
+			case "verses":
+				made = Slices(snd, first, VerseCuts(snd, int(arg(0, 1)), arg(1, 20)))
 			case "even":
 				made = Slices(snd, first, EvenCuts(snd, int(arg(0, 8))))
 			case "whole":
@@ -99,7 +104,7 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 				made = []Region{NewRegion(snd).Keys(first, max(first, hi), arg(1, float64(first)))}
 				made[0].Loop = OneShot
 			default:
-				return nil, nil, fail("%q: hits, change, even, whole or sfz", mode)
+				return nil, nil, fail("%q: hits, change, pauses, verses, even, whole or sfz", mode)
 			}
 			for i := range made {
 				made[i].Name = name

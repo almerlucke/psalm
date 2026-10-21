@@ -29,8 +29,10 @@ import (
 func main() {
 	file := flag.String("file", "assets/sounds/chants/Factus.est.repente.VII.Ton.wav", "the recording")
 	even := flag.Int("slices", 0, "cut it in this many equal pieces (0: at the hits)")
-	by := flag.String("by", "hits", "where to cut: at the hits of the level (hits), or where the sound changes (change: a sung line, speech)")
+	by := flag.String("by", "hits", "where to cut: at the hits of the level (hits), where the sound changes (change: a sung line), at the pauses (pauses: speech; -rise is the depth in dB, -gap the least pause, -max the longest piece), or as the verses and refrains of a recitation (verses: -verses n)")
 	rise := flag.Float64("rise", 0, "hits: dB the level must rise (default 9); change: how many times the average the change must be (default 1.1)")
+	verses := flag.Int("verses", 26, "verses: the verses of a recitation, each followed by a refrain (two pieces each)")
+	longest := flag.Float64("max", 4, "pauses: the longest piece in seconds")
 	gap := flag.Float64("gap", 0.08, "the least seconds between two hits")
 	first := flag.Int("first", 36, "the key of the first piece")
 	device := flag.String("device", "", "the raw MIDI device (empty is the first keyboard)")
@@ -46,6 +48,10 @@ func main() {
 	var cuts []int64
 	if *even > 0 {
 		cuts = sampler.EvenCuts(snd, *even)
+	} else if *by == "verses" {
+		cuts = sampler.VerseCuts(snd, *verses, cmp.Or(*rise, 20))
+	} else if *by == "pauses" {
+		cuts = sampler.PauseCuts(snd, cmp.Or(*rise, 30), *gap, *longest)
 	} else if *by == "change" {
 		cuts = sampler.ChangeCuts(snd, cmp.Or(*rise, 1.1), *gap)
 	} else {
