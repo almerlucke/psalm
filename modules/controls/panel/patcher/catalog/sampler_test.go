@@ -107,3 +107,23 @@ func TestGrainsSounds(t *testing.T) {
 		t.Errorf("grains of the chant: peak %g", peak)
 	}
 }
+
+// the vocoder has a voice and a carrier to be connected to
+func TestVocoderTakesTwoSources(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "A"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	voc, err := pt.Add("vocoder", "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, _ := pt.Add("sampler", "", 0, 0)
+	b, _ := pt.Add("shaper", "stringPad", 0, 0)
+	for _, c := range []patcher.Cable{{From: a, To: voc, In: 0}, {From: b, To: voc, In: 1}, {From: voc, To: "out"}} {
+		if _, err := pt.Connect(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

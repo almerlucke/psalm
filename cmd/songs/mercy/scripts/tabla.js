@@ -1,7 +1,7 @@
 // TABLA: the loop of four bars, cut at its hits, 44 pieces on the keys of a sampler, put where they were: each verse is the loop once, and
 // the verse remixes it. The operations are few, and a markov chain chooses them (the weights are holy numbers): a bar rotated by a few
 // steps, two bars swapped, a bar turned round, a few steps repeated to the end of the bar (a stutter), one piece repeated on four steps (a
-// roll), the weaker hits thinned out. The more heat a verse has the more of them. The last bar is always the loop as it was: the refrain that
+// roll), the weaker hits thinned out. In the coda the drums say goodbye in two bars. The more heat a verse has the more of them. The last bar is always the loop as it was: the refrain that
 // returns. In the verse of the dividing of the Red Sea the hits part and leave a gap, and come together again in a roll.
 const rnd = genny.rand(0, 1)
 const R = () => rnd.next()
@@ -61,7 +61,16 @@ function patternFor(v) {
 }
 
 let pat = null, lastVerse = -1
+// the goodbye: the first two bars of the coda the drums go on, the loop as it was (the refrain again), then the same softer with a last stroke
+function goodbye(ev) {
+  const b = song.bar - 4, i = ev.step % 16, p = base[48 + i]
+  if (b === 0 && p) note(p.key, (i % 4 === 0 ? 0.85 : 0.7) * 0.85, p.len)
+  if (b === 1 && p && i < 12 && i % 4 === 0) note(p.key, 0.5 - 0.1 * (i / 4), p.len)
+  if (b === 1 && i === 12) note(base.slice(48).find(x => x).key, 0.8, 8)     // the last stroke
+}
+
 function trigger(ev) {
+  if (shared.coda()) return goodbye(ev)
   if (!shared.known()) return
   const v = shared.verse(), k = shared.step(ev)
   if (v !== lastVerse) { lastVerse = v; pat = patternFor(v) }

@@ -43,6 +43,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/tape"
 	"github.com/almerlucke/psalm/modules/effects/transient"
 	"github.com/almerlucke/psalm/modules/effects/tremolo"
+	"github.com/almerlucke/psalm/modules/effects/vocoder"
 	"github.com/almerlucke/psalm/modules/effects/widener"
 	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/synths/drumsynth"
@@ -268,6 +269,7 @@ func Kinds(cfg Config) []patcher.Kind {
 			return m, func() params.Set { return widener.Describe(m.Settings()) }
 		}),
 	)
+	kinds = append(kinds, vocoderKind())
 	if cfg.IR != nil {
 		kinds = append(kinds, effect("hall", func() (psalm.Modular, func() params.Set) {
 			m := convolver.New(cfg.IR, convolver.Config{PartitionSize: 512, Mix: 0.35, Gain: 0.7})
@@ -278,6 +280,17 @@ func Kinds(cfg Config) []patcher.Kind {
 		kinds = append(kinds, k)
 	}
 	return kinds
+}
+
+// vocoderKind is the vocoder: a voice (the modulator) on its first input and a synth (the carrier) on its second. What comes
+// out is the synth saying what the voice says; it sounds a frame late, which the mixer makes up for on the other strips
+func vocoderKind() patcher.Kind {
+	return patcher.Kind{Name: "vocoder", Group: "Effects", Outs: outs,
+		Ins: []patcher.Port{{Name: "voice", Type: patcher.Audio, Index: 0}, {Name: "carrier", Type: patcher.Audio, Index: 1}},
+		Make: func(string) (*patcher.Made, error) {
+			m := vocoder.New(vocoder.DefaultConfig())
+			return &patcher.Made{Module: m, Describe: func(string) params.Set { return vocoder.Describe(m.Settings()) }}, nil
+		}}
 }
 
 // dxKind is the DX7, with its own editor

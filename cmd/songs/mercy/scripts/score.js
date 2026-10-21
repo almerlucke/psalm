@@ -17,6 +17,7 @@ shared.verseBar = () => shared.globalBar() % 4
 // the step in the verse, 0 to 63
 shared.step = ev => shared.verseBar() * 16 + (ev.step % 16)
 // (the coda, the last four bars of Heaven, is no verse: the scripts keep quiet and only what was started rings out)
+shared.coda = () => song.section === "Heaven" && song.bar >= 4
 shared.known = () => song.section in starts && !(song.section === "Heaven" && song.bar >= 4)
 
 // the chord of each verse (F minor): the bass of the verse is its root

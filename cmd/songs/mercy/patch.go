@@ -276,7 +276,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	pt.SettingsOf(mixer).Apply(map[string]float64{
 		"level1": 0.6, "pan1": 0, "sendA1": 0.2,
 		"level2": 0.4, "pan2": 0.2, "sendA2": 0.25, "sendB2": 0.15,
-		"level3": 0.7, "pan3": -0.1, "sendA3": 0.45, "sendB3": 0.25,
+		"level3": 0.7, "pan3": -0.1, "sendA3": 0.45, "sendB3": 0.51,
 		"level4": 0.45, "pan4": 0.3, "sendA4": 0.4, "sendB4": 0.3, "sendC4": 0.15,
 		"level5": 0.4, "pan5": 0, "sendA5": 0.5, "sendC5": 0.25,
 		"level6": 0.4, "pan6": 0, "sendA6": 0.3,

@@ -880,6 +880,9 @@ keys from the first, and a script plays them with `note(key, velocity, steps)` (
 (a missing file, a mode it doesn't know) leaves the sounds as they were. The grains synth's text has a line for each sound: `name file pitch`;
 the first plays, and a script picks another with `set({sound: "name"})`. `cmd/songs/mercy` plays both from scripts.
 
+The **vocoder** is an effect with two inputs, `voice` and `carrier`: connect a sampler (or any strip) to the first and a synth to the second, and the synth says what the voice says. It sounds a
+frame late, which the mixer makes up for on the other strips, so the voice can also go to the mixer as it is and the two are mixed dry and wet by their levels.
+
 The tempo of the patch is in the bar at the top of the page (`pt.Tempo()`, 30 to 300 bpm, a value
 typed too), and kept with a patch: loading one sets its tempo.
 
