@@ -8,8 +8,10 @@ package catalog
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -45,10 +47,12 @@ import (
 	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/synths/drumsynth"
 	"github.com/almerlucke/psalm/synths/dx"
+	"github.com/almerlucke/psalm/synths/grains"
 	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
 	"github.com/almerlucke/psalm/synths/piano"
 	"github.com/almerlucke/psalm/synths/pulsar"
+	"github.com/almerlucke/psalm/synths/sampler"
 	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/supersaw"
@@ -56,6 +60,7 @@ import (
 	"github.com/almerlucke/psalm/synths/waveguide"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
+	"github.com/almerlucke/sndfile"
 )
 
 // Config is what the kinds need from outside
@@ -163,6 +168,8 @@ func Kinds(cfg Config) []patcher.Kind {
 		synth("supersaw", sorted(supersaw.Presets), func(n string, v int) psalm.Modular { return supersaw.NewPoly(supersaw.Presets[n](), v) },
 			func(n string) params.Set { return supersaw.Describe(supersaw.Presets[n]()) }, v),
 		shaperKind(v),
+		samplerKind(v),
+		grainsKind(v),
 		synth("pulsar", sorted(pulsar.Presets), func(n string, v int) psalm.Modular { return pulsar.NewPoly(pulsar.Presets[n](), v) },
 			func(n string) params.Set { return pulsar.Describe(pulsar.Presets[n]()) }, v),
 		synth("organ", sorted(organ.Presets), func(n string, _ int) psalm.Modular { return organ.New(organ.Presets[n]()) },
@@ -361,4 +368,108 @@ func (r *hubReader) Read(events []midi.Event, frames int, sampleRate float64) []
 	}
 	r.reads = h.reads
 	return append(events, h.events...)
+}
+
+// samplerKind is the sampler: its sounds are a text in its side panel, a line each (a first key, a file, how it is cut into pieces: hits,
+// change, even or whole, or an SFZ instrument; see sampler.ParseBanks), so a loop or a chant becomes a kit on the keys that a script
+// or a keyboard plays. A text that can't be read (a missing file, a mode it doesn't know) leaves the sounds as they were
+func samplerKind(voices int) patcher.Kind {
+	const help = "- a line a sound: `36 file.wav hits 9 0.08` (the first key, the file, how to cut it)\n" +
+		"- `hits rise gap`: a piece at every hit; `change sensitivity gap`: where the sound changes (a sung line); `even n`; `whole hiKey root`\n" +
+		"- `0 instrument.sfz sfz` an SFZ instrument; add `vol=-6 pan=0.3 name=word`; # starts a comment"
+	var (
+		mu    sync.Mutex
+		cache = map[string]sampler.Sound{}
+	)
+	load := func(path string) (sampler.Sound, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if snd, ok := cache[path]; ok {
+			return snd, nil
+		}
+		snd, err := sampler.LoadFile(path)
+		if err == nil {
+			cache[path] = snd
+		}
+		return snd, err
+	}
+	return patcher.Kind{Name: "sampler", Group: "Synths", Ins: note, Outs: outs,
+		Make: func(string) (*patcher.Made, error) {
+			var status string // what the sounds made, or what is wrong with the text
+			return &patcher.Made{Module: sampler.NewPoly(sampler.DefaultConfig(nil), voices),
+				Texts: []patcher.Text{{Key: "sounds", Label: "sounds", Lines: 8, Help: help}},
+				TextMessage: func(key, value string) (psalm.Message, error) {
+					if key != "sounds" {
+						return nil, errors.New("no such text")
+					}
+					if strings.TrimSpace(value) == "" {
+						return nil, errors.New("no sounds")
+					}
+					inst, report, err := sampler.ParseBanks(value, load)
+					mu.Lock()
+					defer mu.Unlock()
+					if err != nil {
+						status = "error: " + err.Error()
+						return nil, err
+					}
+					status = strings.Join(report, "\n")
+					return psalm.Message{"instrument": inst}, nil
+				},
+				Status: func() string { mu.Lock(); defer mu.Unlock(); return status }}, nil
+		}}
+}
+
+// grainsKind is the granular sampler: the usual presets and settings, and its sounds as a text in its side panel, a line each: a name, a
+// file and the MIDI pitch it is at (`choir assets/sounds/chants/Johannes.Hymnus.wav 62`). The first is what it plays; a script picks
+// another with set({sound: "name"}) (the pitch of that sound goes with it)
+func grainsKind(voices int) patcher.Kind {
+	const help = "- a line a sound: `choir file.wav 62` (a name, the file, the MIDI pitch it is at; 60 without)\n" +
+		"- the first is played; a script picks another with `set({sound: \"name\"})`; # starts a comment"
+	return patcher.Kind{Name: "grains", Group: "Synths", Presets: sorted(grains.Presets), Ins: note, Outs: outs,
+		Make: func(preset string) (*patcher.Made, error) {
+			mk := func(name string) psalm.Modular { return grains.NewPoly(grains.Presets[name](nil, 60), voices) }
+			var cache = map[string]sndfile.SoundFiler[float32]{}
+			return &patcher.Made{Module: mk(preset), Rebuild: mk,
+				Describe: func(n string) params.Set { return grains.Describe(grains.Presets[n](nil, 60)) },
+				Texts:    []patcher.Text{{Key: "sounds", Label: "sounds", Lines: 5, Help: help}},
+				TextMessage: func(key, value string) (psalm.Message, error) {
+					if key != "sounds" {
+						return nil, errors.New("no such text")
+					}
+					bank, roots, first := sndfile.SoundBank[float32]{}, map[string]float64{}, ""
+					for n, line := range strings.Split(value, "\n") {
+						line = strings.TrimSpace(line)
+						if line == "" || strings.HasPrefix(line, "#") {
+							continue
+						}
+						f := strings.Fields(line)
+						if len(f) < 2 || len(f) > 3 {
+							return nil, fmt.Errorf("line %d: a name, a file and the pitch: choir file.wav 62", n+1)
+						}
+						root := 60.0
+						if len(f) == 3 {
+							var err error
+							if root, err = strconv.ParseFloat(f[2], 64); err != nil {
+								return nil, fmt.Errorf("line %d: %q is not a pitch", n+1, f[2])
+							}
+						}
+						sf, ok := cache[f[1]]
+						if !ok {
+							var err error
+							if sf, err = sndfile.NewSoundFile[float32](f[1]); err != nil {
+								return nil, fmt.Errorf("line %d: %v", n+1, err)
+							}
+							cache[f[1]] = sf
+						}
+						bank[f[0]], roots[f[0]] = sf, root
+						if first == "" {
+							first = f[0]
+						}
+					}
+					if first == "" {
+						return nil, errors.New("no sounds")
+					}
+					return psalm.Message{"bank": bank, "roots": roots, "first": first}, nil
+				}}, nil
+		}}
 }

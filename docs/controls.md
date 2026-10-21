@@ -873,6 +873,13 @@ pt := patcher.New(p, ctl, "Patch", kinds, patcher.Keep("patches"), patcher.Prese
 mix.Channel("patch", pt.Out(), mixer.StripConfig{})
 ```
 
+**The sampler and the grains** are modules of the patch too, with their sounds as a text in the side panel. The sampler's text has a line for every
+sound: `36 assets/sounds/various/tabla_loop.wav hits 9 0.08` (the first key, the file, how it is cut: `hits` rise-in-dB and least gap, `change`
+for a sung line, `even n`, `whole hiKey root`, or `sfz` for an SFZ instrument; `vol=`, `pan=` and `name=` after it); the pieces of a sound are on the
+keys from the first, and a script plays them with `note(key, velocity, steps)` (see [Synths](synths.md#slices)). A text that can't be read
+(a missing file, a mode it doesn't know) leaves the sounds as they were. The grains synth's text has a line for each sound: `name file pitch`;
+the first plays, and a script picks another with `set({sound: "name"})`. `cmd/songs/mercy` plays both from scripts.
+
 The tempo of the patch is in the bar at the top of the page (`pt.Tempo()`, 30 to 300 bpm, a value
 typed too), and kept with a patch: loading one sets its tempo.
 

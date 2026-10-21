@@ -19,6 +19,7 @@ type Config struct {
 	Sample    sndfile.SoundFiler[float32]
 	SoundBank sndfile.SoundBank[float32] // optional, notes can pick a sample with the "sound" key
 	RootNote  float64                    // MIDI pitch of the sample, playing this note plays it at its own pitch
+	Roots     map[string]float64         // the MIDI pitch of the sounds of the bank, by name (a note that picks a sound plays it at its own pitch around this key); without, RootNote
 
 	Position        float64 // 0-1, where in the sample the grains come from
 	Scan            float64 // how fast the position moves through the sample: 0 freezes, 1 is the original speed, negative goes backwards
@@ -180,9 +181,27 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	v.expr.Receive(msg)
 	envelope.Receive(msg, "amp", &v.cfg.AmpEnv)
 	cfg := &v.cfg
+	// a bank of sounds (and the pitch of each) sent by a patch that built it off the audio thread; the first sound is played until a note picks one
+	if bank, ok := msg["bank"].(sndfile.SoundBank[float32]); ok {
+		cfg.SoundBank = bank
+		if roots, ok := msg["roots"].(map[string]float64); ok {
+			cfg.Roots = roots
+		}
+		if first, ok := msg["first"].(string); ok {
+			if s, ok := bank[first]; ok {
+				v.sample = s
+				if r, ok := cfg.Roots[first]; ok {
+					cfg.RootNote = r
+				}
+			}
+		}
+	}
 	msg.IfStrVal("sound", func(name string) {
 		if s, ok := cfg.SoundBank[name]; ok {
 			v.sample = s
+			if r, ok := cfg.Roots[name]; ok {
+				cfg.RootNote = r
+			}
 		}
 	})
 	msg.IfFltVal("rootNote", func(f float64) { cfg.RootNote = f })

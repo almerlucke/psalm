@@ -158,6 +158,7 @@ type Region struct {
 	EQ                                  []EQBand // peaking filters
 	Width                               float64  // a stereo sound's width in percent: 100 as it is, 0 mono, -100 swapped
 	BendUp, BendDown                    float64  // cents the pitch bend moves it all the way up, down (SFZ: 200, -200)
+	EndFade                             float64  // seconds the sound fades out in a straight line before its end (frame End), so a piece cut out of a recording does not click; 0: it just ends
 	// Polyphony is how many notes of its group (of the region itself without one) sound at once,
 	// NotePolyphony how many of the same key: past it the oldest let go, quickly (0 is no limit)
 	Polyphony, NotePolyphony int

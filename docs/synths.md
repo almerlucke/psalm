@@ -1092,6 +1092,23 @@ low := sampler.NewRegion(snd).Keys(0, 64, 60)               // keys 0-64, record
 inst = sampler.MustInstrument(low, high)
 ```
 
+### Slices
+
+A recording cut into pieces, each on a key of its own: a drum loop becomes a kit, a phrase a set of syllables.
+`OnsetCuts(snd, rise, minGap)` finds the cuts where the level jumps (`rise` dB over the 50 ms before it, 6 to 12 is
+usual; `minGap` seconds between two), `ChangeCuts(snd, sensitivity, minGap)` cuts where the spectrum changes, for what has no hits (a sung line, speech; `sensitivity` 1.1 to 2, the lower the more cuts), `EvenCuts(snd, n)` divides it in equal pieces; both return the frames of the
+cuts, moved to the nearest zero crossing, the first 0 and the last the end. `Slices(snd, firstKey, cuts)` makes a
+region for every piece: from `firstKey` up, each plays its piece to the end at the pitch it was recorded (`OneShot`). A piece fades in over 5 ms and runs 5 ms past its end, fading out, which is where the next piece fades in: no clicks, and
+the pieces played one right after the other are the recording again, with no gaps. The regions can be changed (tune, envelope, loop) before the instrument is made.
+
+```go
+snd, _ := sampler.LoadFile("assets/sounds/various/tabla_loop_4bars_90bpm-86005.wav")
+inst := sampler.MustInstrument(sampler.Slices(snd, 36, sampler.OnsetCuts(snd, 9, 0.08))...)   // 44 pieces on keys 36-79
+```
+
+`go run ./cmd/examples/slicer -demo` plays the tabla loop cut at its hits, in order and then shuffled (`-file`,
+`-by change` for a sung line, `-rise`, `-gap`, `-slices n`, `-first`); without `-demo` the pieces are on a MIDI keyboard.
+
 `sampler.New(cfg)` is a single voice, `sampler.NewPoly(cfg, n)` a `poly` synth whose voices share
 the round robin turns and the choke groups. An instrument doesn't change once built: one can play
 in many synths. `LoadSFZWith(path, sampler.MipMaps(4))` keeps band limited copies of every sound,
@@ -1114,6 +1131,7 @@ tracking, a short release):
 | `VelTrack` | `amp_veltrack` | 0-1, how much the velocity sets the loudness (velocity squared) |
 | `Offset`, `End` | `offset`, `end` | The frames it plays |
 | `Loop` | `loop_mode` | `NoLoop`, `OneShot` (ignores note offs), `LoopContinuous`, `LoopSustain` (loops while held, then plays on) |
+| `EndFade` | | Seconds the sound fades out in a straight line before `End`, so a piece cut from a recording does not click (`Slices` sets 5 ms) |
 | `LoopStart`, `LoopEnd` | `loop_start`, `loop_end` | Frames of the loop |
 | `LoopCrossfade` | `loop_crossfade` | Seconds the end of the loop fades into its start |
 | `Trigger` | `trigger` | `OnAttack`; `OnRelease` plays when the key goes up; `OnFirst` only when no other key is held, `OnLegato` only when one is (slurred transitions) |

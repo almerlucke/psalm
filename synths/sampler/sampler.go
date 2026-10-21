@@ -229,6 +229,14 @@ func newVoice(cfg Config, sh *shared) *Voice {
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
+	// another instrument (a patch builds it off the audio thread and sends it): the voices take it for the next note
+	if inst, ok := msg["instrument"].(*Instrument); ok && inst != nil {
+		v.cfg.Instrument = inst
+		if len(v.shared.turns) != len(inst.Regions) {
+			v.shared.turns = make([]int, len(inst.Regions))
+		}
+		_, v.shared.sw = inst.Switches()
+	}
 	v.envOver.receive(msg)
 	msg.IfFltVal("pitch", func(p float64) { v.pitch = p })
 	msg.IfFltVal("frequency", func(f float64) {
@@ -782,6 +790,12 @@ func (l *layer) render(channels psalm.Channels, from, to int, released bool, cc,
 			}
 		}
 		e := l.env.next() * l.cc * lfoGain
+		if r.EndFade > 0 && !l.looping {
+			// the last frames of the piece fade out in a straight line, as the attack of a piece that follows rises, so the two add up to the recording
+			if left := (end - l.pos) / (r.EndFade * snd.SampleRate()); left < 1 {
+				e *= math.Max(0, left)
+			}
+		}
 		l.cc += ccInc
 		if l.filterOn {
 			xl = l.filters[0].Process(xl, l.filterMod)
