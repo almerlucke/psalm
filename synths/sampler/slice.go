@@ -458,6 +458,25 @@ func Slices(snd Sound, firstKey int, cuts []int64) []Region {
 	return regions
 }
 
+// Window keeps the cuts that lie in the stretch of the recording from `from` to `to` seconds (to <= 0: to the end), and ends the last piece at `to`,
+// so a long recording of many kinds of sounds can be used a part at a time.
+func Window(cuts []int64, sampleRate, from, to float64, frames int64) []int64 {
+	end := frames
+	if to > 0 {
+		end = min(frames, int64(to*sampleRate))
+	}
+	var out []int64
+	for _, c := range cuts {
+		if c >= int64(from*sampleRate) && c < end {
+			out = append(out, c)
+		}
+	}
+	if len(out) > 0 {
+		out = append(out, end)
+	}
+	return out
+}
+
 // Notes makes a region for each played note of a recording (sung notes, a phrase on an instrument): from the second `from` to `to`, at the
 // pitch it is sung or played at (a MIDI note with a fraction, which tunes it). Note i is on the key firstKey+spacing*i and the keys two
 // either side, so that a key a little off plays it a little higher or lower; a spacing of five keeps the notes apart. Notes begin and end

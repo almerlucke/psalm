@@ -276,3 +276,22 @@ func TestNotes(t *testing.T) {
 		t.Errorf("regions %+v", r)
 	}
 }
+
+func TestHitsWindow(t *testing.T) {
+	load := func(string) (Sound, error) { return hits(2.1, 0.1, 0.6, 1.1, 1.6), nil }
+	all, _, err := ParseBanks("36 a.wav hits 9 0.08", load)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part, _, err := ParseBanks("36 a.wav hits 9 0.08 1.0 1.5", load)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(part.Regions) != 1 || len(all.Regions) <= 1 {
+		t.Fatalf("pieces: all %d, window %d", len(all.Regions), len(part.Regions))
+	}
+	r := part.Regions[0]
+	if sr := 44100.0; r.Offset < int64(1.0*sr) || r.Offset > int64(1.3*sr) || r.End > int64(1.5*sr)+int64(sliceFade*sr) {
+		t.Errorf("piece from %d to %d", r.Offset, r.End)
+	}
+}
