@@ -7,7 +7,7 @@
 // are a chain of their own. The sounds are those of the sampler (bells of glass, harp notes, wooden tubes, the hand percussion and the tambourine loop cut at their hits, an organ trumpet, a cymbal, the long notes I sang, each on its keys), the piano, an organ pad and the shaper (a sine bass). The piece goes in phrases of two bars, four to a group: something said, said again, answered, said again changed. At 66 beats a minute, four minutes; it loops.
 //
 //	go run ./cmd/songs/laudate
-//	go run ./cmd/songs/laudate -render laudate.wav -seed 7      render it to a file (-stems: the parts too; -fade 3: the last three bars fade out)
+//	go run ./cmd/songs/laudate -render laudate.wav -seed 7      render it to a file (-stems: the parts too; -fade 3: the parts fade out over the last three bars, -lead 4: ending four seconds before the end, so the echoes ring out alone; -ring 20: at most 20 seconds more)
 //	go run ./cmd/songs/laudate -profile                         the time every module takes
 package main
 
@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"math"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -36,7 +38,9 @@ func main() {
 	renderTo := flag.String("render", "", "render the tour once to this WAV file instead of playing it")
 	profile := flag.Bool("profile", false, "play the piece offline and report the time every module takes")
 	stems := flag.Bool("stems", false, "with -render, also write the parts to their own files")
-	fade := flag.Float64("fade", 3, "with -render, the bars the end of the piece fades out over (0: no fade)")
+	fade := flag.Float64("fade", 3, "with -render, the bars the end of the piece fades out over: the parts fade, the echoes and the hall ring out after (0: no fade)")
+	lead := flag.Float64("lead", 4, "with -render, the seconds before the end of the piece the parts are silent: the echoes, the hall and the shimmer ring on alone")
+	ring := flag.Float64("ring", 20, "with -render, the most seconds the echoes may ring on after the piece (it stops sooner when it is silent)")
 	seed := flag.Uint64("seed", 0, "seed the random choices (0: different every time); with it a render is the same every time")
 	flag.Parse()
 
@@ -80,11 +84,41 @@ func main() {
 				sources[part] = pt.Module(id)
 			}
 		}
-		tail := 8.0 // the reverb rings out; a fade has already taken it down, so a second is enough
-		if *fade > 0 {
-			tail = 1
+		// the fade is on the strips of the mixer, before the sends: the parts fade out and the echoes, the hall and the shimmer go on ringing after
+		// them, until they are silent. The levels are taken from the mixer as the patch set them
+		mix := pt.SettingsOf(ids.mixer)
+		base := map[string]float64{} // the levels and the sends of the channels (not the main level, nor the returns: they carry the echoes)
+		chanKey := regexp.MustCompile(`^(level|sendA|sendB|sendC|sendD)\d+$`)
+		for k, v := range mix.Values() {
+			if chanKey.MatchString(k) {
+				base[k] = v
+			}
 		}
-		stats, err := render.Stems(p, *renderTo, render.Options{Seconds: tourSeconds(), Tail: tail, FadeOut: *fade * 4 * 60 / tempo}, sources)
+		length, fadeLen := tourSeconds()-*lead, *fade*4*60/tempo // the parts are faded out at length
+		lastGain := 1.0
+		before := func(t float64) {
+			g := 1.0
+			if fadeLen > 0 && t > length-fadeLen {
+				g = 0.5 * (1 + math.Cos(math.Pi*math.Min(1, (t-(length-fadeLen))/fadeLen)))
+			}
+			if g == lastGain {
+				return
+			}
+			lastGain = g
+			// the sound of a part fades with g, what it sends to the echoes, the hall and the shimmer more slowly (the sends are after the level, so a send
+			// is made larger by the part that the level takes away), so there is more of the echoes than of the parts as it ends, and they ring on after
+			scaled := map[string]float64{}
+			for k, v := range base {
+				switch {
+				case strings.HasPrefix(k, "level"):
+					scaled[k] = v * g
+				default:
+					scaled[k] = math.Min(1, v*math.Pow(math.Max(g, 1e-3), -0.5))
+				}
+			}
+			mix.Apply(scaled)
+		}
+		stats, err := render.Stems(p, *renderTo, render.Options{Seconds: tourSeconds(), Tail: *ring, Before: before}, sources)
 		if err != nil {
 			log.Fatal(err)
 		}

@@ -52,6 +52,12 @@ var cueScript string
 //go:embed scripts/psalm.js
 var psalmScript string
 
+//go:embed scripts/cuewhistle.js
+var cueWhistleScript string
+
+//go:embed scripts/whistle.js
+var whistleScript string
+
 //go:embed scripts/kit.js
 var kitScript string
 
@@ -104,14 +110,15 @@ var sungNotes = [][3]float64{
 }
 
 const (
-	sungPath   = "assets/sounds/loofdeheer.wav"
-	sungFirst  = 24
-	tubesPath  = "assets/sounds/various/wooden-tubes-32138.wav"
-	percPath   = "assets/sounds/various/66-bpm-uniq-percussions-264333.wav"
-	tambPath   = "assets/sounds/various/tambourine-2-bars-loop-90bpm-44-46139.wav"
-	cymbalPath = "assets/sounds/various/cymbal-big2-83942.wav"
-	psalmPath  = "assets/sounds/psalm_150.wav"
-	shakePath  = "assets/sounds/various/spinopel-hit-the-tambourine-393065.wav"
+	sungPath    = "assets/sounds/loofdeheer.wav"
+	sungFirst   = 24
+	tubesPath   = "assets/sounds/various/wooden-tubes-32138.wav"
+	percPath    = "assets/sounds/various/66-bpm-uniq-percussions-264333.wav"
+	tambPath    = "assets/sounds/various/tambourine-2-bars-loop-90bpm-44-46139.wav"
+	cymbalPath  = "assets/sounds/various/cymbal-big2-83942.wav"
+	psalmPath   = "assets/sounds/psalm_150.wav"
+	whistlePath = "assets/sounds/whistle_psalm150.wav"
+	shakePath   = "assets/sounds/various/spinopel-hit-the-tambourine-393065.wav"
 )
 
 // notesLine is the line of a sampler for long notes of a recording, on the keys from first, five apart
@@ -137,6 +144,9 @@ func tambLine() string { return fmt.Sprintf("36 %s hits 6 0.08 name=tamb vol=14"
 
 // the psalm I sang (psalm_150.wav), played once, as it is, from Greatness on
 func psalmLine() string { return "36 " + psalmPath + " whole name=psalm vol=0" }
+
+// the psalm I whistled (whistle_psalm150.wav), played once, as it is, from Dance on
+func whistleLine() string { return "36 " + whistlePath + " whole name=whistle vol=0" }
 
 func shakeLine() string {
 	return fmt.Sprintf("60 %s whole 76 60 name=shake vol=0\n84 %s whole name=cymbal vol=14", shakePath, cymbalPath)
@@ -266,6 +276,7 @@ func piecesOf(path string, first int, rise, from, to float64) ([]map[string]floa
 
 // patchIDs are the modules of the patch to look at: the scripts, and the synths by their part
 type patchIDs struct {
+	mixer   string
 	scripts []string
 	synths  map[string]string
 }
@@ -313,7 +324,8 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	song := add("song", "", 20, 20)
 	score := add("script", "", 20, 160) // first, so it has put the chords in `shared` before the others ask
 	rhythm := add("script", "", 20, 300)
-	cue := add("script", "", 20, 440) // says when the psalm I sang begins (fire), to the script of the sampler that plays it
+	cueWhistle := add("script", "", 20, 580) // the same for the whistle
+	cue := add("script", "", 20, 440)        // says when the psalm I sang begins (fire), to the script of the sampler that plays it
 	type part struct{ name, script, synth, kind, preset, sounds string }
 	parts := []part{
 		{name: "piano", kind: "piano", preset: "grand"},
@@ -330,6 +342,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		{name: "shake", kind: "sampler", sounds: shakeLine()},
 		{name: "trumpet", kind: "organ", preset: "nasalReed"},
 		{name: "psalm", kind: "sampler", sounds: psalmLine()},
+		{name: "whistle", kind: "sampler", sounds: whistleLine()},
 	}
 	for i := range parts {
 		y := 20 + float64(i)*100
@@ -353,20 +366,24 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	text(score, "code", sounds+scoreScript)
 	text(rhythm, "code", rhythmScript)
 	text(cue, "code", cueScript)
+	text(cueWhistle, "code", cueWhistleScript)
 	scripts := map[string]string{"piano": pianoScript, "glass": glassScript, "harp": harpScript, "tubes": tubesScript, "pad": padScript,
 		"bass": bassScript, "voice": voiceScript, "perc": percScript, "kit": kitScript, "hats": hatsScript, "tamb": tambScript, "shake": shakeScript,
-		"trumpet": trumpetScript, "psalm": psalmScript}
+		"trumpet": trumpetScript, "psalm": psalmScript, "whistle": whistleScript}
 	for _, s := range parts {
 		text(s.script, "code", scripts[s.name])
 		if s.sounds != "" {
 			text(s.synth, "sounds", s.sounds)
 		}
 	}
-	ids = patchIDs{scripts: []string{score, rhythm, cue}, synths: map[string]string{}}
+	ids = patchIDs{mixer: mixer, scripts: []string{score, rhythm, cue, cueWhistle}, synths: map[string]string{}}
 	for i, s := range parts {
 		connect(patcher.Cable{From: s.script, To: s.synth})
 		ids.scripts = append(ids.scripts, s.script)
 		ids.synths[s.name] = s.synth
+		if s.name == "whistle" { // the cue script says when
+			connect(patcher.Cable{From: cueWhistle, Out: 3, To: s.script, In: 0})
+		}
 		if s.name == "psalm" {
 			// the cue script says when; a compressor evens out the voice (a loud word brought down more than a soft one, then all of it up)
 			connect(patcher.Cable{From: cue, Out: 3, To: s.script, In: 0})
@@ -392,7 +409,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	if err != nil {
 		return patchIDs{}, err
 	}
-	// the mix: piano, glass, harp, tubes, pad, bass, voice, perc, kit, hats, tamb, shake, trumpet, psalm (the one I sang), then the singer; the sends are the hall, the echo, the shimmer
+	// the mix: piano, glass, harp, tubes, pad, bass, voice, perc, kit, hats, tamb, shake, trumpet, psalm (the one I sang), whistle (the one I whistled), then the singer; the sends are the hall, the echo, the shimmer
 	pt.SettingsOf(mixer).Apply(map[string]float64{
 		"level1": 1.2, "pan1": -0.2, "sendA1": 0.35, "sendB1": 0.35,
 		"level2": 0.6, "pan2": 0.3, "sendA2": 0.5, "sendC2": 0.3,
@@ -407,8 +424,9 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"level11": 1.0, "pan11": 0.35, "sendA11": 0.2, "sendB11": 0.15,
 		"level12": 0.5, "pan12": 0.2, "sendA12": 0.5, "sendC12": 0.2,
 		"level13": 0.12, "pan13": 0, "sendA13": 0.6, "sendB13": 0.3,
-		"level14": 1.4, "pan14": 0, "sendA14": 0.4, "sendB14": 0.2, "sendC14": 0.1,
-		"level15": 1, "pan15": 0, "sendA15": 0.5, "sendB15": 0.3, "sendC15": 0.1,
+		"level14": 1.4, "pan14": 0, "sendA14": 0.3, "sendB14": 0.12, "sendC14": 0.1,
+		"level15": 0.22, "pan15": 0, "sendA15": 0.38, "sendB15": 0.42, "sendC15": 0.41,
+		"level16": 1, "pan16": 0, "sendA16": 0.5, "sendB16": 0.3, "sendC16": 0.1,
 		"returnA": 1, "returnB": 0.7, "returnC": 0.3,
 	})
 	pt.SettingsOf(evener).Apply(map[string]float64{"threshold": -42, "ratio": 6, "knee": 12, "attack": 15, "release": 350, "makeup": 18, "mix": 1})

@@ -32,6 +32,10 @@ type Options struct {
 	// (0 is no fade). The stems fade with the master
 	FadeOut float64
 
+	// Before is called before every buffer with the time it begins at, in seconds: to move a setting along while rendering (fade the sources and
+	// let the echoes ring out)
+	Before func(seconds float64)
+
 	// Until keeps rendering after Seconds until it returns true (a playlist that is done: its
 	// length isn't known before), then the tail. It is asked once per buffer, at most 10 minutes on
 	Until func() bool
@@ -104,6 +108,9 @@ func Run(p *psalm.Psalm, opts Options, each func(out psalm.Channels)) Stats {
 			} else {
 				tailFrom = b + 1
 			}
+		}
+		if opts.Before != nil {
+			opts.Before(float64(b*bs) / sr)
 		}
 		p.ResetRun()
 		t0 := time.Now()
