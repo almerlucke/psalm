@@ -98,6 +98,7 @@ func main() {
 	}
 
 	ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(master.Master(), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03)).Top()
+	widgets.Readout(ctl, "Time", pt.SongClock).Top()
 	ctl.Meter("Out", master.Master()).Top()
 	widgets.Scope(ctl, "Scope", master.Master()).Top()
 	go func() {

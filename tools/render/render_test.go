@@ -201,3 +201,28 @@ func TestParallelRenders(t *testing.T) {
 		t.Fatalf("patch b should have slowed down, it is %v", bpm)
 	}
 }
+
+func TestFadeGain(t *testing.T) {
+	opts := Options{Seconds: 10, FadeOut: 4}
+	sr, bs := 1000.0, 100
+	if fadeGain(0, bs, sr, opts) != nil || fadeGain(5900, bs, sr, opts) != nil {
+		t.Error("a buffer before the fade has a gain")
+	}
+	g := fadeGain(6000, bs, sr, opts)
+	if g == nil || g(0) != 1 {
+		t.Fatalf("the fade begins at 1")
+	}
+	mid := fadeGain(8000, bs, sr, opts)
+	if v := mid(0); v < 0.49 || v > 0.51 {
+		t.Errorf("half way %v, want 0.5", v)
+	}
+	if v := fadeGain(9900, bs, sr, opts)(99); v > 0.001 {
+		t.Errorf("at the end %v, want 0", v)
+	}
+	if v := fadeGain(10000, bs, sr, opts)(0); v != 0 {
+		t.Errorf("after the end %v, want 0", v)
+	}
+	if fadeGain(0, bs, sr, Options{Seconds: 10}) != nil {
+		t.Error("no fade asked, a gain given")
+	}
+}

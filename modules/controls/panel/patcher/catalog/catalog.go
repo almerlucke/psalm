@@ -18,6 +18,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/shapechain"
 	"github.com/almerlucke/psalm/midi"
+	"github.com/almerlucke/psalm/modules/audioin"
 	"github.com/almerlucke/psalm/modules/controls/keyboard"
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/dxeditor"
@@ -36,6 +37,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/phaser"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/effects/pitchshift"
+	"github.com/almerlucke/psalm/modules/effects/recorder"
 	"github.com/almerlucke/psalm/modules/effects/ringmod"
 	"github.com/almerlucke/psalm/modules/effects/rotary"
 	"github.com/almerlucke/psalm/modules/effects/saturate"
@@ -78,6 +80,9 @@ type Config struct {
 	// SysEx is the folder of SysEx files of the DX7 editor (list, load as the bank, save into); ""
 	// leaves it off
 	SysEx string
+	// Audio is the sound input of the engine (Psalm.PatchInput(0)) that the input kind reads: a microphone to sing over the piece. nil
+	// leaves the input silent (a render)
+	Audio psalm.Modular
 }
 
 var (
@@ -156,7 +161,7 @@ func Kinds(cfg Config) []patcher.Kind {
 	}
 	table := gen.Brightness(32)
 	h := &hub{input: cfg.Input}
-	kinds := []patcher.Kind{keyboardKind(h)}
+	kinds := []patcher.Kind{keyboardKind(h), inputKind(cfg.Audio), recorderKind()}
 	kinds = append(kinds, patcher.Sources()...)
 	kinds = append(kinds, patcher.Generators()...)
 	kinds = append(kinds, script.Kind(script.NewRuntime()))
@@ -291,6 +296,43 @@ func vocoderKind() patcher.Kind {
 			m := vocoder.New(vocoder.DefaultConfig())
 			return &patcher.Made{Module: m, Describe: func(string) params.Set { return vocoder.Describe(m.Settings()) }}, nil
 		}}
+}
+
+// inputKind is the sound input of the computer (a microphone): a voice to sing over the piece, to send through effects and a mixer. Use headphones, or
+// the speakers sing back into it
+func inputKind(src psalm.Modular) patcher.Kind {
+	return patcher.Kind{Name: "input", Group: "Sources", Outs: outs, Make: func(string) (*patcher.Made, error) {
+		m := audioin.New(src, audioin.DefaultConfig())
+		return &patcher.Made{Module: m, Describe: func(string) params.Set { return audioin.Describe(m.Settings()) }}, nil
+	}}
+}
+
+// recorderKind records what goes through it to a file in the folder recordings (its record switch): on the master to keep the whole piece, on a voice
+// to keep it dry. The start and the end of a recording are written to the log of the patch
+func recorderKind() patcher.Kind {
+	return patcher.Kind{Name: "recorder", Group: "Effects", Ins: ins, Outs: outs, Make: func(string) (*patcher.Made, error) {
+		m := recorder.New(recorder.Config{})
+		return &patcher.Made{Module: m, Describe: func(string) params.Set { return recorder.Describe(m.Settings()) },
+			Attach: func(j *patcher.Journal, name string) {
+				m.OnStarted(func(path string, err error) {
+					if err != nil {
+						j.Add(name, "error: can't record to "+path+": "+err.Error())
+						return
+					}
+					j.Add(name, "recording to "+path)
+				})
+				m.OnSaved(func(path string, seconds float64, dropped int64, err error) {
+					switch {
+					case err != nil:
+						j.Add(name, "error: recording "+path+": "+err.Error())
+					case dropped > 0:
+						j.Add(name, fmt.Sprintf("saved %s (%.1f s), but %d buffers were lost: the disk could not keep up", path, seconds, dropped))
+					default:
+						j.Add(name, fmt.Sprintf("saved %s (%.1f s)", path, seconds))
+					}
+				})
+			}}, nil
+	}}
 }
 
 // dxKind is the DX7, with its own editor

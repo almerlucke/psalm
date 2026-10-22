@@ -271,3 +271,22 @@ func TestPageKeysTop(t *testing.T) {
 	tb.WaitFor(`document.querySelector(".keys-side").hidden && !document.querySelector("#top .keys-toggle").classList.contains("on")`, "the sidebar hidden by the button")
 	tb.Eval(`localStorage.clear()`)
 }
+
+// a readout at the top of the page shows the text the program gives, and follows it
+func TestPageReadout(t *testing.T) {
+	b := paneltest.Start(t)
+	pn := panel.New(psalm.New(nil), "Test")
+	var mu sync.Mutex
+	text := "0:03 / 4:00"
+	Readout(pn, "Time", func() string { mu.Lock(); defer mu.Unlock(); return text }).Top()
+	tb := b.Open(t, paneltest.Serve(t, pn.Handler()), `document.querySelector(".readout")`)
+	paneltest.Eventually(t, "the readout to show its text", func() bool {
+		return tb.Eval(`document.querySelector(".readout").textContent`) == "0:03 / 4:00"
+	})
+	mu.Lock()
+	text = "0:04 / 4:00"
+	mu.Unlock()
+	paneltest.Eventually(t, "the readout to follow", func() bool {
+		return tb.Eval(`document.querySelector(".readout").textContent`) == "0:04 / 4:00"
+	})
+}

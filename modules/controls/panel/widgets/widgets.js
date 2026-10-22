@@ -427,3 +427,14 @@ psalm.register("scope", (p, api) => {
 	};
 });
 })();
+
+psalm.register("readout", (p, api) => {
+	const el = document.createElement("div");
+	el.className = "readout";
+	el.title = p.label || p.name;
+	return {
+		el: p.top ? el : api.labelled(p, el),
+		show() {},
+		update(st) { el.textContent = typeof st === "string" ? st : ""; },
+	};
+});

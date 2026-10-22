@@ -28,6 +28,10 @@ type Options struct {
 	Tail    float64 // up to this many seconds more while the output still sounds (reverb tails), stopping once it is silent
 	Silence float64 // dB below which the tail counts as silent (0 is -80)
 
+	// FadeOut fades what is written to the files (Stems, ToFile) out over this many seconds before Seconds, along a raised cosine, so the piece ends in silence
+	// (0 is no fade). The stems fade with the master
+	FadeOut float64
+
 	// Until keeps rendering after Seconds until it returns true (a playlist that is done: its
 	// length isn't known before), then the tail. It is asked once per buffer, at most 10 minutes on
 	Until func() bool
@@ -166,15 +170,44 @@ func newFileWriter(path string, sr float64, bs int) (*fileWriter, error) {
 	return &fileWriter{w: w, buf: [][]float32{make([]float32, bs), make([]float32, bs)}}, nil
 }
 
-// write writes a buffer, mono plays on both sides
-func (f *fileWriter) write(ch psalm.Channels) error {
+// write writes a buffer, mono plays on both sides; gain returns the gain for each frame of the buffer (nil is 1)
+func (f *fileWriter) write(ch psalm.Channels, gain func(i int) float64) error {
 	copy(f.buf[0], ch[0])
 	if len(ch) > 1 {
 		copy(f.buf[1], ch[1])
 	} else {
 		copy(f.buf[1], ch[0])
 	}
+	if gain != nil {
+		for i := range f.buf[0] {
+			g := float32(gain(i))
+			f.buf[0][i] *= g
+			f.buf[1][i] *= g
+		}
+	}
 	return f.w.Write(f.buf, false)
+}
+
+// fadeGain is the gain for each frame of the buffer that begins at frame `from`: 1 before the fade, a raised cosine down to 0 at opts.Seconds, 0 after. nil
+// when the buffer is not in the fade
+func fadeGain(from, bufferSize int, sampleRate float64, opts Options) func(i int) float64 {
+	if opts.FadeOut <= 0 {
+		return nil
+	}
+	end, start := opts.Seconds*sampleRate, (opts.Seconds-opts.FadeOut)*sampleRate
+	if float64(from+bufferSize) <= start {
+		return nil
+	}
+	return func(i int) float64 {
+		x := (float64(from+i) - start) / (end - start)
+		switch {
+		case x <= 0:
+			return 1
+		case x >= 1:
+			return 0
+		}
+		return 0.5 * (1 + math.Cos(math.Pi*x))
+	}
 }
 
 // ToFile renders a patch to a stereo 32 bit float WAV file
@@ -217,15 +250,18 @@ func Stems(p *psalm.Psalm, path string, opts Options, sources map[string]psalm.M
 	}
 
 	var writeErr error
+	frames := 0 // written so far
 	stats := Run(p, opts, func(out psalm.Channels) {
 		if writeErr != nil {
 			return
 		}
-		if writeErr = master.write(out); writeErr != nil {
+		gain := fadeGain(frames, cfg.BufferSize, cfg.SampleRate, opts)
+		frames += cfg.BufferSize
+		if writeErr = master.write(out, gain); writeErr != nil {
 			return
 		}
 		for _, name := range names {
-			if writeErr = writers[name].write(sources[name].Output(0).Channels); writeErr != nil {
+			if writeErr = writers[name].write(sources[name].Output(0).Channels, gain); writeErr != nil {
 				return
 			}
 		}

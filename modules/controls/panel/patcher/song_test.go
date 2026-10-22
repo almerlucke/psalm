@@ -196,3 +196,15 @@ function trigger(ev) { note(song.section === "Chorus" ? 72 : 60 + song.bar, 0.8,
 		t.Errorf("sections called: %q", st)
 	}
 }
+
+// the line for the top of the page: the time in the song and the length of a pass
+func TestSongClock(t *testing.T) {
+	r := newSongRig(t, "A 1, B 2")
+	if got := r.pt.SongClock(); got != "" {
+		t.Errorf("before it runs: %q", got)
+	}
+	r.run(3.5) // 3.5 s of the 6 s: the first bar of B
+	if got, want := r.pt.SongClock(), "0:03 / 0:06"; got != want {
+		t.Errorf("clock %q, want %q", got, want)
+	}
+}

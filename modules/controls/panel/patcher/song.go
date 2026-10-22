@@ -31,6 +31,8 @@ type SongNow struct {
 	Bar      int     `json:"bar"`  // in the section, from 0
 	Bars     int     `json:"bars"` // of the section
 	Progress float64 `json:"progress"`
+	Seconds  float64 `json:"seconds"` // since the start of the song (of this pass), at the tempo it plays at
+	Length   float64 `json:"length"`  // of one pass of the song, the sections that are on, at that tempo
 	Queued   string  `json:"queued,omitempty"`
 	Ended    bool    `json:"ended,omitempty"`
 }
@@ -51,6 +53,22 @@ func (s *Song) At(tick psalm.CtrlTick, ppq int) (arrange.Position, bool) {
 		return arrange.Position{}, false
 	}
 	return tr.At(tick.TickTimestamp, ppq), true
+}
+
+// Clock is the time of the song as a line for the top of the page: "1:23 / 4:00", the time in the song and the length of a pass; "" for no song
+func (s *Song) Clock() string {
+	now := s.Now()
+	if now == nil {
+		return ""
+	}
+	mmss := func(sec float64) string {
+		t := int(math.Max(0, sec))
+		return fmt.Sprintf("%d:%02d", t/60, t%60)
+	}
+	if now.Ended {
+		return mmss(now.Length) + " / " + mmss(now.Length)
+	}
+	return mmss(now.Seconds) + " / " + mmss(now.Length)
 }
 
 // Transport is the transport of the song, nil for none
@@ -217,7 +235,14 @@ func (s *SongForm) CtrlTick(tick psalm.CtrlTick) {
 	ppq := s.Config().PPQ
 	pos := tr.At(tick.TickTimestamp, ppq)
 	sec := pos.Section
-	now := &SongNow{Section: sec.Name, Bar: pos.SectionBar(), Bars: sec.Bars, Progress: pos.Progress, Queued: tr.Queued(), Ended: pos.Ended}
+	form := tr.Form()
+	bars := 0
+	for _, o := range tr.Order() {
+		bars += o.Bars
+	}
+	secPerBeat := 60 / s.BPM()
+	now := &SongNow{Section: sec.Name, Bar: pos.SectionBar(), Bars: sec.Bars, Progress: pos.Progress, Queued: tr.Queued(), Ended: pos.Ended,
+		Seconds: pos.Beat * secPerBeat, Length: float64(bars) * form.BeatsPerBar * secPerBeat}
 	if pos.Ended {
 		now.Section = ""
 	}

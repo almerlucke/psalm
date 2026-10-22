@@ -739,6 +739,7 @@ following the theme:
 | `Pads(ctl, name, Hit(kit, "kick", "snare", ...), columns)` | Pads, louder in the middle; the number keys hit the first nine |
 | `Envelope(ctl, name, synth, "amp", ADSR{...})` | An attack, decay, sustain and release to drag into shape, sent as the envelope messages every synth takes ([envelopes by message](synths.md#envelopes-by-message)) |
 | `Scope(ctl, name, module)` | The sound of a module: its wave (steady on its rising zero crossings) and its spectrum; a click switches between them. At the top of the page (`.Top()`): a strip of the wave |
+| `Readout(ctl, name, f)` | A line of text the program writes, asked from `f` on every page update. With `.Top()` it is small, beside the volume: `widgets.Readout(ctl, "Time", pt.SongClock).Top()` shows the time of the song of a patcher patch, "1:23 / 4:00" (the time in the song and the length of a pass) |
 
 ```go
 ctl.Section("Synth")
@@ -882,6 +883,12 @@ the first plays, and a script picks another with `set({sound: "name"})`. `cmd/so
 
 The **vocoder** is an effect with two inputs, `voice` and `carrier`: connect a sampler (or any strip) to the first and a synth to the second, and the synth says what the voice says. It sounds a
 frame late, which the mixer makes up for on the other strips, so the voice can also go to the mixer as it is and the two are mixed dry and wet by their levels.
+
+The **input** (Sources) is the sound input of the computer, a microphone or a line in, to sing over a piece: its `gain` (dB) and `mono` (the left channel on both sides) are its settings, and it is a
+strip like any other, so it can go through effects and the sends of the mixer. It reads what the program passes in `catalog.Config.Audio` (`p.PatchInput(0)`); without it (a render) it is silent. Use headphones, or
+the speakers sing back into it. The **recorder** (Effects) lets the sound through as it is and, while its `record` switch is on, writes it to a 32 bit float WAV file in the folder `recordings` (named after the module
+and the time); the log of the patch says when the file is made and when it is closed. Put one on the master to keep the whole piece with the voice, and one between the input and the mixer to keep the voice dry. The
+sound you hear is a little later than the piece (the sound card), so what you sing is a little late against it, in the recording too.
 
 The tempo of the patch is in the bar at the top of the page (`pt.Tempo()`, 30 to 300 bpm, a value
 typed too), and kept with a patch: loading one sets its tempo.

@@ -59,3 +59,6 @@ assets/Virtual-Playing-Orchestra3/
 
 # renders in the root of the repository
 /*.wav
+
+# Recordings made in the patcher (the recorder module)
+recordings/

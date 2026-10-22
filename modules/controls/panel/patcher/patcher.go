@@ -897,6 +897,9 @@ func (pt *Patcher) Status(id string) string {
 // Journal is the log of the patch: what the modules write to it (a script's log), a line each, from the bar at the top of the page
 func (pt *Patcher) Journal() *Journal { return pt.journal }
 
+// SongClock is the time of the song of the patch as a line for the top of the page (widgets.Readout): "1:23 / 4:00"; "" without a song
+func (pt *Patcher) SongClock() string { return SongOf(pt.p.Env()).Clock() }
+
 // Clear takes every module away (the output stays)
 func (pt *Patcher) Clear() {
 	pt.mu.Lock()

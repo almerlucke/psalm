@@ -7,7 +7,7 @@
 // are a chain of their own. The sounds are those of the sampler (bells of glass, harp notes, wooden tubes, the hand percussion and the tambourine loop cut at their hits, an organ trumpet, a cymbal, the long notes I sang, each on its keys), the piano, an organ pad and the shaper (a sine bass). The piece goes in phrases of two bars, four to a group: something said, said again, answered, said again changed. At 66 beats a minute, four minutes; it loops.
 //
 //	go run ./cmd/songs/laudate
-//	go run ./cmd/songs/laudate -render laudate.wav -seed 7      render it to a file (-stems: the parts too)
+//	go run ./cmd/songs/laudate -render laudate.wav -seed 7      render it to a file (-stems: the parts too; -fade 3: the last three bars fade out)
 //	go run ./cmd/songs/laudate -profile                         the time every module takes
 package main
 
@@ -36,6 +36,7 @@ func main() {
 	renderTo := flag.String("render", "", "render the tour once to this WAV file instead of playing it")
 	profile := flag.Bool("profile", false, "play the piece offline and report the time every module takes")
 	stems := flag.Bool("stems", false, "with -render, also write the parts to their own files")
+	fade := flag.Float64("fade", 3, "with -render, the bars the end of the piece fades out over (0: no fade)")
 	seed := flag.Uint64("seed", 0, "seed the random choices (0: different every time); with it a render is the same every time")
 	flag.Parse()
 
@@ -58,7 +59,7 @@ func main() {
 	ctl := panel.New(p, "Laudate")
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
-	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}), patcher.Theme(t))
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Audio: p.PatchInput(0)}), patcher.Theme(t))
 	ids, err := buildPatch(pt, *renderTo != "" || *profile)
 	if err != nil {
 		log.Fatal(err)
@@ -79,7 +80,11 @@ func main() {
 				sources[part] = pt.Module(id)
 			}
 		}
-		stats, err := render.Stems(p, *renderTo, render.Options{Seconds: tourSeconds(), Tail: 8}, sources)
+		tail := 8.0 // the reverb rings out; a fade has already taken it down, so a second is enough
+		if *fade > 0 {
+			tail = 1
+		}
+		stats, err := render.Stems(p, *renderTo, render.Options{Seconds: tourSeconds(), Tail: tail, FadeOut: *fade * 4 * 60 / tempo}, sources)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -93,6 +98,7 @@ func main() {
 	}
 
 	ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(master.Master(), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03)).Top()
+	widgets.Readout(ctl, "Time", pt.SongClock).Top()
 	ctl.Meter("Out", master.Master()).Top()
 	widgets.Scope(ctl, "Scope", master.Master()).Top()
 	go func() {

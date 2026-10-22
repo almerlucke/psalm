@@ -11,6 +11,7 @@
 //  Hallelujah  6       "Praise ye the LORD"  the pad and one long note; the last chord rings out
 const starts = { Sanctuary: 0, Greatness: 8, Dance: 20, Cymbals: 36, Breath: 48, Hallelujah: 60 }
 const bars = 66
+shared.starts = starts
 shared.known = () => song.section in starts
 shared.bar = () => starts[song.section] + song.bar
 // how much of each part (padp: the phrases the organ plays in; perc and tamb: the hand percussion and the tambourine loop), the euclidean hits of the lead's rhythm in sixteen steps, how many of them are ratchets, its register. The piece goes in phrases of two

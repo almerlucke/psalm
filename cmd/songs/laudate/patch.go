@@ -46,6 +46,12 @@ var voiceScript string
 //go:embed scripts/perc.js
 var percScript string
 
+//go:embed scripts/cue.js
+var cueScript string
+
+//go:embed scripts/psalm.js
+var psalmScript string
+
 //go:embed scripts/kit.js
 var kitScript string
 
@@ -104,6 +110,7 @@ const (
 	percPath   = "assets/sounds/various/66-bpm-uniq-percussions-264333.wav"
 	tambPath   = "assets/sounds/various/tambourine-2-bars-loop-90bpm-44-46139.wav"
 	cymbalPath = "assets/sounds/various/cymbal-big2-83942.wav"
+	psalmPath  = "assets/sounds/psalm_150.wav"
 	shakePath  = "assets/sounds/various/spinopel-hit-the-tambourine-393065.wav"
 )
 
@@ -127,6 +134,10 @@ func percLine() string { return fmt.Sprintf("36 %s hits 9 0.08 0 24 name=perc vo
 func kitLine() string  { return fmt.Sprintf("36 %s hits 9 0.08 42 94 name=kit vol=4", percPath) }
 func hatsLine() string { return fmt.Sprintf("36 %s hits 9 0.08 94 130 name=hats vol=18", percPath) }
 func tambLine() string { return fmt.Sprintf("36 %s hits 6 0.08 name=tamb vol=14", tambPath) }
+
+// the psalm I sang (psalm_150.wav), played once, as it is, from Greatness on
+func psalmLine() string { return "36 " + psalmPath + " whole name=psalm vol=0" }
+
 func shakeLine() string {
 	return fmt.Sprintf("60 %s whole 76 60 name=shake vol=0\n84 %s whole name=cymbal vol=14", shakePath, cymbalPath)
 }
@@ -302,6 +313,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	song := add("song", "", 20, 20)
 	score := add("script", "", 20, 160) // first, so it has put the chords in `shared` before the others ask
 	rhythm := add("script", "", 20, 300)
+	cue := add("script", "", 20, 440) // says when the psalm I sang begins (fire), to the script of the sampler that plays it
 	type part struct{ name, script, synth, kind, preset, sounds string }
 	parts := []part{
 		{name: "piano", kind: "piano", preset: "grand"},
@@ -317,13 +329,20 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		{name: "tamb", kind: "sampler", sounds: tambLine()},
 		{name: "shake", kind: "sampler", sounds: shakeLine()},
 		{name: "trumpet", kind: "organ", preset: "nasalReed"},
+		{name: "psalm", kind: "sampler", sounds: psalmLine()},
 	}
 	for i := range parts {
 		y := 20 + float64(i)*100
 		parts[i].script = add("script", "", 260, y)
 		parts[i].synth = add(parts[i].kind, parts[i].preset, 520, y)
 	}
-	mixer := add("mixer", fmt.Sprintf("%d channels", len(parts)), 780, 300)
+	// the singer: the sound input (a microphone) on a strip of its own after the parts, its dry recorder before the strip, the recorder of the whole piece after the mixer
+	voiceIn := add("input", "", 260, 20+float64(len(parts))*100)
+	voiceRec := add("recorder", "", 520, 20+float64(len(parts))*100)
+	mixRec := add("recorder", "", 1300, 300)
+	singer := len(parts) // its strip (counted from 0)
+	evener := add("compressor", "", 650, 20+float64(len(parts)-1)*100)
+	mixer := add("mixer", fmt.Sprintf("%d channels", len(parts)+1), 780, 300)
 	hall := add("reverb", "", 1040, 20)
 	echo := add("pingpong", "", 1040, 140)
 	shine := add("shimmer", "", 1040, 260)
@@ -333,21 +352,30 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	text(song, "sections", songText())
 	text(score, "code", sounds+scoreScript)
 	text(rhythm, "code", rhythmScript)
+	text(cue, "code", cueScript)
 	scripts := map[string]string{"piano": pianoScript, "glass": glassScript, "harp": harpScript, "tubes": tubesScript, "pad": padScript,
 		"bass": bassScript, "voice": voiceScript, "perc": percScript, "kit": kitScript, "hats": hatsScript, "tamb": tambScript, "shake": shakeScript,
-		"trumpet": trumpetScript}
+		"trumpet": trumpetScript, "psalm": psalmScript}
 	for _, s := range parts {
 		text(s.script, "code", scripts[s.name])
 		if s.sounds != "" {
 			text(s.synth, "sounds", s.sounds)
 		}
 	}
-	ids = patchIDs{scripts: []string{score, rhythm}, synths: map[string]string{}}
+	ids = patchIDs{scripts: []string{score, rhythm, cue}, synths: map[string]string{}}
 	for i, s := range parts {
 		connect(patcher.Cable{From: s.script, To: s.synth})
-		connect(patcher.Cable{From: s.synth, To: mixer, In: i})
 		ids.scripts = append(ids.scripts, s.script)
 		ids.synths[s.name] = s.synth
+		if s.name == "psalm" {
+			// the cue script says when; a compressor evens out the voice (a loud word brought down more than a soft one, then all of it up)
+			connect(patcher.Cable{From: cue, Out: 3, To: s.script, In: 0})
+			connect(patcher.Cable{From: s.synth, To: evener})
+			connect(patcher.Cable{From: evener, To: mixer, In: i})
+			ids.synths[s.name] = evener
+		} else {
+			connect(patcher.Cable{From: s.synth, To: mixer, In: i})
+		}
 		if s.name == "piano" { // the rhythm script is the clock of the piano: its triggers come from fire()
 			connect(patcher.Cable{From: rhythm, Out: 3, To: s.script, In: 0})
 		}
@@ -355,13 +383,16 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	// send A to the hall, B to the echo, C to the shimmer; each comes back on its return
 	for i, fx := range []string{hall, echo, shine} {
 		connect(patcher.Cable{From: mixer, Out: 1 + i, To: fx})
-		connect(patcher.Cable{From: fx, To: mixer, In: len(parts) + i})
+		connect(patcher.Cable{From: fx, To: mixer, In: len(parts) + 1 + i})
 	}
-	connect(patcher.Cable{From: mixer, Out: 0, To: "out"})
+	connect(patcher.Cable{From: voiceIn, To: voiceRec})
+	connect(patcher.Cable{From: voiceRec, To: mixer, In: singer})
+	connect(patcher.Cable{From: mixer, Out: 0, To: mixRec})
+	connect(patcher.Cable{From: mixRec, To: "out"})
 	if err != nil {
 		return patchIDs{}, err
 	}
-	// the mix: piano, glass, harp, tubes, pad, bass, voice, perc, kit, hats, tamb, shake, trumpet; the sends are the hall, the echo, the shimmer
+	// the mix: piano, glass, harp, tubes, pad, bass, voice, perc, kit, hats, tamb, shake, trumpet, psalm (the one I sang), then the singer; the sends are the hall, the echo, the shimmer
 	pt.SettingsOf(mixer).Apply(map[string]float64{
 		"level1": 1.2, "pan1": -0.2, "sendA1": 0.35, "sendB1": 0.35,
 		"level2": 0.6, "pan2": 0.3, "sendA2": 0.5, "sendC2": 0.3,
@@ -376,14 +407,17 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"level11": 1.0, "pan11": 0.35, "sendA11": 0.2, "sendB11": 0.15,
 		"level12": 0.5, "pan12": 0.2, "sendA12": 0.5, "sendC12": 0.2,
 		"level13": 0.12, "pan13": 0, "sendA13": 0.6, "sendB13": 0.3,
+		"level14": 1.4, "pan14": 0, "sendA14": 0.4, "sendB14": 0.2, "sendC14": 0.1,
+		"level15": 1, "pan15": 0, "sendA15": 0.5, "sendB15": 0.3, "sendC15": 0.1,
 		"returnA": 1, "returnB": 0.7, "returnC": 0.3,
 	})
+	pt.SettingsOf(evener).Apply(map[string]float64{"threshold": -42, "ratio": 6, "knee": 12, "attack": 15, "release": 350, "makeup": 18, "mix": 1})
 	pt.SettingsOf(hall).Apply(map[string]float64{"mix": 0.5, "decay": 3.6, "size": 0.7})
 	pt.SettingsOf(echo).Apply(map[string]float64{"time": 0.75, "feedback": 0.4, "stereo": 1, "highCut": 5000, "lowCut": 150, "mix": 1})
 	pt.SettingsOf(shine).Apply(map[string]float64{"shimmer": 0.25, "semitones": 7, "mix": 1, "decay": 5})
 	if once {
 		pt.SettingsOf(song).Apply(map[string]float64{"loop": 0})
 	}
-	pt.Move("out", 1060, 400)
+	pt.Move("out", 1560, 300)
 	return ids, nil
 }

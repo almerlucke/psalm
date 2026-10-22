@@ -244,3 +244,10 @@ func Scope(ctl *panel.Panel, name string, m psalm.Modular) *panel.Param {
 	t := &tap{module: m}
 	return ctl.Custom("scope", name, nil, panel.OnBuffer(t.take), panel.Live(t.state))
 }
+
+// Readout adds a line of text the program writes: f is asked for it every time the page is updated (on the page's goroutine, so keep it quick), for
+// the time of a song at the top of the page (patcher.SongClock). With Top it is small, beside the volume
+func Readout(ctl *panel.Panel, name string, f func() string) *panel.Param {
+	ctl.Use(Plugin)
+	return ctl.Custom("readout", name, nil, panel.Live(func() any { return f() }))
+}
