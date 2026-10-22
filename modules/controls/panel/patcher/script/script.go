@@ -20,9 +20,10 @@ import (
 //	note(pitch, velocity = 0.8, steps = 1)  // a pitch (48, "C3") or a chord ([48, 51, 55])
 //	set(key, value)  or  set({key: value})  // settings of the synths it plays, by their keys (morph, macro1, chainA...)
 //	send(port, v)                           // "a" or "b"
-//	fire()                                  // a trigger on its trigger output
+//	fire(delay = 0, count = 1)              // a trigger on its trigger output: later (in steps, 0.5 halfway the next), or count of them in a step (a ratchet)
+//	clock(division = "1/16", swing = 0.5)   // its own clock, on the tempo of the patch: trigger(ev) on its steps without a clock cabled; clock(false) stops it
 //	mod(v)                                  // 0-1, to its mod output
-//	log(...)                                // under the module
+//	log(...)                                // a line in the log of the patch (the bar at the top), with the time and the name of this module
 //	input(port)                             // the last value on "a" or "b"
 //	chord("Dm7")                           // close(lowest), bass(lowest), tones(lo, hi), contains(p), voiceLead(prev)
 //	pitch("C3"), scale("C minor"), bpm()    // scale: snap(p), pitch(degree, octave), notes(lo, hi), contains(p), step(p, n)
@@ -35,7 +36,9 @@ type Script struct {
 	rt      *Runtime
 	pending atomic.Pointer[goja.Program] // a script compiled, to start
 	status  atomic.Pointer[string]
-	modVal  atomic.Uint64 // the bits of mod's value
+	journal atomic.Pointer[patcher.Journal] // the log of the patch (nil: not in a patch)
+	name    atomic.Pointer[string]          // what its lines in the log start with
+	modVal  atomic.Uint64                   // the bits of mod's value
 
 	// on the audio thread
 	api            *goja.Object
@@ -50,8 +53,18 @@ type Script struct {
 	tick           psalm.CtrlTick
 	inputs         [2]goja.Value
 	notes          []queued
+	fires          []fired        // triggers to come, from fire(delay, count)
+	own            *patcher.Clock // its own clock, when it has asked for one (clock(division))
+	ownOn          bool
+	lastTick       int64
 	sets           []psalm.Message // settings to send to the synths at the end of the tick
 	targets        []psalm.Receiver
+}
+
+// fired is a trigger to send when its tick comes
+type fired struct {
+	due float64 // the tick (a fraction: between two)
+	ev  patcher.Event
 }
 
 // queued is a note to play at the end of the tick
@@ -64,7 +77,7 @@ type queued struct {
 
 // New returns a script of the runtime of the patch
 func New(rt *Runtime) *Script {
-	s := &Script{Module: psalm.NewModule(nil, nil), rt: rt}
+	s := &Script{Module: psalm.NewModule(nil, nil), rt: rt, own: patcher.NewClock()}
 	s.SetSelf(s)
 	s.song = patcher.SongOf(s.Env())
 	s.setStatus("")
@@ -83,7 +96,13 @@ func (s *Script) SetCode(code string) error {
 	return nil
 }
 
-// Status is what it says: its error, or what it logged last
+// Attach is given the log of the patch and the name of the module (a patcher.Made.Attach): its log() goes there
+func (s *Script) Attach(j *patcher.Journal, name string) {
+	s.name.Store(&name)
+	s.journal.Store(j)
+}
+
+// Status is what it says: its error, or what it logged last (alone)
 func (s *Script) Status() string { return *s.status.Load() }
 
 func (s *Script) setStatus(text string) { s.status.Store(&text) }
@@ -104,6 +123,7 @@ func (s *Script) start() {
 		return
 	}
 	s.trigger, s.value, s.section, s.stopped, s.inSong = nil, nil, nil, false, false
+	s.fires, s.ownOn = s.fires[:0], false
 	s.setStatus("")
 	if s.api == nil {
 		s.api = s.newAPI()
@@ -173,7 +193,26 @@ func (s *Script) CtrlTick(tick psalm.CtrlTick) {
 	if tick.SampleTimestamp > s.tick.SampleTimestamp {
 		s.tick = tick
 	}
+	if tick.TickTimestamp < s.lastTick { // the patch started over
+		s.fires = s.fires[:0]
+	}
+	s.lastTick = tick.TickTimestamp
 	s.follow(tick)
+	if s.ownOn { // its own clock: a trigger on its steps
+		s.own.Play(tick, s.triggered)
+	}
+	if len(s.fires) > 0 { // the triggers fire(delay) asked for, when they are due
+		keep := s.fires[:0]
+		for _, f := range s.fires {
+			if f.due <= float64(tick.TickTimestamp)+1e-9 {
+				f.ev.Tick = tick
+				s.Send(f.ev, 2)
+			} else {
+				keep = append(keep, f)
+			}
+		}
+		s.fires = keep
+	}
 }
 
 // Receive takes a trigger (input 0) and values (inputs 1 and 2: "a" and "b")
@@ -183,20 +222,26 @@ func (s *Script) Receive(v any, index int) {
 	switch index {
 	case 0:
 		ev, _ := v.(patcher.Event)
-		s.ev = ev
-		if ev.Tick.SampleTimestamp > s.tick.SampleTimestamp {
-			s.tick = ev.Tick
-		}
-		s.follow(ev.Tick) // the section it falls in, before the trigger
-		o := vm.NewObject()
-		_ = o.Set("step", ev.Step)
-		_ = o.Set("seconds", ev.Seconds)
-		s.run(s.trigger, o)
+		s.triggered(ev)
 	case 1, 2:
 		jv := vm.ToValue(v)
 		s.inputs[index-1] = jv
 		s.run(s.value, jv, vm.ToValue(string(rune('a'+index-1))))
 	}
+}
+
+// triggered is a trigger of the clock (or of its own): trigger(ev) is called
+func (s *Script) triggered(ev patcher.Event) {
+	s.start()
+	s.ev = ev
+	if ev.Tick.SampleTimestamp > s.tick.SampleTimestamp {
+		s.tick = ev.Tick
+	}
+	s.follow(ev.Tick) // the section it falls in, before the trigger
+	o := s.rt.vm.NewObject()
+	_ = o.Set("step", ev.Step)
+	_ = o.Set("seconds", ev.Seconds)
+	s.run(s.trigger, o)
 }
 
 // late plays the notes of the tick
@@ -329,10 +374,42 @@ func (s *Script) newAPI() *goja.Object {
 		s.Send(s.goValue(call.Argument(1)), s.port(call.Argument(0)))
 		return goja.Undefined()
 	})
-	set("fire", func(goja.FunctionCall) goja.Value {
-		ev := s.ev
-		ev.Tick = s.tick
-		s.Send(ev, 2)
+	// fire(delay = 0, count = 1): a trigger on the trigger output, carrying the event being handled; delay steps later (0.5: halfway the next step), count
+	// of them (a ratchet) spread over one step, the first after the delay
+	set("fire", func(call goja.FunctionCall) goja.Value {
+		delay, count := math.Max(0, number(call, 0, 0)), int(math.Max(1, math.Min(number(call, 1, 1), 64)))
+		step := s.ev.Seconds
+		if step <= 0 { // no trigger yet: a sixteenth
+			step = 15 / s.BPM()
+		}
+		stepTicks := step * s.BPM() * float64(s.Config().PPQ) / 60
+		for i := range count {
+			ev := s.ev
+			ev.Seconds = step / float64(count)
+			if at := delay + float64(i)/float64(count); at <= 0 {
+				ev.Tick = s.tick
+				s.Send(ev, 2)
+			} else if len(s.fires) < 4096 {
+				s.fires = append(s.fires, fired{due: float64(s.tick.TickTimestamp) + at*stepTicks, ev: ev})
+			}
+		}
+		return goja.Undefined()
+	})
+	// clock(division = "1/16", swing = 0.5): the script keeps its own clock on the tempo of the patch, trigger(ev) on its steps, as if a clock were
+	// cabled to it; clock(false) stops it. A division is 1/4, 1/8, 1/8T, 1/16, 1/16T or 1/32
+	set("clock", func(call goja.FunctionCall) goja.Value {
+		if on, ok := call.Argument(0).Export().(bool); ok && !on {
+			s.ownOn = false
+			return goja.Undefined()
+		}
+		division := "1/16"
+		if a := call.Argument(0); !goja.IsUndefined(a) && !goja.IsNull(a) {
+			division = a.String()
+		}
+		if err := s.own.Set(division, number(call, 1, 0.5)); err != nil {
+			panic(vm.NewTypeError("clock: " + err.Error()))
+		}
+		s.ownOn = true
 		return goja.Undefined()
 	})
 	set("mod", func(call goja.FunctionCall) goja.Value {
@@ -344,7 +421,12 @@ func (s *Script) newAPI() *goja.Object {
 		for i, a := range call.Arguments {
 			parts[i] = show(a)
 		}
-		s.setStatus(strings.Join(parts, " "))
+		text := strings.Join(parts, " ")
+		if j, name := s.journal.Load(), s.name.Load(); j != nil && name != nil {
+			j.Add(*name, text)
+		} else {
+			s.setStatus(text) // alone, without a patch
+		}
 		return goja.Undefined()
 	})
 	set("input", func(call goja.FunctionCall) goja.Value {

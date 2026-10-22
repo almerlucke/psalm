@@ -49,7 +49,9 @@ psalm.register("patcher", (p, api) => {
 	const note = el("span", "pt-note");
 	const maxBtn = el("button", "pt-max-btn", "Full screen");
 	maxBtn.title = "the patch over the whole screen (Esc: back)";
-	bar.append(maxBtn, el("span", "pt-sep"), kindSel, presetSel, addBtn, sep, patchSel, nameIn, saveBtn, delBtn, clearBtn, note);
+	const logBtn = el("button", "pt-log-btn", "Log");
+	logBtn.title = "the log of the patch: what the scripts log, a line each with the time and the module";
+	bar.append(maxBtn, logBtn, el("span", "pt-sep"), kindSel, presetSel, addBtn, sep, patchSel, nameIn, saveBtn, delBtn, clearBtn, note);
 
 	// --- the patch: modules over a layer of cables ---
 	const area = el("div", "pt-area");
@@ -58,7 +60,49 @@ psalm.register("patcher", (p, api) => {
 	svg.setAttribute("class", "pt-cables");
 	area.append(svg);
 	const inspector = el("div", "pt-inspector");
-	root.append(bar, area, inspector);
+	// toasts: an error of a module, in a corner over the page, gone by itself after a while (or when tapped); the same error is shown once
+	// until the module has none
+	const toasts = (() => {
+		const box = el("div", "pt-toasts"); box.setAttribute("role", "alert");
+		document.body.append(box);
+		const live = {}; // module id -> the errors shown for it
+		const show = (title, text) => {
+			const t = el("div", "pt-toast");
+			t.append(el("b", "", title), el("span", "", text));
+			const close = () => t.remove();
+			t.addEventListener("click", close);
+			setTimeout(close, 12000);
+			box.append(t);
+			while (box.children.length > 5) box.firstChild.remove();
+		};
+		return {
+			watch(n, errors) {
+				const was = live[n.id] || [];
+				for (const e of errors) if (!was.includes(e)) show(n.kind + " " + n.id, e.replace(/^error:\s*/i, ""));
+				if (errors.length) live[n.id] = errors; else delete live[n.id];
+			},
+			forget(id) { delete live[id]; },
+		};
+	})();
+
+	// the log of the patch: opened from the bar, over the patch, the newest line below
+	const logBox = el("div", "pt-log"); logBox.hidden = true;
+	const logText = el("textarea", "pt-log-text"); logText.readOnly = true; logText.spellcheck = false;
+	const logClear = el("button", "", "Clear log");
+	logBox.append(logText, logClear);
+	let logOpen = false, logLines = 0;
+	const showLogButton = () => { logBtn.textContent = logLines > 0 ? `Log (${logLines})` : "Log"; logBtn.classList.toggle("on", logOpen); };
+	logBtn.addEventListener("click", () => { logOpen = !logOpen; logBox.hidden = !logOpen; showLogButton(); logText.scrollTop = logText.scrollHeight; });
+	logClear.addEventListener("click", () => send({clearLog: true}));
+	const showJournal = (text, lines) => {
+		logLines = lines || 0;
+		showLogButton();
+		if (logText.value === text) return;
+		const atEnd = logText.scrollTop + logText.clientHeight >= logText.scrollHeight - 4;
+		logText.value = text;
+		if (atEnd) logText.scrollTop = logText.scrollHeight;
+	};
+	root.append(bar, logBox, area, inspector);
 
 	let st = {nodes: [], cables: [], patches: [], selected: ""}, shownPatches = "";
 	const nodes = {};       // id -> {el, data}
@@ -187,15 +231,14 @@ psalm.register("patcher", (p, api) => {
 				(n.ins || []).forEach((port, i) => v.ins.append(portRow(n, "in", port, i)));
 				(n.outs || []).forEach((port, i) => v.outs.append(portRow(n, "out", port, i)));
 			}
-			if (n.status !== undefined || v.status) {
-				if (!v.status) { v.status = el("div", "pt-status"); v.el.append(v.status); }
-				v.status.textContent = n.status || "";
-				v.status.classList.toggle("bad", /^error/i.test(n.status || ""));
-			}
+			// an error is a toast, not a line on the module (which gets a red edge while it has one); no text is on a module, a status line is in its side panel
+			const failed = /^error/i.test(n.status || "") ? n.status : "", errs = Object.entries(n.errors || {}).map(([k, e]) => `error: ${k}: ${e}`);
+			toasts.watch(n, [failed, ...errs].filter(Boolean));
+			v.el.classList.toggle("failed", !!failed || errs.length > 0);
 			if (!dragging.has(n.id)) { v.el.style.left = n.x + "px"; v.el.style.top = n.y + "px"; }
 			v.el.classList.toggle("selected", chosen.has(n.id));
 		}
-		for (const id of Object.keys(nodes)) if (!seen.has(id)) { nodes[id].el.remove(); delete nodes[id]; }
+		for (const id of Object.keys(nodes)) if (!seen.has(id)) { nodes[id].el.remove(); delete nodes[id]; toasts.forget(id); }
 		for (const id of [...chosen]) if (!seen.has(id)) chosen.delete(id);
 	}
 
@@ -506,9 +549,11 @@ psalm.register("patcher", (p, api) => {
 		show() {},
 		update(s) {
 			if (!s) return;
+			showJournal(s.journal || "", s.lines); // the log changes on its own, the patch is only drawn again when it changes
+			const {journal, lines, ...rest} = s;
 			const was = JSON.stringify(st);
-			st = s;
-			if (JSON.stringify(s) === was) return;
+			st = rest;
+			if (JSON.stringify(rest) === was) return;
 			updateNodes();
 			if (picked && !st.cables.some(c => c.id === picked)) picked = "";
 			if ((st.pasteN || 0) !== pastes) { // a paste: its modules chosen, to move them where they go

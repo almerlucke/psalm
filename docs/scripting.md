@@ -203,10 +203,11 @@ starts) **before** `trigger` is called, so `song.section` is always the section 
 | `note(pitch, velocity = 0.8, steps = 1)` | a note, or a chord (an array), to the synths its notes cable goes to. Velocity is clamped to 0-1. Steps are of the last trigger's `ev.seconds` (a sixteenth at the tempo when there has been none); the shortest note is 5 ms |
 | `set(key, value)`, `set({key: value, ...})` | settings of the synths its notes cable goes to, by the keys of their pages (`morph`, `macro1`, `cutoff`, `ampAttack`, `filterType`...), sent at the end of the tick before its notes: numbers, `true`/`false` (1/0) and strings. `chainA` to `chainD` take the text of a chain of the [shaper synth](synths.md#shaper), read by the script first: a chain that can't be read is an error of the script with its column. At most 256 a tick |
 | `send(port, v)` | a value on output `"a"` or `"b"`: a number, a note name (sent as its pitch), or an array (a chord) |
-| `fire()` | a trigger on the trigger output, carrying the event being handled |
+| `fire(delay = 0, count = 1)` | a trigger on the trigger output, carrying the event being handled. `delay` is in steps (`fire(0.5)`: halfway the next step, so swing and off-beats), `count` triggers are spread over one step, the first after the delay (`fire(0, 3)`: a ratchet) |
+| `clock(division = "1/16", swing = 0.5)` | the script keeps its own clock on the tempo of the patch: `trigger(ev)` on its steps, with no clock cabled. `"1/4"`, `"1/8"`, `"1/8T"`, `"1/16"`, `"1/16T"` or `"1/32"`, swing 0.5 to 0.75; `clock(false)` stops it. Combine it with `fire` for a script that is the clock of other modules, with a rhythm of its own (`genny.euclid`, a markov chain, the song's section) |
 | `mod(v)` | the value of the mod output, clamped to 0-1; it stays until set again |
 | `input(port)` | the last value that came in on `"a"` or `"b"` (`undefined` before one) |
-| `log(...)`, `console.log(...)` | shown under the module; arrays and objects as JSON. Only the last call is kept |
+| `log(...)`, `console.log(...)` | a line in the log of the patch (the **Log** button in the bar at the top), starting with the time and the module (`script m3`); arrays and objects as JSON |
 | `pitch("C3")` | a note name as a number (numbers pass through) |
 | `chord("Dm7")` | a chord of a symbol ([Harmony](harmony.md): `m`, `7`, `maj7`, `sus4`, `m7b5`, `Dm/C` with a bass...): `close(lowest)` the chord in root position with the root at or above `lowest`, `bass(lowest)`, `tones(low, high)` every chord tone between two pitches, `contains(p)`, `voiceLead(prev)` the chord for the same number of voices as an array of pitches, moving as little as it can; `name`, `root` (a pitch class) |
 | `bpm()` | the tempo of the patch |

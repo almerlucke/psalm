@@ -139,6 +139,9 @@ type Made struct {
 	// Late is called on every control tick after every module had its own (a Notes module plays the
 	// triggers of the tick there, when the values feeding it are up to date)
 	Late func(tick psalm.CtrlTick)
+	// Attach is called once, when the module is made, with the log of the patch and the name of the module (its kind and
+	// id), for a module that writes to the log (a script's log)
+	Attach func(j *Journal, name string)
 	// Status is a line shown on the module (a script's error or what it logged; "" nothing), asked
 	// when the page is updated
 	Status func() string
@@ -214,6 +217,7 @@ type Patcher struct {
 	mods         atomic.Pointer[[]*modConn] // read on the audio thread
 	work         chan json.RawMessage
 	late         *lateStep // kept last in the patch
+	journal      *Journal  // the log of the patch, from the bar at the top
 }
 
 // modConn is a mod cable on the audio thread
@@ -251,7 +255,7 @@ type kindDesc struct {
 // script) in a side panel when it is chosen; its output Out
 func New(p *psalm.Psalm, ctl *panel.Panel, name string, kinds []Kind, opts ...Option) *Patcher {
 	ctl.Use(Plugin)
-	pt := &Patcher{p: p, ctl: ctl, kinds: kinds, out: gain.New(0), work: make(chan json.RawMessage, 256), theme: panel.Themes["default"]}
+	pt := &Patcher{p: p, ctl: ctl, kinds: kinds, out: gain.New(0), work: make(chan json.RawMessage, 256), theme: panel.Themes["default"], journal: NewJournal()}
 	for _, o := range opts {
 		o(pt)
 	}
@@ -333,13 +337,14 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		Text   *struct {
 			ID, Key, Value string
 		} `json:"text"`
-		Save   *string     `json:"save"`
-		Load   *string     `json:"load"`
-		Delete *string     `json:"delete"`
-		Clear  bool        `json:"clear"`
-		Pos    *[2]float64 `json:"pos"`
-		Copy   []string    `json:"copy"`
-		Paste  bool        `json:"paste"`
+		Save     *string     `json:"save"`
+		Load     *string     `json:"load"`
+		Delete   *string     `json:"delete"`
+		Clear    bool        `json:"clear"`
+		ClearLog bool        `json:"clearLog"`
+		Pos      *[2]float64 `json:"pos"`
+		Copy     []string    `json:"copy"`
+		Paste    bool        `json:"paste"`
 	}
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return err
@@ -378,6 +383,8 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		return pt.DeletePatch(*m.Delete)
 	case m.Clear:
 		pt.Clear()
+	case m.ClearLog:
+		pt.journal.Clear()
 	case len(m.Copy) > 0:
 		if n := pt.Copy(m.Copy...); n > 0 {
 			pt.mu.Lock()
@@ -430,6 +437,9 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 	n := &node{ID: id, Kind: kindName, Preset: preset, kind: k, made: made, texts: map[string]string{}, textErr: map[string]string{}}
 	for _, t := range made.Texts {
 		n.texts[t.Key] = t.Value
+	}
+	if made.Attach != nil {
+		made.Attach(pt.journal, kindName+" "+id)
 	}
 	add := append([]psalm.Modular{made.Module}, made.Extra...)
 	if made.Describe != nil || made.Edit != nil {
@@ -884,6 +894,9 @@ func (pt *Patcher) Status(id string) string {
 	return n.made.Status()
 }
 
+// Journal is the log of the patch: what the modules write to it (a script's log), a line each, from the bar at the top of the page
+func (pt *Patcher) Journal() *Journal { return pt.journal }
+
 // Clear takes every module away (the output stays)
 func (pt *Patcher) Clear() {
 	pt.mu.Lock()
@@ -929,6 +942,8 @@ type state struct {
 	Note     string      `json:"note"`
 	Pasted   []string    `json:"pasted,omitempty"` // the modules the last paste made
 	PasteN   int         `json:"pasteN,omitempty"` // the pastes so far: another one, the page chooses them
+	Journal  string      `json:"journal"`          // the log of the patch, the newest lines
+	Lines    int         `json:"lines"`            // how many lines it has had
 }
 
 func (pt *Patcher) state() any {
@@ -936,7 +951,7 @@ func (pt *Patcher) state() any {
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
 	st := state{Cables: []*Cable{}, Selected: pt.selected, Patches: patches, Current: pt.current, Keeps: pt.dir != "", Note: pt.note,
-		Pasted: pt.pasted, PasteN: pt.pasteN}
+		Pasted: pt.pasted, PasteN: pt.pasteN, Journal: pt.journal.Text(), Lines: pt.journal.Len()}
 	for _, c := range pt.cables {
 		cc := *c
 		st.Cables = append(st.Cables, &cc)

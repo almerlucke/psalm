@@ -182,16 +182,21 @@ func TestPagePatcher(t *testing.T) {
 	}
 	doubleTap(tb, node+`.querySelector(".pt-head")`)
 	box, status := `document.querySelector(".pt-drawer-text")`, `document.querySelector(".pt-drawer .pt-status")`
-	onNode := node + `.querySelector(".pt-status")`
 	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+box+`.value.includes("function trigger")`, "the script in the side panel")
 	tb.WaitFor(`[...document.querySelectorAll(".pt-drawer .pt-help li")].some(li => li.textContent.includes("function trigger(ev)"))`, "what to know to write a script above it")
 	run := func(code string) {
 		tb.Eval(`(() => { const b = ` + box + `; b.focus(); b.value = ` + strconv.Quote(code) + `; b.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
 	}
 	run("const a = 1\nlet b = (;")
-	tb.WaitFor(box+`.classList.contains("bad") && `+status+`.classList.contains("bad") && `+status+`.textContent.includes("line 2") && `+onNode+`?.textContent.includes("line 2")`, "the error on its line")
+	tb.WaitFor(box+`.classList.contains("bad") && `+status+`.classList.contains("bad") && `+status+`.textContent.includes("line 2")`, "the error on its line in the side panel")
+	tb.WaitFor(`[...document.querySelectorAll(".pt-toast")].some(t => t.textContent.includes("line 2"))`, "the error in a toast")
+	tb.WaitFor(node+`.classList.contains("failed") && !`+node+`.querySelector(".pt-status")`, "the error not on the module, which has a red edge")
 	run("log('hello', [1, 2])")
-	tb.WaitFor(status+`.textContent === 'hello [1,2]' && !`+status+`.classList.contains("bad") && !`+box+`.classList.contains("bad") && `+onNode+`.textContent === 'hello [1,2]'`, "what it logged")
+	// what it logs is in the log of the patch (Log, in the bar), with the time and the module in front, and not on the module
+	tb.WaitFor(`!`+status+`.classList.contains("bad") && !`+box+`.classList.contains("bad") && !`+node+`.classList.contains("failed")`, "the error gone")
+	tb.Eval(`document.querySelector(".pt-log-btn").click()`)
+	tb.WaitFor(`!document.querySelector(".pt-log").hidden && /^\d\d:\d\d:\d\d\.\d{3}  script \w+  hello \[1,2\]$/.test(document.querySelector(".pt-log-text").value)`, "what it logged, in the log of the patch")
+	tb.WaitFor(`document.querySelector(".pt-log-btn").textContent === "Log (1)"`, "the count of lines on the button")
 	if os.Getenv("SHOT") != "" {
 		tb.Screenshot(os.Getenv("SHOT"))
 	}
@@ -293,7 +298,7 @@ func TestPageWorkspace(t *testing.T) {
 	doubleTap(tb, node(scr)+`.querySelector(".pt-head")`)
 	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-text").value.includes("function trigger")`, "the script in the side panel")
 	tb.Eval(`(() => { const d = document.querySelector(".pt-drawer-text"); d.focus(); d.value = "log('wide')"; d.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
-	tb.WaitFor(`document.querySelector(".pt-drawer .pt-status").textContent === "wide"`, "what it logs in the side panel")
+	tb.WaitFor(`document.querySelector(".pt-log-text").value.endsWith("  wide")`, "what it logs in the log of the patch")
 	if tx := pt.Texts(scr); len(tx) != 1 || tx[0].Value != "log('wide')" {
 		t.Fatalf("the script typed in the side panel: %v", tx)
 	}

@@ -330,6 +330,23 @@ func (c *Clock) now(tick psalm.CtrlTick) (*Pattern, float64) {
 	return ps.rest, 0
 }
 
+// Play gives the hits of the clock falling on this tick, as the events it would send (for a script that keeps its own clock)
+func (c *Clock) Play(tick psalm.CtrlTick, f func(Event)) {
+	c.play(tick, func(_ Hit, step int64, seconds float64) { f(Event{Tick: tick, Step: step, Seconds: seconds}) })
+}
+
+// Set sets the division (one of Divisions, by name) and the swing (0.5 to 0.75), for a script that keeps its own clock; an error for a division
+// that is not one
+func (c *Clock) Set(division string, swing float64) error {
+	for i, d := range Divisions {
+		if d == division {
+			c.Division, c.Swing = i, math.Max(0.5, math.Min(swing, 0.75))
+			return nil
+		}
+	}
+	return fmt.Errorf("a division is one of %s", strings.Join(Divisions, ", "))
+}
+
 // CtrlTick sends the hits falling on this tick
 func (c *Clock) CtrlTick(tick psalm.CtrlTick) {
 	c.play(tick, func(_ Hit, step int64, seconds float64) {

@@ -191,7 +191,8 @@ function trigger(ev) { note(song.section === "Chorus" ? 72 : 60 + song.bar, 0.8,
 	if !slices.Equal(r.rec.pitches, []float64{60, 72, 60}) {
 		t.Errorf("pitches %v, want 60 72 60", r.rec.pitches)
 	}
-	if st := r.pt.Status(s); st != "Verse0 Chorus1 Verse0" {
+	lines := strings.Split(r.pt.Journal().Text(), "\n")
+	if st := lines[len(lines)-1]; !strings.HasSuffix(st, "  Verse0 Chorus1 Verse0") {
 		t.Errorf("sections called: %q", st)
 	}
 }

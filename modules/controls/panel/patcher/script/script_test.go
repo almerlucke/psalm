@@ -86,6 +86,15 @@ func (r *rig) run(seconds float64) {
 	}
 }
 
+// logged is the text of the last line of the log of the patch (after its time and the module that wrote it)
+func (r *rig) logged() string {
+	lines := strings.Split(r.pt.Journal().Text(), "\n")
+	if parts := strings.SplitN(lines[len(lines)-1], "  ", 3); len(parts) == 3 {
+		return parts[2]
+	}
+	return ""
+}
+
 func (r *rig) status(id string) string { return r.pt.Status(id) }
 
 // a clock of sixteenths into a script into a synth: the script's notes, on the clock's steps
@@ -220,7 +229,7 @@ function trigger() { fired++ }`)
 	r.connect(patcher.Cable{From: a, Out: 3, To: notes, In: 0})         // the trigger of notes
 	r.connect(patcher.Cable{From: notes, To: syn, Type: patcher.Notes}) // notes
 	r.run(1)
-	st := r.status(b)
+	st := r.logged()
 	var step, count, fired int
 	var at string
 	if _, err := fmt.Sscanf(st, "b %d a %s count %d fired %d", &step, &at, &count, &fired); err != nil {
@@ -297,7 +306,7 @@ function trigger(ev) {
 	// Dm7 from D3 (50): D F A C; its bass at or above 40 is D (50); the tones from 60 to 70: C D F A; D is in
 	// it, C# is not; Bb/D has D in the bass; voice led from A C E G: A C D F
 	want := `[[50,53,57,60],50,[60,62,65,69],true,false,50,[57,60,62,65],"Dm7",2]`
-	if st := r.status(s); st != want {
+	if st := r.logged(); st != want {
 		t.Fatalf("%s, want %s", st, want)
 	}
 	for _, bad := range []string{`chord("Hm")`, `chord("")`, `chord("Dm7wow")`} {
@@ -323,5 +332,70 @@ func TestScriptRenderHasNoDeadline(t *testing.T) {
 	}
 	if len(r.rec.pitches) == 0 {
 		t.Error("the slow script did not play")
+	}
+}
+
+// a script keeps its own clock (clock("1/8")): trigger(ev) on its steps, with no clock cabled
+func TestScriptOwnClock(t *testing.T) {
+	r := newRig(t)
+	s, syn := r.add("script", ""), r.add("rec", "")
+	r.code(s, `
+clock("1/8")
+function trigger(ev) { note(60, 0.8, 1) }`)
+	r.connect(patcher.Cable{From: s, To: syn, Type: patcher.Notes})
+	r.run(2.1)
+	// 120 bpm: an eighth is a quarter of a second, 11025 samples
+	if n := len(r.rec.at); n < 8 || n > 9 {
+		t.Fatalf("%d notes in two seconds, want 8", n)
+	}
+	for i := 1; i < len(r.rec.at); i++ {
+		if d := r.rec.at[i] - r.rec.at[i-1]; math.Abs(float64(d)-11025) > 2 {
+			t.Errorf("note %d is %d samples after the one before, want 11025", i, d)
+		}
+	}
+	for _, bad := range []string{`clock("1/7")`, `clock("1/8", 0.6); clock(false); function trigger() { note(60) }`} {
+		r.code(s, bad)
+		r.run(0.1)
+	}
+	if st := r.status(s); strings.HasPrefix(st, "error") {
+		t.Errorf("clock(false) after a clock: %q", st)
+	}
+	r.code(s, `clock("1/7")`)
+	r.run(0.1)
+	if st := r.status(s); !strings.Contains(st, "division") {
+		t.Errorf("a division that is no division: status %q", st)
+	}
+}
+
+// fire(delay, count): a trigger later, or several in a step
+func TestScriptFireLaterAndRatchet(t *testing.T) {
+	r := newRig(t)
+	a, b, syn := r.add("script", ""), r.add("script", ""), r.add("rec", "")
+	r.code(a, `
+clock("1/4")
+function trigger(ev) { note(60, 0.8, 1); if (ev.step % 2 === 0) fire(0.5); else fire(0, 3) }`)
+	r.code(b, `function trigger(ev) { note(72, 0.8, 1) }`)
+	r.connect(patcher.Cable{From: a, Out: 3, To: b, In: 0})
+	r.connect(patcher.Cable{From: a, To: syn, Type: patcher.Notes})
+	r.connect(patcher.Cable{From: b, To: syn, Type: patcher.Notes})
+	r.run(2.1)
+	var base, extra []int64
+	for i, p := range r.rec.pitches {
+		if p == 60 {
+			base = append(base, r.rec.at[i])
+		} else {
+			extra = append(extra, r.rec.at[i])
+		}
+	}
+	// a quarter is 22050 samples: an even step fires half a quarter later (11025), an odd one three times, a third of a quarter apart (7350)
+	if len(base) < 4 || len(extra) < 2+3 {
+		t.Fatalf("%d notes of the script, %d of the triggers", len(base), len(extra))
+	}
+	near := func(a, b int64) bool { return math.Abs(float64(a-b)) <= 2 }
+	if !near(extra[0]-base[0], 11025) {
+		t.Errorf("fire(0.5): %d samples after the step, want 11025", extra[0]-base[0])
+	}
+	if !near(extra[1], base[1]) || !near(extra[2]-extra[1], 7350) || !near(extra[3]-extra[2], 7350) {
+		t.Errorf("fire(0, 3): at %v for the step at %d, want a third of a step apart", extra[1:4], base[1])
 	}
 }

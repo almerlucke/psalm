@@ -862,7 +862,7 @@ first when there are several), Esc lets go of them. Ctrl+C (cmd on a Mac) copies
 settings, scripts and the cables between them, Ctrl+V pastes them a little further each time (chosen
 then, to drag them where they go), Ctrl+D duplicates, Ctrl+X cuts; the copy is the patcher's, so it
 outlives the modules copied. From code: `Copy(ids...)`, `Paste()`. A cable is taken hold of a little beside its
-line too. **Full screen** puts the patch over the whole screen (Esc, or the button again, brings it
+line too. **Log** opens the log of the patch over the patch: a line for everything the scripts `log()`, each starting with the time and the module (`14:03:22.510  script m3  now: Creation`), the newest below, with **Clear log**; the button counts the lines. An error of a module (a script that doesn't compile, a text that can't be read) is a toast in the corner of the page, with the module's name, gone after twelve seconds or when tapped, and the module gets a red edge while it has the error (no text is on a module: a status line, such as what a sampler made of its sounds, is in its side panel); the same error is shown once. **Full screen** puts the patch over the whole screen (Esc, or the button again, brings it
 back). In the side panel a script has room to work: Ctrl+Enter (or Run) runs it, its error or what
 it logs is below it (and on its module), what was typed is taken when it closes; the panel's edge
 drags it wider or narrower. Over the whole screen the patch goes beside the side panel.
@@ -980,7 +980,7 @@ function trigger(ev) {
 |---|---|
 | `note(pitch, velocity = 0.8, steps = 1)` | a note (or a chord: an array) to the synths its notes cable goes to, played at the end of the tick |
 | `send(port, v)`, `fire()`, `mod(v)` | a value (a number, a note name, a chord) on output `"a"` or `"b"`; a trigger; the mod output's value (0-1) |
-| `input(port)`, `log(...)` | the last value on input `"a"` or `"b"`; a line shown under the module |
+| `input(port)`, `log(...)` | the last value on input `"a"` or `"b"`; a line in the log of the patch (the Log button at the top) |
 | `pitch("C3")`, `scale("C minor")`, `bpm()` | a pitch; a scale: `snap(p)`, `pitch(degree, octave)`, `notes(lo, hi)`, `contains(p)`, `step(p, n)`; the tempo |
 | `shared` | an object every script of the patch sees |
 | `genny.sequence(values, loop = true)` | the values in order |
@@ -1020,7 +1020,7 @@ and every effect. From code: `Add`, `Connect`,
 `Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `TextError`, `Status`, `Copy`, `Paste`, `Save`, `Load`, `Clear`,
 `Nodes`, `Cables`. A module's `Made.Texts` and `SetText` give it settings of text (`Help`: what to
 know to type one, shown above its box in the side panel, a point a line, `code` in backquotes), `Made.Late` a function at the end of every control tick (a notes module's),
-`Made.Status` a line shown under it (a script's error, or what it logged). A module whose ports
+`Made.Status` a line shown under it (a script's error), `Made.Attach` gives it the patch's log (`Journal`, `pt.Journal()`: `Add(source, text)`). A module whose ports
 depend on how it is made (the mixer's channels) gives them in `Made.Ins` and `Made.Outs`. Cables
 are drawn over the modules, so one going back (a return) stays in sight, the ports over them.
 
