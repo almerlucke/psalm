@@ -1,6 +1,6 @@
 // BASS: a walking bass, a note to a beat (a clock of quarters), low down. The first beat of the bar is the root of the chord, the third a tone of it (the fifth or
 // the third), the second a step of the scale between them, and the last an approach to the root of the next chord, a half tone above or below it, as a jazz
-// bass does. Where the bass is weak (the sanctuary, the end) it plays the root alone, a long note on the first beat of every second bar and the fifth on the third.
+// bass does (in the last bar of a chord only; in the first the last beat is a tone of the chord). Where the bass is weak (the sanctuary, the end) it plays the root alone, a long note on the first beat of every second bar and the fifth on the third.
 // The last bar of a group of four rests on its third and fourth beat for the breath.
 clock("1/4")
 const rnd = genny.rand(0, 1)
@@ -28,8 +28,12 @@ function trigger(ev) {
     const target = near(tones, root + 7), from = sc.indexOf(near(sc, root))
     const dir = target >= root ? 1 : -1
     pitch = sc[Math.max(0, Math.min(sc.length - 1, from + dir * (R() < 0.7 ? 1 : 2)))]
+    if (shared.clashes(chd, pitch)) pitch = near(tones, pitch)
     vel = 0.4
-  } else {                                                       // the approach to the next chord
+  } else if (bar % 2 === 0) {                                    // the chord goes on into the next bar: the fifth below, a tone of it
+    pitch = near(tones, root + 7 - 12 < LOW ? root + 7 : root - 5)
+    vel = 0.45
+  } else {                                                       // the approach to the next chord, a half tone above or below its root
     const next = rootOf(bar + 1)
     pitch = next + (R() < 0.5 ? 1 : -1)
     if (pitch < LOW) pitch += 12

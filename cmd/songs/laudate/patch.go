@@ -367,15 +367,15 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"level2": 0.6, "pan2": 0.3, "sendA2": 0.5, "sendC2": 0.3,
 		"level3": 0.7, "pan3": -0.4, "sendA3": 0.4, "sendB3": 0.2,
 		"level4": 0.6, "pan4": 0.4, "sendA4": 0.3, "sendB4": 0.25,
-		"level5": 0.12, "pan5": 0, "sendA5": 0.4, "sendC5": 0.2,
-		"level6": 0.35, "pan6": 0, "sendA6": 0.1,
+		"level5": 0.06, "pan5": 0, "sendA5": 0.4, "sendC5": 0.2,
+		"level6": 0.25, "pan6": 0, "sendA6": 0.1,
 		"level7": 0.7, "pan7": 0, "sendA7": 0.5, "sendC7": 0.25,
 		"level8": 0.8, "pan8": -0.3, "sendA8": 0.25, "sendB8": 0.2,
 		"level9": 0.7, "pan9": -0.1, "sendA9": 0.3, "sendB9": 0.2,
 		"level10": 1.2, "pan10": 0.4, "sendA10": 0.2, "sendB10": 0.15,
 		"level11": 1.0, "pan11": 0.35, "sendA11": 0.2, "sendB11": 0.15,
 		"level12": 0.5, "pan12": 0.2, "sendA12": 0.5, "sendC12": 0.2,
-		"level13": 0.25, "pan13": 0, "sendA13": 0.6, "sendB13": 0.3,
+		"level13": 0.12, "pan13": 0, "sendA13": 0.6, "sendB13": 0.3,
 		"returnA": 1, "returnB": 0.7, "returnC": 0.3,
 	})
 	pt.SettingsOf(hall).Apply(map[string]float64{"mix": 0.5, "decay": 3.6, "size": 0.7})

@@ -13,16 +13,16 @@ const starts = { Sanctuary: 0, Greatness: 8, Dance: 20, Cymbals: 36, Breath: 48,
 const bars = 66
 shared.known = () => song.section in starts
 shared.bar = () => starts[song.section] + song.bar
-// how much of each part (perc and tamb: the hand percussion and the tambourine loop), the euclidean hits of the lead's rhythm in sixteen steps, how many of them are ratchets, its register. The piece goes in phrases of two
+// how much of each part (padp: the phrases the organ plays in; perc and tamb: the hand percussion and the tambourine loop), the euclidean hits of the lead's rhythm in sixteen steps, how many of them are ratchets, its register. The piece goes in phrases of two
 // bars, four to a group: the first says something (A), the second says it again, the third is the answer (the lead rests, the harp or the bells play), the fourth is
 // the first again, a little changed (A'). The lists say in which of the four phrases a part plays.
 shared.sec = {
-  Sanctuary:  { perc: 0,   pp: [0, 0, 0, 0], kit: 0,   kp: [0, 0, 0, 0], hat: 0.4, tamb: 0,   tp: [0, 0, 0, 0], lead: 0,   hits: 0, rat: 0,   lp: [0, 0, 0, 0], comp: 0,   glass: 0.5, gp: [1, 1, 1, 1], harp: 0,   hp: [0, 0, 0, 0], tubes: 0,   bass: 0.5, pad: 1,   voice: 0.8, reg: [60, 76] },
-  Greatness:  { perc: 0.5, pp: [1, 1, 0, 1], kit: 0.3, kp: [0, 0, 1, 0], hat: 0.6, tamb: 0,   tp: [0, 0, 0, 0], lead: 0.6, hits: 6, rat: 0.1, lp: [1, 1, 0, 1], comp: 0.5, glass: 0.6, gp: [0, 0, 1, 0], harp: 0.5, hp: [0, 0, 1, 0], tubes: 0,   bass: 0.8, pad: 1,   voice: 0.6, reg: [60, 79] },
-  Dance:      { perc: 0.7, pp: [1, 1, 1, 1], kit: 0.6, kp: [0, 1, 0, 1], hat: 0.8, tamb: 0.5, tp: [0, 1, 1, 1], lead: 0.8, hits: 7, rat: 0.3, lp: [1, 1, 0, 1], comp: 0.8, glass: 0.5, gp: [0, 0, 1, 0], harp: 0.8, hp: [0, 1, 1, 1], tubes: 0.8, bass: 1,   pad: 0.8, voice: 0.4, reg: [57, 81] },
-  Cymbals:    { perc: 1,   pp: [1, 1, 1, 1], kit: 1,   kp: [1, 1, 1, 1], hat: 1,   tamb: 1,   tp: [1, 1, 1, 1], lead: 1,   hits: 9, rat: 0.6, lp: [1, 1, 1, 1], comp: 0.6, glass: 0.4, gp: [0, 0, 0, 1], harp: 1,   hp: [1, 0, 1, 1], tubes: 1,   bass: 1,   pad: 0.7, voice: 0,   reg: [62, 84] },
-  Breath:     { perc: 0.5, pp: [1, 1, 0, 1], kit: 0.4, kp: [0, 0, 1, 0], hat: 0.6, tamb: 0.4, tp: [0, 0, 0, 1], lead: 0.6, hits: 6, rat: 0.2, lp: [1, 1, 0, 1], comp: 0.4, glass: 0.7, gp: [0, 1, 0, 1], harp: 0.5, hp: [0, 1, 0, 0], tubes: 0.5, bass: 0.6, pad: 1,   voice: 0.5, reg: [60, 76] },
-  Hallelujah: { perc: 0,   pp: [0, 0, 0, 0], kit: 0,   kp: [0, 0, 0, 0], hat: 0,   tamb: 0,   tp: [0, 0, 0, 0], lead: 0,   hits: 0, rat: 0,   lp: [0, 0, 0, 0], comp: 0,   glass: 0.5, gp: [1, 1, 1, 1], harp: 0,   hp: [0, 0, 0, 0], tubes: 0,   bass: 0.3, pad: 1,   voice: 1,   reg: [60, 72] },
+  Sanctuary:  { perc: 0,   pp: [0, 0, 0, 0], kit: 0,   kp: [0, 0, 0, 0], hat: 0.4, tamb: 0,   tp: [0, 0, 0, 0], lead: 0,   hits: 0, rat: 0,   lp: [0, 0, 0, 0], comp: 0,   glass: 0.5, gp: [1, 1, 1, 1], harp: 0,   hp: [0, 0, 0, 0], tubes: 0,   bass: 0.5, pad: 1, padp: [1, 1, 1, 1],   voice: 0.8, reg: [60, 76] },
+  Greatness:  { perc: 0.5, pp: [1, 1, 0, 1], kit: 0.3, kp: [0, 0, 1, 0], hat: 0.6, tamb: 0,   tp: [0, 0, 0, 0], lead: 0.6, hits: 6, rat: 0.1, lp: [1, 1, 0, 1], comp: 0.5, glass: 0.6, gp: [0, 0, 1, 0], harp: 0.5, hp: [0, 0, 1, 0], tubes: 0,   bass: 0.8, pad: 1, padp: [1, 0, 1, 0],   voice: 0.6, reg: [60, 79] },
+  Dance:      { perc: 0.7, pp: [1, 1, 1, 1], kit: 0.6, kp: [0, 1, 0, 1], hat: 0.8, tamb: 0.5, tp: [0, 1, 1, 1], lead: 0.8, hits: 7, rat: 0.3, lp: [1, 1, 0, 1], comp: 0.8, glass: 0.5, gp: [0, 0, 1, 0], harp: 0.8, hp: [0, 1, 1, 1], tubes: 0.8, bass: 1,   pad: 0.8, padp: [0, 1, 0, 1], voice: 0.4, reg: [57, 81] },
+  Cymbals:    { perc: 1,   pp: [1, 1, 1, 1], kit: 1,   kp: [1, 1, 1, 1], hat: 1,   tamb: 1,   tp: [1, 1, 1, 1], lead: 1,   hits: 9, rat: 0.6, lp: [1, 1, 1, 1], comp: 0.6, glass: 0.4, gp: [0, 0, 0, 1], harp: 1,   hp: [1, 0, 1, 1], tubes: 1,   bass: 1,   pad: 0.7, padp: [1, 0, 0, 1], voice: 0,   reg: [62, 84] },
+  Breath:     { perc: 0.5, pp: [1, 1, 0, 1], kit: 0.4, kp: [0, 0, 1, 0], hat: 0.6, tamb: 0.4, tp: [0, 0, 0, 1], lead: 0.6, hits: 6, rat: 0.2, lp: [1, 1, 0, 1], comp: 0.4, glass: 0.7, gp: [0, 1, 0, 1], harp: 0.5, hp: [0, 1, 0, 0], tubes: 0.5, bass: 0.6, pad: 1, padp: [1, 1, 0, 1],   voice: 0.5, reg: [60, 76] },
+  Hallelujah: { perc: 0,   pp: [0, 0, 0, 0], kit: 0,   kp: [0, 0, 0, 0], hat: 0,   tamb: 0,   tp: [0, 0, 0, 0], lead: 0,   hits: 0, rat: 0,   lp: [0, 0, 0, 0], comp: 0,   glass: 0.5, gp: [1, 1, 1, 1], harp: 0,   hp: [0, 0, 0, 0], tubes: 0,   bass: 0.3, pad: 1, padp: [1, 1, 1, 1],   voice: 1,   reg: [60, 72] },
 }
 shared.phrase = () => Math.floor(shared.bar() / 2)          // the phrase of two bars
 shared.q = () => shared.phrase() % 4                        // which of the four of its group
@@ -54,6 +54,8 @@ symbols[0] = "Fm9"; symbols[symbols.length - 1] = "Fm9"
 const chords = symbols.map(chord)
 shared.chordAt = bar => chords[Math.max(0, Math.min(chords.length - 1, Math.floor(bar / 2)))]
 shared.chordName = bar => symbols[Math.max(0, Math.min(symbols.length - 1, Math.floor(bar / 2)))]
+// does a pitch clash with a chord: a half tone from one of its tones and not one itself (the E over C7 against the Eb of the scale, the A over Bbm7)
+shared.clashes = (chd, p) => !chd.contains(p) && chd.tones(0, 127).some(t => { const d = ((t - p) % 12 + 12) % 12; return d === 1 || d === 11 })
 // the note of a list nearest to a pitch
 shared.nearest = (list, p) => list.reduce((a, b) => Math.abs(b - p) < Math.abs(a - p) ? b : a)
 // a level for a piece of a recording: quiet ones told a little louder, loud ones softer (the velocity goes in squares)

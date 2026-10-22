@@ -49,6 +49,8 @@ function trigger(ev) {
     pitch = sc[pos]
     if (strong && !chd.contains(pitch) && R() < 0.8) pitch = shared.nearest(chd.tones(s.reg[0], s.reg[1]), pitch)
   }
+  // a note that bites the chord (it was drawn over the one before, or is the scale's against a dominant) is moved to the nearest tone of it
+  if (shared.clashes(chd, pitch)) pitch = shared.nearest(chd.tones(s.reg[0], s.reg[1]), pitch)
   const at = sc.indexOf(pitch)
   if (at >= 0) pos = at
   now.push(pitch)
