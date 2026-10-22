@@ -42,6 +42,9 @@ var hornScript string
 //go:embed scripts/choir.js
 var choirScript string
 
+//go:embed scripts/sung.js
+var sungScript string
+
 // nominalTempo is the beats a minute the piece is written for: the pieces of the sounds are put on the sixteenths of this tempo (the test
 // plays it faster, the pieces then follow the steps)
 const nominalTempo = 90.0
@@ -125,6 +128,26 @@ var (
 	birds = sound{name: "birds", path: "assets/sounds/various/birdfish-happy-loop-6199.wav", mode: "hits", first: 0, args: []float64{8, 0.1}, extra: "vol=3"}
 )
 
+// the long notes I sang (loofdeheer.wav): from and to in seconds, and the pitch each was sung at (a MIDI note: 60 is the middle C). The notes on the
+// way from one to another are left out. They are on the keys from 24, five apart, and a key a little off sings a little higher or lower
+var sungNotes = [][3]float64{
+	{0.5, 1.9, 60.0}, {2.6, 4.9, 56.05}, {7.0, 9.6, 53.4}, {10.4, 12.6, 49.1}, {15.0, 17.8, 48.3},
+	{20.8, 22.4, 40.95}, {23.5, 25.6, 48.2}, {27.0, 28.4, 53.2}, {29.0, 30.6, 48.2},
+}
+
+const (
+	sungPath  = "assets/sounds/loofdeheer.wav"
+	sungFirst = 24
+)
+
+func sungLine() string {
+	line := fmt.Sprintf("%d %s notes", sungFirst, sungPath)
+	for _, n := range sungNotes {
+		line += fmt.Sprintf(" %g %g %g", n[0], n[1], n[2])
+	}
+	return line + " name=sung vol=-6"
+}
+
 // the congas and the rest of the percussion, whole, a key each
 const perc = `# the congas kit: a hit on a key each
 36 assets/sounds/world_percussion/Conga/v2_01_01.wav whole name=open
@@ -158,7 +181,19 @@ func slicesJS() (string, error) {
 		}
 	}
 	b, err := json.Marshal(out)
-	return "shared.slices = " + string(b) + "\n", err
+	// the sung notes: the key of each, the pitch it sounds at (the note it was sung on) and how long it is, in sixteenths
+	var sung []map[string]float64
+	vocal, err := sampler.LoadFile(sungPath)
+	if err != nil {
+		return "", err
+	}
+	for i, n := range sungNotes {
+		sr := vocal.SampleRate()
+		sung = append(sung, map[string]float64{"key": float64(sungFirst + 5*i), "pitch": math.Round(n[2]), "len": math.Round((n[1]-n[0])/step*100) / 100,
+			"db": math.Round(rmsDB(vocal, int64(n[0]*sr), int64(n[1]*sr)))})
+	}
+	sb, _ := json.Marshal(sung)
+	return "shared.slices = " + string(b) + "\nshared.sung = " + string(sb) + "\n", err
 }
 
 // rmsDB is the level of a stretch of a sound, in dB, the channels together
@@ -232,6 +267,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		{name: "pad", kind: "shaper", preset: "throneDrone"},
 		{name: "harp", kind: "shaper", preset: "harp"},
 		hornPart, choirPart,
+		{name: "sung", kind: "sampler", sounds: sungLine()},
 	}
 	for i := range parts {
 		y := 20 + float64(i)*100
@@ -248,7 +284,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	text(song, "sections", songText())
 	text(score, "code", slices+scoreScript)
 	scripts := map[string]string{"tabla": tablaScript, "perc": percScript, "chant": chantScript, "color": colorScript, "bed": bedScript,
-		"pad": padScript, "harp": harpScript, "horn": hornScript, "choir": choirScript}
+		"pad": padScript, "harp": harpScript, "horn": hornScript, "choir": choirScript, "sung": sungScript}
 	for _, s := range parts {
 		text(s.script, "code", scripts[s.name])
 		if s.sounds != "" {
@@ -272,23 +308,24 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	if err != nil {
 		return patchIDs{}, err
 	}
-	// the mix: tabla, perc, chant, color, bed, pad, harp, horn, choir; the sends are the hall, the echo, the shimmer
+	// the mix: tabla, perc, chant, color, bed, pad, harp, horn, choir, sung; the sends are the hall, the echo, the shimmer
 	pt.SettingsOf(mixer).Apply(map[string]float64{
 		"level1": 0.6, "pan1": 0, "sendA1": 0.2,
 		"level2": 0.4, "pan2": 0.2, "sendA2": 0.25, "sendB2": 0.15,
-		"level3": 0.7, "pan3": -0.1, "sendA3": 0.45, "sendB3": 0.51,
+		"level3": 0.85, "pan3": -0.1, "sendA3": 0.33, "sendB3": 0.21,
 		"level4": 0.45, "pan4": 0.3, "sendA4": 0.4, "sendB4": 0.3, "sendC4": 0.15,
 		"level5": 0.4, "pan5": 0, "sendA5": 0.5, "sendC5": 0.25,
 		"level6": 0.4, "pan6": 0, "sendA6": 0.3,
 		"level7": 0.5, "pan7": -0.3, "sendA7": 0.4, "sendB7": 0.3,
 		"level8": 0.9, "pan8": 0.1, "sendA8": 0.5, "sendB8": 0.2,
 		"level9": 0.9, "pan9": 0, "sendA9": 0.5, "sendC9": 0.2,
+		"level10": 0.7, "pan10": -0.1, "sendA10": 0.51, "sendB10": 0.52, "sendC10": 0.51,
 		"returnA": 1, "returnB": 0.8, "returnC": 0.3,
 	})
 	pt.SettingsOf(hall).Apply(map[string]float64{"mix": 0.5, "decay": 3.6, "size": 0.7})
 	// the echo: a dotted eighth (0.75 of a beat), a few repeats, with the top left on
 	pt.SettingsOf(echo).Apply(map[string]float64{"time": 0.75, "feedback": 0.45, "stereo": 1, "highCut": 5000, "lowCut": 150, "mix": 1})
-	pt.SettingsOf(shine).Apply(map[string]float64{"shimmer": 0.25, "semitones": 7, "mix": 1, "decay": 5})
+	pt.SettingsOf(shine).Apply(map[string]float64{"shimmer": 0.25, "semitones": 12, "mix": 1, "decay": 5})
 	if once {
 		pt.SettingsOf(song).Apply(map[string]float64{"loop": 0})
 	}

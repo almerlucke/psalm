@@ -1,7 +1,7 @@
 // TABLA: the loop of four bars, cut at its hits, 44 pieces on the keys of a sampler, put where they were: each verse is the loop once, and
 // the verse remixes it. The operations are few, and a markov chain chooses them (the weights are holy numbers): a bar rotated by a few
 // steps, two bars swapped, a bar turned round, a few steps repeated to the end of the bar (a stutter), one piece repeated on four steps (a
-// roll), the weaker hits thinned out. In the coda the drums say goodbye in two bars. The more heat a verse has the more of them. The last bar is always the loop as it was: the refrain that
+// roll), the weaker hits thinned out. The drums wait for the creation, stop at the start of Egypt and come back in its seventeenth bar (in Remembered at its last verse), and rest in a few bars (breaks). In the coda they say goodbye in two bars. The more heat a verse has the more of them. The last bar is always the loop as it was: the refrain that
 // returns. In the verse of the dividing of the Red Sea the hits part and leave a gap, and come together again in a roll.
 const rnd = genny.rand(0, 1)
 const R = () => rnd.next()
@@ -60,6 +60,9 @@ function patternFor(v) {
   return pat
 }
 
+// the breaks: the bars of a verse the tabla rests in, before a part ends, in the middle of the lights and before the sea is crossed
+const breaks = { 5: [2], 8: [1, 2], 11: [1, 2], 14: [2], 18: [1], 21: [1, 2] }
+
 let pat = null, lastVerse = -1
 // the goodbye: the first two bars of the coda the drums go on, the loop as it was (the refrain again), then the same softer with a last stroke
 function goodbye(ev) {
@@ -73,9 +76,15 @@ function trigger(ev) {
   if (shared.coda()) return goodbye(ev)
   if (!shared.known()) return
   const v = shared.verse(), k = shared.step(ev)
+  // the thanks (the first three verses) are without the drums; they come in softly with the refrain of the third, the loop as it was, and in the creation
+  const soft = v < 2 || (v === 2 && shared.verseBar() < 3) ? 0 : v === 2 ? 0.6 : 1
+  if (!soft) return
   if (v !== lastVerse) { lastVerse = v; pat = patternFor(v) }
+  // egypt without the drums, until its seventeenth bar; remembered without them until its last verse
+  if ((v >= 9 && v < 13) || (v === 13 && shared.verseBar() < 1) || v === 22 || v === 23) return
+  if ((breaks[v] || []).includes(shared.verseBar())) return       // a break: the drums rest, and the refrain brings them back
   const p = pat[k]
   if (!p) return
   const accent = k % 4 === 0 ? 0.88 : 0.74
-  note(p.key, (accent + 0.08 * R()) * shared.fade(), p.len)
+  note(p.key, (accent + 0.08 * R()) * shared.fade() * soft, p.len)
 }

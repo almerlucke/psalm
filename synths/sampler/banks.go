@@ -14,11 +14,12 @@ import (
 //	84 assets/sounds/chants/Johannes.Hymnus.wav change 1.1 0.25 vol=-3        pieces of a sung line, cut where it changes
 //	36 assets/sounds/goedertierenheid.wav verses 26 20                         26 verses and their refrains, two pieces each, found by the pauses
 //	0  assets/sounds/various/wooden-tubes-32138.wav even 16                    sixteen equal pieces
+//	24 assets/sounds/loofdeheer.wav notes 0.5 1.9 60 2.6 4.9 56.1             the sung notes: from, to (seconds) and the pitch of each, on keys five apart
 //	60 assets/sounds/various/birdfish-happy-loop-6199.wav whole 72 66          the whole sound on keys 60 to 72, in tune at 66
 //	0  assets/Virtual-Playing-Orchestra3/Strings/harp-sustain.sfz sfz          an SFZ instrument as it is
 //
 // The modes are hits (rise dB, least gap seconds: OnsetCuts), change (sensitivity, least gap seconds: ChangeCuts), pauses (depth dB, least pause seconds, longest piece seconds: PauseCuts), verses (the number of verses, depth dB: VerseCuts, two pieces for each: the verse and its refrain), even (the number of
-// pieces: EvenCuts) and whole (the highest key, the key it is in tune at; default the first key for both, so it plays on one key). Pieces
+// pieces: EvenCuts), notes (from, to and pitch of each note: Notes, five keys apart) and whole (the highest key, the key it is in tune at; default the first key for both, so it plays on one key). Pieces
 // are made by Slices, one key each from the first key up. Empty lines and lines that begin with # are left out. load reads the sounds. The
 // second result describes what every line made, to show where the keys are.
 func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
@@ -99,12 +100,18 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 				made = Slices(snd, first, VerseCuts(snd, int(arg(0, 1)), arg(1, 20)))
 			case "even":
 				made = Slices(snd, first, EvenCuts(snd, int(arg(0, 8))))
+			case "notes": // from, to and pitch of every note, in seconds and MIDI pitch
+				var notes [][3]float64
+				for i := 0; i+2 < len(args); i += 3 {
+					notes = append(notes, [3]float64{args[i], args[i+1], args[i+2]})
+				}
+				made = Notes(snd, first, 5, notes)
 			case "whole":
 				hi := min(127, int(arg(0, float64(first))))
 				made = []Region{NewRegion(snd).Keys(first, max(first, hi), arg(1, float64(first)))}
 				made[0].Loop = OneShot
 			default:
-				return nil, nil, fail("%q: hits, change, pauses, verses, even, whole or sfz", mode)
+				return nil, nil, fail("%q: hits, change, pauses, verses, even, notes, whole or sfz", mode)
 			}
 			for i := range made {
 				made[i].Name = name

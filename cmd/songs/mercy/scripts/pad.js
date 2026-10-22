@@ -8,5 +8,5 @@ function trigger(ev) {
     last = v
     note(shared.chordOf(v).bass(29), 0.6, 63.5)
   }
-  if (k % 16 === 0) set("trim", -6 + 20 * Math.log10(shared.fade()))
+  if (k % 16 === 0) set("trim", -6 - (shared.verseBar() === 3 ? 4 : 0) + 20 * Math.log10(shared.fade()))   // 4 dB less under the refrain, which is spoken
 }

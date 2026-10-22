@@ -1106,6 +1106,9 @@ snd, _ := sampler.LoadFile("assets/sounds/various/tabla_loop_4bars_90bpm-86005.w
 inst := sampler.MustInstrument(sampler.Slices(snd, 36, sampler.OnsetCuts(snd, 9, 0.08))...)   // 44 pieces on keys 36-79
 ```
 
+`Notes(snd, firstKey, spacing, notes)` makes a region for each played note of a recording (sung notes, a phrase): `[from, to, pitch]` in seconds and a MIDI pitch
+with a fraction, which tunes it. Note i is on the key `firstKey+spacing*i` and two either side, so a key a little off plays it a little higher or lower; it fades in over 40 ms, and goes on as long as the key is held (its second half goes round, with a crossfade), releasing over 0.4 s.
+
 `go run ./cmd/examples/slicer -demo` plays the tabla loop cut at its hits, in order and then shuffled (`-file`,
 `-by change` for a sung line, `-by pauses -max 4` for speech, `-by verses -verses 26` for a recitation, `-rise`, `-gap`, `-slices n`, `-first`); without `-demo` the pieces are on a MIDI keyboard.
 

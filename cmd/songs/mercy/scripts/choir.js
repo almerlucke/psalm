@@ -7,5 +7,5 @@ function trigger(ev) {
   if (last ? k !== 48 : !(vb === 3 && (ev.step % 16) === 0 && v > 0)) return
   const tones = shared.chordOf(v).tones(53, 77)
   const voices = [tones[0], tones[Math.min(2, tones.length - 1)], tones[Math.min(4, tones.length - 1)]]
-  note(voices, (last ? 0.4 : 0.5 * shared.fade()), last ? 40 : 15.5)
+  note(voices, (last ? 0.4 : 0.4 * shared.fade()), last ? 40 : 15.5)
 }

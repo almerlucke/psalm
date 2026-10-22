@@ -457,3 +457,29 @@ func Slices(snd Sound, firstKey int, cuts []int64) []Region {
 	}
 	return regions
 }
+
+// Notes makes a region for each played note of a recording (sung notes, a phrase on an instrument): from the second `from` to `to`, at the
+// pitch it is sung or played at (a MIDI note with a fraction, which tunes it). Note i is on the key firstKey+spacing*i and the keys two
+// either side, so that a key a little off plays it a little higher or lower; a spacing of five keeps the notes apart. Notes begin and end
+// softly (a fade in of 40 ms, a release of 0.4 s), and go on as long as the key is held: the second half of the note goes round with a crossfade.
+func Notes(snd Sound, firstKey, spacing int, notes [][3]float64) []Region {
+	var regions []Region
+	sr := snd.SampleRate()
+	for i, n := range notes {
+		key := firstKey + spacing*i
+		if key+2 > 127 {
+			break
+		}
+		r := NewRegion(snd).Keys(key-2, key+2, float64(key)+n[2]-math.Round(n[2]))
+		r.Offset, r.End = int64(n[0]*sr), min(int64(n[1]*sr), snd.NumFrames()-1)
+		// the note goes on as long as the key is down: its second half goes round, the end fading into the start
+		dur := n[1] - n[0]
+		r.Loop = LoopContinuous
+		r.LoopStart, r.LoopEnd = int64((n[0]+0.4*dur)*sr), r.End-int64(0.1*sr)
+		r.LoopCrossfade = min(0.25, 0.4*dur)
+		r.Env = Envelope{Attack: 0.04, Sustain: 1, Release: 0.4}
+		r.Name = "note"
+		regions = append(regions, r)
+	}
+	return regions
+}

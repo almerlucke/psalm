@@ -37,7 +37,7 @@ shared.heat = [0, 1, 2, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 3, 4, 2, 2, 2, 2, 2, 2, 2,
 // how much of each layer plays in each verse
 shared.layer = {
   perc:  [0, 0, 0.4, 0.3, 0.4, 0.4, 0.5, 0.5, 0.5, 0.8, 0.8, 0.8, 0.3, 0.8, 1, 0.5, 0.7, 0.7, 0.7, 0.7, 0.5, 0.4, 0.2, 0.2, 0.2, 0.4],
-  tubes: [0, 0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.7, 0.3, 0.3, 0.3, 0.2, 0.3, 0.3, 0.4, 0.3, 0.3, 0.3, 0.3, 0.4, 0.5, 0.4, 0.4, 0.4, 0.5],
+  tubes: [0, 0, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.7, 0.3, 0.4, 0.4, 0.2, 0.4, 0.3, 0.4, 0.3, 0.3, 0.3, 0.3, 0.4, 0.5, 0.4, 0.4, 0.4, 0.5],
   harp:  [0, 0, 0, 0.5, 0.5, 0.5, 0.6, 0.7, 0.7, 0, 0, 0, 0, 0.3, 0, 0.5, 0.5, 0.5, 0.5, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.7],
   bed:   [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4, 0.3, 0.4, 0.4, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
 }
@@ -54,8 +54,8 @@ shared.fade = () => {
   if (v === 25) return [1, 0.9, 0.75, 0.6][b]
   return 1
 }
-// the voice does not fade in the last verse: its refrain is the end, and has to be heard
-shared.voiceFade = () => shared.verse() === 25 ? 1 : shared.fade()
+// the voice does not fade in the first verse or in the last: what is said first has to be heard, and the refrain at the end is the end
+shared.voiceFade = () => shared.verse() === 0 || shared.verse() === 25 ? 1 : shared.fade()
 
 // THE RECORDING: the psalm spoken, the 26 verses each followed by its refrain, cut at the pauses (52 pieces, patch.go): verse n of the song says verse n of
 // the recording, at the start of the verse (after the shofar when that sounds in the first bar), and its refrain in the last bar, the refrain bar, over the choir and the tabla loop as it was.

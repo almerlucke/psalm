@@ -263,3 +263,16 @@ func TestVerseCuts(t *testing.T) {
 		t.Errorf("verses in a bank: %v, %d regions", err, len(inst.Regions))
 	}
 }
+
+// the notes of a recording sit five keys apart, tuned to the pitch they were sung at
+func TestNotes(t *testing.T) {
+	load := func(string) (Sound, error) { return hits(2.1, 0.1, 0.6, 1.1, 1.6), nil }
+	inst, _, err := ParseBanks("24 sung.wav notes 0.1 0.9 60.3 1.1 1.9 53", load)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := inst.Regions
+	if len(r) != 2 || r[0].LoKey != 22 || r[0].HiKey != 26 || r[1].LoKey != 27 || r[1].HiKey != 31 || math.Abs(r[0].Root-24.3) > 1e-9 || r[1].Root != 29 {
+		t.Errorf("regions %+v", r)
+	}
+}
