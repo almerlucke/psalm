@@ -5,4 +5,4 @@ const part = shared.register("the deep", { legato: 1 }, day => {
   return shared.perBar(day, (b, br) => shared.morning(b) ? null : [shared.chord([br.root], 3, { hold: 3.2 })])
 })
 function section(name) { part.section(name) }
-function trigger(ev) { part.trigger(song, note) }
+function trigger(ev) { part.trigger(song, note, ev) }

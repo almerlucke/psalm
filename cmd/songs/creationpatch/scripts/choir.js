@@ -8,4 +8,4 @@ const part = shared.register("choir", { legato: 1 }, day => {
   })
 })
 function section(name) { part.section(name) }
-function trigger(ev) { part.trigger(song, note) }
+function trigger(ev) { part.trigger(song, note, ev) }

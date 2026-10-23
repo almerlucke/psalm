@@ -76,8 +76,8 @@ type dayJS struct {
 }
 
 // preludeJS is what the first script gets before its own text: the days, the bars with their chords voiced and led (close voicings from G4 and G3, each bar
-// moved as little as it can from the one before, the bass at or above D1), the tuning and the beats to a bar
-func preludeJS(just bool, a4 float64) (string, error) {
+// moved as little as it can from the one before, the bass at or above D1), the tuning, the seed of the random timing (human: whether the parts play off the grid) and the beats to a bar
+func preludeJS(just bool, a4 float64, seed uint64, human bool) (string, error) {
 	key := harmony.MustKey("Eb major")
 	var bars []barJS
 	var ds []dayJS
@@ -98,7 +98,7 @@ func preludeJS(just bool, a4 float64) (string, error) {
 		}
 	}
 	js := func(v any) string { b, _ := json.Marshal(v); return string(b) }
-	return fmt.Sprintf("shared.beats = %d\nshared.just = %v\nshared.a4 = %v\nshared.days = %s\nshared.bars = %s\n", beats, just, a4, js(ds), js(bars)), nil
+	return fmt.Sprintf("shared.beats = %d\nshared.just = %v\nshared.a4 = %v\nshared.seed = %d\nshared.human = %v\nshared.days = %s\nshared.bars = %s\n", beats, just, a4, seed, human, js(ds), js(bars)), nil
 }
 
 // tempoAt is the tempo in a day, at a bar of it (with the part of a bar): the seventh day is slower, and slower still as the last chord rings

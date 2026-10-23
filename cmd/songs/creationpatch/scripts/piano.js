@@ -6,7 +6,7 @@ const part = shared.register("piano", { legato: 1 }, day => {
 })
 function section(name) { part.section(name) }
 function trigger(ev) {
-  part.trigger(song, note)
+  part.trigger(song, note, ev)
   if (song.section === shared.days[5].name && song.bar >= shared.EVENING) { // up for a moment at the bar line, down for the rest of the bar
     set("sustain", song.beat / shared.beats < 0.05 ? 0 : 1)
   } else {

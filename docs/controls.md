@@ -994,7 +994,7 @@ function trigger(ev) {
 
 | In a script | |
 |---|---|
-| `note(pitch, velocity = 0.8, steps = 1)` | a note (or a chord: an array) to the synths its notes cable goes to, played at the end of the tick |
+| `note(pitch, velocity = 0.8, steps = 1, delay = 0)` | a note (or a chord: an array) to the synths its notes cable goes to, played at the end of the tick, or `delay` steps later (to play off the grid) |
 | `send(port, v)`, `fire()`, `mod(v)` | a value (a number, a note name, a chord) on output `"a"` or `"b"`; a trigger; the mod output's value (0-1) |
 | `input(port)`, `log(...)` | the last value on input `"a"` or `"b"`; a line in the log of the patch (the Log button at the top) |
 | `pitch("C3")`, `scale("C minor")`, `bpm()` | a pitch; a scale: `snap(p)`, `pitch(degree, octave)`, `notes(lo, hi)`, `contains(p)`, `step(p, n)`; the tempo |

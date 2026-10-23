@@ -10,7 +10,7 @@ const part = shared.register("void", { legato: 1 }, day => {
 })
 function section(name) { part.section(name) }
 function trigger(ev) {
-  part.trigger(song, note)
+  part.trigger(song, note, ev)
   // 0 to 1 over the range of the cutoff: dark (300 Hz) through the first evening, open (18000 Hz) within the first bar of the morning
   let open = 1
   if (song.section === shared.days[0].name) {

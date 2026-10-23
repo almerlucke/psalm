@@ -5,4 +5,4 @@ const part = shared.register("organ", { legato: 1 }, day => {
   return shared.perBar(day, (b, br) => shared.ringing(b, [br.root, ...br.mid]))
 })
 function section(name) { part.section(name) }
-function trigger(ev) { part.trigger(song, note) }
+function trigger(ev) { part.trigger(song, note, ev) }

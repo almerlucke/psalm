@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/almerlucke/psalm/modules/controls/score"
@@ -42,9 +43,15 @@ var legatos = map[string]float64{"violins": 1, "celli": 1, "pizzicato": 0.5, "ha
 // runtime loads the scripts as the patcher does (a function of the api, shared and genny) with stubs for what a part plays with
 func runtime(t *testing.T, just bool) (*goja.Runtime, *goja.Object) {
 	t.Helper()
+	return runtimeWith(t, just, false)
+}
+
+// runtimeWith is runtime with the parts playing like players or not
+func runtimeWith(t *testing.T, just, human bool) (*goja.Runtime, *goja.Object) {
+	t.Helper()
 	vm := goja.New()
 	shared := vm.NewObject()
-	prelude, err := preludeJS(just, 440)
+	prelude, err := preludeJS(just, 440, 1, human)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,4 +191,112 @@ func TestTuning(t *testing.T) {
 			t.Errorf("just %v: %v is %v, want %v", c.just, c.pitch, got, c.want)
 		}
 	}
+}
+
+// the feel: the notes of a chord strummed after each other and every part a little late; the accents of the pizzicato; a seed gives the same every time
+func TestFeel(t *testing.T) {
+	type played struct {
+		pitches        []float64
+		v, hold, delay float64
+	}
+	run := func(human bool, part string, beats ...float64) []played {
+		var out []played
+		vm, shared := runtimeWith(t, false, human)
+		reg, _ := goja.AssertFunction(shared.Get("register"))
+		mk, err := vm.RunString(`shared => day => [shared.chord([63, 70, 75], 1, { hold: 1 }), shared.chord([63, 70, 75], 1, { hold: 1 }), shared.chord([63, 70, 75], 1, { hold: 1 }), shared.N([], day.bars * shared.beats - 3)]`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mkf, _ := goja.AssertFunction(mk)
+		score, err := mkf(goja.Undefined(), shared)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pl, err := reg(goja.Undefined(), vm.ToValue(part), vm.ToValue(map[string]any{"legato": 1}), score)
+		if err != nil {
+			t.Fatal(err)
+		}
+		po := pl.ToObject(vm)
+		sec, _ := goja.AssertFunction(po.Get("section"))
+		trig, _ := goja.AssertFunction(po.Get("trigger"))
+		if _, err := sec(po, vm.ToValue(days[1].name)); err != nil {
+			t.Fatal(err)
+		}
+		note := vm.ToValue(func(c goja.FunctionCall) goja.Value {
+			var ps []float64
+			if arr, ok := c.Argument(0).Export().([]any); ok {
+				for _, p := range arr {
+					ps = append(ps, toFloat(p))
+				}
+			} else {
+				ps = []float64{c.Argument(0).ToFloat()}
+			}
+			delay := 0.0
+			if d := c.Argument(3); !goja.IsUndefined(d) {
+				delay = d.ToFloat()
+			}
+			out = append(out, played{ps, c.Argument(1).ToFloat(), c.Argument(2).ToFloat(), delay})
+			return goja.Undefined()
+		})
+		for _, b := range beats {
+			song := vm.NewObject()
+			_ = song.Set("bar", int(b)/beats3)
+			_ = song.Set("beat", math.Mod(b, beats3))
+			ev := vm.NewObject()
+			_ = ev.Set("seconds", 0.125)
+			if _, err := trig(po, song, note, ev); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return out
+	}
+
+	// bells: a chord of three strummed 40 ms apart (a third and a bit of a step of 125 ms), all waiting 32 ms
+	got := run(true, "bells", 0)
+	if len(got) != 3 {
+		t.Fatalf("%d notes of a chord of three", len(got))
+	}
+	for i, g := range got {
+		if want := (32 + 40*float64(i)) / 1000 / 0.125; math.Abs(g.delay-want) > 1e-6 {
+			t.Errorf("note %d is %v steps late, want %v", i, g.delay, want)
+		}
+	}
+	// off: on the grid
+	if g := run(false, "bells", 0); len(g) != 1 || g[0].delay != 0 || len(g[0].pitches) != 3 {
+		t.Errorf("not on the grid: %+v", g)
+	}
+	// the violins start a chord not quite together, and the same every time
+	a, b := run(true, "violins", 0, 1, 2), run(true, "violins", 0, 1, 2)
+	if len(a) != 9 || !reflect.DeepEqual(a, b) {
+		t.Errorf("not the same every time: %v %v", a, b)
+	}
+	same := true
+	for _, g := range a[1:3] {
+		same = same && g.delay == a[0].delay
+	}
+	if same {
+		t.Error("the notes of a chord start together")
+	}
+	for _, g := range a {
+		if g.delay < 0 || g.delay*0.125*1000 > 32+8+12+1e-9 {
+			t.Errorf("%v ms late", g.delay*125)
+		}
+	}
+	// the pizzicato accents: the first beat of the bar is the loudest, the second the softest (1, 0.8, 0.85); a note on the grid when the parts do not play like players
+	pz := run(false, "pizzicato", 0, 1, 2)
+	if len(pz) != 3 || !(pz[0].v > pz[2].v && pz[2].v > pz[1].v) || math.Abs(pz[1].v/pz[0].v-0.8) > 1e-9 || math.Abs(pz[2].v/pz[0].v-0.85) > 1e-9 {
+		t.Errorf("accents %+v", pz)
+	}
+}
+
+const beats3 = 3
+
+func toFloat(v any) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case int64:
+		return float64(x)
+	}
+	return math.NaN()
 }

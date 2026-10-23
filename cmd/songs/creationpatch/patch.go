@@ -33,9 +33,11 @@ const (
 var tempo = float64(bpm)
 
 type options struct {
-	just bool
-	a4   float64
-	once bool // the song ends with its last day, it doesn't loop
+	just  bool
+	a4    float64
+	seed  uint64 // the seed of the feel of the parts
+	human bool   // the parts play off the grid, like players
+	once  bool   // the song ends with its last day, it doesn't loop
 }
 
 // patchIDs are the modules of the patch to look at: the scripts, and the synths by their part
@@ -137,7 +139,7 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		}
 		pt.SettingsOf(id).Apply(v)
 	}
-	prelude, err := preludeJS(opt.just, opt.a4)
+	prelude, err := preludeJS(opt.just, opt.a4, opt.seed, opt.human)
 	if err != nil {
 		return patchIDs{}, err
 	}

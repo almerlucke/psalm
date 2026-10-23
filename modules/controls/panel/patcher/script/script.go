@@ -17,7 +17,7 @@ import (
 // value(v, port) on every value on input "a" or "b". It plays notes (note), sends values (send),
 // triggers (fire) and a value for mod cables (mod):
 //
-//	note(pitch, velocity = 0.8, steps = 1)  // a pitch (48, "C3") or a chord ([48, 51, 55])
+//	note(pitch, velocity = 0.8, steps = 1, delay = 0) // a pitch (48, "C3") or a chord ([48, 51, 55]); delay steps later (0.1: a tenth of a step), to play off the grid
 //	set(key, value)  or  set({key: value})  // settings of the synths it plays, by their keys (morph, macro1, chainA...)
 //	send(port, v)                           // "a" or "b"
 //	fire(delay = 0, count = 1)              // a trigger on its trigger output: later (in steps, 0.5 halfway the next), or count of them in a step (a ratchet)
@@ -54,6 +54,7 @@ type Script struct {
 	inputs         [2]goja.Value
 	notes          []queued
 	fires          []fired        // triggers to come, from fire(delay, count)
+	later          []delayed      // notes to come, from note(pitch, velocity, steps, delay)
 	own            *patcher.Clock // its own clock, when it has asked for one (clock(division))
 	ownOn          bool
 	lastTick       int64
@@ -65,6 +66,12 @@ type Script struct {
 type fired struct {
 	due float64 // the tick (a fraction: between two)
 	ev  patcher.Event
+}
+
+// delayed is a note to play when its tick comes
+type delayed struct {
+	due int64
+	queued
 }
 
 // queued is a note to play at the end of the tick
@@ -123,7 +130,7 @@ func (s *Script) start() {
 		return
 	}
 	s.trigger, s.value, s.section, s.stopped, s.inSong = nil, nil, nil, false, false
-	s.fires, s.ownOn = s.fires[:0], false
+	s.fires, s.later, s.ownOn = s.fires[:0], s.later[:0], false
 	s.setStatus("")
 	if s.api == nil {
 		s.api = s.newAPI()
@@ -199,7 +206,7 @@ func (s *Script) CtrlTick(tick psalm.CtrlTick) {
 		s.tick = tick
 	}
 	if tick.TickTimestamp < s.lastTick { // the patch started over
-		s.fires = s.fires[:0]
+		s.fires, s.later = s.fires[:0], s.later[:0]
 	}
 	s.lastTick = tick.TickTimestamp
 	s.follow(tick)
@@ -250,14 +257,32 @@ func (s *Script) triggered(ev patcher.Event) {
 }
 
 // late plays the notes of the tick
-func (s *Script) late(psalm.CtrlTick) {
+func (s *Script) late(tick psalm.CtrlTick) {
 	for _, m := range s.sets { // the settings first: the notes of the tick sound with them
 		for _, t := range s.targets {
 			t.ReceiveMessage(m)
 		}
 	}
 	s.sets = s.sets[:0]
-	for _, n := range s.notes {
+	s.play(s.notes)
+	s.notes = s.notes[:0]
+	if len(s.later) > 0 { // the notes note(.., delay) asked for, when they are due: they sound at this tick
+		keep := s.later[:0]
+		for _, d := range s.later {
+			if d.due <= tick.TickTimestamp {
+				d.tick = tick
+				s.play([]queued{d.queued})
+			} else {
+				keep = append(keep, d)
+			}
+		}
+		s.later = keep
+	}
+}
+
+// play sends notes to the synths
+func (s *Script) play(notes []queued) {
+	for _, n := range notes {
 		for _, pitch := range n.pitches {
 			msg := psalm.Message{"command": "trigger", "tick": n.tick, "duration": n.seconds, "amplitude": n.velocity,
 				"message": psalm.Message{"pitch": pitch, "velocity": n.velocity}}
@@ -266,7 +291,6 @@ func (s *Script) late(psalm.CtrlTick) {
 			}
 		}
 	}
-	s.notes = s.notes[:0]
 }
 
 // port is the index of an output or input of a script's name ("a", "b", or 0, 1)
@@ -327,9 +351,18 @@ func (s *Script) newAPI() *goja.Object {
 		if step <= 0 { // no trigger yet: a sixteenth
 			step = 15 / s.BPM()
 		}
-		s.notes = append(s.notes, queued{tick: s.tick, pitches: s.pitches(call.Argument(0)),
+		q := queued{tick: s.tick, pitches: s.pitches(call.Argument(0)),
 			velocity: math.Max(0, math.Min(number(call, 1, 0.8), 1)),
-			seconds:  math.Max(0.005, number(call, 2, 1)*step)})
+			seconds:  math.Max(0.005, number(call, 2, 1)*step)}
+		// delay: later, in steps; the tick it falls on is the nearest (a tick is a few milliseconds)
+		if delay := number(call, 3, 0); delay > 0 {
+			ticks := delay * step * s.BPM() * float64(s.Config().PPQ) / 60
+			if due := s.tick.TickTimestamp + int64(math.Round(ticks)); due > s.tick.TickTimestamp && len(s.later) < 4096 {
+				s.later = append(s.later, delayed{due: due, queued: q})
+				return goja.Undefined()
+			}
+		}
+		s.notes = append(s.notes, q)
 		return goja.Undefined()
 	})
 	// set(key, value) or set({key: value, ...}): settings of the synths the notes go to, by their

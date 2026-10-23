@@ -2,7 +2,7 @@
 // written in, the tuning, and the player every part uses. It is the first script of the patch, so the others find all this in `shared` when they begin.
 //
 // A part is a score: a function of a day that gives its notes, bar by bar (see the parts). shared.register(name, options, score) makes the player of a part:
-// `section(day)` when a day begins makes its notes, `trigger(song, note)` on every sixteenth plays what begins there (the song and the note function are those of
+// `section(day)` when a day begins makes its notes, `trigger(song, note, ev)` on every sixteenth plays what begins there (the song and the note function are those of
 // the script of the part).
 
 const EVENING = 6 // bars of every day before the morning
@@ -178,9 +178,54 @@ shared.compile = (name, dayName) => {
   return out
 }
 
+// --- how a part plays: ensembles never start a chord exactly together, soloists breathe ---
+
+// the feel of every part (as in the score package of psalm): timing, spread, strum and push in milliseconds (timing moves the notes of a chord together, spread
+// each note of a chord, strum puts a chord's notes after each other, low to high, push lays every note back or ahead), velocity (+-, 0.1 is +-10%) and the
+// accents through the bar (the beats of an accent, the beats of the bar)
+const FEELS = {
+  "violins": { timing: 8, spread: 12, velocity: 0.06 },
+  "celli": { timing: 8, spread: 10, velocity: 0.06 },
+  "pizzicato": { timing: 6, velocity: 0.1, accents: [1, 0.8, 0.85], bar: 3 },
+  "harp": { timing: 5, velocity: 0.1 },
+  "timpani": { timing: 4, velocity: 0.08 },
+  "flute": { timing: 10, push: 6, velocity: 0.08 },
+  "oboe": { timing: 10, push: 6, velocity: 0.08 },
+  "clarinet": { timing: 10, push: 6, velocity: 0.08 },
+  "horns": { timing: 10, spread: 15, velocity: 0.06 },
+  "horn": { timing: 12, push: 4, velocity: 0.08 },
+  "soprano": { timing: 10, push: 6, velocity: 0.08 },
+  "spirit": { timing: 10, spread: 20 },
+  "choir": { timing: 10, spread: 20 },
+  "organ": { timing: 4, spread: 6 },
+  "celesta": { timing: 6, velocity: 0.12 },
+  "bell pad": { strum: 25, velocity: 0.05 },
+  "bells": { strum: 40 },
+  "piano": { timing: 6, strum: 18, velocity: 0.06 },
+  "the deep": { timing: 20 },
+}
+// a note can only be late, never early: every note of every part waits this long (milliseconds) so the ones that play ahead of the beat have room
+const PAD = 32
+
+// the random numbers of a part: the same every time for a seed (shared.seed), every part its own
+function rng(seed, name) {
+  let a = seed >>> 0
+  for (const c of name) a = (Math.imul(a ^ c.charCodeAt(0), 2654435761) + 0x9e3779b9) >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 // register makes a part: the player with the section and trigger functions to call from the script of the part (a clock of sixteenths)
 shared.register = (name, options, score) => {
   const part = { legato: 1, vel: 0.8, ...options, score }
+  const feel = shared.human ? FEELS[name] || {} : {}
+  const accents = (FEELS[name] || {}).accents
+  const rand = rng(shared.seed || 1, name)
+  const tri = () => rand() + rand() - 1 // -1 to 1, most often near 0
   parts[name] = part
   let events = {}
   let last = -1
@@ -193,13 +238,29 @@ shared.register = (name, options, score) => {
         ;(events[k] = events[k] || []).push(e)
       }
     },
-    trigger(song, note) {
+    trigger(song, note, ev) {
       const k = Math.round((song.bar * shared.beats + song.beat) * 4)
       if (k === last) return
       last = k
+      const step = ev && ev.seconds > 0 ? ev.seconds : 0 // how long a sixteenth is, to put milliseconds in steps
       for (const e of events[k] || []) {
-        const v = Math.max(0.01, Math.min(1, (e.vel || part.vel) * e.amp))
-        note(e.pitches.map(shared.tune), v, Math.max(0.05, e.hold * 4))
+        let v = (e.vel || part.vel) * e.amp
+        if (accents) { // the accent of the beat in the bar
+          const inBar = e.beat - Math.floor(e.beat / (FEELS[name].bar || 4)) * (FEELS[name].bar || 4)
+          v *= accents[Math.floor(inBar + 1e-9) % accents.length]
+        }
+        if (feel.velocity) v *= 1 + tri() * feel.velocity
+        v = Math.max(0.01, Math.min(1, v))
+        const hold = Math.max(0.05, e.hold * 4)
+        if (!step || !shared.human) {
+          note(e.pitches.map(shared.tune), v, hold)
+          continue
+        }
+        const offset = (feel.push || 0) + (feel.timing ? tri() * feel.timing : 0)
+        e.pitches.forEach((p, i) => {
+          const ms = PAD + offset + Math.abs(feel.strum || 0) * i + (feel.spread ? tri() * feel.spread : 0)
+          note(shared.tune(p), v, hold, Math.max(0, ms) / 1000 / step)
+        })
       }
     },
   }

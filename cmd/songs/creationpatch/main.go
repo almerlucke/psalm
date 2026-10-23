@@ -21,6 +21,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
@@ -43,6 +44,7 @@ func main() {
 	stems := flag.Bool("stems", false, "with -render, also write the parts to their own files")
 	seed := flag.Uint64("seed", 0, "seed the random choices (0: different every time); with it a render is the same every time")
 	tuning := flag.String("tuning", "just", "just (pure ratios) or equal (equal temperament)")
+	human := flag.Bool("human", true, "the parts play like players: a little off the beat, a chord not quite together, a little different in loudness (off: exactly on the grid)")
 	a4 := flag.Float64("a4", 440, "the reference pitch of A4 in Hz")
 	flag.Parse()
 	if *tuning != "just" && *tuning != "equal" {
@@ -50,8 +52,11 @@ func main() {
 	}
 
 	psalm.PushConfig(psalm.Config{BPM: bpm, PPQ: 240, SampleRate: 44100, BufferSize: 1024})
+	feelSeed := *seed
 	if *seed != 0 {
 		psalm.Seed(*seed)
+	} else {
+		feelSeed = uint64(time.Now().UnixNano())
 	}
 	var p *psalm.Psalm
 	if *renderTo != "" || *profile {
@@ -70,7 +75,7 @@ func main() {
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
 	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: church}), patcher.Theme(t))
-	ids, err := buildPatch(pt, options{just: *tuning == "just", a4: *a4, once: *renderTo != "" || *profile})
+	ids, err := buildPatch(pt, options{just: *tuning == "just", a4: *a4, seed: feelSeed, human: *human, once: *renderTo != "" || *profile})
 	if err != nil {
 		log.Fatal(err)
 	}

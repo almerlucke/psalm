@@ -399,3 +399,35 @@ function trigger(ev) { note(60, 0.8, 1); if (ev.step % 2 === 0) fire(0.5); else 
 		t.Errorf("fire(0, 3): at %v for the step at %d, want a third of a step apart", extra[1:4], base[1])
 	}
 }
+
+// note(pitch, velocity, steps, delay): a note later in the step, off the grid by a tick at most
+func TestScriptNoteDelay(t *testing.T) {
+	r := newRig(t)
+	s, syn := r.add("script", ""), r.add("rec", "")
+	r.code(s, `
+clock("1/4")
+function trigger(ev) { note(60, 0.8, 1); note(72, 0.8, 1, 0.5); note(84, 0.8, 1, -1) }`)
+	r.connect(patcher.Cable{From: s, To: syn, Type: patcher.Notes})
+	r.run(2.1)
+	var base, late []int64
+	for i, p := range r.rec.pitches {
+		switch p {
+		case 60:
+			base = append(base, r.rec.at[i])
+		case 72:
+			late = append(late, r.rec.at[i])
+		}
+	}
+	if len(base) < 4 || len(late) < 3 {
+		t.Fatalf("%d notes on the step, %d delayed", len(base), len(late))
+	}
+	// a quarter is 22050 samples, half of it 11025; a tick is 92 samples
+	for i := range late {
+		if d := late[i] - base[i]; math.Abs(float64(d)-11025) > 92 {
+			t.Errorf("delay 0.5: %d samples after the step, want 11025", d)
+		}
+	}
+	if len(r.rec.pitches) < len(base)*3-1 { // a negative delay is no delay: the note plays on the step
+		t.Errorf("%d notes, want three a step", len(r.rec.pitches))
+	}
+}
