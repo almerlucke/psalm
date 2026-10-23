@@ -1,0 +1,15 @@
+.looper { align-items: stretch; gap: 8px; }
+.looper .lp-bars { display: flex; gap: 4px; }
+.looper .lp-bar { flex: 1; position: relative; height: 34px; border-radius: calc(var(--radius) / 2); background: var(--track); overflow: hidden; }
+.looper .lp-bar b { position: absolute; left: 6px; top: 2px; font-size: 12px; color: var(--muted); }
+.looper .lp-bar i { position: absolute; bottom: 4px; width: 22%; height: 8px; border-radius: 3px; background: var(--line); }
+.looper .lp-bar i.on { background: var(--accent); }
+.looper .lp-bar.now b { color: var(--ink); }
+.looper .lp-bar.first i.on { background: var(--danger, #e5484d); }
+.looper .lp-status { font-size: 13px; color: var(--muted); min-height: 1.3em; font-variant-numeric: tabular-nums; }
+.looper .lp-status.rec { color: var(--danger, #e5484d); font-weight: 600; }
+.looper .lp-layer { display: flex; gap: 8px; align-items: center; }
+.looper .lp-layer span { width: 4.5em; font-size: 13px; }
+.looper .lp-layer canvas { flex: 1; height: 48px; min-width: 0; border-radius: calc(var(--radius) / 2); background: var(--track); }
+.looper .lp-layer button { min-height: 30px; padding: 2px 10px; font-size: 13px; }
+.looper .lp-empty { font-size: 12px; color: var(--muted); }

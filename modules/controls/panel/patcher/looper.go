@@ -5,15 +5,22 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/midi"
+	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/params"
 )
 
 // LooperQuantize are the grids a looper can snap what is played to, a part of a quarter note (0: as it was played)
 var LooperQuantize = []string{"off", "1/4", "1/8", "1/16", "1/32"}
+
+// LooperScriptFiles are the ways to write the scripts: a file for every layer, or one for all of them
+var LooperScriptFiles = []string{"one per layer", "one file"}
 
 var looperGrid = []float64{0, 1, 0.5, 0.25, 0.125}
 
@@ -37,14 +44,18 @@ type heldNote struct {
 // the layers play together, on every pass, and a new one can be recorded on top of them as long as you like. Settings: "bars" (1-16), "quantize" (an index of
 // LooperQuantize: the start and the length of the notes recorded are put on that grid), "record" (a layer is recorded from the next pass; off, it ends with the
 // pass), "play" (the layers play), "undo" (takes the last layer away), "clear" (all layers), "export" (writes the layers to a MIDI file, the loop repeated
-// "repeats" times) - the last three are pressed and let go by themselves
+// "repeats" times; "script" writes a script of the patcher for every layer) - the last four are pressed and let go by themselves
 type Looper struct {
 	*psalm.Module
 	Bars, Quantize, Repeats int
 	Record, Play            bool
 	Undo, Clear, Export     bool
+	ExportScript            bool
+	ScriptFiles             int // 0: a script for every layer, 1: one for all
 
 	layers    [][]loopNote
+	ids       []int // the number of every layer, to take one away by (the page asks for it)
+	nextID    int
 	cur       []loopNote
 	recording bool
 	held      map[string]heldNote
@@ -53,6 +64,16 @@ type Looper struct {
 	started   bool
 	dir       string
 	log       func(string)
+	released  func(key string) // the page's switch of a setting that lets go by itself
+
+	// what the page shows, set on the audio thread (the layers, the position, whether it is recording) and read by the page
+	view  atomic.Pointer[looperView]
+	where atomic.Int64 // the tick of the loop it is at
+	armed atomic.Bool  // "record" is on: a layer begins with the next pass
+	shape atomic.Int64 // bars
+
+	mu    sync.Mutex
+	drops []int // layers the page wants taken away (by number), done in the next tick
 }
 
 // NewLooper returns a looper of two bars, quantizing to sixteenths
@@ -60,6 +81,13 @@ func NewLooper() *Looper {
 	l := &Looper{Module: psalm.NewModule(nil, nil), Bars: 2, Quantize: 3, Repeats: 4, Play: true, held: map[string]heldNote{}, dir: "recordings"}
 	l.SetSelf(l)
 	return l
+}
+
+// let tells the page a switch that lets go by itself has: it would stay lit
+func (l *Looper) let(key string) {
+	if l.released != nil {
+		l.released(key)
+	}
 }
 
 // SetTargets sets the synths it plays (on the audio thread)
@@ -95,6 +123,8 @@ func (l *Looper) ReceiveMessage(msg psalm.Message) {
 		msg.IfFltVal("undo", func(v float64) { l.Undo = v >= 0.5 })
 		msg.IfFltVal("clear", func(v float64) { l.Clear = v >= 0.5 })
 		msg.IfFltVal("export", func(v float64) { l.Export = v >= 0.5 })
+		msg.IfIntVal("scriptFiles", func(f int) { l.ScriptFiles = max(0, min(f, 1)) })
+		msg.IfFltVal("script", func(v float64) { l.ExportScript = v >= 0.5 })
 		return
 	}
 	if cmd == "trigger" && l.recording {
@@ -160,6 +190,7 @@ func (l *Looper) add(start, length int64, pitch, velocity float64) {
 	start %= loop
 	length = max(1, min(length, loop))
 	l.cur = append(l.cur, loopNote{start: start, length: length, pitch: pitch, velocity: velocity})
+	l.publish()
 }
 
 // late moves the loop on one tick: at the start of a pass a layer that was being recorded is done and the next one begins, and the notes that begin now play
@@ -169,20 +200,44 @@ func (l *Looper) late(tick psalm.CtrlTick) {
 	wrapped := !l.started || l.pos < l.prev
 	l.prev, l.started = l.pos, true
 
+	l.where.Store(l.pos)
+	l.armed.Store(l.Record)
+	l.shape.Store(int64(l.Bars))
+	l.mu.Lock()
+	drops := l.drops
+	l.drops = nil
+	l.mu.Unlock()
+	for _, id := range drops {
+		if i := slices.Index(l.ids, id); i >= 0 {
+			l.layers, l.ids = slices.Delete(slices.Clone(l.layers), i, i+1), slices.Delete(slices.Clone(l.ids), i, i+1)
+			l.say("layer %d taken away: %d layers left", i+1, len(l.layers))
+			l.publish()
+		}
+	}
 	if l.Undo {
 		l.Undo = false
+		l.let("undo")
 		if n := len(l.layers); n > 0 {
-			l.layers = l.layers[:n-1]
+			l.layers, l.ids = l.layers[:n-1], l.ids[:n-1]
 			l.say("undo: %d layers left", len(l.layers))
+			l.publish()
 		}
 	}
 	if l.Clear {
-		l.Clear, l.layers, l.cur = false, nil, nil
+		l.Clear, l.layers, l.ids, l.cur = false, nil, nil, nil
+		l.let("clear")
 		l.say("cleared")
+		l.publish()
 	}
 	if l.Export {
 		l.Export = false
+		l.let("export")
 		l.export()
+	}
+	if l.ExportScript {
+		l.ExportScript = false
+		l.let("script")
+		l.exportScripts()
 	}
 	if wrapped {
 		if l.recording { // the pass is over: what was recorded is a layer
@@ -191,14 +246,17 @@ func (l *Looper) late(tick psalm.CtrlTick) {
 				delete(l.held, id)
 			}
 			if len(l.cur) > 0 {
-				l.layers = append(l.layers, l.cur)
+				l.layers, l.ids = append(l.layers, l.cur), append(l.ids, l.nextID)
+				l.nextID++
 				l.say("layer %d: %d notes", len(l.layers), len(l.cur))
 			}
 			l.cur, l.recording = nil, false
+			l.publish()
 		}
 		if l.Record {
 			l.recording = true
 			l.say("recording layer %d", len(l.layers)+1)
+			l.publish()
 		}
 	}
 	if !l.Play && !l.recording {
@@ -283,6 +341,8 @@ func (l *Looper) Describe() params.Set {
 		params.S("Layers", "undo", l.Undo),
 		params.S("Layers", "clear", l.Clear),
 		params.S("Export", "export", l.Export, params.Label("export to MIDI")),
+		params.S("Export", "script", l.ExportScript, params.Label("export to script")),
+		params.C("Export", "scriptFiles", LooperScriptFiles, l.ScriptFiles, params.Label("script files")),
 		params.K("Export", "repeats", 1, 64, float64(l.Repeats), params.Step(1), params.Label("loop repeated")),
 	}}
 }
@@ -295,6 +355,7 @@ func LooperKind() Kind {
 		Make: func(string) (*Made, error) {
 			l := NewLooper()
 			return &Made{Module: l, Describe: func(string) params.Set { return l.Describe() },
+				Edit:  func(page *panel.Panel, name, _ string) Settings { return l.edit(page, name, l.Describe()) },
 				Notes: l.SetTargets, Late: l.late,
 				Attach: func(j *Journal, name string) { l.OnEvent(func(s string) { j.Add(name, s) }) }}, nil
 		}}

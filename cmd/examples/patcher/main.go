@@ -10,6 +10,7 @@
 // ...) or a MIDI keyboard. Open http://localhost:8087.
 //
 //	go run ./cmd/examples/patcher
+//	go run ./cmd/examples/patcher -fresh                     start from the example patch, not from a patch of yours
 //	go run ./cmd/examples/patcher -theme midnight -patches mypatches
 package main
 
@@ -49,6 +50,7 @@ func main() {
 	theme := flag.String("theme", "default", "the theme of the page")
 	patches := flag.String("patches", "patches", "the folder patches are kept in")
 	presets := flag.String("presets", "editors-presets", "the folder the modules' presets of your own are kept in (the editors example's too)")
+	fresh := flag.Bool("fresh", false, "start from the example patch instead of the first patch kept in -patches")
 	device := flag.String("device", "", "a raw MIDI device to play from too (empty: the first keyboard, if there is one)")
 	flag.Parse()
 
@@ -82,10 +84,10 @@ func main() {
 	p.Out(mix.Master())
 
 	// a patch to start from: a clock of sixteenths through a sequence of C minor, up and down, playing
-	// a wavetable pluck; a script on the same clock playing an FM bass; the keyboard playing a lead;
+	// a wavetable pluck; a script on the same clock playing an FM bass; the keyboard playing a lead through a looper (switch record, play a bar or two, switch it off, and the loop plays on, on the beat of the patch; record again to layer on top; export to MIDI);
 	// all on a mixer whose send A goes to a reverb. A song of four sections: the clock plays sparser
 	// in the intro and the outro, the sequence other notes in the chorus
-	if len(pt.Patches()) == 0 || pt.Load(pt.Patches()[0]) != nil {
+	if *fresh || len(pt.Patches()) == 0 || pt.Load(pt.Patches()[0]) != nil {
 		must := func(id string, err error) string {
 			if err != nil {
 				log.Fatal(err)
@@ -97,7 +99,8 @@ func main() {
 		notes := must(pt.Add("notes", "", 450, 20))
 		pluck := must(pt.Add("wavetable", "pluck", 680, 20))
 		kb := must(pt.Add("keyboard", "", 20, 330))
-		lead := must(pt.Add("subtractive", "lead", 230, 330))
+		loop := must(pt.Add("looper", "", 230, 330)) // between the keyboard and the lead: record a loop, play on top of it
+		lead := must(pt.Add("subtractive", "lead", 450, 330))
 		lfo := must(pt.Add("lfo", "", 20, 470))
 		mix := must(pt.Add("mixer", "4 channels", 900, 140))
 		rev := must(pt.Add("reverb", "", 900, 440))
@@ -124,7 +127,8 @@ function trigger(ev) {
 		must(pt.Connect(patcher.Cable{From: seq, Out: 1, To: notes, In: 0}))
 		must(pt.Connect(patcher.Cable{From: notes, To: pluck}))
 		must(pt.Connect(patcher.Cable{From: pluck, To: mix, In: 0}))
-		must(pt.Connect(patcher.Cable{From: kb, To: lead}))
+		must(pt.Connect(patcher.Cable{From: kb, To: loop}))
+		must(pt.Connect(patcher.Cable{From: loop, To: lead}))
 		must(pt.Connect(patcher.Cable{From: lead, To: mix, In: 1}))
 		must(pt.Connect(patcher.Cable{From: lfo, To: lead, In: 1, Key: "cutoff", Lo: 0.45, Hi: 0.8}))
 		must(pt.Connect(patcher.Cable{From: clock, To: bassLine}))

@@ -2,7 +2,10 @@ package patcher
 
 import (
 	"math"
+	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/midi"
@@ -124,7 +127,77 @@ func TestLooperQuantizeOff(t *testing.T) {
 
 func TestLooperDescribes(t *testing.T) {
 	l, _ := newLoopRig(t)
-	if got := len(l.Describe().Params); got != 8 {
+	if got := len(l.Describe().Params); got != 10 {
 		t.Errorf("%d settings", got)
 	}
+}
+
+// a layer can be taken away by itself (by the number the page has for it), and the page's view follows
+func TestLooperDropsALayer(t *testing.T) {
+	l, _ := newLoopRig(t)
+	l.ReceiveMessage(psalm.Message{"record": 1.0})
+	for pass := range int64(3) { // three passes, a note in each, pitches 60, 62, 64
+		base := pass * 960
+		run(l, base, base+49)
+		key(l, true, "k", base+50, 60+float64(pass)*2)
+		run(l, base+50, base+99)
+		key(l, false, "k", base+100, 60+float64(pass)*2)
+		run(l, base+100, base+959)
+	}
+	run(l, 2880, 2880)
+	l.ReceiveMessage(psalm.Message{"record": 0.0})
+	v := l.view.Load()
+	if v == nil || len(v.Layers) != 3 {
+		t.Fatalf("view %+v, want three layers", v)
+	}
+	mid := v.Layers[1].ID
+	l.Drop(mid)
+	run(l, 2881, 2881)
+	v = l.view.Load()
+	if len(v.Layers) != 2 || v.Layers[0].Notes[0][2] != 60 || v.Layers[1].Notes[0][2] != 64 {
+		t.Fatalf("after taking the middle away: %+v", v.Layers)
+	}
+	if n, _ := l.Layers(); n != 2 {
+		t.Errorf("%d layers", n)
+	}
+	l.Drop(mid) // already gone: nothing
+	run(l, 2882, 2882)
+	if n, _ := l.Layers(); n != 2 {
+		t.Errorf("%d layers after asking again", n)
+	}
+	if f := l.File(1); len(f.Tracks) != 3 {
+		t.Errorf("%d tracks, want the tempo track and two layers", len(f.Tracks))
+	}
+	if s, ok := l.state().(looperState); !ok || s.Bars != 1 || len(s.Layers) != 2 {
+		t.Errorf("state %+v", s)
+	}
+}
+
+// all the layers in one script: one clock and one table with the notes of both, and the files follow the setting
+func TestLooperScriptAll(t *testing.T) {
+	l, _ := newLoopRig(t)
+	l.layers = [][]loopNote{{{start: 0, length: 60, pitch: 60, velocity: 0.8}}, {{start: 150, length: 30, pitch: 64.5, velocity: 0.5}, {start: 90, length: 60, pitch: 67, velocity: 1}}}
+	l.ids = []int{0, 1}
+	s := l.ScriptAll()
+	for _, want := range []string{"All 2 layers", `clock("1/32")`, "const LOOP = 32", "// layer 1, bar 1", "// layer 2, bar 1", `[0, 2, "C4", 0.8]`, `[5, 1, 64.5, 0.5]`, `[3, 2, "G4", 1]`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("no %q in\n%s", want, s)
+		}
+	}
+	if strings.Index(s, `[3, 2, "G4"`) > strings.Index(s, `[5, 1, 64.5`) {
+		t.Error("the notes of a layer are not in order")
+	}
+	dir := t.TempDir()
+	l.dir = dir
+	l.ScriptFiles = 1
+	l.exportScripts()
+	l.ScriptFiles = 0
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if m, _ := filepath.Glob(filepath.Join(dir, "loop-*.js")); len(m) == 1 && !strings.Contains(m[0], "layer") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Error("no single file written")
 }

@@ -579,3 +579,52 @@ func TestPageArp(t *testing.T) {
 	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
 	tb.WaitFor(`!!`+frame+` && !!`+frame+`.body && `+frame+`.body.innerText.includes("octaves")`, "its settings in the side panel")
 }
+
+// the looper's side panel shows the bars of the loop and its layers, each with a button that takes it away
+func TestPageLooper(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("looper", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pt.SettingsOf(id).Apply(map[string]float64{"bars": 3})
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	tb.WaitFor(frame+`.querySelectorAll(".looper .lp-bar").length === 3`, "a cell for every bar of the loop")
+	tb.WaitFor(`/bar \d, beat \d/.test(`+frame+`.querySelector(".looper .lp-status").textContent)`, "the bar and beat it is at")
+
+	// notes from a clock go through it: a layer is recorded and has its row and button; the button takes it away
+	clock, err := pt.Add("clock", "", 60, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes, err := pt.Add("notes", "", 260, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []patcher.Cable{{From: clock, To: notes}, {From: notes, To: id}} {
+		if _, err := pt.Connect(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pt.SettingsOf(id).Apply(map[string]float64{"bars": 1, "record": 1})
+	tb.WaitFor(frame+`.querySelector(".looper .lp-status").textContent.startsWith("recording layer")`, "the page to say it records")
+	pt.SettingsOf(id).Apply(map[string]float64{"record": 0})
+	tb.WaitFor(frame+`.querySelectorAll(".looper .lp-layer button").length === 1`, "a row for the layer recorded")
+	tb.Eval(frame + `.querySelector(".looper .lp-layer button").click()`)
+	tb.WaitFor(frame+`.querySelectorAll(".looper .lp-layer button").length === 0`, "the layer taken away")
+
+	// a switch that lets go by itself is let go on the page too
+	pt.SettingsOf(id).Apply(map[string]float64{"undo": 1})
+	paneltest.Eventually(t, "undo to be let go", func() bool { return pt.SettingsOf(id).Values()["undo"] == 0 })
+}
