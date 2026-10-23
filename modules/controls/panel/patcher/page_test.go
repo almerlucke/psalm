@@ -624,7 +624,46 @@ func TestPageLooper(t *testing.T) {
 	tb.Eval(frame + `.querySelector(".looper .lp-layer button").click()`)
 	tb.WaitFor(frame+`.querySelectorAll(".looper .lp-layer button").length === 0`, "the layer taken away")
 
-	// a switch that lets go by itself is let go on the page too
-	pt.SettingsOf(id).Apply(map[string]float64{"undo": 1})
-	paneltest.Eventually(t, "undo to be let go", func() bool { return pt.SettingsOf(id).Values()["undo"] == 0 })
+	// a switch that lets go by itself is let go on the page too: lit when clicked, and out again
+	find := `[...` + frame + `.querySelectorAll("button")].find(b => b.textContent === "export to MIDI")`
+	tb.Eval(find + `.click()`)
+	tb.WaitFor(find+`.classList.contains("on")`, "the export switch lit")
+	tb.WaitFor(`!`+find+`.classList.contains("on")`, "the export switch let go")
+}
+
+// the looper for sound has the same page: the bars, and a row for every layer recorded, each with a button that takes it away
+func TestPageAudioLooper(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("audiolooper", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pt.Connect(patcher.Cable{From: id, To: "out"}); err != nil { // only what is pulled by the output runs
+		t.Fatal(err)
+	}
+	pt.SettingsOf(id).Apply(map[string]float64{"bars": 1})
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	tb.WaitFor(frame+`.querySelectorAll(".looper .lp-bar").length === 1`, "a cell for the bar of the loop")
+	pt.SettingsOf(id).Apply(map[string]float64{"record": 1})
+	tb.WaitFor(frame+`.querySelector(".looper .lp-status").textContent.startsWith("recording layer")`, "the page to say it records")
+	pt.SettingsOf(id).Apply(map[string]float64{"record": 0})
+	tb.WaitFor(frame+`.querySelectorAll(".looper .lp-layer button").length === 1`, "a row for the layer recorded")
+	tb.Eval(frame + `.querySelector(".looper .lp-layer button").click()`)
+	tb.WaitFor(frame+`.querySelectorAll(".looper .lp-layer button").length === 0`, "the layer taken away")
+	// a click on a switch that lets go by itself lights it, and it goes out again
+	find := `[...` + frame + `.querySelectorAll("button")].find(b => b.textContent === "export to WAV")`
+	tb.Eval(find + `.click()`)
+	tb.WaitFor(find+`.classList.contains("on")`, "the export switch lit")
+	tb.WaitFor(`!`+find+`.classList.contains("on")`, "the export switch let go")
 }

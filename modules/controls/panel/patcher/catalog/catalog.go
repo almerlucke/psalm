@@ -22,6 +22,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/keyboard"
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/dxeditor"
+	"github.com/almerlucke/psalm/modules/controls/panel/editor"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
 	"github.com/almerlucke/psalm/modules/effects/chorus"
@@ -34,6 +35,7 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/follower"
 	"github.com/almerlucke/psalm/modules/effects/gate"
 	"github.com/almerlucke/psalm/modules/effects/granulator"
+	"github.com/almerlucke/psalm/modules/effects/looper"
 	"github.com/almerlucke/psalm/modules/effects/phaser"
 	"github.com/almerlucke/psalm/modules/effects/pingpong"
 	"github.com/almerlucke/psalm/modules/effects/pitchshift"
@@ -161,7 +163,7 @@ func Kinds(cfg Config) []patcher.Kind {
 	}
 	table := gen.Brightness(32)
 	h := &hub{input: cfg.Input}
-	kinds := []patcher.Kind{keyboardKind(h), inputKind(cfg.Audio), recorderKind()}
+	kinds := []patcher.Kind{keyboardKind(h), inputKind(cfg.Audio), recorderKind(), audioLooperKind()}
 	kinds = append(kinds, patcher.Sources()...)
 	kinds = append(kinds, patcher.Generators()...)
 	kinds = append(kinds, script.Kind(script.NewRuntime()))
@@ -332,6 +334,25 @@ func recorderKind() patcher.Kind {
 					}
 				})
 			}}, nil
+	}}
+}
+
+// audioLooperKind is the looper for sound: what goes through it is recorded into a loop of bars on the beat of the patch, layer on layer, and plays on;
+// its page shows the bars and the layers, each to take away alone
+func audioLooperKind() patcher.Kind {
+	return patcher.Kind{Name: "audiolooper", Group: "Effects", Ins: ins, Outs: outs, Make: func(string) (*patcher.Made, error) {
+		m := looper.New(looper.DefaultConfig())
+		return &patcher.Made{Module: m, Describe: func(string) params.Set { return looper.Describe(m.Settings()) },
+			Edit: func(page *panel.Panel, name, _ string) patcher.Settings {
+				ed := editor.Add(page, name, m, looper.Describe(m.Settings()), panel.NoDefault())
+				m.OnRelease(func(key string) { // undo, clear and export let go by themselves
+					patcher.Release(ed.Setting(key))
+				})
+				page.Section("Loop")
+				patcher.AddLoopView(page, name, m.State, m.Drop)
+				return ed
+			},
+			Attach: func(j *patcher.Journal, name string) { m.OnEvent(func(s string) { j.Add(name, s) }) }}, nil
 	}}
 }
 

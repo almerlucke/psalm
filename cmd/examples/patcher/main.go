@@ -77,14 +77,14 @@ func main() {
 	ctl.SetTheme(t)
 	hall := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/Musikvereinsaal.wav"))
 	ctl.Section("Patch")
-	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: in, IR: hall}),
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: in, IR: hall, Audio: p.PatchInput(0)}),
 		patcher.Keep(*patches), patcher.Presets(*presets), patcher.Theme(t))
 	mix := mixer.New(p)
 	mix.Channel("patch", pt.Out(), mixer.StripConfig{Volume: -3})
 	p.Out(mix.Master())
 
 	// a patch to start from: a clock of sixteenths through a sequence of C minor, up and down, playing
-	// a wavetable pluck; a script on the same clock playing an FM bass; the keyboard playing a lead through a looper (switch record, play a bar or two, switch it off, and the loop plays on, on the beat of the patch; record again to layer on top; export to MIDI);
+	// a wavetable pluck; a script on the same clock playing an FM bass; the keyboard playing a lead through a looper for notes (switch record, play a bar or two, switch it off, and the loop plays on, on the beat of the patch; record again to layer on top; export to MIDI or to scripts); the sound input through a looper for sound (record, sing, layer on layer);
 	// all on a mixer whose send A goes to a reverb. A song of four sections: the clock plays sparser
 	// in the intro and the outro, the sequence other notes in the chorus
 	if *fresh || len(pt.Patches()) == 0 || pt.Load(pt.Patches()[0]) != nil {
@@ -104,6 +104,8 @@ func main() {
 		lfo := must(pt.Add("lfo", "", 20, 470))
 		mix := must(pt.Add("mixer", "4 channels", 900, 140))
 		rev := must(pt.Add("reverb", "", 900, 440))
+		mic := must(pt.Add("input", "", 20, 620))          // the sound input of the computer (headphones: the speakers sing back into it)
+		sound := must(pt.Add("audiolooper", "", 230, 620)) // a looper for sound: sing or play into the input, layer on layer
 		bassLine := must(pt.Add("script", "", 460, 250))
 		bass := must(pt.Add("dx", "bass", 680, 130))
 		song := must(pt.Add("song", "", 1150, 320)) // its sections: the clock and the sequence follow them
@@ -134,10 +136,12 @@ function trigger(ev) {
 		must(pt.Connect(patcher.Cable{From: clock, To: bassLine}))
 		must(pt.Connect(patcher.Cable{From: bassLine, To: bass}))
 		must(pt.Connect(patcher.Cable{From: bass, To: mix, In: 2}))
+		must(pt.Connect(patcher.Cable{From: mic, To: sound}))
+		must(pt.Connect(patcher.Cable{From: sound, To: mix, In: 3}))
 		must(pt.Connect(patcher.Cable{From: mix, Out: 1, To: rev}))
 		must(pt.Connect(patcher.Cable{From: rev, To: mix, In: 4}))
 		must(pt.Connect(patcher.Cable{From: mix, Out: 0, To: "out"}))
-		pt.SettingsOf(mix).Apply(map[string]float64{"sendA1": 0.4, "sendA2": 0.25, "level1": 0.7, "level3": 0.6, "sendA3": 0.1})
+		pt.SettingsOf(mix).Apply(map[string]float64{"sendA1": 0.4, "sendA2": 0.25, "level1": 0.7, "level3": 0.6, "sendA3": 0.1, "level4": 0.8, "sendA4": 0.2})
 		pt.Move("out", 1150, 160)
 	}
 

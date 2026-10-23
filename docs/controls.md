@@ -890,6 +890,14 @@ the speakers sing back into it. The **recorder** (Effects) lets the sound throug
 and the time); the log of the patch says when the file is made and when it is closed. Put one on the master to keep the whole piece with the voice, and one between the input and the mixer to keep the voice dry. The
 sound you hear is a little later than the piece (the sound card), so what you sing is a little late against it, in the recording too.
 
+The **audiolooper** (Effects) is a looper for sound, like a looper pedal. The sound that goes through it is recorded into a loop of `bars` bars (1 to 16, 4/4) on the beat of the patch, and the loop plays on, pass
+after pass, over the sound that comes in (`input level` is how loud that is, `loop level` the loop). `record` starts a layer at the start of the next pass and it ends with the pass after you switch it off; a new layer
+can be recorded on top of the others as long as you like, and they play together. The page of the module shows a cell for every bar with its four beats lit as they pass (the first beat red while a layer is recorded,
+and it says how long until the recording starts), and a row for every layer with its sound and a button that takes that layer away alone; `undo` takes the last one, `clear` all of them, `export to WAV` writes
+every layer to `recordings/loop-<time>-layer<n>.wav` (one pass each, so it loops), or with `export files` set to `one file` the layers together to `loop-<time>.wav`. The sound card is late: what you sing or play in time is heard, and recorded, a
+little after the beat, so a layer would play late; `play layers earlier` (milliseconds, try 30 to 120 and listen) puts it back in time. A layer plays at the speed it was recorded at: after a change of the tempo,
+clear and record again. The module runs only when its output reaches the patch's output.
+
 The tempo of the patch is in the bar at the top of the page (`pt.Tempo()`, 30 to 300 bpm, a value
 typed too), and kept with a patch: loading one sets its tempo.
 

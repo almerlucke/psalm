@@ -3,6 +3,7 @@ package patcher
 import (
 	"encoding/json"
 	"math"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
@@ -76,17 +77,32 @@ func (l *Looper) Drop(id int) {
 	l.mu.Unlock()
 }
 
+// Release lets go of a switch that lets go by itself (undo, export): the page keeps it lit for a moment, long enough to be seen to be pressed (the page is
+// told of a value when it changes between two of its updates, so one that was set and let go within one would never be shown pressed, nor let go), and then shows it off
+func Release(c *panel.Param) {
+	if c != nil {
+		time.AfterFunc(300*time.Millisecond, func() { c.Place(0) })
+	}
+}
+
 // AddView adds the page of the looper to a panel: the bars and the layers
 func (l *Looper) AddView(page *panel.Panel, name string) *panel.Param {
+	return AddLoopView(page, name, l.state, l.Drop)
+}
+
+// AddLoopView adds the loop of a looper to a panel: a cell for every bar and a row for every layer with a button that takes it away (drop is asked for the
+// number of the layer). state is what the page gets as it plays: "bars", "pos" and "bps" (beats), "armed", "recording", and the "layers" as {id, notes}
+// (of [start, length, pitch] in beats) or {id, peaks} (0 to 1, the sound of the layer), and what is being recorded as "cur" or "curPeaks"
+func AddLoopView(page *panel.Panel, name string, state func() any, drop func(id int)) *panel.Param {
 	page.Use(LooperPlugin)
 	return page.Custom("looper", name+" loop", nil, panel.NoDefault(),
-		panel.Live(l.state),
+		panel.Live(state),
 		panel.OnMessage(func(raw json.RawMessage) {
 			var m struct {
 				Drop *int `json:"drop"`
 			}
 			if json.Unmarshal(raw, &m) == nil && m.Drop != nil {
-				l.Drop(*m.Drop)
+				drop(*m.Drop)
 			}
 		}))
 }
@@ -94,11 +110,7 @@ func (l *Looper) AddView(page *panel.Panel, name string) *panel.Param {
 // edit makes the page of the looper: its settings, then the loop with its layers
 func (l *Looper) edit(page *panel.Panel, name string, set params.Set) Settings {
 	ed := editor.Add(page, name, l, set, panel.NoDefault())
-	l.released = func(key string) {
-		if c := ed.Setting(key); c != nil {
-			c.Place(0)
-		}
-	}
+	l.released = func(key string) { Release(ed.Setting(key)) }
 	page.Section("Loop")
 	l.AddView(page, name)
 	return ed

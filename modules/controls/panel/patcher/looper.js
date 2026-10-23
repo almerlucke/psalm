@@ -37,7 +37,7 @@ psalm.register("looper", (p, api) => {
 			const del = document.createElement("button"); del.textContent = "Take away"; del.title = "take this layer away; the others go on";
 			del.addEventListener("click", () => { api.message(p.name, {drop: layer.id}); });
 			row.append(label, canvas, del); list.append(row);
-			rows.push({id: layer.id, canvas, notes: layer.notes});
+			rows.push({id: layer.id, canvas, notes: layer.notes || [], peaks: layer.peaks});
 		});
 		// the layer being recorded
 		const row = document.createElement("div"); row.className = "lp-layer";
@@ -52,6 +52,15 @@ psalm.register("looper", (p, api) => {
 		const c = r.canvas, dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
 		if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
 		const g = c.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+		if (r.peaks) { // a sound: the loudest of every column, up and down from the middle
+			g.globalAlpha = 0.25; g.fillStyle = colors.muted;
+			for (let b = 0; b <= loop; b++) g.fillRect(Math.round(b / loop * (w - 1)), 0, 1, h);
+			g.globalAlpha = 1; g.fillStyle = live ? "#e5484d" : colors.accent;
+			const cw = w / Math.max(1, r.peaks.length);
+			r.peaks.forEach((v, i) => { const a = Math.min(1, Math.sqrt(v)) * (h - 4); g.fillRect(i * cw, (h - a) / 2, Math.max(1, cw - 0.5), Math.max(1, a)); });
+			g.fillStyle = colors.ink; g.fillRect(Math.round(head / loop * (w - 1)), 0, 2, h);
+			return;
+		}
 		const notes = r.notes;
 		let lo = 127, hi = 0;
 		for (const n of notes) { lo = Math.min(lo, n[2]); hi = Math.max(hi, n[2]); }
@@ -84,7 +93,7 @@ psalm.register("looper", (p, api) => {
 			status.className = "lp-status"; status.textContent = `bar ${bar + 1}, beat ${beat + 1}`;
 		}
 		for (const r of rows) {
-			if (r.id === -1) { r.row.hidden = !st.recording; if (!st.recording) continue; r.notes = st.cur; }
+			if (r.id === -1) { r.row.hidden = !st.recording; if (!st.recording) continue; r.notes = st.cur || []; r.peaks = st.curPeaks; }
 			drawNotes(r, loop, head, r.id === -1);
 		}
 		requestAnimationFrame(frame);
@@ -102,7 +111,7 @@ psalm.register("looper", (p, api) => {
 			st = s; at = performance.now();
 			if (st.bars !== lastBars) rebuildBars();
 			if (ids(st) !== wasIds || wasRec !== st.recording) rebuildRows();
-			else rows.forEach(r => { const l = st.layers.find(l => l.id === r.id); if (l) r.notes = l.notes; });
+			else rows.forEach(r => { const l = st.layers.find(l => l.id === r.id); if (l) { r.notes = l.notes || []; r.peaks = l.peaks; } });
 		},
 		restyle,
 	};
