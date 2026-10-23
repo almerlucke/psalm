@@ -17,6 +17,7 @@ import (
 //	0  assets/sounds/various/wooden-tubes-32138.wav even 16                    sixteen equal pieces
 //	24 assets/sounds/loofdeheer.wav notes 0.5 1.9 60 2.6 4.9 56.1             the sung notes: from, to (seconds) and the pitch of each, on keys five apart
 //	60 assets/sounds/various/birdfish-happy-loop-6199.wav whole 72 66          the whole sound on keys 60 to 72, in tune at 66
+//	36 assets/sounds/various/boat_waves-6099.wav whole loop=1.5                the whole sound, going round while the key is down (the end fading into the start over 1.5 s)
 //	0  assets/Virtual-Playing-Orchestra3/Strings/harp-sustain.sfz sfz          an SFZ instrument as it is
 //
 // The modes are hits (rise dB, least gap seconds, and if you like from and to in seconds to use a part of the recording: OnsetCuts), change (sensitivity, least gap seconds: ChangeCuts), pauses (depth dB, least pause seconds, longest piece seconds: PauseCuts), verses (the number of verses, depth dB: VerseCuts, two pieces for each: the verse and its refrain), even (the number of
@@ -45,6 +46,7 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 		path, mode := fields[1], fields[2]
 		var args []float64
 		vol, pan, name := 0.0, 0.0, strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		loop := -1.0 // loop=seconds: the sound goes round while the key is down, the end fading into the start over that many seconds
 		for _, f := range fields[3:] {
 			key, val, ok := strings.Cut(f, "=")
 			if !ok {
@@ -58,18 +60,21 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 			switch key {
 			case "name":
 				name = val
-			case "vol", "pan":
+			case "vol", "pan", "loop":
 				x, err := strconv.ParseFloat(val, 64)
 				if err != nil {
 					return nil, nil, fail("%q is not a number", val)
 				}
-				if key == "vol" {
+				switch key {
+				case "vol":
 					vol = x
-				} else {
+				case "pan":
 					pan = x
+				default:
+					loop = max(0, x)
 				}
 			default:
-				return nil, nil, fail("%q: vol=, pan= or name=", key)
+				return nil, nil, fail("%q: vol=, pan=, loop= or name=", key)
 			}
 		}
 		arg := func(i int, def float64) float64 {
@@ -119,6 +124,15 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 			}
 		}
 		for i := range made {
+			if loop >= 0 {
+				r := &made[i]
+				xf := min(loop, 0.45*float64(r.Sound.NumFrames())/r.Sound.SampleRate())
+				r.Loop, r.LoopStart, r.LoopEnd, r.LoopCrossfade = LoopContinuous, int64(xf*r.Sound.SampleRate()), 0, xf
+				r.Env.Sustain = 1
+				if r.Env.Release == 0 {
+					r.Env.Release = 1
+				}
+			}
 			if vol != 0 {
 				made[i].Volume += vol
 			}

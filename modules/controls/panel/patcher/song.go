@@ -91,30 +91,48 @@ func sectionKey(pos arrange.Position) [2]int { return [2]int{pos.Loop, pos.Secti
 // ParseSections reads the sections of a song: a name and a number of bars each, by commas or lines
 // ("Intro 8, Verse 16, Chorus 8"); a name may have spaces ("Middle eight 8")
 func ParseSections(text string) ([]arrange.Section, error) {
+	secs, _, err := ParseSong(text)
+	return secs, err
+}
+
+// meter is the bar of a song typed among its sections: "3/4" (the beats of a bar, quarter notes)
+var meter = regexp.MustCompile(`^(\d+)/4$`)
+
+// ParseSong reads the sections of a song and the beats of its bar, 4 unless a part of the text says "3/4" (or 2/4, 5/4, 6/4...): "3/4, Day 1 12, Day 2 12"
+func ParseSong(text string) ([]arrange.Section, float64, error) {
 	var out []arrange.Section
+	beats := 4.0
 	for _, part := range strings.FieldsFunc(text, func(r rune) bool { return r == ',' || r == '\n' || r == ';' }) {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
+		if m := meter.FindStringSubmatch(part); m != nil {
+			n, _ := strconv.Atoi(m[1])
+			if n < 1 || n > 16 {
+				return nil, 0, fmt.Errorf("%q: between 1 and 16 beats to the bar", part)
+			}
+			beats = float64(n)
+			continue
+		}
 		i := strings.LastIndexAny(part, " \t")
 		if i < 0 {
-			return nil, fmt.Errorf("%q: a name and a number of bars (Verse 16)", part)
+			return nil, 0, fmt.Errorf("%q: a name and a number of bars (Verse 16)", part)
 		}
 		name := strings.TrimSpace(part[:i])
 		bars, err := strconv.Atoi(strings.TrimSpace(part[i+1:]))
 		if err != nil || bars <= 0 {
-			return nil, fmt.Errorf("%q: a name and a number of bars (Verse 16)", part)
+			return nil, 0, fmt.Errorf("%q: a name and a number of bars (Verse 16)", part)
 		}
 		if slices.ContainsFunc(out, func(s arrange.Section) bool { return s.Name == name }) {
-			return nil, fmt.Errorf("%q twice: every section a name of its own", name)
+			return nil, 0, fmt.Errorf("%q twice: every section a name of its own", name)
 		}
 		out = append(out, arrange.Section{Name: name, Bars: bars})
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no sections: a name and a number of bars each (Intro 8, Verse 16)")
+		return nil, 0, fmt.Errorf("no sections: a name and a number of bars each (Intro 8, Verse 16)")
 	}
-	return out, nil
+	return out, beats, nil
 }
 
 // sectionLabel is a line of a text per section: "Verse: ..."
@@ -171,14 +189,14 @@ const DefaultSections = "Intro 4, Verse 8, Chorus 8, Outro 4"
 // SetSections makes the song of sections typed (from any goroutine); the transport keeps what it
 // can of the one before: the repeat, the jump, the sections switched off
 func (s *SongForm) SetSections(text string) error {
-	secs, err := ParseSections(text)
+	secs, beats, err := ParseSong(text)
 	if err != nil {
 		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.text = text
-	s.build(secs)
+	s.build(secs, beats)
 	return nil
 }
 
@@ -190,14 +208,15 @@ func (s *SongForm) SetLoop(on bool) {
 		return
 	}
 	s.loop = on
-	if secs, err := ParseSections(s.text); err == nil {
-		s.build(secs)
+	if secs, beats, err := ParseSong(s.text); err == nil {
+		s.build(secs, beats)
 	}
 }
 
 // build makes a form and its transport (with the lock held) and makes it the patch's song
-func (s *SongForm) build(secs []arrange.Section) {
+func (s *SongForm) build(secs []arrange.Section, beats float64) {
 	f := arrange.NewForm(secs...)
+	f.BeatsPerBar = beats
 	f.Loop = s.loop
 	tr := f.Transport()
 	if old := s.tr; old != nil {
@@ -348,7 +367,7 @@ func (st songSettings) Apply(values map[string]float64) {
 }
 
 // SongHelp is what to know to type the sections of a song
-const SongHelp = "a name and a number of bars a section, by commas or lines: `Intro 4, Verse 8, Chorus 8, Outro 4`\n" +
+const SongHelp = "a name and a number of bars a section, by commas or lines: `Intro 4, Verse 8, Chorus 8, Outro 4`; `3/4` among them makes the bar three beats (four unless it says)\n" +
 	"its tiles below: a tap plays a section next, its dot switches it off (skipped); repeat plays the one playing again\n" +
 	"outputs: a trigger every bar and at every section (a note of a step lasts a bar), the section's number, how far through it (mod)\n" +
 	"a sequence, a clock's pattern can be per section: a line `Verse: C3 Eb3` each; a script asks `song.section`\n" +

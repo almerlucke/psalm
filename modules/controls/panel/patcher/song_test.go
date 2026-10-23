@@ -208,3 +208,35 @@ func TestSongClock(t *testing.T) {
 		t.Errorf("clock %q, want %q", got, want)
 	}
 }
+
+// a song of three beats to the bar: "3/4" among its sections; the bars trigger every three beats, and a script asks song.beats and song.beat
+func TestSongMeter(t *testing.T) {
+	secs, beats, err := patcher.ParseSong("3/4, Day 1 2, Day 2 2")
+	if err != nil || beats != 3 || len(secs) != 2 {
+		t.Fatalf("%v %v %v", secs, beats, err)
+	}
+	if _, b, _ := patcher.ParseSong("A 2"); b != 4 {
+		t.Errorf("default %v beats", b)
+	}
+	if _, _, err := patcher.ParseSong("0/4, A 2"); err == nil {
+		t.Error("0/4 read")
+	}
+	r := newSongRig(t, "3/4, A 2, B 2")
+	hear := r.add("hear")
+	r.connect(patcher.Cable{From: r.song, Out: 0, To: hear, In: 0})
+	s := r.add("script")
+	if err := r.pt.SetText(s, "code", `
+clock("1/4")
+function trigger(ev) { note(60 + song.beats * 10 + Math.round(song.beat), 0.8, 1) }`); err != nil || r.pt.TextError(s, "code") != "" {
+		t.Fatal(err, r.pt.TextError(s, "code"))
+	}
+	rec := r.add("rec")
+	r.connect(patcher.Cable{From: s, To: rec})
+	r.run(3.9)                                                  // 120 bpm: a bar is 1.5 s; two bars and a part
+	if got := r.hear.at[0]; len(got) < 2 || got[1]/44100 != 1 { // the second bar begins 1.5 s in
+		t.Errorf("bars at samples %v", got)
+	}
+	if len(r.rec.pitches) < 6 || r.rec.pitches[0] != 90 || r.rec.pitches[1] != 91 || r.rec.pitches[2] != 92 || r.rec.pitches[3] != 90 {
+		t.Errorf("notes %v, want 90 91 92 90 ... (three beats to the bar)", r.rec.pitches)
+	}
+}

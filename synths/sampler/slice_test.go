@@ -295,3 +295,27 @@ func TestHitsWindow(t *testing.T) {
 		t.Errorf("piece from %d to %d", r.Offset, r.End)
 	}
 }
+
+// loop=seconds makes a whole sound go round while the key is down, the end fading into the start
+func TestParseBanksLoop(t *testing.T) {
+	snd := NewSound(sr, constant(0.5, 10))
+	load := func(string) (Sound, error) { return snd, nil }
+	inst, _, err := ParseBanks("36 sea.wav whole loop=1.5\n48 once.wav whole", load)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, once := inst.Regions[0], inst.Regions[1]
+	if r.Loop != LoopContinuous || r.LoopStart != int64(1.5*sr) || r.LoopCrossfade != 1.5 {
+		t.Errorf("loop %v from %d, crossfade %v", r.Loop, r.LoopStart, r.LoopCrossfade)
+	}
+	if once.Loop != OneShot {
+		t.Errorf("a sound without loop= is %v", once.Loop)
+	}
+	// a note held for longer than the sound goes on
+	r.KeyTrack = 0
+	v := voice(r)
+	x := play(v, psalm.Message{"pitch": 36.0}, buffers(14))
+	if p := peak(x[int(13*sr):]); p < 0.3 {
+		t.Errorf("the loop is silent after 13 s of a 10 s sound: peak %g", p)
+	}
+}

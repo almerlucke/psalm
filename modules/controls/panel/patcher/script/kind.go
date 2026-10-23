@@ -92,7 +92,7 @@ const Help = "its top level runs when it starts: make its generators there\n" +
 	"`note(pitch, velocity, steps)` (a pitch: `48`, `\"C3\"`, a chord `[48, 51]`), `set(\"morph\", 0.4)` or `set({cutoff: 900})`: settings of the synths it plays, `send(\"a\", v)`, `fire(delay, count)`, `clock(\"1/16\")` (its own clock), `mod(0 to 1)`, `log(...)`\n" +
 	"`pitch(\"C3\")`, `scale(\"C minor\").snap(p)`, `bpm()`, `input(\"a\")`, `shared` (every script of the patch sees it)\n" +
 	"`genny.sequence`, `bucket`, `arpeggio`, `repeat`, `and`, `or`, `choice`, `markov`, `walk`, `euclid`, `ramp`, `rand`, `rwalk`, `logistic`, `henon`, `map`, `from(function* ...)`: `.next()`, `.map(f)`, `.shape(genny.shapers.quantize(1))`\n" +
-	"with a song: `song.section`, `song.bar`, `song.bars`, `song.progress`, `song.sections`; `function section(name, index)` when one starts\n" +
+	"with a song: `song.section`, `song.bar`, `song.bars`, `song.progress`, `song.sections`, `song.beats` (to the bar) and `song.beat` (in it); `function section(name, index)` when one starts\n" +
 	"Ctrl+Enter (or Run) runs it; an error (its line) is below the script, what it logs is in the log of the patch (Log, in the bar at the top); a call may take 5 ms"
 
 // Code is the code of a preset (the first, "walk", for one not known)

@@ -166,6 +166,11 @@ func (s *Script) follow(tick psalm.CtrlTick) {
 	_ = o.Set("bars", pos.Section.Bars)
 	_ = o.Set("progress", pos.Progress)
 	_ = o.Set("loop", pos.Loop)
+	if tr := s.song.Transport(); tr != nil {
+		beats := tr.Form().BeatsPerBar
+		_ = o.Set("beats", beats) // beats to the bar, and where in the bar the song is (a beat of a quarter note)
+		_ = o.Set("beat", math.Mod(pos.Beat, beats))
+	}
 	if key := [2]int{pos.Loop, pos.Section.Index}; !s.inSong || key != s.passing {
 		s.inSong, s.passing = true, key
 		_ = o.Set("sections", s.song.Transport().Sections())
@@ -458,7 +463,7 @@ func (s *Script) newAPI() *goja.Object {
 	})
 	set("bpm", func(goja.FunctionCall) goja.Value { return vm.ToValue(s.BPM()) })
 	s.songObj = vm.NewObject()
-	for k, v := range map[string]any{"playing": false, "section": "", "index": -1, "bar": 0, "bars": 0, "progress": 0.0, "loop": 0, "sections": []string{}} {
+	for k, v := range map[string]any{"playing": false, "section": "", "index": -1, "bar": 0, "bars": 0, "progress": 0.0, "loop": 0, "beats": 4.0, "beat": 0.0, "sections": []string{}} {
 		_ = s.songObj.Set(k, v)
 	}
 	_ = api.Set("song", s.songObj)
