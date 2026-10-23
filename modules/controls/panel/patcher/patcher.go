@@ -45,8 +45,11 @@ var script string
 //go:embed patcher.css
 var styles string
 
+//go:embed lanes.js
+var lanesScript string
+
 // Plugin is the plugin (New uses it)
-var Plugin = panel.Plugin{Name: "patcher", JS: script, CSS: styles}
+var Plugin = panel.Plugin{Name: "patcher", JS: lanesScript + "\n" + script, CSS: styles}
 
 // PortType is what goes through a port: sound, notes or modulation
 type PortType string
@@ -148,6 +151,8 @@ type Made struct {
 	// Log is a log shown in a box of the side panel (a log module's), not on the module; asked when
 	// the page is updated
 	Log func() string
+	// Lanes is what the page draws in its lanes at the bottom of the patch (an automation module's): lanes of points over the bars, edited there (nil: it has none)
+	Lanes func() *LanesView
 }
 
 // Settings are the settings of a module's editor: what a patch saves of it
@@ -337,6 +342,10 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		Text   *struct {
 			ID, Key, Value string
 		} `json:"text"`
+		Lanes *struct {
+			ID    string     `json:"id"`
+			Lanes []LaneData `json:"lanes"`
+		} `json:"lanes"`
 		Save     *string     `json:"save"`
 		Load     *string     `json:"load"`
 		Delete   *string     `json:"delete"`
@@ -375,6 +384,8 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		return pt.SetRange(m.Range.ID, m.Range.Key, m.Range.Lo, m.Range.Hi)
 	case m.Text != nil:
 		return pt.SetText(m.Text.ID, m.Text.Key, m.Text.Value)
+	case m.Lanes != nil:
+		return pt.SetLanes(m.Lanes.ID, m.Lanes.Lanes)
 	case m.Save != nil:
 		return pt.Save(*m.Save)
 	case m.Load != nil:
@@ -852,6 +863,22 @@ func (pt *Patcher) SetText(id, key, value string) error {
 	return nil
 }
 
+// SetLanes sets the lanes of an automation module as drawn on the page: they are kept as the text of its lanes, which is what a patch saves
+func (pt *Patcher) SetLanes(id string, lanes []LaneData) error {
+	pt.mu.Lock()
+	n := pt.node(id)
+	pt.mu.Unlock()
+	if n == nil || n.made.Lanes == nil {
+		return errors.New("no lanes in that module")
+	}
+	for i := range lanes {
+		if len(lanes[i].Points) > 2048 {
+			lanes[i].Points = lanes[i].Points[:2048]
+		}
+	}
+	return pt.SetText(id, "lanes", FormatLanes(lanes))
+}
+
 // Texts returns the settings of text of a module, as they are
 func (pt *Patcher) Texts(id string) []Text {
 	pt.mu.Lock()
@@ -931,22 +958,24 @@ type nodeState struct {
 	Texts    []Text            `json:"texts,omitempty"`  // its settings of text, as they are
 	Errors   map[string]string `json:"errors,omitempty"` // what was wrong with one typed
 	Status   string            `json:"status,omitempty"`
-	Log      *string           `json:"log,omitempty"`  // a log for the side panel (nil: it has none)
-	Page     bool              `json:"page,omitempty"` // it has settings to show (its editor)
+	Log      *string           `json:"log,omitempty"`   // a log for the side panel (nil: it has none)
+	Page     bool              `json:"page,omitempty"`  // it has settings to show (its editor)
+	Lanes    *LanesView        `json:"lanes,omitempty"` // lanes to draw and edit at the bottom of the patch (an automation module's)
 }
 
 type state struct {
-	Nodes    []nodeState `json:"nodes"`
-	Cables   []*Cable    `json:"cables"`
-	Selected string      `json:"selected"`
-	Patches  []string    `json:"patches"`
-	Current  string      `json:"current"`
-	Keeps    bool        `json:"keeps"`
-	Note     string      `json:"note"`
-	Pasted   []string    `json:"pasted,omitempty"` // the modules the last paste made
-	PasteN   int         `json:"pasteN,omitempty"` // the pastes so far: another one, the page chooses them
-	Journal  string      `json:"journal"`          // the log of the patch, the newest lines
-	Lines    int         `json:"lines"`            // how many lines it has had
+	Nodes    []nodeState          `json:"nodes"`
+	Cables   []*Cable             `json:"cables"`
+	Selected string               `json:"selected"`
+	Patches  []string             `json:"patches"`
+	Current  string               `json:"current"`
+	Keeps    bool                 `json:"keeps"`
+	Note     string               `json:"note"`
+	Pasted   []string             `json:"pasted,omitempty"` // the modules the last paste made
+	PasteN   int                  `json:"pasteN,omitempty"` // the pastes so far: another one, the page chooses them
+	Journal  string               `json:"journal"`          // the log of the patch, the newest lines
+	Lines    int                  `json:"lines"`            // how many lines it has had
+	Heads    map[string]*LaneHead `json:"heads,omitempty"`  // where the lanes of the automation modules are
 }
 
 func (pt *Patcher) state() any {
@@ -980,6 +1009,13 @@ func (pt *Patcher) state() any {
 		if n.made.Log != nil {
 			log := n.made.Log()
 			ns.Log = &log
+		}
+		if n.made.Lanes != nil {
+			ns.Lanes = n.made.Lanes()
+			if st.Heads == nil {
+				st.Heads = map[string]*LaneHead{}
+			}
+			st.Heads[n.ID], ns.Lanes.Head = ns.Lanes.Head, nil // where they are changes all the time: apart from the rest
 		}
 		for _, p := range n.set.Params {
 			label := p.Label

@@ -51,7 +51,9 @@ psalm.register("patcher", (p, api) => {
 	maxBtn.title = "the patch over the whole screen (Esc: back)";
 	const logBtn = el("button", "pt-log-btn", "Log");
 	logBtn.title = "the log of the patch: what the scripts log, a line each with the time and the module";
-	bar.append(maxBtn, logBtn, el("span", "pt-sep"), kindSel, presetSel, addBtn, sep, patchSel, nameIn, saveBtn, delBtn, clearBtn, note);
+	const lanesBtn = el("button", "pt-lanes-btn", "Lanes");
+	lanesBtn.title = "the lanes of the automation modules, over the bars of the song: draw them, a mod cable from each moves a setting";
+	bar.append(maxBtn, logBtn, lanesBtn, el("span", "pt-sep"), kindSel, presetSel, addBtn, sep, patchSel, nameIn, saveBtn, delBtn, clearBtn, note);
 
 	// --- the patch: modules over a layer of cables ---
 	const area = el("div", "pt-area");
@@ -102,7 +104,13 @@ psalm.register("patcher", (p, api) => {
 		logText.value = text;
 		if (atEnd) logText.scrollTop = logText.scrollHeight;
 	};
-	root.append(bar, logBox, area, inspector);
+	// the lanes of the automation modules: over the whole width at the bottom of the patch
+	const lanes = psalm.lanesView(send);
+	lanes.onToggle = on => lanesBtn.classList.toggle("on", on);
+	lanesBtn.addEventListener("click", () => lanes.toggle());
+	const stage = el("div", "pt-stage");
+	stage.append(area, lanes.el);
+	root.append(bar, logBox, stage, inspector);
 
 	let st = {nodes: [], cables: [], patches: [], selected: ""}, shownPatches = "";
 	const nodes = {};       // id -> {el, data}
@@ -550,9 +558,11 @@ psalm.register("patcher", (p, api) => {
 		update(s) {
 			if (!s) return;
 			showJournal(s.journal || "", s.lines); // the log changes on its own, the patch is only drawn again when it changes
-			const {journal, lines, ...rest} = s;
+			const {journal, lines, heads, ...rest} = s;
+			lanes.heads(heads); // where the lanes are changes all the time, like the log
 			const was = JSON.stringify(st);
 			st = rest;
+			lanes.update(st.nodes, st.selected);
 			if (JSON.stringify(rest) === was) return;
 			updateNodes();
 			if (picked && !st.cables.some(c => c.id === picked)) picked = "";
@@ -569,7 +579,7 @@ psalm.register("patcher", (p, api) => {
 			updatePatches();
 			updateEditor();
 		},
-		restyle: drawCables,
+		restyle() { drawCables(); lanes.restyle(); },
 	};
 });
 

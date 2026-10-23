@@ -667,3 +667,90 @@ func TestPageAudioLooper(t *testing.T) {
 	tb.WaitFor(find+`.classList.contains("on")`, "the export switch lit")
 	tb.WaitFor(`!`+find+`.classList.contains("on")`, "the export switch let go")
 }
+
+// the lanes of an automation module over the whole width at the bottom of the patch: a click on a row adds a point, a drag moves it, a double-click gives it
+// the next shape, Delete takes it away (and not the modules chosen), a name is kept; the song is on the ruler and the heads move with it
+func TestPageLanes(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	song, err := pt.Add("song", "", 60, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pt.SetText(song, "sections", "Intro 4, Verse 4, Chorus 8"); err != nil {
+		t.Fatal(err)
+	}
+	id, err := pt.Add("automation", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := pt.Module(id).(*patcher.Automation)
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length >= 2`)
+	tb.Size(1300, 900)
+	tb.Tap(`document.querySelector(".pt-lanes-btn")`)
+	rows := `document.querySelectorAll(".pt-lanes .pt-lane-row:not(.ruler)")`
+	tb.WaitFor(`!document.querySelector(".pt-lanes").hidden && `+rows+`.length === 4`, "a row for every lane")
+	tb.WaitFor(`document.querySelector(".pt-lanes").getBoundingClientRect().width > 1000`, "the lanes over the whole width")
+	canvas := func(i int) string { return fmt.Sprintf(`%s[%d].querySelector("canvas")`, rows, i) }
+
+	// the song is on the ruler: the length of the lanes is its 16 bars; a head moves with it
+	tb.WaitFor(`!`+rows+`[0].querySelector(".pt-lane-head").hidden`, "the head of the lane")
+
+	// a click in the middle of the first lane: a point at bar 8, the middle of the value
+	x, y := tb.Center(canvas(0), 0.5)
+	tb.Mouse("mousePressed", x, y, nil)
+	tb.Mouse("mouseReleased", x, y, nil)
+	paneltest.Eventually(t, "a point added", func() bool { return len(a.Lanes()[0].Points) == 1 })
+	if pt0 := a.Lanes()[0].Points[0]; pt0.X != 8 || pt0.Y < 0.4 || pt0.Y > 0.6 {
+		t.Errorf("the point is at %+v, want bar 8 and about 0.5", pt0)
+	}
+
+	// dragged a quarter of the width on, and up
+	r := tb.Eval(canvas(0) + `.getBoundingClientRect().width`).(float64)
+	_, top := tb.Center(canvas(0), 0.1)
+	tb.Mouse("mousePressed", x, y, nil)
+	tb.Mouse("mouseMoved", x+r/4, top, nil)
+	tb.Mouse("mouseReleased", x+r/4, top, nil)
+	paneltest.Eventually(t, "the point moved", func() bool { l := a.Lanes()[0].Points; return len(l) == 1 && l[0].X == 12 && l[0].Y > 0.8 })
+
+	// a second point on the first lane makes a line; a double-click on it gives it a shape
+	tb.Mouse("mousePressed", x-r/4, y, nil)
+	tb.Mouse("mouseReleased", x-r/4, y, nil)
+	paneltest.Eventually(t, "a second point", func() bool { return len(a.Lanes()[0].Points) == 2 })
+	tb.Eval(fmt.Sprintf(`%s.dispatchEvent(new MouseEvent("dblclick", {clientX: %g, clientY: %g, bubbles: true}))`, canvas(0), x-r/4, y))
+	paneltest.Eventually(t, "the next shape", func() bool { return a.Lanes()[0].Points[0].Shape == "smooth" })
+	if v := a.Value(0); v < 0 || v > 1 {
+		t.Errorf("a value of %v", v)
+	}
+
+	// Delete takes the point chosen away, and the module of the patch stays (the patch would have taken it)
+	tb.Key("Delete")
+	paneltest.Eventually(t, "the point taken away", func() bool { return len(a.Lanes()[0].Points) == 1 })
+	if len(pt.Nodes()) != 3 {
+		t.Errorf("%d modules after Delete on the lanes, want the 3 there were", len(pt.Nodes()))
+	}
+
+	// a name typed is kept, the text of the lanes has what was drawn
+	tb.Eval(`(() => { const i = document.querySelector(".pt-lanes .pt-lane-name"); i.value = "Cutoff"; i.dispatchEvent(new Event("change")); })()`)
+	paneltest.Eventually(t, "the name kept", func() bool { return a.Lanes()[0].Name == "Cutoff" })
+	if txt := pt.Texts(id)[0].Value; !strings.HasPrefix(txt, "Cutoff: 12 ") {
+		t.Errorf("the text of the lanes:\n%s", txt)
+	}
+
+	// what is typed in the module's box shows in the lanes
+	if err := pt.SetText(id, "lanes", "Wide: 0 0, 16 1\nTwo: 4 1"); err != nil {
+		t.Fatal(err)
+	}
+	tb.WaitFor(`document.querySelector(".pt-lanes .pt-lane-name").value === "Wide"`, "the lanes typed on the page")
+
+	// closed again
+	tb.Tap(`document.querySelector(".pt-lanes-btn")`)
+	tb.WaitFor(`document.querySelector(".pt-lanes").hidden`, "the lanes closed")
+}

@@ -86,7 +86,8 @@ func main() {
 	// a patch to start from: a clock of sixteenths through a sequence of C minor, up and down, playing
 	// a wavetable pluck; a script on the same clock playing an FM bass; the keyboard playing a lead through a looper for notes (switch record, play a bar or two, switch it off, and the loop plays on, on the beat of the patch; record again to layer on top; export to MIDI or to scripts); the sound input through a looper for sound (record, sing, layer on layer);
 	// all on a mixer whose send A goes to a reverb. A song of four sections: the clock plays sparser
-	// in the intro and the outro, the sequence other notes in the chorus
+	// in the intro and the outro, the sequence other notes in the chorus; an automation module draws the cutoff of the pluck, the reverb send, the bass and the
+	// level of the pluck over its bars (the Lanes button: click adds a point, drag moves it, double-click gives it the next shape, Delete takes it away)
 	if *fresh || len(pt.Patches()) == 0 || pt.Load(pt.Patches()[0]) != nil {
 		must := func(id string, err error) string {
 			if err != nil {
@@ -108,7 +109,8 @@ func main() {
 		sound := must(pt.Add("audiolooper", "", 230, 620)) // a looper for sound: sing or play into the input, layer on layer
 		bassLine := must(pt.Add("script", "", 460, 250))
 		bass := must(pt.Add("dx", "bass", 680, 130))
-		song := must(pt.Add("song", "", 1150, 320)) // its sections: the clock and the sequence follow them
+		song := must(pt.Add("song", "", 1150, 320))             // its sections: the clock and the sequence follow them
+		auto := must(pt.Add("automation", "4 lanes", 460, 470)) // lanes drawn over the bars of the song (the Lanes button): the cutoff of the pluck, the reverb send, the bass in and out, the pluck's level
 		_ = pt.SetText(song, "sections", "Intro 4, Verse 8, Chorus 8, Outro 4")
 		_ = pt.SetText(clock, "pattern", "x x . x x . x . x x . x . x x .\nIntro: x . . . x . . . x . . x . . . .\nOutro: x . . . . . x . . . . . x . . .")
 		_ = pt.SetText(seq, "values", "C3 Eb3 G3 Bb3 C4 D4\nChorus: F3 Ab3 C4 Eb4 F4 G4")
@@ -141,6 +143,15 @@ function trigger(ev) {
 		must(pt.Connect(patcher.Cable{From: mix, Out: 1, To: rev}))
 		must(pt.Connect(patcher.Cable{From: rev, To: mix, In: 4}))
 		must(pt.Connect(patcher.Cable{From: mix, Out: 0, To: "out"}))
+		// the lanes of the automation, a mod cable each: a position is in bars from the start of the song (Intro 0-4, Verse 4-12, Chorus 12-20, Outro 20-24)
+		_ = pt.SetText(auto, "lanes", `pluck cutoff: 0 0.15, 4 0.3 smooth, 12 0.4, 17 0.9 smooth, 20 0.9, 24 0.1 smooth
+reverb send: 0 0.7, 4 0.3 smooth, 12 0.3, 16 0.6 smooth, 20 0.6, 24 1 smooth
+bass: 0 0 step, 4 0.35 step, 20 0.35, 24 0 smooth
+pluck level: 0 0.2, 4 0.35 smooth, 16 0.42 smooth, 20 0.35, 24 0 smooth`)
+		must(pt.Connect(patcher.Cable{From: auto, Out: 0, To: pluck, In: 1, Key: "cutoff", Lo: 0.2, Hi: 0.8}))
+		must(pt.Connect(patcher.Cable{From: auto, Out: 1, To: mix, In: 8, Key: "sendA1", Lo: 0, Hi: 1}))
+		must(pt.Connect(patcher.Cable{From: auto, Out: 2, To: mix, In: 8, Key: "level3", Lo: 0, Hi: 1}))
+		must(pt.Connect(patcher.Cable{From: auto, Out: 3, To: mix, In: 8, Key: "level1", Lo: 0, Hi: 1}))
 		pt.SettingsOf(mix).Apply(map[string]float64{"sendA1": 0.4, "sendA2": 0.25, "level1": 0.7, "level3": 0.6, "sendA3": 0.1, "level4": 0.8, "sendA4": 0.2})
 		pt.Move("out", 1150, 160)
 	}
