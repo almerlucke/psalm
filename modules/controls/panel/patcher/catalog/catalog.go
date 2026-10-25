@@ -59,6 +59,7 @@ import (
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/sampler"
 	"github.com/almerlucke/psalm/synths/shaper"
+	"github.com/almerlucke/psalm/synths/streamer"
 	"github.com/almerlucke/psalm/synths/subtractive"
 	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/vocal"
@@ -177,6 +178,7 @@ func Kinds(cfg Config) []patcher.Kind {
 			func(n string) params.Set { return supersaw.Describe(supersaw.Presets[n]()) }, v),
 		shaperKind(v),
 		samplerKind(v),
+		streamerKind(v),
 		grainsKind(v),
 		synth("pulsar", sorted(pulsar.Presets), func(n string, v int) psalm.Modular { return pulsar.NewPoly(pulsar.Presets[n](), v) },
 			func(n string) params.Set { return pulsar.Describe(pulsar.Presets[n]()) }, v),
@@ -482,6 +484,40 @@ func samplerKind(voices int) patcher.Kind {
 						return nil, errors.New("no sounds")
 					}
 					inst, report, err := sampler.ParseBanks(value, load)
+					mu.Lock()
+					defer mu.Unlock()
+					if err != nil {
+						status = "error: " + err.Error()
+						return nil, err
+					}
+					status = strings.Join(report, "\n")
+					return psalm.Message{"instrument": inst}, nil
+				},
+				Status: func() string { mu.Lock(); defer mu.Unlock(); return status }}, nil
+		}}
+}
+
+// streamerKind plays long sound files from the disk while they play (a recording of an hour costs the memory of its first half second): the sounds are a text in its
+// side panel, a line each (a key, a file, loop or hold, speed=, start=, end=, loopstart=, loopend=, release=, vol=, pan=; see streamer.ParseInstrument). A text that
+// can't be read (a missing file) leaves the sounds as they were
+func streamerKind(voices int) patcher.Kind {
+	const help = "- a line a sound: `36 file.wav loop` (the key, the file, how it plays)\n" +
+		"- the file is read from the disk while it plays, only its first half second is in memory: for recordings too long for the sampler\n" +
+		"- `loop` goes round while the key is down (`loopstart=` `loopend=` in seconds), `hold` lets a note off fade a sound out, otherwise it plays to its end\n" +
+		"- `start=` `end=` the part to play, `speed=2` an octave up, `release=0.5` seconds, `vol=-6` `pan=-1..1` `name=rain`; # starts a comment; one line plays on every key"
+	return patcher.Kind{Name: "streamer", Group: "Synths", Ins: note, Outs: outs,
+		Make: func(string) (*patcher.Made, error) {
+			var (
+				mu     sync.Mutex
+				status string
+			)
+			return &patcher.Made{Module: streamer.NewPoly(streamer.DefaultConfig(nil), voices),
+				Texts: []patcher.Text{{Key: "sounds", Label: "sounds", Lines: 6, Help: help}},
+				TextMessage: func(key, value string) (psalm.Message, error) {
+					if key != "sounds" {
+						return nil, errors.New("no such text")
+					}
+					inst, report, err := streamer.ParseInstrument(value)
 					mu.Lock()
 					defer mu.Unlock()
 					if err != nil {
