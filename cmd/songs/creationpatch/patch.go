@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 )
@@ -39,6 +40,8 @@ type options struct {
 	seed  uint64 // the seed of the feel of the parts
 	human bool   // the parts play off the grid, like players
 	once  bool   // the song ends with its last day, it doesn't loop
+	jazz  bool   // swung, with an upright bass walking, a ride on the bembe and a vibraphone comping
+	pluck bool   // the bowed strings and the brass play plucked and struck instruments instead: a piano, a plucked cello, a vibraphone, a guitar
 	real  bool   // the parts the orchestra has play its recordings instead of the synths (see realParts)
 }
 
@@ -56,26 +59,74 @@ var realParts = map[string]struct {
 	sfz  string
 	gain float64
 }{
-	"violins":   {"Strings/1st-violin-SEC-sustain.sfz", 1.4},
-	"celli":     {"Strings/cello-SEC-sustain.sfz", 1.3},
-	"pizzicato": {"Strings/all-strings-SEC-pizzicato.sfz", 1.7},
-	"harp":      {"Strings/harp-sustain.sfz", 1.8},
-	"timpani":   {"Percussion/timpani-hit.sfz", 1},
-	"flute":     {"Woodwinds/flute-SOLO-sustain.sfz", 1.2},
-	"oboe":      {"Woodwinds/oboe-SOLO-sustain.sfz", 1},
-	"clarinet":  {"Woodwinds/clarinet-SOLO-sustain.sfz", 1},
-	"horns":     {"Brass/french-horn-SEC-sustain.sfz", 0.8},
-	"horn":      {"Brass/french-horn-SOLO-sustain.sfz", 1},
-	"celesta":   {"Keys/celesta.sfz", 1.3},
-	"bell pad":  {"Percussion/vibraphone-open.sfz", 0.8},
-	"bells":     {"Percussion/tubular-bells.sfz", 6},
-	"soprano":   {"Vocals/choir-FEMALE-sustain.sfz", 1.3},
-	"choir":     {"Vocals/choir-MIXED-sustain.sfz", 1.3},
+	"violins":      {"Strings/1st-violin-SEC-sustain.sfz", 1.4},
+	"celli":        {"Strings/cello-SEC-sustain.sfz", 1.3},
+	"pizzicato":    {"Strings/all-strings-SEC-pizzicato.sfz", 1.7},
+	"harp":         {"Strings/harp-sustain.sfz", 1.8},
+	"timpani":      {"Percussion/timpani-hit.sfz", 1},
+	"flute":        {"Woodwinds/flute-SOLO-sustain.sfz", 1.2},
+	"oboe":         {"Woodwinds/oboe-SOLO-sustain.sfz", 1},
+	"clarinet":     {"Woodwinds/clarinet-SOLO-sustain.sfz", 1},
+	"horns":        {"Brass/french-horn-SEC-sustain.sfz", 0.8},
+	"horn":         {"Brass/french-horn-SOLO-sustain.sfz", 1},
+	"celesta":      {"Keys/celesta.sfz", 1.3},
+	"bell pad":     {"Percussion/vibraphone-open.sfz", 0.8},
+	"bells":        {"Percussion/tubular-bells.sfz", 6},
+	"upright bass": {"Strings/bass-SOLO-pizzicato.sfz", 2},
+	"vibes":        {"Percussion/vibraphone-auto-damp.sfz", 8.4},
+	"soprano":      {"Vocals/choir-FEMALE-sustain.sfz", 1.3},
+	"choir":        {"Vocals/choir-MIXED-sustain.sfz", 1.3},
+}
+
+// pluckedParts are the parts that play plucked and struck instruments when the piece is made light, whatever they played bowed, blown or sung: a piano, plucked
+// and struck strings, mallets, struck glass; the orchestra has the recordings (sfz, with the gain the level is multiplied by for them, see realParts), a synth
+// plays where it is not in assets. The ones that held a chord for more than a bar and a half are struck again every bar (see register in score.js)
+var pluckedParts = map[string]struct {
+	kind, preset string
+	level        float64 // multiplied
+	sfz          string
+	gain         float64
+	glass        bool // the recordings of struck glass in assets
+}{
+	"void":     {"dx", "woodBass", 1.5, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
+	"spirit":   {"dx", "harp", 1, "Strings/harp-sustain.sfz", 1, false},
+	"the word": {"dx", "harp", 2, "Strings/harp-sustain.sfz", 1, false},
+	"violins":  {"piano", "grand", 1, "", 1, false},
+	"celli":    {"dx", "pizzicato", 1, "Strings/cello-SOLO-pizzicato.sfz", 1, false},
+	"flute":    {"sampler", "", 1, "", 1, true}, // struck glass, from B4 up: where the flute sings
+	"oboe":     {"dx", "mallet", 1, "Percussion/xylophone.sfz", 1, false},
+	"clarinet": {"dx", "koto", 1, "Strings/harp-dampened.sfz", 1, false},
+	"horns":    {"dx", "mallet", 1, "Percussion/vibraphone-open.sfz", 1.9, false},
+	"horn":     {"dx", "nylonGuitar", 1, "", 1, false},
+	"the deep": {"dx", "woodBass", 1, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
+	"soprano":  {"dx", "celesta", 1, "Keys/celesta.sfz", 1, false},
+	"choir":    {"piano", "grand", 1, "", 1, false},
+	"organ":    {"dx", "harpsichord", 1, "", 1, false},
+}
+
+// pluck is the strip played by a plucked or struck instrument in place of a bowed, blown or sung one; glass is the sounds of the struck glass
+func (s strip) pluck(glass string) strip {
+	r, ok := pluckedParts[s.name]
+	if !ok {
+		return s
+	}
+	s.kind, s.preset, s.settings, s.sounds = r.kind, r.preset, nil, ""
+	if r.glass {
+		s.sounds = glass
+	}
+	s.level *= r.level
+	return s
 }
 
 // real is the strip played by the orchestra: a sampler with the sfz of the part, in place of its synth
-func (s strip) real() strip {
+func (s strip) real(pluck bool) strip {
 	r, ok := realParts[s.name]
+	if pr, plucked := pluckedParts[s.name]; pluck && plucked {
+		r, ok = struct {
+			sfz  string
+			gain float64
+		}{pr.sfz, pr.gain}, pr.sfz != ""
+	}
 	if !ok {
 		return s
 	}
@@ -104,6 +155,7 @@ type strip struct {
 	pan                        float64
 	hall, heavens, church      float64 // the sends: the hall, the heavens (a shimmer), the church (a convolved room)
 	chain                      string  // "": the synth goes to the strip; else the effect it goes through: "pitchshift", "pingpong", "vocoder"
+	jazz                       bool    // only when the piece is jazzed
 	automated                  bool    // its level is moved by a cable from its script (a recording faded in and out)
 }
 
@@ -145,10 +197,14 @@ func parts() []strip {
 		{name: "children", script: "children", kind: "sampler", sounds: "36 " + childrenPath + " whole name=children", pan: 0.1, hall: 0.25, automated: true},
 		// the percussion, played by hand: hand-played recordings on a sampler each, the days' rhythms in their scripts
 		{name: "shaker", script: "shaker", kind: "sampler", kit: "shaker", level: 0.8, pan: -0.5, hall: 0.25},
-		{name: "tambourine", script: "tambourine", kind: "sampler", kit: "tambourine", level: 0.6, pan: 0.5, hall: 0.3},
-		{name: "wood", script: "wood", kind: "sampler", kit: "wood", level: 0.9, pan: 0.3, hall: 0.35},
-		{name: "hands", script: "hands", kind: "sampler", kit: "hands", level: 0.45, pan: -0.25, hall: 0.3},
+		{name: "tambourine", script: "tambourine", kind: "sampler", kit: "tambourine", level: 0.5, pan: 0.5, hall: 0.3},
+		{name: "wood", script: "wood", kind: "sampler", kit: "wood", level: 0.22, pan: 0.3, hall: 0.35},
+		{name: "hands", script: "hands", kind: "sampler", kit: "hands", level: 0.3, pan: -0.25, hall: 0.3},
 		{name: "cymbal", script: "cymbal", kind: "sampler", kit: "cymbal", level: 0.55, hall: 0.5, heavens: 0.2},
+		// the jazz: a walking bass, a ride on the bembe and a vibraphone comping on the chords, all in the ratios of the rest
+		{name: "upright bass", script: "jazzbass", kind: "dx", preset: "woodBass", level: amp(0.25), pan: -0.15, hall: 0.12, jazz: true},
+		{name: "vibes", script: "vibes", kind: "dx", preset: "mallet", level: amp(0.05), pan: 0.2, hall: 0.35, heavens: 0.1, jazz: true},
+		{name: "tabla", script: "tabla", kind: "sampler", kit: "tabla", level: 0.4, pan: 0.3, hall: 0.2, jazz: true},
 	}
 }
 
@@ -191,17 +247,34 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		}
 		pt.SettingsOf(id).Apply(v)
 	}
-	prelude, err := preludeJS(opt.just, opt.a4, opt.seed, opt.human)
+	prelude, err := preludeJS(opt.just, opt.a4, opt.seed, opt.human, opt.jazz)
 	if err != nil {
 		return patchIDs{}, err
 	}
+	cutPieces, err := piecesJS() // the pieces of the recordings the percussion is cut from
+	if err != nil {
+		return patchIDs{}, err
+	}
+	prelude += cutPieces + fmt.Sprintf("shared.pluck = %v\n", opt.pluck)
 	pt.Tempo().Set(tempo)
 	song := add("song", "", 20, 20)
 	score := add("script", "", 20, 140) // first, so it has put the days in `shared` before the others ask
 	all := parts()
+	if !opt.jazz {
+		all = slices.DeleteFunc(all, func(s strip) bool { return s.jazz })
+	}
+	if opt.pluck {
+		glass, _, gerr := pitched("assets/sounds/glass", "glass", 0)
+		if gerr != nil {
+			return patchIDs{}, gerr
+		}
+		for i := range all {
+			all[i] = all[i].pluck(glass)
+		}
+	}
 	if opt.real {
 		for i := range all {
-			all[i] = all[i].real()
+			all[i] = all[i].real(opt.pluck)
 		}
 	}
 	type placed struct {
@@ -270,7 +343,7 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		switch {
 		case pl.automated: // the level follows the days: the mod output of the script (0 to 1 over the range 0 to 2 of the level)
 			connect(patcher.Cable{From: pl.script, Out: 4, To: mixer, In: modIn, Key: fmt.Sprintf("level%d", i+1), Lo: 0, Hi: 1})
-		case pl.strip.script == "void": // the darkness lifts: the cutoff from 300 Hz to the 1500 Hz of the drone (of 20 to 18000, exponentially)
+		case pl.strip.script == "void" && pl.kind == "wavetable": // the darkness lifts: the cutoff from 300 Hz to the 1500 Hz of the drone (of 20 to 18000, exponentially)
 			lo := math.Log(300.0/20) / math.Log(18000.0/20)
 			hi := math.Log(1500.0/20) / math.Log(18000.0/20)
 			connect(patcher.Cable{From: pl.script, Out: 4, To: pl.synth, In: 1, Key: "cutoff", Lo: lo, Hi: hi})

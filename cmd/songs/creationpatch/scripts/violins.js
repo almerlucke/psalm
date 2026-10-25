@@ -13,4 +13,7 @@ const part = shared.register("violins", { legato: 1 }, day => {
   })
 })
 function section(name) { part.section(name) }
-function trigger(ev) { part.trigger(song, note, ev) }
+function trigger(ev) {
+  part.trigger(song, note, ev)
+  if (shared.pluck) set("sustain", song.beat / shared.beats < 0.05 ? 0 : 1) // a piano: the pedal comes up at the bar line and is down for the rest of the bar
+}

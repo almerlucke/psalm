@@ -1,16 +1,21 @@
-// the tambourine: the sun on the second and third beat, the creatures dancing, the beasts, then a soft jingle of praise
+// the tambourine loop of two bars, cut at its hits and played in its own order, but only where a euclidean cycle lets the pieces through: five in twelve with the sun
+// (the fourth day), seven in twelve with the creatures and mankind, three in the Doxology (the Trinity); the cycle is turned a little every day. The accents are on the beat
 clock("1/16")
-const k = shared.kits.tambourine
-const part = shared.register("tambourine", { legato: 1, raw: true }, day => {
-  const n = day.number
-  return shared.groove(day, (b, br) => {
-    const kinds = { h: k.hit, j: k.jingle }
-    if (n === 4 && b >= 6) return { pattern: "....h...h...", kinds, vel: 0.4 }
-    if (n === 5 && b >= 6) return { pattern: "....h...h.jh", kinds, vel: 0.42 }
-    if (n === 6 && b >= 6) return { pattern: "H..j.hH..j.h", kinds, vel: 0.42 }
-    if (n === 7 && b >= 4 && b < 16) return { pattern: "....j...j...", kinds, vel: 0.3 }
-    return null
-  })
-})
-function section(name) { part.section(name) }
-function trigger(ev) { part.trigger(song, note, ev) }
+const play = shared.player("tambourine")
+const HITS = [0, 0, 0, 5, 7, 7, 3]
+let pattern = null, last = -1
+function section(name) {
+  const day = shared.day(name)
+  const g = genny.euclid(HITS[day.number - 1] || 1, 12, (day.number * 5) % 12)
+  pattern = Array.from({ length: 12 }, () => g.next())
+}
+function trigger(ev) {
+  if (!pattern) return
+  const day = shared.days[song.index]
+  const s = Math.round(song.beat * 4)
+  const at = song.bar * 12 + s
+  if (!day || at === last || !pattern[s] || !shared.layers.tambourine(day, song.bar)) return
+  last = at
+  const pieces = shared.pieces.tambourine
+  shared.piece(play, note, ev, s, pieces[at % pieces.length], (s % 4 === 0 ? 0.5 : s % 2 === 0 ? 0.38 : 0.3), -30)
+}

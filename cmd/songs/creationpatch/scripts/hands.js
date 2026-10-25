@@ -1,16 +1,25 @@
-// the hand drums: the creatures' bongos, the beasts treading on the low drums, the dance of man, the clapping of hands in the Doxology
+// the low hand drums of the percussion recording, cut at their hits, a markov chain walking the pieces (mostly on to the next, now and then two on, one back or the same
+// again) on a euclidean cycle of twelve: three, one a beat, for the beasts' tread on the evening of the sixth day and in the praise, five for the creatures, seven
+// for the dance of mankind
 clock("1/16")
-const k = shared.kits.hands
-const part = shared.register("hands", { legato: 1, raw: true }, day => {
-  const n = day.number
-  return shared.groove(day, (b, br) => {
-    const kinds = { b: k.bongo, c: k.conga, l: k.low, j: k.cajon, p: k.clap }
-    if (n === 5 && b >= 6) return { pattern: b % 2 ? "b..b.b..b.bb" : "b.b..b.b..b.", kinds, vel: 0.4 }
-    if (n === 6 && b < 6 && b >= 2) return { pattern: "L.....l.....", kinds, vel: 0.5 }
-    if (n === 6 && b >= 6) return { pattern: b % 4 === 3 ? "L..c.c.L.cbb" : "L..c.c.l.cb.", kinds, vel: 0.46 }
-    if (n === 7 && b >= 4 && b < 16) return { pattern: "....p...p...", kinds, vel: 0.34 }
-    return null
-  })
-})
-function section(name) { part.section(name) }
-function trigger(ev) { part.trigger(song, note, ev) }
+const play = shared.player("hands")
+const R = genny.rand(0, 1)
+let pattern = null, walk = null, last = -1
+function section(name) {
+  const day = shared.day(name)
+  walk = shared.walker(shared.pieces.hands.length, 0)
+  const hits = day.number === 6 ? 7 : day.number === 5 ? 5 : 3
+  const g = genny.euclid(hits, 12, 0)
+  pattern = Array.from({ length: 12 }, () => g.next())
+}
+function trigger(ev) {
+  if (!pattern) return
+  const day = shared.days[song.index]
+  const s = Math.round(song.beat * 4)
+  const at = song.bar * 12 + s
+  if (!day || at === last || !pattern[s] || !shared.layers.hands(day, song.bar)) return
+  last = at
+  const evening = day.number === 6 && !shared.morning(song.bar)
+  const hits = evening ? (s % 4 === 0 ? [0.6] : []) : [0.42 + 0.08 * R.next()] // the beasts tread on the beat; otherwise the pattern says
+  hits.forEach(v => shared.piece(play, note, ev, s, shared.pieces.hands[walk()], v * (s % 4 === 0 ? 1.15 : 0.85), -22))
+}

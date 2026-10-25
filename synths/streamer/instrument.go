@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/almerlucke/psalm/synths/sampler"
 	"github.com/mkb218/gosndfile/sndfile"
 )
 
@@ -163,6 +164,8 @@ func appendStereo(dst, src []float32, frames, channels int) []float32 {
 //	# the key, the file, and anything of: loop hold  speed=1 start=sec end=sec loopstart=sec loopend=sec release=sec vol=dB pan=-1..1 name=rain
 //	36 assets/sounds/various/rain-sound-188158.wav loop
 //
+// A file name with spaces is in double quotes.
+//
 // The second result says what every line made, to show it on the page. Empty lines and lines that begin with # are left out.
 func ParseInstrument(text string) (*Instrument, []string, error) {
 	var entries []*Entry
@@ -171,7 +174,7 @@ func ParseInstrument(text string) (*Instrument, []string, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		fields := strings.Fields(line)
+		fields := sampler.Fields(line)
 		fail := func(format string, a ...any) error { return fmt.Errorf("line %d: %s", n+1, fmt.Sprintf(format, a...)) }
 		if len(fields) < 2 {
 			return nil, nil, fail("a key and a file: 36 rain.wav loop")

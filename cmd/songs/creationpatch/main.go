@@ -11,6 +11,8 @@ package main
 //
 //	go run ./cmd/songs/creationpatch                                      play it (the page is at http://localhost:8087)
 //	go run ./cmd/songs/creationpatch -tuning equal                        in equal temperament instead
+//	go run ./cmd/songs/creationpatch -jazz=false                          without the swing, the walking bass, the ride and the vibraphone
+//	go run ./cmd/songs/creationpatch -pluck=false                         the bowed strings and the brass instead of the piano, plucked cello, vibraphone and guitar
 //	go run ./cmd/songs/creationpatch -orchestra=false                     the synths instead of the recordings of the orchestra (where it is in assets)
 //	go run ./cmd/songs/creationpatch -render creation.wav -stems -seed 7  render it, a stem per part
 //	go run ./cmd/songs/creationpatch -profile                             the time every module takes
@@ -46,6 +48,8 @@ func main() {
 	seed := flag.Uint64("seed", 0, "seed the random choices (0: different every time); with it a render is the same every time")
 	tuning := flag.String("tuning", "just", "just (pure ratios) or equal (equal temperament)")
 	human := flag.Bool("human", true, "the parts play like players: a little off the beat, a chord not quite together, a little different in loudness (off: exactly on the grid)")
+	jazz := flag.Bool("jazz", true, "a little jazz: the parts swing, an upright bass walks, a ride keeps the bembe and a vibraphone comps (off: as it was)")
+	pluck := flag.Bool("pluck", true, "light: the violins, celli and horns play plucked and struck instruments (a piano, a plucked cello, a vibraphone, a guitar); off: the bowed strings and the brass")
 	orch := flag.Bool("orchestra", true, "the instruments the Virtual Playing Orchestra has recorded play its recordings (if it is in assets), off: the synths")
 	a4 := flag.Float64("a4", 440, "the reference pitch of A4 in Hz")
 	flag.Parse()
@@ -77,7 +81,7 @@ func main() {
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
 	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: church}), patcher.Theme(t))
-	ids, err := buildPatch(pt, options{just: *tuning == "just", a4: *a4, seed: feelSeed, human: *human, real: *orch && hasOrchestra(), once: *renderTo != "" || *profile})
+	ids, err := buildPatch(pt, options{just: *tuning == "just", a4: *a4, seed: feelSeed, human: *human, jazz: *jazz, pluck: *pluck, real: *orch && hasOrchestra(), once: *renderTo != "" || *profile})
 	if err != nil {
 		log.Fatal(err)
 	}

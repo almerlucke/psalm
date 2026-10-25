@@ -35,7 +35,7 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 		fail := func(format string, a ...any) error {
 			return fmt.Errorf("line %d: %s", n+1, fmt.Sprintf(format, a...))
 		}
-		fields := strings.Fields(line)
+		fields := Fields(line)
 		if len(fields) < 3 {
 			return nil, nil, fail("a key, a file and a mode: 36 loop.wav hits 9 0.08")
 		}
@@ -154,4 +154,30 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 		return nil, nil, err
 	}
 	return inst, report, nil
+}
+
+// Fields splits a line of a text of sounds at its spaces; a file name with spaces is in double quotes ("my sounds/a loop.wav")
+func Fields(line string) []string {
+	var out []string
+	var cur strings.Builder
+	quoted, has := false, false
+	for _, r := range line {
+		switch {
+		case r == '"':
+			quoted, has = !quoted, true
+		case (r == ' ' || r == '\t') && !quoted:
+			if has {
+				out = append(out, cur.String())
+				cur.Reset()
+				has = false
+			}
+		default:
+			cur.WriteRune(r)
+			has = true
+		}
+	}
+	if has {
+		out = append(out, cur.String())
+	}
+	return out
 }

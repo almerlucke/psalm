@@ -34,7 +34,7 @@ var scriptNames = map[string]string{
 	"void": "void", "spirit": "spirit", "the word": "word", "violins": "violins", "celli": "celli", "pizzicato": "pizzicato", "harp": "harp", "timpani": "timpani",
 	"flute": "flute", "oboe": "oboe", "clarinet": "clarinet", "horns": "horns", "horn": "horn", "celesta": "celesta", "bell pad": "bellpad", "bells": "bells",
 	"the deep": "deep", "piano": "piano", "soprano": "soprano", "choir": "choir", "organ": "organ",
-	"shaker": "shaker", "tambourine": "tambourine", "wood": "wood", "hands": "hands", "cymbal": "cymbal",
+	"shaker": "shaker", "cymbal": "cymbal",
 }
 
 // legatos are those the song of Go played its parts with
@@ -44,15 +44,15 @@ var legatos = map[string]float64{"violins": 1, "celli": 1, "pizzicato": 0.5, "ha
 // runtime loads the scripts as the patcher does (a function of the api, shared and genny) with stubs for what a part plays with
 func runtime(t *testing.T, just bool) (*goja.Runtime, *goja.Object) {
 	t.Helper()
-	return runtimeWith(t, just, false)
+	return runtimeWith(t, just, false, false)
 }
 
 // runtimeWith is runtime with the parts playing like players or not
-func runtimeWith(t *testing.T, just, human bool) (*goja.Runtime, *goja.Object) {
+func runtimeWith(t *testing.T, just, human, jazz bool) (*goja.Runtime, *goja.Object) {
 	t.Helper()
 	vm := goja.New()
 	shared := vm.NewObject()
-	prelude, err := preludeJS(just, 440, 1, human)
+	prelude, err := preludeJS(just, 440, 1, human, jazz)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestFeel(t *testing.T) {
 	}
 	run := func(human bool, part string, beats ...float64) []played {
 		var out []played
-		vm, shared := runtimeWith(t, false, human)
+		vm, shared := runtimeWith(t, false, human, false)
 		reg, _ := goja.AssertFunction(shared.Get("register"))
 		mk, err := vm.RunString(`shared => day => [shared.chord([63, 70, 75], 1, { hold: 1 }), shared.chord([63, 70, 75], 1, { hold: 1 }), shared.chord([63, 70, 75], 1, { hold: 1 }), shared.N([], day.bars * shared.beats - 3)]`)
 		if err != nil {

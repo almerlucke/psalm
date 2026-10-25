@@ -3,6 +3,7 @@ package sampler
 import (
 	"math"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -317,5 +318,13 @@ func TestParseBanksLoop(t *testing.T) {
 	x := play(v, psalm.Message{"pitch": 36.0}, buffers(14))
 	if p := peak(x[int(13*sr):]); p < 0.3 {
 		t.Errorf("the loop is silent after 13 s of a 10 s sound: peak %g", p)
+	}
+}
+
+func TestFieldsQuotes(t *testing.T) {
+	got := Fields(`36 "my sounds/a loop.wav" whole  vol=-3 name=a`)
+	want := []string{"36", "my sounds/a loop.wav", "whole", "vol=-3", "name=a"}
+	if !slices.Equal(got, want) {
+		t.Errorf("%q, want %q", got, want)
 	}
 }
