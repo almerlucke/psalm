@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/midi"
@@ -753,4 +754,57 @@ func TestPageLanes(t *testing.T) {
 	// closed again
 	tb.Tap(`document.querySelector(".pt-lanes-btn")`)
 	tb.WaitFor(`document.querySelector(".pt-lanes").hidden`, "the lanes closed")
+}
+
+// a lane armed on the page records the setting its cable moves while the song plays: the button lights, the move is written into the lane and drawn
+func TestPageLaneRecord(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	song, _ := pt.Add("song", "", 60, 200)
+	if err := pt.SetText(song, "sections", "A 8"); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := pt.Add("automation", "", 60, 40)
+	fx, err := pt.Add("chorus", "", 400, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "mix" // 0 to 1
+	cable := patcher.Cable{Type: patcher.Mod, From: id, Out: 0, To: fx, In: 1, Key: key}
+	if _, err := pt.Connect(cable); err != nil {
+		t.Fatal(err)
+	}
+	a := pt.Module(id).(*patcher.Automation)
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length >= 3`)
+	tb.Size(1300, 900)
+	tb.Tap(`document.querySelector(".pt-lanes-btn")`)
+	rec := `document.querySelectorAll(".pt-lanes .pt-lane-row:not(.ruler)")[0].querySelector(".pt-lane-rec")`
+	tb.WaitFor(fmt.Sprintf(`document.querySelector(".pt-lanes .pt-lane-target").textContent === "→ %s · %s"`, fx, key), "the lane says where it goes")
+	tb.Tap(rec)
+	tb.WaitFor(rec+`.classList.contains("armed")`, "the lane armed")
+	if a.Armed() != 0 {
+		t.Fatal("not armed")
+	}
+	// the setting played: from low to high over a second
+	for i := 0; i <= 10; i++ {
+		pt.SettingsOf(fx).Apply(map[string]float64{key: float64(i) / 10 * 0.9})
+		time.Sleep(100 * time.Millisecond)
+	}
+	tb.WaitFor(`document.querySelector(".pt-lanes").querySelector(".pt-lane-rec.armed")`, "still armed")
+	paneltest.Eventually(t, "a move written", func() bool { return len(a.Lanes()[0].Points) >= 2 })
+	tb.Tap(rec) // off
+	tb.WaitFor(`!`+rec+`.classList.contains("armed")`, "the lane let go")
+	if a.Armed() != -1 {
+		t.Error("still armed")
+	}
+	if got := a.Lanes()[0].Points; len(got) < 2 || got[0].X == got[len(got)-1].X || got[len(got)-1].Y < got[0].Y+0.6 { // played from 0 to 0.9 of the range
+		t.Errorf("the points written: %+v", got)
+	}
 }

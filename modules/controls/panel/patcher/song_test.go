@@ -58,7 +58,9 @@ type songRig struct {
 	stepAt int64
 }
 
-func newSongRig(t *testing.T, sections string) *songRig {
+func newSongRig(t *testing.T, sections string) *songRig { return newSongRigWith(t, sections) }
+
+func newSongRigWith(t *testing.T, sections string, opts ...patcher.Option) *songRig {
 	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
 	t.Cleanup(func() { psalm.PopConfig() })
 	r := &songRig{t: t, p: psalm.New(nil)}
@@ -71,7 +73,7 @@ func newSongRig(t *testing.T, sections string) *songRig {
 			Make: func(string) (*patcher.Made, error) { return &patcher.Made{Module: r.rec}, nil }},
 		patcher.Kind{Name: "hear", Ins: []patcher.Port{{Name: "bar", Type: patcher.Trigger}, {Name: "section", Type: patcher.Trigger, Index: 1}, {Name: "number", Type: patcher.Value, Index: 2}},
 			Make: func(string) (*patcher.Made, error) { return &patcher.Made{Module: r.hear}, nil }})
-	r.pt = patcher.New(r.p, panel.New(r.p, "Test"), "Patch", kinds)
+	r.pt = patcher.New(r.p, panel.New(r.p, "Test"), "Patch", kinds, opts...)
 	r.p.Out(r.pt.Out())
 	r.song = r.add("song")
 	if err := r.pt.SetText(r.song, "sections", sections); err != nil {

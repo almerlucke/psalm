@@ -953,6 +953,10 @@ and at every section (a note of a step lasts a bar), the section's number and ho
   `step`, `exp`), Delete or a right click or an Alt-click takes it away, the name of a lane is typed in its row, and a line and a dot show where the song is and
   what every lane is. What is drawn is kept as the text of the module's `lanes` box (a line a lane), which can be typed instead. A position is in bars from the
   start of the song (the form of its song module), so the lanes follow the sections wherever the song goes.
+  A lane records: the **●** button of its row (the lane has to be cabled to a setting first, the row says where: `→ module · setting`) arms it, and its cable lets go of the
+  setting while the song plays; move the setting yourself (its knob on the page of its module) and the move is written into the lane, over the bars it took, thinned
+  to the points that matter (what the lane had there is taken away, outside the move it is as it was), and the move is over when the setting has been still for a
+  moment. The button lights while it writes; press it again and the lane plays what it has.
 - a gate makes a part of the song: sound, notes and triggers go through it in its sections only
   (a note let go always goes through), and when it is on. The song's side panel has a tile for
   every gate of the patch, by its name: a tap switches the part off and on while it plays, the

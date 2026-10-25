@@ -156,12 +156,19 @@ type Automation struct {
 	x     atomicFloat // where it is, in bars from the start of the song
 	rate  atomicFloat // bars a second
 	live  atomic.Bool // the song is playing (it has not ended)
+
+	// recording: the lane armed (-1 none) keeps its value for the cable while the setting it moves is played by hand (the recorder writes what is played into it)
+	rec     atomic.Int32
+	frozen  atomicFloat // what the armed lane's cable has
+	shown   atomicFloat // what the page shows of the armed lane: what is being played
+	writing atomic.Bool // a move is being written
 }
 
 // NewAutomation returns an automation module with a number of lanes, each without points
 func NewAutomation(count int) *Automation {
 	a := &Automation{Module: psalm.NewControl(), count: count, vals: make([]atomicFloat, count)}
 	a.SetSelf(a)
+	a.rec.Store(-1)
 	a.song = SongOf(a.Env())
 	a.bars.Store(math.Float64bits(16))
 	empty := make([]LaneData, count)
@@ -199,13 +206,32 @@ func (a *Automation) SetBars(text string) error {
 // Lanes are its lanes now
 func (a *Automation) Lanes() []LaneData { return *a.lanes.Load() }
 
-// Value is what a lane is at, 0-1
+// Value is what a lane is at, 0-1 (what the cable moves its setting to): an armed lane stays where it was when armed, the setting is played by hand
 func (a *Automation) Value(lane int) float64 {
 	if lane < 0 || lane >= a.count {
 		return 0
 	}
+	if int(a.rec.Load()) == lane {
+		return math.Max(0, math.Min(a.frozen.Load(), 1))
+	}
 	return math.Max(0, math.Min(a.vals[lane].Load(), 1))
 }
+
+// SetRecord arms a lane to record (-1: none): its cable stops moving its setting
+func (a *Automation) SetRecord(lane int) {
+	if lane < 0 || lane >= a.count {
+		a.rec.Store(-1)
+		a.writing.Store(false)
+		return
+	}
+	a.frozen.Store(a.vals[lane].Load())
+	a.shown.Store(a.vals[lane].Load())
+	a.writing.Store(false)
+	a.rec.Store(int32(lane))
+}
+
+// Armed is the lane armed to record, -1 for none
+func (a *Automation) Armed() int { return int(a.rec.Load()) }
 
 // CtrlTick moves the lanes with the song
 func (a *Automation) CtrlTick(tick psalm.CtrlTick) {
@@ -239,7 +265,8 @@ type LanesView struct {
 	Lanes    []LaneData    `json:"lanes"`
 	Length   float64       `json:"length"` // bars, the song's or the round's
 	Sections []SectionView `json:"sections,omitempty"`
-	Head     *LaneHead     `json:"-"` // where it is: it changes all the time, so the page gets it apart from the rest
+	Targets  []string      `json:"targets"` // what the mod cable of every lane moves ("" none): the module and its setting
+	Head     *LaneHead     `json:"-"`       // where it is: it changes all the time, so the page gets it apart from the rest
 }
 
 // LaneHead is where the lanes are now
@@ -248,6 +275,9 @@ type LaneHead struct {
 	Rate   float64   `json:"rate"`   // bars a second
 	Live   bool      `json:"live"`   // the song is playing
 	Values []float64 `json:"values"` // of every lane
+	Armed  int       `json:"armed"`  // the lane armed to record, -1 for none
+	// Writing is true while a move is being written into the armed lane
+	Writing bool `json:"writing"`
 }
 
 // SectionView is a section of the song on the ruler of the lanes
@@ -259,10 +289,13 @@ type SectionView struct {
 
 // View is the lanes as the page draws them (from any goroutine)
 func (a *Automation) View() *LanesView {
-	v := &LanesView{Lanes: a.Lanes(), Length: math.Float64frombits(a.bars.Load())}
-	h := &LaneHead{X: math.Round(a.x.Load()*1000) / 1000, Rate: a.rate.Load(), Live: a.live.Load(), Values: make([]float64, a.count)}
+	v := &LanesView{Lanes: a.Lanes(), Length: math.Float64frombits(a.bars.Load()), Targets: make([]string, a.count)}
+	h := &LaneHead{X: math.Round(a.x.Load()*1000) / 1000, Rate: a.rate.Load(), Live: a.live.Load(), Values: make([]float64, a.count), Armed: a.Armed(), Writing: a.writing.Load()}
 	for i := range h.Values {
 		h.Values[i] = math.Round(a.Value(i)*1000) / 1000
+	}
+	if h.Armed >= 0 { // what is played, as it is played
+		h.Values[h.Armed] = math.Round(math.Max(0, math.Min(a.shown.Load(), 1))*1000) / 1000
 	}
 	v.Head = h
 	if tr := a.song.Transport(); tr != nil {

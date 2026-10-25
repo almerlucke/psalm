@@ -4,6 +4,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 )
@@ -103,5 +104,100 @@ func TestAutomationModCable(t *testing.T) {
 	}
 	if _, err := r.pt.Connect(patcher.Cable{Type: patcher.Mod, From: a, Out: 4, To: clock, Key: "division"}); err == nil {
 		t.Error("a mod cable from a lane that is not there")
+	}
+}
+
+// recording: a lane armed writes what is played of the setting it is cabled to, thinned, over the bars the move took; its cable lets go of the setting meanwhile
+func TestAutomationRecords(t *testing.T) {
+	r := newSongRigWith(t, "A 8", patcher.RecordEvery(time.Hour)) // a bar: 2 s
+	a, notes := r.add("automation"), r.add("notes")
+	m := r.pt.Module(a).(*patcher.Automation)
+	if err := r.pt.ArmLane(a, 0); err == nil {
+		t.Error("a lane armed that goes nowhere")
+	}
+	if _, err := r.pt.Connect(patcher.Cable{Type: patcher.Mod, From: a, Out: 0, To: notes, In: 4, Key: "length"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.pt.SetText(a, "lanes", "x: 0 0.9, 8 0.9"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.pt.ArmLane(a, 0); err != nil {
+		t.Fatal(err)
+	}
+	if m.Armed() != 0 {
+		t.Fatal("the lane is not armed")
+	}
+	set := r.pt.SettingsOf(notes)
+	play := func(seconds float64, v float64) { // run on, the setting played at v
+		step := 0.1
+		for t := 0.0; t < seconds; t += step {
+			set.Apply(map[string]float64{"length": v})
+			r.run(step)
+			r.pt.StepRecording()
+		}
+	}
+	idle := func(seconds float64) {
+		for t := 0.0; t < seconds; t += 0.1 {
+			r.run(0.1)
+			r.pt.StepRecording()
+		}
+	}
+	lo, hi := 0.0, 0.0
+	idle(2) // a bar: nothing played, nothing written
+	if l := m.Lanes()[0].Points; len(l) != 2 {
+		t.Fatalf("points written while nothing was played: %+v", l)
+	}
+	play(0.4, 0.4)
+	if !m.View().Head.Writing {
+		t.Error("it is not writing while the setting is played")
+	}
+	play(1.2, 0.6) // two more steps
+	play(0.4, 0.8)
+	idle(1.5) // still for a while: the move is over
+	if m.View().Head.Writing {
+		t.Error("it still writes after the setting was still")
+	}
+	got := m.Lanes()[0].Points
+	if len(got) < 3 || len(got) > 8 {
+		t.Fatalf("the points written: %+v", got)
+	}
+	// before the move the lane is as it was (0.9 at the start, and at the end), the move is in bars 1 to 2 (a bar is 2 s: it was played after one), at the values played
+	if got[0].X != 0 || got[0].Y != 0.9 {
+		t.Errorf("the lane before the move changed: %+v", got[0])
+	}
+	if end := got[len(got)-1]; end.X != 8 || end.Y != 0.9 {
+		t.Errorf("the lane after the move changed: %+v", end)
+	}
+	for _, p := range got[1 : len(got)-1] {
+		if p.X < 0.9 || p.X > 2.5 {
+			t.Errorf("a point at bar %v, the move was played between bars 1 and 2", p.X)
+		}
+	}
+	for i := 1; i < len(got)-1; i++ {
+		if i == 1 {
+			lo = got[i].Y
+		}
+		hi = got[i].Y
+	}
+	if !(hi > lo) {
+		t.Errorf("values went %v to %v: %+v", lo, hi, got)
+	}
+	if txt := r.pt.Texts(a)[0].Value; !strings.Contains(txt, "x: 0 0.9") {
+		t.Errorf("the text of the lanes:\n%s", txt)
+	}
+
+	// let go of: the lane plays on, and a cable taken away lets go of it too
+	if err := r.pt.ArmLane(a, -1); err != nil || m.Armed() != -1 {
+		t.Errorf("disarmed: %v, armed %d", err, m.Armed())
+	}
+	if err := r.pt.ArmLane(a, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range r.pt.Cables() {
+		r.pt.Disconnect(c.ID)
+	}
+	r.pt.StepRecording()
+	if m.Armed() != -1 {
+		t.Error("still armed with its cable gone")
 	}
 }

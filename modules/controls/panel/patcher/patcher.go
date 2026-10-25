@@ -30,6 +30,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
@@ -197,16 +198,18 @@ type Cable struct {
 // Patcher is a patch made on the page
 type Patcher struct {
 	*panel.Param
-	p      *psalm.Psalm
-	ctl    *panel.Panel
-	tempo  *panel.Param // the tempo of the patch, in the bar at the top of the page
-	clip   *patchFile   // the modules copied (Copy), to paste
-	pastes int          // how often they were pasted: every paste a little further
-	pasted []string     // the modules the last paste made (the page chooses them)
-	pasteN int          // the pastes so far
-	theme  panel.Theme
-	kinds  []Kind
-	out    *gain.Gain // the output: what the patch plays
+	p        *psalm.Psalm
+	ctl      *panel.Panel
+	tempo    *panel.Param             // the tempo of the patch, in the bar at the top of the page
+	clip     *patchFile               // the modules copied (Copy), to paste
+	pastes   int                      // how often they were pasted: every paste a little further
+	pasted   []string                 // the modules the last paste made (the page chooses them)
+	recs     map[string]*laneRecorder // the lanes being recorded, by the module they are of
+	recEvery time.Duration            // how often a lane being recorded looks at its setting (0: every 25 ms)
+	pasteN   int                      // the pastes so far
+	theme    panel.Theme
+	kinds    []Kind
+	out      *gain.Gain // the output: what the patch plays
 
 	mu       sync.Mutex // the patch as the page sees it (the audio thread has its own copies)
 	nodes    []*node
@@ -239,6 +242,9 @@ type Option func(*Patcher)
 
 // Keep keeps patches in a folder (made when it isn't there)
 func Keep(dir string) Option { return func(pt *Patcher) { pt.dir = dir } }
+
+// RecordEvery sets how often a lane being recorded looks at the setting it records (25 ms unless said): a test makes it long and calls StepRecording as it runs the patch
+func RecordEvery(d time.Duration) Option { return func(pt *Patcher) { pt.recEvery = d } }
 
 // Presets keeps the presets of your own of the modules' editors in a folder, a folder for every
 // kind (the same as the editors example's: editors-presets)
@@ -346,6 +352,10 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 			ID    string     `json:"id"`
 			Lanes []LaneData `json:"lanes"`
 		} `json:"lanes"`
+		ArmLane *struct {
+			ID   string `json:"id"`
+			Lane int    `json:"lane"`
+		} `json:"armLane"`
 		Save     *string     `json:"save"`
 		Load     *string     `json:"load"`
 		Delete   *string     `json:"delete"`
@@ -386,6 +396,8 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		return pt.SetText(m.Text.ID, m.Text.Key, m.Text.Value)
 	case m.Lanes != nil:
 		return pt.SetLanes(m.Lanes.ID, m.Lanes.Lanes)
+	case m.ArmLane != nil:
+		return pt.ArmLane(m.ArmLane.ID, m.ArmLane.Lane)
 	case m.Save != nil:
 		return pt.Save(*m.Save)
 	case m.Load != nil:
@@ -1012,6 +1024,11 @@ func (pt *Patcher) state() any {
 		}
 		if n.made.Lanes != nil {
 			ns.Lanes = n.made.Lanes()
+			for _, c := range pt.cables { // where the mod cable of every lane goes
+				if c.Type == Mod && c.From == n.ID && c.Out >= 0 && c.Out < len(ns.Lanes.Targets) {
+					ns.Lanes.Targets[c.Out] = c.To + " · " + c.Key
+				}
+			}
 			if st.Heads == nil {
 				st.Heads = map[string]*LaneHead{}
 			}

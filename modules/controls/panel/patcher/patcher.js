@@ -145,7 +145,7 @@ psalm.register("patcher", (p, api) => {
 			hit.setAttribute("class", "pt-hit");
 			hit.dataset.id = c.id;
 			const t = document.createElementNS(svgNS, "title");
-			t.textContent = c.type === "mod" ? `${c.from} → ${c.to} ${c.key}` : `${c.from} → ${c.to}`;
+			t.textContent = c.type === "mod" ? `${named(c.from)} → ${named(c.to)} · ${c.key}` : `${named(c.from)} → ${named(c.to)}`;
 			hit.append(t);
 			const path = document.createElementNS(svgNS, "path");
 			path.setAttribute("d", d);
@@ -155,6 +155,7 @@ psalm.register("patcher", (p, api) => {
 			svg.append(hit, path);
 		}
 	}
+	const named = id => { const n = st.nodes.find(x => x.id === id); return n ? n.kind + (n.preset ? " · " + n.preset : "") + " (" + id + ")" : id; };
 	const modIndex = id => { const n = st.nodes.find(x => x.id === id); return n ? (n.ins || []).findIndex(x => x.type === "mod") : -1; };
 
 	function makeNode(n) {
@@ -290,7 +291,6 @@ psalm.register("patcher", (p, api) => {
 		const c = st.cables.find(x => x.id === picked);
 		if (!c) { inspector.hidden = true; return; }
 		inspector.hidden = false;
-		const named = id => { const n = st.nodes.find(x => x.id === id); return n ? n.kind + (n.preset ? " · " + n.preset : "") : id; };
 		inspector.append(el("span", "pt-label", `${c.type} cable: ${named(c.from)} → ${named(c.to)}`));
 		if (c.type === "mod") {
 			const to = st.nodes.find(n => n.id === c.to);

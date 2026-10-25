@@ -143,6 +143,8 @@ psalm.lanesView = function (send) {
 		if (!model || root.hidden) return;
 		const h = heads[model.id];
 		rows.forEach((r, i) => {
+			r.rec.classList.toggle("armed", !!h && h.armed === i);
+			r.rec.classList.toggle("writing", !!h && h.armed === i && !!h.writing);
 			if (!h || !h.live) { r.head.hidden = true; r.dot.hidden = true; return; }
 			const t = Math.min(0.3, (performance.now() - headAt) / 1000);
 			const x = Math.max(0, Math.min(model.length, h.x + h.rate * t));
@@ -170,17 +172,21 @@ psalm.lanesView = function (send) {
 			const name = el("input", "pt-lane-name"); name.value = lane.name; name.maxLength = 40; name.spellcheck = false; name.title = "the name of the lane";
 			name.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter") name.blur(); });
 			name.addEventListener("change", () => { lane.name = name.value.trim() || "lane " + (i + 1); push(true); });
+			const rec = el("button", "pt-lane-rec", "●");
+			rec.title = "record: with the song playing, play the setting this lane's cable moves (its knob) and the move is written into the lane";
+			rec.addEventListener("click", () => { const h = heads[model.id]; send({armLane: {id: model.id, lane: h && h.armed === i ? -1 : i}}); });
 			const val = el("span", "pt-lane-val", "0.00"); val.title = "its value now";
 			const clear = el("button", "", "Clear"); clear.title = "take every point of this lane away";
 			clear.addEventListener("click", () => { if (lane.points.length) { lane.points = []; sel = null; push(true); draw(); } });
-			side.append(name, val, clear);
+			const target = el("span", "pt-lane-target"); target.textContent = (model.targets[i] ? "→ " + model.targets[i] : "no cable");
+			side.append(name, rec, val, clear, target);
 			const wrap = el("div", "pt-lane-cv");
 			const canvas = el("canvas");
 			const headEl = el("div", "pt-lane-head"), dot = el("div", "pt-lane-dot");
 			wrap.append(canvas, headEl, dot);
 			row.append(side, wrap);
 			body.append(row);
-			rows.push({canvas, wrap, head: headEl, dot, val, name});
+			rows.push({canvas, wrap, head: headEl, dot, val, name, rec, target});
 			wire(i, canvas);
 		});
 		draw();
@@ -279,7 +285,7 @@ psalm.lanesView = function (send) {
 		lastKey = n ? n.id + JSON.stringify(n.lanes) : "";
 		build();
 	}
-	const take = n => ({id: n.id, length: Math.max(1, n.lanes.length || 1), sections: n.lanes.sections || [],
+	const take = n => ({id: n.id, length: Math.max(1, n.lanes.length || 1), sections: n.lanes.sections || [], targets: n.lanes.targets || [],
 		lanes: n.lanes.lanes.map(l => ({name: l.name, points: (l.points || []).map(p => ({x: p.x, y: p.y, shape: p.shape || ""}))}))});
 
 	function update(nodes, selected) {
@@ -304,7 +310,10 @@ psalm.lanesView = function (send) {
 		if (kept && model.lanes[kept.lane]) { const p = model.lanes[kept.lane].points.find(p => p.x === kept.x && p.y === kept.y); if (p) sel = {lane: kept.lane, point: p}; }
 		if (was !== model.lanes.length) build();
 		else {
-			rows.forEach((r, i) => { if (document.activeElement !== r.name) r.name.value = model.lanes[i].name; });
+			rows.forEach((r, i) => {
+				if (document.activeElement !== r.name) r.name.value = model.lanes[i].name;
+				r.target.textContent = model.targets[i] ? "→ " + model.targets[i] : "no cable";
+			});
 			draw();
 		}
 	}
