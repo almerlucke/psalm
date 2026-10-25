@@ -11,6 +11,7 @@ package main
 //
 //	go run ./cmd/songs/creationpatch                                      play it (the page is at http://localhost:8087)
 //	go run ./cmd/songs/creationpatch -tuning equal                        in equal temperament instead
+//	go run ./cmd/songs/creationpatch -orchestra=false                     the synths instead of the recordings of the orchestra (where it is in assets)
 //	go run ./cmd/songs/creationpatch -render creation.wav -stems -seed 7  render it, a stem per part
 //	go run ./cmd/songs/creationpatch -profile                             the time every module takes
 
@@ -45,6 +46,7 @@ func main() {
 	seed := flag.Uint64("seed", 0, "seed the random choices (0: different every time); with it a render is the same every time")
 	tuning := flag.String("tuning", "just", "just (pure ratios) or equal (equal temperament)")
 	human := flag.Bool("human", true, "the parts play like players: a little off the beat, a chord not quite together, a little different in loudness (off: exactly on the grid)")
+	orch := flag.Bool("orchestra", true, "the instruments the Virtual Playing Orchestra has recorded play its recordings (if it is in assets), off: the synths")
 	a4 := flag.Float64("a4", 440, "the reference pitch of A4 in Hz")
 	flag.Parse()
 	if *tuning != "just" && *tuning != "equal" {
@@ -75,7 +77,7 @@ func main() {
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
 	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: church}), patcher.Theme(t))
-	ids, err := buildPatch(pt, options{just: *tuning == "just", a4: *a4, seed: feelSeed, human: *human, once: *renderTo != "" || *profile})
+	ids, err := buildPatch(pt, options{just: *tuning == "just", a4: *a4, seed: feelSeed, human: *human, real: *orch && hasOrchestra(), once: *renderTo != "" || *profile})
 	if err != nil {
 		log.Fatal(err)
 	}

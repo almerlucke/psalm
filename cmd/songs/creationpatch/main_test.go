@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -17,7 +18,17 @@ import (
 
 // the piece plays: every bar of every day (at a fast tempo), without a script saying it went wrong, and with sound; the cables of the recordings reach their
 // levels and the void's reaches its cutoff; every day writes its verse to the log of the patch
-func TestPatchPlays(t *testing.T) {
+func TestPatchPlays(t *testing.T) { playsPatch(t, false) }
+
+// the same with the instruments of the orchestra where it is
+func TestPatchPlaysWithOrchestra(t *testing.T) {
+	if _, err := os.Stat("../../../" + orchestra); err != nil {
+		t.Skip("the Virtual Playing Orchestra is not in assets")
+	}
+	playsPatch(t, true)
+}
+
+func playsPatch(t *testing.T, real bool) {
 	if testing.Short() {
 		t.Skip("plays 93 bars")
 	}
@@ -31,7 +42,7 @@ func TestPatchPlays(t *testing.T) {
 	p := psalm.New(nil)
 	church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
 	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: church}))
-	ids, err := buildPatch(pt, options{just: true, a4: 440, seed: 1, human: true, once: true})
+	ids, err := buildPatch(pt, options{just: true, a4: 440, seed: 1, human: true, real: real, once: true})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -137,6 +137,27 @@ shared.doxology = () => shared.parse(
   "Eb4:3 | F4:1 G4 F4 | Eb4:1 C4 D4 | Eb4:3 | " + // praise him above, ye heavenly host
   "Bb4:3 | G4:1 Eb4 F4 | Ab4:1 G4 F4 | Eb4:3") // praise Father, Son, and Holy Ghost
 
+// --- percussion: bars of sixteenths ---
+
+// hits is a bar of three beats in sixteenths: twelve characters, a dot is a rest, any other character a hit of the kind it names in `kinds` ({x: shared.kits.hands.conga}),
+// one of the recordings of the kind in turn (by the bar and the place in it, so it is the same every time), a capital letter louder
+shared.hits = (pattern, kinds, bar, vel) => {
+  if (pattern.length !== shared.beats * 4) throw new Error("a bar of " + shared.beats * 4 + " sixteenths, not " + pattern.length + ": " + pattern)
+  return [...pattern].map((c, i) => {
+    const keys = kinds[c.toLowerCase()]
+    if (c === ".") return shared.N([], 0.25)
+    if (!keys) throw new Error("no kind " + c)
+    return shared.N([keys[(bar * 5 + i * 3) % keys.length]], 0.25, { vel: (vel || 0.5) * (c === c.toUpperCase() ? 1.3 : 0.8) })
+  })
+}
+
+// groove is the percussion of a day: f(b, bar) gives { pattern, kinds, vel } for a bar, null for a rest. It is untuned (the keys are those of the
+// recordings): a part with it is registered with { raw: true }
+shared.groove = (day, f) => shared.perBar(day, (b, br) => {
+  const g = f(b, br)
+  return g ? shared.hits(g.pattern, g.kinds, b, g.vel) : null
+})
+
 // --- the sounds of creation: recordings faded in and out ---
 
 // fade is the gain (1 is 0 dB) of a recording at a bar of a day (b, with the beats as a fraction): db at its height, faded in at bar `from` and out at bar `to`
@@ -203,6 +224,11 @@ const FEELS = {
   "bells": { strum: 40 },
   "piano": { timing: 6, strum: 18, velocity: 0.06 },
   "the deep": { timing: 20 },
+  "shaker": { timing: 7, velocity: 0.18 },
+  "tambourine": { timing: 7, velocity: 0.15 },
+  "wood": { timing: 6, velocity: 0.15 },
+  "hands": { timing: 8, velocity: 0.12 },
+  "cymbal": { timing: 10 },
 }
 // a note can only be late, never early: every note of every part waits this long (milliseconds) so the ones that play ahead of the beat have room
 const PAD = 32
@@ -253,13 +279,13 @@ shared.register = (name, options, score) => {
         v = Math.max(0.01, Math.min(1, v))
         const hold = Math.max(0.05, e.hold * 4)
         if (!step || !shared.human) {
-          note(e.pitches.map(shared.tune), v, hold)
+          note(part.raw ? e.pitches : e.pitches.map(shared.tune), v, hold)
           continue
         }
         const offset = (feel.push || 0) + (feel.timing ? tri() * feel.timing : 0)
         e.pitches.forEach((p, i) => {
           const ms = PAD + offset + Math.abs(feel.strum || 0) * i + (feel.spread ? tri() * feel.spread : 0)
-          note(shared.tune(p), v, hold, Math.max(0, ms) / 1000 / step)
+          note(part.raw ? p : shared.tune(p), v, hold, Math.max(0, ms) / 1000 / step)
         })
       }
     },

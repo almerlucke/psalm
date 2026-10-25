@@ -34,6 +34,7 @@ var scriptNames = map[string]string{
 	"void": "void", "spirit": "spirit", "the word": "word", "violins": "violins", "celli": "celli", "pizzicato": "pizzicato", "harp": "harp", "timpani": "timpani",
 	"flute": "flute", "oboe": "oboe", "clarinet": "clarinet", "horns": "horns", "horn": "horn", "celesta": "celesta", "bell pad": "bellpad", "bells": "bells",
 	"the deep": "deep", "piano": "piano", "soprano": "soprano", "choir": "choir", "organ": "organ",
+	"shaker": "shaker", "tambourine": "tambourine", "wood": "wood", "hands": "hands", "cymbal": "cymbal",
 }
 
 // legatos are those the song of Go played its parts with
@@ -115,8 +116,8 @@ func TestPartsAreThoseOfTheSong(t *testing.T) {
 	}
 	vm, shared := runtime(t, false)
 	for part := range scriptNames {
-		if part == "void" {
-			continue // not in the fixture (the song of Go does not check it against the chords)
+		if _, ok := orig[part]; !ok {
+			continue // not in the fixture: the void (the song of Go does not check it against the chords) and the percussion, which the song of Go does not have
 		}
 		var want []event
 		beat := 0.0

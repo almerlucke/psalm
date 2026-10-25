@@ -4,6 +4,7 @@ import (
 	"embed"
 	"fmt"
 	"math"
+	"os"
 
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 )
@@ -38,6 +39,50 @@ type options struct {
 	seed  uint64 // the seed of the feel of the parts
 	human bool   // the parts play off the grid, like players
 	once  bool   // the song ends with its last day, it doesn't loop
+	real  bool   // the parts the orchestra has play its recordings instead of the synths (see realParts)
+}
+
+// orchestra is where the Virtual Playing Orchestra is (it is not in the repository: without it the synths play)
+const orchestra = "assets/Virtual-Playing-Orchestra3"
+
+func hasOrchestra() bool {
+	_, err := os.Stat(orchestra + "/Vocals/choir-MIXED-sustain.sfz")
+	return err == nil
+}
+
+// realParts are the instruments the orchestra has recorded: the sfz file (in the orchestra) of the part, and what its level is multiplied by (the recordings are
+// not as loud as the synths were; the levels were found by rendering both and comparing the parts)
+var realParts = map[string]struct {
+	sfz  string
+	gain float64
+}{
+	"violins":   {"Strings/1st-violin-SEC-sustain.sfz", 1.4},
+	"celli":     {"Strings/cello-SEC-sustain.sfz", 1.3},
+	"pizzicato": {"Strings/all-strings-SEC-pizzicato.sfz", 1.7},
+	"harp":      {"Strings/harp-sustain.sfz", 1.8},
+	"timpani":   {"Percussion/timpani-hit.sfz", 1},
+	"flute":     {"Woodwinds/flute-SOLO-sustain.sfz", 1.2},
+	"oboe":      {"Woodwinds/oboe-SOLO-sustain.sfz", 1},
+	"clarinet":  {"Woodwinds/clarinet-SOLO-sustain.sfz", 1},
+	"horns":     {"Brass/french-horn-SEC-sustain.sfz", 0.8},
+	"horn":      {"Brass/french-horn-SOLO-sustain.sfz", 1},
+	"celesta":   {"Keys/celesta.sfz", 1.3},
+	"bell pad":  {"Percussion/vibraphone-open.sfz", 0.8},
+	"bells":     {"Percussion/tubular-bells.sfz", 6},
+	"soprano":   {"Vocals/choir-FEMALE-sustain.sfz", 1.3},
+	"choir":     {"Vocals/choir-MIXED-sustain.sfz", 1.3},
+}
+
+// real is the strip played by the orchestra: a sampler with the sfz of the part, in place of its synth
+func (s strip) real() strip {
+	r, ok := realParts[s.name]
+	if !ok {
+		return s
+	}
+	s.kind, s.preset, s.settings = "sampler", "", nil
+	s.sounds = "0 " + orchestra + "/" + r.sfz + " sfz"
+	s.level *= r.gain
+	return s
 }
 
 // patchIDs are the modules of the patch to look at: the scripts, and the synths by their part
@@ -53,6 +98,7 @@ type patchIDs struct {
 type strip struct {
 	name, script, kind, preset string
 	sounds                     string             // the sounds of a sampler or a grains synth
+	kit                        string             // the percussion of a sampler: its recordings, see kits.go
 	settings                   map[string]float64 // of the synth, after it is made
 	level                      float64
 	pan                        float64
@@ -97,6 +143,12 @@ func parts() []strip {
 		{name: "gulls", script: "gulls", kind: "sampler", sounds: "36 " + gullsPath + " whole loop=1.5 name=gulls", pan: -0.3, hall: 0.15, automated: true},
 		{name: "animals", script: "animals", kind: "sampler", sounds: "36 " + animalsPath + " whole loop=1.5 name=animals", hall: 0.15, automated: true},
 		{name: "children", script: "children", kind: "sampler", sounds: "36 " + childrenPath + " whole name=children", pan: 0.1, hall: 0.25, automated: true},
+		// the percussion, played by hand: hand-played recordings on a sampler each, the days' rhythms in their scripts
+		{name: "shaker", script: "shaker", kind: "sampler", kit: "shaker", level: 0.8, pan: -0.5, hall: 0.25},
+		{name: "tambourine", script: "tambourine", kind: "sampler", kit: "tambourine", level: 0.6, pan: 0.5, hall: 0.3},
+		{name: "wood", script: "wood", kind: "sampler", kit: "wood", level: 0.9, pan: 0.3, hall: 0.35},
+		{name: "hands", script: "hands", kind: "sampler", kit: "hands", level: 0.45, pan: -0.25, hall: 0.3},
+		{name: "cymbal", script: "cymbal", kind: "sampler", kit: "cymbal", level: 0.55, hall: 0.5, heavens: 0.2},
 	}
 }
 
@@ -147,6 +199,11 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 	song := add("song", "", 20, 20)
 	score := add("script", "", 20, 140) // first, so it has put the days in `shared` before the others ask
 	all := parts()
+	if opt.real {
+		for i := range all {
+			all[i] = all[i].real()
+		}
+	}
 	type placed struct {
 		strip
 		script, synth, out string
@@ -181,6 +238,9 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 	for i := range ps {
 		pl := &ps[i]
 		text(pl.script, "code", script(pl.strip.script))
+		if pl.kit != "" && err == nil {
+			pl.sounds, err = kitLines(pl.kit)
+		}
 		if pl.sounds != "" {
 			text(pl.synth, "sounds", pl.sounds)
 		}

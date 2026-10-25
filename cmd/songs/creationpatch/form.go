@@ -98,7 +98,7 @@ func preludeJS(just bool, a4 float64, seed uint64, human bool) (string, error) {
 		}
 	}
 	js := func(v any) string { b, _ := json.Marshal(v); return string(b) }
-	return fmt.Sprintf("shared.beats = %d\nshared.just = %v\nshared.a4 = %v\nshared.seed = %d\nshared.human = %v\nshared.days = %s\nshared.bars = %s\n", beats, just, a4, seed, human, js(ds), js(bars)), nil
+	return fmt.Sprintf("shared.beats = %d\nshared.just = %v\nshared.a4 = %v\nshared.seed = %d\nshared.human = %v\nshared.days = %s\nshared.bars = %s\nshared.kits = %s\n", beats, just, a4, seed, human, js(ds), js(bars), js(kitKeys())), nil
 }
 
 // tempoAt is the tempo in a day, at a bar of it (with the part of a bar): the seventh day is slower, and slower still as the last chord rings
