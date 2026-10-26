@@ -9,4 +9,8 @@ const part = shared.register("flute", { legato: 0.95 }, day => {
   return null
 })
 function section(name) { part.section(name) }
-function trigger(ev) { part.trigger(song, note, ev) }
+const island = shared.islandVoice("flute", { lag: 0, lowest: 71, vel: 1, on: shared.layers.flute })
+function trigger(ev) {
+  part.trigger(song, note, ev)
+  island(song, note, ev)
+}

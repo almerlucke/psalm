@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"slices"
@@ -18,20 +19,23 @@ import (
 
 // the piece plays: every bar of every day (at a fast tempo), without a script saying it went wrong, and with sound; the cables of the recordings reach their
 // levels and the void's reaches its cutoff; every day writes its verse to the log of the patch
-func TestPatchPlays(t *testing.T) { playsPatch(t, false, false) }
+func TestPatchPlays(t *testing.T) { playsPatch(t, false, false, true) }
+
+// the first arrangement, with the strings, the choir and the horns
+func TestPatchPlaysFirstArrangement(t *testing.T) { playsPatch(t, false, false, false) }
 
 // the same made light, with synths where the orchestra is not
-func TestPatchPlaysPlucked(t *testing.T) { playsPatch(t, false, true) }
+func TestPatchPlaysPlucked(t *testing.T) { playsPatch(t, false, true, true) }
 
 // the same with the instruments of the orchestra where it is
 func TestPatchPlaysWithOrchestra(t *testing.T) {
 	if _, err := os.Stat("../../../" + orchestra); err != nil {
 		t.Skip("the Virtual Playing Orchestra is not in assets")
 	}
-	playsPatch(t, true, true)
+	playsPatch(t, true, true, true)
 }
 
-func playsPatch(t *testing.T, real, pluck bool) {
+func playsPatch(t *testing.T, real, pluck, island bool) {
 	if testing.Short() {
 		t.Skip("plays 93 bars")
 	}
@@ -45,11 +49,15 @@ func playsPatch(t *testing.T, real, pluck bool) {
 	p := psalm.New(nil)
 	church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
 	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: church}))
-	ids, err := buildPatch(pt, options{just: true, a4: 440, seed: 1, human: true, jazz: true, pluck: pluck, real: real, once: true})
+	ids, err := buildPatch(pt, options{just: true, a4: 440, seed: 1, human: true, jazz: true, island: island, pluck: pluck, real: real, once: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.Out(pt.Out())
+	dropped := 0 // the strips the recordings come after
+	if island {
+		dropped = len(islandDropped)
+	}
 
 	for _, name := range []string{"upright bass", "vibes", "tabla", "marimba", "kalimba"} {
 		if _, ok := ids.synths[name]; !ok {
@@ -63,7 +71,11 @@ func playsPatch(t *testing.T, real, pluck bool) {
 		}
 	}
 	slices.Sort(keys)
-	want := []string{"cutoff", "level22", "level23", "level24", "level25", "level26"}
+	want := []string{"cutoff"}
+	for i := 22; i <= 26; i++ {
+		want = append(want, fmt.Sprintf("level%d", i-dropped))
+	}
+	slices.Sort(want)
 	if pluck {
 		want = want[1:] // a struck harp has no cutoff to open
 	}
@@ -96,11 +108,11 @@ func playsPatch(t *testing.T, real, pluck bool) {
 				t.Errorf("after the first day the cutoff is %v, want about 1500", c)
 			}
 		case days[1].name: // the waves go on at -8 dB through the second day
-			if l := mixer.Level[21]; math.Abs(l-math.Pow(10, -8.0/20)) > 0.05 {
+			if l := mixer.Level[21-dropped]; math.Abs(l-math.Pow(10, -8.0/20)) > 0.05 {
 				t.Errorf("after the second day the waves are at %v, want about %v", l, math.Pow(10, -8.0/20))
 			}
 		case days[3].name:
-			if l := mixer.Level[21]; l != 0 {
+			if l := mixer.Level[21-dropped]; l != 0 {
 				t.Errorf("the waves are at %v on the fourth day", l)
 			}
 		}

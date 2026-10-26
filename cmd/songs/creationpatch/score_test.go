@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"reflect"
@@ -300,4 +301,40 @@ func toFloat(v any) float64 {
 		return float64(x)
 	}
 	return math.NaN()
+}
+
+// the tune of the island: the same every time, on the hits of the day, breathing every fourth bar, and led by the voices that follow it
+func TestIslandPhrase(t *testing.T) {
+	vm, shared := runtime(t, true)
+	phrase, _ := goja.AssertFunction(shared.Get("phrase"))
+	get := func(dayNumber, bar int) (end int, hits []int) {
+		day := shared.Get("days").ToObject(vm).Get(fmt.Sprint(dayNumber - 1))
+		v, err := phrase(goja.Undefined(), day, vm.ToValue(bar))
+		if err != nil {
+			t.Fatal(err)
+		}
+		o := v.ToObject(vm)
+		hs := o.Get("hits").ToObject(vm)
+		for i := 0; i < int(hs.Get("length").ToInteger()); i++ {
+			h := hs.Get(fmt.Sprint(i)).ToObject(vm)
+			hits = append(hits, int(h.Get("s").ToInteger()))
+			if p := h.Get("pos").ToInteger(); p < 0 || p > 5 {
+				t.Errorf("tone %d out of the chord", p)
+			}
+		}
+		return int(o.Get("end").ToInteger()), hits
+	}
+	for _, c := range []struct{ day, hits int }{{2, 4}, {4, 5}, {6, 7}} {
+		e1, h1 := get(c.day, 5)
+		e2, h2 := get(c.day, 5)
+		if e1 != e2 || !reflect.DeepEqual(h1, h2) || len(h1) != c.hits {
+			t.Errorf("day %d: %v %v, want %d hits the same every time", c.day, h1, h2, c.hits)
+		}
+		if _, h := get(c.day, 3); len(h) != 0 {
+			t.Errorf("day %d: the tune does not breathe in its fourth bar: %v", c.day, h)
+		}
+	}
+	if _, h := get(3, 8); len(h) != 0 {
+		t.Errorf("the plants of the third day are written, not made: %v", h)
+	}
 }

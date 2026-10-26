@@ -148,9 +148,78 @@ shared.layers = {
   tabla: (d, b) => (d.number === 2 && b >= 8) || (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
   tambourine: (d, b) => (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
   wood: (d, b) => (d.number === 3 && b >= 3) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
+  // the canon of the island (see islandVoice): the flute leads, the oboe follows two bars after it, the clarinet two bars after the oboe
+  flute: (d, b) => (d.number === 2 && b >= 8) || d.number === 4 || (d.number === 5 && !shared.morning(b)) || d.number === 6 || (d.number === 7 && b >= 4 && b < 16),
+  oboe: (d, b) => (d.number === 4 && shared.morning(b)) || d.number === 5 || d.number === 6 || (d.number === 7 && b >= 6 && b < 16),
+  clarinet: (d, b) => (d.number === 5 && shared.morning(b)) || d.number === 6 || (d.number === 7 && b >= 8 && b < 16),
   marimba: (d, b) => (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 4 && b < 16),
   kalimba: (d, b) => (d.number >= 5 && d.number <= 6) || (d.number === 7 && b >= 6 && b < 16),
   hands: (d, b) => (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 5) || (d.number === 6 && b >= 2) || (d.number === 7 && b >= 2 && b < 16),
+}
+
+// --- the island: the arrangement that carries the groove of the land through the whole piece ---
+
+// the tones of a chord a tune walks on, as semitones above its root: the root, the third, the fifth, the sixth, the octave and the third above it
+const ISLAND_TONES = q => [0, q.third, 7, 9, 12, 12 + q.third]
+
+// toneAt is the pitch of tone `pos` of the chord of a bar, the lowest tone at `lowest` or the first pitch of the chord above it (folded down when it gets too high)
+shared.toneAt = (br, q, pos, lowest) => {
+  const base = lowest + mod12(br.r - lowest)
+  const p = base + ISLAND_TONES(q)[Math.max(0, Math.min(5, pos))]
+  return p > lowest + 22 ? p - 12 : p
+}
+
+// the hits of a tune a bar: how many of the twelve sixteenths each day (the plants of the third day are written, the rest is made by the days that follow them)
+const TUNE_HITS = { 1: 2, 2: 4, 4: 5, 5: 5, 6: 7, 7: 5 }
+const phrases = {}
+
+// phrase is the tune of bar b of a day, the same for every voice that plays it (the others follow it in canon, on the chords of the bars they play it in): a euclidean
+// rhythm turned a little every bar (the ratio of hits to twelve sixteenths is the day's), and a walk over the tones of the chord that mostly steps, now and then leaps,
+// and is led back to the middle of the tones. Every fourth bar the tune breathes. It goes on from the tone the bar before ended on. {end, hits: [{s, pos, v}]}
+shared.phrase = (day, b) => {
+  const key = day.number * 1000 + b
+  if (phrases[key]) return phrases[key]
+  const prev = b > 0 ? shared.phrase(day, b - 1) : null
+  let pos = prev ? prev.end : 2
+  const k = TUNE_HITS[day.number] || 0
+  const rot = (day.number * 5 + b * 7) % 12
+  const r = rng(shared.seed || 1, "phrase" + key)
+  const hits = []
+  if (k && b % 4 !== 3) {
+    for (let i = 0; i < 12; i++) {
+      const j = (i + rot) % 12
+      if (Math.floor(((j + 1) * k) / 12) === Math.floor((j * k) / 12)) continue
+      const moves = [-2, -1, 1, 2], weights = [1, 3, 3, 1]
+      const pull = (2 - pos) * 0.3
+      const w = moves.map((m, n) => weights[n] * Math.max(0.15, m > 0 ? 1 + pull : 1 - pull))
+      let x = r() * w.reduce((a, c) => a + c, 0), n = 0
+      while (n < 3 && x >= w[n]) x -= w[n++]
+      pos = Math.max(0, Math.min(5, pos + moves[n]))
+      hits.push({ s: i, pos, v: i % 4 === 0 ? 0.55 : i % 2 === 0 ? 0.45 : 0.38 })
+    }
+  }
+  return (phrases[key] = { end: pos, hits })
+}
+
+// islandVoice is a voice of the canon: it plays the tune of the bar `lag` bars before the bar it plays in, on the chord of this bar, from `lowest` up, softer by `vel`,
+// where `on(day, bar)` lets it
+shared.islandVoice = (name, o) => {
+  const play = shared.player(name)
+  let last = -1
+  return (song, note, ev) => {
+    if (!shared.island) return
+    const day = shared.days[song.index]
+    const s = Math.round(song.beat * 4)
+    const at = song.bar * 12 + s
+    if (!day || at === last) return
+    last = at
+    if (song.bar < o.lag || !o.on(day, song.bar)) return
+    const h = shared.phrase(day, song.bar - o.lag).hits.find(h => h.s === s)
+    if (!h) return
+    const br = shared.bar(day, song.bar)
+    const q = shared.quality(br)
+    if (q) play(note, ev, s, shared.toneAt(br, q, h.pos, o.lowest), h.v * o.vel, 3)
+  }
 }
 
 // the feel of the players of the jazz: how far behind the beat (ms; the bass lays back, the ride is on top of it), how loose, how much louder and softer, how
@@ -158,6 +227,9 @@ shared.layers = {
 const PLAYERS = {
   "upright bass": { lay: 9, timing: 5, velocity: 0.1, swing: 0.62 },
   "vibes": { lay: 4, timing: 7, velocity: 0.14, swing: 0.62 },
+  "flute": { lay: 2, timing: 7, velocity: 0.12, swing: 0.62 },
+  "oboe": { lay: 4, timing: 7, velocity: 0.12, swing: 0.62 },
+  "clarinet": { lay: 6, timing: 7, velocity: 0.12, swing: 0.62 },
   "marimba": { lay: 3, timing: 7, velocity: 0.14, swing: 0.6 },
   "kalimba": { lay: 5, timing: 7, velocity: 0.14, swing: 0.6 },
   "tabla": { lay: -3, timing: 4, velocity: 0.12, swing: 0.62 },

@@ -4,4 +4,8 @@ const part = shared.register("oboe", { legato: 0.95 }, day => {
   return day.number === 3 ? shared.join(shared.rest(8), shared.seedA(), shared.seedB()) : null
 })
 function section(name) { part.section(name) }
-function trigger(ev) { part.trigger(song, note, ev) }
+const island = shared.islandVoice("oboe", { lag: 2, lowest: 71, vel: 0.85, on: shared.layers.oboe })
+function trigger(ev) {
+  part.trigger(song, note, ev)
+  island(song, note, ev)
+}

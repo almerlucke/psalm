@@ -3,8 +3,8 @@ package main
 import (
 	"embed"
 	"fmt"
-	"math"
 	"os"
+	"math"
 	"slices"
 
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
@@ -35,14 +35,15 @@ const (
 var tempo = float64(bpm)
 
 type options struct {
-	just  bool
-	a4    float64
-	seed  uint64 // the seed of the feel of the parts
-	human bool   // the parts play off the grid, like players
-	once  bool   // the song ends with its last day, it doesn't loop
-	jazz  bool   // swung, with an upright bass walking, a ride on the bembe and a vibraphone comping
-	pluck bool   // the bowed strings and the brass play plucked and struck instruments instead: a piano, a plucked cello, a vibraphone, a guitar
-	real  bool   // the parts the orchestra has play its recordings instead of the synths (see realParts)
+	just   bool
+	a4     float64
+	seed   uint64 // the seed of the feel of the parts
+	human  bool   // the parts play off the grid, like players
+	once   bool   // the song ends with its last day, it doesn't loop
+	jazz   bool   // swung, with an upright bass walking, a ride on the bembe and a vibraphone comping
+	pluck  bool   // the bowed strings and the brass play plucked and struck instruments instead: a piano, a plucked cello, a vibraphone, a guitar
+	island bool   // the arrangement of the island: the groove of the land through the whole piece, a canon of plucked voices, no pads (see islandDropped)
+	real   bool   // the parts the orchestra has play its recordings instead of the synths (see realParts)
 }
 
 // orchestra is where the Virtual Playing Orchestra is (it is not in the repository: without it the synths play)
@@ -136,6 +137,10 @@ func (s strip) real(pluck bool) strip {
 	s.level *= r.gain
 	return s
 }
+
+// islandDropped are the parts the island does without: the sustained ones, the strings and the horns that held the chords, the choir of the spirit and the deep, the
+// timpani; the groove, a canon of plucked voices and the chords of the vibraphone do what they did
+var islandDropped = []string{"violins", "choir", "horns", "horn", "celli", "spirit", "the deep", "timpani"}
 
 // patchIDs are the modules of the patch to look at: the scripts, and the synths by their part
 type patchIDs struct {
@@ -259,13 +264,16 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 	if err != nil {
 		return patchIDs{}, err
 	}
-	prelude += cutPieces + fmt.Sprintf("shared.pluck = %v\n", opt.pluck)
+	prelude += cutPieces + fmt.Sprintf("shared.pluck = %v\nshared.island = %v\n", opt.pluck, opt.island)
 	pt.Tempo().Set(tempo)
 	song := add("song", "", 20, 20)
 	score := add("script", "", 20, 140) // first, so it has put the days in `shared` before the others ask
 	all := parts()
 	if !opt.jazz {
 		all = slices.DeleteFunc(all, func(s strip) bool { return s.jazz })
+	}
+	if opt.island {
+		all = slices.DeleteFunc(all, func(s strip) bool { return slices.Contains(islandDropped, s.name) })
 	}
 	if opt.pluck {
 		glass, _, gerr := pitched("assets/sounds/glass", "glass", 0)
