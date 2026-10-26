@@ -3,8 +3,8 @@ package main
 import (
 	"embed"
 	"fmt"
-	"os"
 	"math"
+	"os"
 	"slices"
 
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
