@@ -71,7 +71,7 @@ var realParts = map[string]struct {
 	"horn":         {"Brass/french-horn-SOLO-sustain.sfz", 1},
 	"celesta":      {"Keys/celesta.sfz", 1.3},
 	"bell pad":     {"Percussion/vibraphone-open.sfz", 0.8},
-	"bells":        {"Percussion/tubular-bells.sfz", 6},
+	"bells":        {"Percussion/tubular-bells.sfz", 14},
 	"upright bass": {"Strings/bass-SOLO-pizzicato.sfz", 2},
 	"vibes":        {"Percussion/vibraphone-auto-damp.sfz", 8.4},
 	"soprano":      {"Vocals/choir-FEMALE-sustain.sfz", 1.3},
@@ -88,20 +88,20 @@ var pluckedParts = map[string]struct {
 	gain         float64
 	glass        bool // the recordings of struck glass in assets
 }{
-	"void":     {"dx", "woodBass", 1.5, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
-	"spirit":   {"dx", "harp", 1, "Strings/harp-sustain.sfz", 1, false},
+	"void":     {"dx", "woodBass", 6, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
+	"spirit":   {"dx", "harp", 4, "Strings/harp-sustain.sfz", 1, false},
 	"the word": {"dx", "harp", 2, "Strings/harp-sustain.sfz", 1, false},
 	"violins":  {"piano", "grand", 1, "", 1, false},
 	"celli":    {"dx", "pizzicato", 1, "Strings/cello-SOLO-pizzicato.sfz", 1, false},
-	"flute":    {"sampler", "", 1, "", 1, true}, // struck glass, from B4 up: where the flute sings
-	"oboe":     {"dx", "mallet", 1, "Percussion/xylophone.sfz", 1, false},
-	"clarinet": {"dx", "koto", 1, "Strings/harp-dampened.sfz", 1, false},
+	"flute":    {"sampler", "", 3.5, "", 1, true},        // struck glass, from B4 up: where the flute sings
+	"oboe":     {"dx", "nylonGuitar", 1.6, "", 1, false}, // a ukulele,
+	"clarinet": {"dx", "steelGuitar", 1.6, "", 1, false}, // a slack key guitar,
 	"horns":    {"dx", "mallet", 1, "Percussion/vibraphone-open.sfz", 1.9, false},
-	"horn":     {"dx", "nylonGuitar", 1, "", 1, false},
-	"the deep": {"dx", "woodBass", 1, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
+	"horn":     {"dx", "steelGuitar", 0.8, "", 1, false},
+	"the deep": {"dx", "woodBass", 3.2, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
 	"soprano":  {"dx", "celesta", 1, "Keys/celesta.sfz", 1, false},
 	"choir":    {"piano", "grand", 1, "", 1, false},
-	"organ":    {"dx", "harpsichord", 1, "", 1, false},
+	"organ":    {"modal", "vibraphone", 1.5, "", 1, false},
 }
 
 // pluck is the strip played by a plucked or struck instrument in place of a bowed, blown or sung one; glass is the sounds of the struck glass
@@ -175,15 +175,15 @@ func parts() []strip {
 		{name: "celli", script: "celli", kind: "subtractive", preset: "strings", level: amp(0.145), pan: 0.35, hall: 0.4},
 		{name: "pizzicato", script: "pizzicato", kind: "dx", preset: "pizzicato", level: amp(0.25), pan: 0.45, hall: 0.3},
 		{name: "harp", script: "harp", kind: "dx", preset: "harp", level: amp(0.13), pan: 0.55, hall: 0.5},
-		{name: "timpani", script: "timpani", kind: "dx", preset: "timpani", level: amp(0.2) * 1.45, pan: -0.1, hall: 0.45},
+		{name: "timpani", script: "timpani", kind: "dx", preset: "timpani", level: amp(0.2) * 2.8, pan: -0.1, hall: 0.45},
 		{name: "flute", script: "flute", kind: "dx", preset: "flute", chain: "pitchshift", level: amp(0.21), pan: -0.15, hall: 0.4, heavens: 0.1},
 		{name: "oboe", script: "oboe", kind: "dx", preset: "oboe", level: amp(0.2), pan: 0.2, hall: 0.4},
 		{name: "clarinet", script: "clarinet", kind: "dx", preset: "clarinet", level: amp(0.25), pan: -0.4, hall: 0.4},
 		{name: "horns", script: "horns", kind: "dx", preset: "softBrass", level: amp(0.14), pan: -0.2, hall: 0.45},
 		{name: "horn", script: "horn", kind: "dx", preset: "frenchHorn", level: amp(0.33), pan: 0.25, hall: 0.4},
 		{name: "celesta", script: "celesta", kind: "dx", preset: "celesta", chain: "pingpong", level: amp(0.217), pan: 0.3, heavens: 0.8},
-		{name: "bell pad", script: "bellpad", kind: "dx", preset: "bellPad", level: amp(0.0471), hall: 0.4, heavens: 0.3},
-		{name: "bells", script: "bells", kind: "dx", preset: "musicBox", level: amp(0.12) * 1.6, pan: 0.15, hall: 0.5, heavens: 0.3},
+		{name: "bell pad", script: "bellpad", kind: "dx", preset: "bellPad", level: amp(0.0471) * 2, hall: 0.4, heavens: 0.3},
+		{name: "bells", script: "bells", kind: "dx", preset: "musicBox", level: amp(0.12) * 4, pan: 0.15, hall: 0.5, heavens: 0.3},
 		{name: "the deep", script: "deep", kind: "pulsar", preset: "formantPad", level: amp(0.2), hall: 0.5},
 		{name: "piano", script: "piano", kind: "piano", preset: "grand", level: amp(0.2), pan: -0.05, hall: 0.35},
 		{name: "soprano", script: "soprano", kind: "pulsar", preset: "vowelLead", level: amp(0.34) * churchLevel, heavens: 0.15, church: churchSend},
@@ -196,15 +196,15 @@ func parts() []strip {
 		{name: "animals", script: "animals", kind: "sampler", sounds: "36 " + animalsPath + " whole loop=1.5 name=animals", hall: 0.15, automated: true},
 		{name: "children", script: "children", kind: "sampler", sounds: "36 " + childrenPath + " whole name=children", pan: 0.1, hall: 0.25, automated: true},
 		// the percussion, played by hand: hand-played recordings on a sampler each, the days' rhythms in their scripts
-		{name: "shaker", script: "shaker", kind: "sampler", kit: "shaker", level: 0.8, pan: -0.5, hall: 0.25},
-		{name: "tambourine", script: "tambourine", kind: "sampler", kit: "tambourine", level: 0.5, pan: 0.5, hall: 0.3},
+		{name: "shaker", script: "shaker", kind: "sampler", kit: "shaker", level: 1.2, pan: -0.5, hall: 0.25},
+		{name: "tambourine", script: "tambourine", kind: "sampler", kit: "tambourine", level: 0.8, pan: 0.5, hall: 0.3},
 		{name: "wood", script: "wood", kind: "sampler", kit: "wood", level: 0.22, pan: 0.3, hall: 0.35},
-		{name: "hands", script: "hands", kind: "sampler", kit: "hands", level: 0.3, pan: -0.25, hall: 0.3},
+		{name: "hands", script: "hands", kind: "sampler", kit: "hands", level: 0.45, pan: -0.25, hall: 0.3},
 		{name: "cymbal", script: "cymbal", kind: "sampler", kit: "cymbal", level: 0.55, hall: 0.5, heavens: 0.2},
 		// the jazz: a walking bass, a ride on the bembe and a vibraphone comping on the chords, all in the ratios of the rest
-		{name: "upright bass", script: "jazzbass", kind: "dx", preset: "woodBass", level: amp(0.25), pan: -0.15, hall: 0.12, jazz: true},
+		{name: "upright bass", script: "jazzbass", kind: "dx", preset: "woodBass", level: amp(0.25) * 0.65, pan: -0.15, hall: 0.12, jazz: true},
 		{name: "vibes", script: "vibes", kind: "dx", preset: "mallet", level: amp(0.05), pan: 0.2, hall: 0.35, heavens: 0.1, jazz: true},
-		{name: "tabla", script: "tabla", kind: "sampler", kit: "tabla", level: 0.4, pan: 0.3, hall: 0.2, jazz: true},
+		{name: "tabla", script: "tabla", kind: "sampler", kit: "tabla", level: 0.7, pan: 0.3, hall: 0.2, jazz: true},
 	}
 }
 
