@@ -139,16 +139,16 @@ shared.doxology = () => shared.parse(
 
 // --- jazz: the parts that are not written, but played as the song goes ---
 
-// the layers of the jazz and the bars they play in: the bass walks from the third day on, the tabla keeps the bembe from the second, the vibraphone comps from the
-// fourth, and in the Doxology all three play it as a waltz, until the last chord rings alone
+// the layers of the jazz and the percussion and the bars they play in; in the Doxology all of them play it as a waltz, until the last chord rings alone
+// the land (the third day, from its morning) is the groove the piece keeps: from there on the bass, the tabla, the tubes, the tambourine and the hand drums play all
+// the days through, the evenings too, and the vibraphone joins on the fourth
 shared.layers = {
-  bass: (d, b) => (d.number >= 3 && d.number <= 6 && (shared.morning(b) || (d.number >= 5 && b >= 3))) || (d.number === 7 && b >= 2 && b < 16),
-  vibes: (d, b) => (d.number >= 4 && d.number <= 6 && shared.morning(b)) || (d.number === 7 && b >= 4 && b < 16),
-  tabla: (d, b) => (d.number >= 2 && d.number <= 6 && shared.morning(b) && (d.number > 2 || b >= 8)) || (d.number === 7 && b >= 2 && b < 16),
-  // the percussion: the tambourine with the sun, the tubes with the land and the creatures, the hand drums with the beasts and in the praise
-  tambourine: (d, b) => (d.number >= 3 && d.number <= 6 && (shared.morning(b) || d.number >= 5)) || (d.number === 7 && b >= 2 && b < 16),
-  wood: (d, b) => (d.number === 2 && b >= 6) || (d.number >= 3 && d.number <= 6 && (shared.morning(b) || d.number >= 4)) || (d.number === 7 && b >= 2 && b < 16),
-  hands: (d, b) => (d.number >= 3 && d.number <= 5 && (shared.morning(b) || d.number >= 4)) || (d.number === 6 && b >= 2) || (d.number === 7 && b >= 2 && b < 16),
+  bass: (d, b) => (d.number === 2 && b >= 8) || (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
+  vibes: (d, b) => (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 4 && b < 16),
+  tabla: (d, b) => (d.number === 2 && b >= 8) || (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
+  tambourine: (d, b) => (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
+  wood: (d, b) => (d.number === 3 && b >= 3) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
+  hands: (d, b) => (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 5) || (d.number === 6 && b >= 2) || (d.number === 7 && b >= 2 && b < 16),
 }
 
 // the feel of the players of the jazz: how far behind the beat (ms; the bass lays back, the ride is on top of it), how loose, how much louder and softer, how
