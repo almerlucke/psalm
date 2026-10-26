@@ -93,11 +93,11 @@ var pluckedParts = map[string]struct {
 	"the word": {"dx", "harp", 2, "Strings/harp-sustain.sfz", 1, false},
 	"violins":  {"piano", "grand", 1, "", 1, false},
 	"celli":    {"dx", "pizzicato", 1, "Strings/cello-SOLO-pizzicato.sfz", 1, false},
-	"flute":    {"sampler", "", 3.5, "", 1, true},        // struck glass, from B4 up: where the flute sings
-	"oboe":     {"dx", "nylonGuitar", 1.6, "", 1, false}, // a ukulele,
-	"clarinet": {"dx", "steelGuitar", 1.6, "", 1, false}, // a slack key guitar,
+	"flute":    {"sampler", "", 3.5, "", 1, true}, // struck glass, from B4 up: where the flute sings
+	"oboe":     {"dx", "mallet", 1.6, "Percussion/xylophone.sfz", 1, false},
+	"clarinet": {"dx", "koto", 1.6, "Strings/harp-dampened.sfz", 1, false},
 	"horns":    {"dx", "mallet", 1, "Percussion/vibraphone-open.sfz", 1.9, false},
-	"horn":     {"dx", "steelGuitar", 0.8, "", 1, false},
+	"horn":     {"dx", "nylonGuitar", 0.8, "", 1, false},
 	"the deep": {"dx", "woodBass", 3.2, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
 	"soprano":  {"dx", "celesta", 1, "Keys/celesta.sfz", 1, false},
 	"choir":    {"piano", "grand", 1, "", 1, false},

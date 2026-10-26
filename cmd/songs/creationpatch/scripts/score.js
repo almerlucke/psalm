@@ -205,9 +205,9 @@ shared.walkChain = q => {
 }
 
 // voice puts the tones of a chord in a close voicing above a pitch, each above the one before: type "A" is the third, fifth, seventh and ninth, "B" the seventh,
-// ninth, third and fifth (the root left to the bass)
+// ninth, third and fifth (the root left to the bass), "C" the sixth chord of the islands: the third, fifth, sixth and ninth
 shared.voice = (br, q, type, lowest) => {
-  const degrees = type === "A" ? [q.third, 7, q.seventh, 14] : [q.seventh, 14, q.third + 12, 19]
+  const degrees = type === "A" ? [q.third, 7, q.seventh, 14] : type === "C" ? [q.third, 7, 9, 14] : [q.seventh, 14, q.third + 12, 19]
   const out = []
   let floor = lowest
   for (const d of degrees) {
