@@ -2,7 +2,7 @@
 // (the fourth day), seven in twelve with the creatures and mankind, three in the Doxology (the Trinity); the cycle is turned a little every day. The accents are on the beat
 clock("1/16")
 const play = shared.player("tambourine")
-const HITS = [0, 0, 0, 5, 7, 7, 3]
+const HITS = [0, 0, 5, 7, 7, 7, 5]
 let pattern = null, last = -1
 function section(name) {
   const day = shared.day(name)

@@ -146,9 +146,9 @@ shared.layers = {
   vibes: (d, b) => (d.number >= 4 && d.number <= 6 && shared.morning(b)) || (d.number === 7 && b >= 4 && b < 16),
   tabla: (d, b) => (d.number >= 2 && d.number <= 6 && shared.morning(b) && (d.number > 2 || b >= 8)) || (d.number === 7 && b >= 2 && b < 16),
   // the percussion: the tambourine with the sun, the tubes with the land and the creatures, the hand drums with the beasts and in the praise
-  tambourine: (d, b) => (d.number >= 4 && d.number <= 6 && shared.morning(b)) || (d.number === 7 && b >= 4 && b < 16),
-  wood: (d, b) => (d.number === 3 && b >= 3) || (d.number >= 4 && d.number <= 6 && shared.morning(b)) || (d.number === 7 && b >= 6 && b < 16),
-  hands: (d, b) => (d.number === 5 && shared.morning(b)) || (d.number === 6 && b >= 2) || (d.number === 7 && b >= 4 && b < 16),
+  tambourine: (d, b) => (d.number >= 3 && d.number <= 6 && (shared.morning(b) || d.number >= 5)) || (d.number === 7 && b >= 2 && b < 16),
+  wood: (d, b) => (d.number === 2 && b >= 6) || (d.number >= 3 && d.number <= 6 && (shared.morning(b) || d.number >= 4)) || (d.number === 7 && b >= 2 && b < 16),
+  hands: (d, b) => (d.number >= 3 && d.number <= 5 && (shared.morning(b) || d.number >= 4)) || (d.number === 6 && b >= 2) || (d.number === 7 && b >= 2 && b < 16),
 }
 
 // the feel of the players of the jazz: how far behind the beat (ms; the bass lays back, the ride is on top of it), how loose, how much louder and softer, how

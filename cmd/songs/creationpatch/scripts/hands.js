@@ -1,6 +1,6 @@
 // the low hand drums of the percussion recording, cut at their hits, a markov chain walking the pieces (mostly on to the next, now and then two on, one back or the same
-// again) on a euclidean cycle of twelve: three, one a beat, for the beasts' tread on the evening of the sixth day and in the praise, five for the creatures, seven
-// for the dance of mankind
+// again) on a euclidean cycle of twelve, turned to fall on the offbeats like a conga: five, and seven for the creatures and the dance of mankind; the beasts tread on
+// the beat on the evening of the sixth day
 clock("1/16")
 const play = shared.player("hands")
 const R = genny.rand(0, 1)
@@ -8,8 +8,8 @@ let pattern = null, walk = null, last = -1
 function section(name) {
   const day = shared.day(name)
   walk = shared.walker(shared.pieces.hands.length, 0)
-  const hits = day.number === 6 ? 7 : day.number === 5 ? 5 : 3
-  const g = genny.euclid(hits, 12, 0)
+  const hits = day.number >= 5 && day.number <= 6 ? 7 : 5 // the conga: offbeats, turned by two so that the hits fall on the "and"
+  const g = genny.euclid(hits, 12, 2)
   pattern = Array.from({ length: 12 }, () => g.next())
 }
 function trigger(ev) {

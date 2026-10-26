@@ -8,9 +8,9 @@ let voices = null, last = -1
 function section(name) {
   const n = shared.pieces.wood.length
   voices = [
-    { cycle: genny.euclid(5, 12, 0), walk: shared.walker(n, 3), vel: 0.4, day: 3 },
-    { cycle: genny.euclid(4, 9, 2), walk: shared.walker(n, Math.floor(n / 3)), vel: 0.34, day: 5 },
-    { cycle: genny.euclid(3, 7, 1), walk: shared.walker(n, Math.floor(2 * n / 3)), vel: 0.3, day: 7 },
+    { cycle: genny.euclid(5, 12, 0), walk: shared.walker(n, 3), vel: 0.42, day: 2 },
+    { cycle: genny.euclid(4, 9, 2), walk: shared.walker(n, Math.floor(n / 3)), vel: 0.36, day: 4 },
+    { cycle: genny.euclid(3, 7, 1), walk: shared.walker(n, Math.floor(2 * n / 3)), vel: 0.32, day: 6 },
   ]
 }
 function trigger(ev) {
