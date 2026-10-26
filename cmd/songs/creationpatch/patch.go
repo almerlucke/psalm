@@ -88,20 +88,21 @@ var pluckedParts = map[string]struct {
 	gain         float64
 	glass        bool // the recordings of struck glass in assets
 }{
-	"void":     {"dx", "woodBass", 6, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
-	"spirit":   {"dx", "harp", 4, "Strings/harp-sustain.sfz", 1, false},
-	"the word": {"dx", "harp", 2, "Strings/harp-sustain.sfz", 1, false},
-	"violins":  {"piano", "grand", 1, "", 1, false},
-	"celli":    {"dx", "pizzicato", 1, "Strings/cello-SOLO-pizzicato.sfz", 1, false},
-	"flute":    {"sampler", "", 3.5, "", 1, true}, // struck glass, from B4 up: where the flute sings
-	"oboe":     {"dx", "mallet", 1.6, "Percussion/xylophone.sfz", 1, false},
-	"clarinet": {"dx", "koto", 1.6, "Strings/harp-dampened.sfz", 1, false},
-	"horns":    {"dx", "mallet", 1, "Percussion/vibraphone-open.sfz", 1.9, false},
-	"horn":     {"dx", "nylonGuitar", 0.8, "", 1, false},
-	"the deep": {"dx", "woodBass", 3.2, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
-	"soprano":  {"dx", "celesta", 1, "Keys/celesta.sfz", 1, false},
-	"choir":    {"piano", "grand", 1, "", 1, false},
-	"organ":    {"modal", "vibraphone", 1.5, "", 1, false},
+	"void":      {"dx", "woodBass", 6, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
+	"spirit":    {"dx", "harp", 4, "Strings/harp-sustain.sfz", 1, false},
+	"the word":  {"dx", "harp", 2, "Strings/harp-sustain.sfz", 1, false},
+	"violins":   {"piano", "grand", 1, "", 1, false},
+	"pizzicato": {"modal", "marimba", 0.4, "", 1, false},
+	"celli":     {"dx", "pizzicato", 1, "Strings/cello-SOLO-pizzicato.sfz", 1, false},
+	"flute":     {"sampler", "", 3.5, "", 1, true}, // struck glass, from B4 up: where the flute sings
+	"oboe":      {"dx", "mallet", 1.6, "Percussion/xylophone.sfz", 1, false},
+	"clarinet":  {"dx", "koto", 1.6, "Strings/harp-dampened.sfz", 1, false},
+	"horns":     {"dx", "mallet", 1, "Percussion/vibraphone-open.sfz", 1.9, false},
+	"horn":      {"dx", "nylonGuitar", 0.8, "", 1, false},
+	"the deep":  {"dx", "woodBass", 3.2, "Strings/bass-SOLO-pizzicato.sfz", 1, false},
+	"soprano":   {"dx", "celesta", 1, "Keys/celesta.sfz", 1, false},
+	"choir":     {"piano", "grand", 1, "", 1, false},
+	"organ":     {"modal", "vibraphone", 1.5, "", 1, false},
 }
 
 // pluck is the strip played by a plucked or struck instrument in place of a bowed, blown or sung one; glass is the sounds of the struck glass
@@ -205,6 +206,9 @@ func parts() []strip {
 		{name: "upright bass", script: "jazzbass", kind: "dx", preset: "woodBass", level: amp(0.25) * 0.65, pan: -0.15, hall: 0.12, jazz: true},
 		{name: "vibes", script: "vibes", kind: "dx", preset: "mallet", level: amp(0.05), pan: 0.2, hall: 0.35, heavens: 0.1, jazz: true},
 		{name: "tabla", script: "tabla", kind: "sampler", kit: "tabla", level: 0.7, pan: 0.3, hall: 0.2, jazz: true},
+		// a marimba and a kalimba play a little tune on the chords in canon, half a bar apart
+		{name: "marimba", script: "marimba", kind: "modal", preset: "marimba", level: 0.22, pan: -0.3, hall: 0.3, heavens: 0.1, jazz: true},
+		{name: "kalimba", script: "kalimba", kind: "modal", preset: "kalimba", level: 0.3, pan: 0.35, hall: 0.35, heavens: 0.2, jazz: true},
 	}
 }
 

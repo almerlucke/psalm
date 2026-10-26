@@ -148,6 +148,8 @@ shared.layers = {
   tabla: (d, b) => (d.number === 2 && b >= 8) || (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
   tambourine: (d, b) => (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
   wood: (d, b) => (d.number === 3 && b >= 3) || (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 2 && b < 16),
+  marimba: (d, b) => (d.number >= 4 && d.number <= 6) || (d.number === 7 && b >= 4 && b < 16),
+  kalimba: (d, b) => (d.number >= 5 && d.number <= 6) || (d.number === 7 && b >= 6 && b < 16),
   hands: (d, b) => (d.number === 3 && shared.morning(b)) || (d.number >= 4 && d.number <= 5) || (d.number === 6 && b >= 2) || (d.number === 7 && b >= 2 && b < 16),
 }
 
@@ -156,6 +158,8 @@ shared.layers = {
 const PLAYERS = {
   "upright bass": { lay: 9, timing: 5, velocity: 0.1, swing: 0.62 },
   "vibes": { lay: 4, timing: 7, velocity: 0.14, swing: 0.62 },
+  "marimba": { lay: 3, timing: 7, velocity: 0.14, swing: 0.6 },
+  "kalimba": { lay: 5, timing: 7, velocity: 0.14, swing: 0.6 },
   "tabla": { lay: -3, timing: 4, velocity: 0.12, swing: 0.62 },
   "tambourine": { lay: 0, timing: 7, velocity: 0.15, swing: 0.6 },
   "wood": { lay: 2, timing: 8, velocity: 0.15, swing: 0.58 },

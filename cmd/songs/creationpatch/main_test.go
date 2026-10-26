@@ -51,7 +51,7 @@ func playsPatch(t *testing.T, real, pluck bool) {
 	}
 	p.Out(pt.Out())
 
-	for _, name := range []string{"upright bass", "vibes", "tabla"} {
+	for _, name := range []string{"upright bass", "vibes", "tabla", "marimba", "kalimba"} {
 		if _, ok := ids.synths[name]; !ok {
 			t.Errorf("no %s in a jazzed patch", name)
 		}
@@ -133,7 +133,7 @@ func TestNoJazz(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"upright bass", "vibes", "tabla"} {
+	for _, name := range []string{"upright bass", "vibes", "tabla", "marimba", "kalimba"} {
 		if _, ok := ids.synths[name]; ok {
 			t.Errorf("%s in a patch that is not jazzed", name)
 		}
