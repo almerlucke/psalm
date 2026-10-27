@@ -547,7 +547,13 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 		}
 		if made.Bind != nil && n.settings != nil {
 			settings := n.settings
-			made.Bind(func(values map[string]float64) { settings.Apply(values) }, func(labels map[string]string) {
+			made.Bind(func(values map[string]float64) {
+				if sh, ok := settings.(interface{ Show(map[string]float64) }); ok {
+					sh.Show(values) // the module has them: the knobs follow, nothing is sent back
+				} else {
+					settings.Apply(values)
+				}
+			}, func(labels map[string]string) {
 				if r, ok := settings.(interface{ Relabel(map[string]string) }); ok {
 					r.Relabel(labels)
 				}

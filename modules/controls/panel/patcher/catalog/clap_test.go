@@ -203,7 +203,7 @@ func TestClapStateInPatch(t *testing.T) {
 	until(p1, "the knob does not follow what the plugin did itself", func() bool { return math.Abs(node(pt, id).Values()["output gain"]-0.123) < 1e-6 })
 	pl.ReceiveMessage(psalm.Message{"command": "trigger", "noteOff": "gui", "tick": psalm.CtrlTick{}})
 	pt.SettingsOf(id).Apply(map[string]float64{"output gain": 1})
-	until(p1, "the knob does not go back to 1", func() bool { return node(pt, id).Values()["output gain"] == 1 })
+	until(p1, "the knob does not go back to 1", func() bool { return node(pt, id).Values()["output gain"] == 1 && pl.Values()["output gain"] == 1 }) // and the plugin has it: the knobs follow it, nothing is echoed
 	if err := pt.Save("with state"); err != nil {
 		t.Fatal(err)
 	}

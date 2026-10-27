@@ -194,6 +194,16 @@ func (e *Editor) Values() map[string]float64 { return e.store.values() }
 // left out
 func (e *Editor) Apply(values map[string]float64) { e.store.apply(values) }
 
+// Show puts the controls at values by key without sending them: the module has them already (a plugin that changed its own settings, in its window or by a preset
+// of its own), and telling it again what it just told would put back what the controls had before. From any goroutine
+func (e *Editor) Show(values map[string]float64) {
+	for key, v := range values {
+		if c := e.parts[key]; c != nil {
+			c.Place(v)
+		}
+	}
+}
+
 // Relabel changes the labels the page shows for settings, by key (a plugin that renames its settings): the page has them when it asks for the panel next
 func (e *Editor) Relabel(labels map[string]string) {
 	for key, label := range labels {

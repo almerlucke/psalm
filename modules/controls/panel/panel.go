@@ -361,6 +361,7 @@ func (par *Param) Value() float64 { return math.Float64frombits(par.value.Load()
 // control again
 func (par *Param) Set(v float64) {
 	par.set(v)
+	par.placed.Store(false) // a value asked for after a placement is sent: the placement not yet seen by a tick must not drop it
 	par.caught.Store(false)
 }
 
