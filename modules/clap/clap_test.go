@@ -310,3 +310,48 @@ func TestPorts(t *testing.T) {
 		t.Errorf("tempo: %v, want 0.612", got)
 	}
 }
+
+// a plugin that crashes (a write to address 0 in its process) does not take the program down: it is dead and silent, and another one goes on
+func TestCrash(t *testing.T) {
+	dir := testPlugins(t)
+	bad, err := New(find(t, dir, "psalm.test.sine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer bad.Free()
+	good, err := New(find(t, dir, "psalm.test.sine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer good.Free()
+	good.ReceiveMessage(trigger(map[string]any{"noteOn": "a", "amplitude": 1.0, "message": psalm.Message{"pitch": 69.0}, "tick": psalm.CtrlTick{}}))
+	bad.ReceiveMessage(trigger(map[string]any{"noteOn": "a", "amplitude": 1.0, "message": psalm.Message{"pitch": 126.0}, "tick": psalm.CtrlTick{}}))
+	for range 3 {
+		bad.ResetRun()
+		bad.Synthesize() // the fault is in here
+		good.ResetRun()
+		good.Synthesize()
+	}
+	if sig := bad.Crashed(); sig != 11 {
+		t.Fatalf("crashed with the signal %d, want 11", sig)
+	}
+	for _, s := range bad.Output(0).Channels[0] {
+		if s != 0 {
+			t.Fatal("a plugin that crashed makes sound")
+		}
+	}
+	peak := 0.0
+	for _, s := range good.Output(0).Channels[0] {
+		peak = math.Max(peak, math.Abs(float64(s)))
+	}
+	if good.Crashed() != 0 || peak < 0.3 {
+		t.Errorf("the other plugin: crashed %d, peak %v", good.Crashed(), peak)
+	}
+	// it answers nothing now, and nothing else breaks
+	if bad.Describe().Name == "" || len(bad.Values()) == 0 {
+		t.Error("a plugin that crashed cannot be described")
+	}
+	bad.ReceiveMessage(trigger(map[string]any{"noteOn": "b", "amplitude": 1.0, "message": psalm.Message{"pitch": 60.0}, "tick": psalm.CtrlTick{}}))
+	bad.ResetRun()
+	bad.Synthesize()
+}

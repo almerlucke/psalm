@@ -635,6 +635,15 @@ func (p *Plugin) Keys() []string {
 	return out
 }
 
+// Crashed is the signal that crashed the plugin (11 for a fault, 6 for an abort), 0 while it is well: a plugin that crashed in a call we made makes no more sound and
+// answers nothing, and the program goes on
+func (p *Plugin) Crashed() int {
+	if p.inst == nil {
+		return 0
+	}
+	return int(C.pi_dead(p.inst))
+}
+
 // Close lets the plugin go: the audio thread frees it at its next block (or Free does, when it doesn't run)
 func (p *Plugin) Close() { p.closed.Store(true) }
 
@@ -798,6 +807,9 @@ func (p *Plugin) Synthesize() {
 	if tempo := math.Float64frombits(p.tempo.Load()); tempo > 0 {
 		C.pi_transport(p.inst, C.double(tempo), C.double(math.Float64frombits(p.beats.Load())), 1)
 	}
+	if C.pi_dead(p.inst) != 0 { // it crashed: silence
+		return
+	}
 	var in0, in1, sc0, sc1 *C.float
 	if p.inCh > 0 {
 		in := p.Input(0).Channels
@@ -812,6 +824,9 @@ func (p *Plugin) Synthesize() {
 		sc0, sc1 = (*C.float)(unsafe.Pointer(&sc[0][0])), (*C.float)(unsafe.Pointer(&sc[1][0]))
 	}
 	C.pi_process(p.inst, in0, in1, sc0, sc1, C.uint32_t(n))
+	if C.pi_dead(p.inst) != 0 {
+		return // it crashed in this block: what it left in its buffers is not sound
+	}
 	p.collectChanges()
 	if C.pi_take_rescan(p.inst) != 0 && p.relabeling.CompareAndSwap(false, true) {
 		go func() { // off the audio thread: it asks for every name

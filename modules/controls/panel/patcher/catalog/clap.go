@@ -74,6 +74,9 @@ func clapKinds(dirs ...string) []patcher.Kind {
 					},
 					Bind: pl.Bind,
 					Status: func() string {
+						if sig := pl.Crashed(); sig != 0 {
+							return fmt.Sprintf("crashed (signal %d): take it away and add it again", sig)
+						}
 						if l := pl.Latency(); l > 0 {
 							return fmt.Sprintf("latency %d samples (%.1f ms)", l, float64(l)/psalm.CurrentEnv().Config().SampleRate*1000)
 						}

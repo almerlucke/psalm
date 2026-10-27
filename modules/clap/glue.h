@@ -91,4 +91,7 @@ void pi_cache_cookies(pc_inst *inst);
 // what the plugin did to its own parameters in the last block (a knob turned in its window): the ids and the values, up to max of them; returns how many
 int pi_take_changes(pc_inst *inst, uint32_t *ids, double *values, int max);
 
+// the signal that crashed the plugin (SIGSEGV, SIGABRT ...), 0 when it is well: a plugin that crashed in a call we made makes no more sound and answers nothing
+int pi_dead(pc_inst *inst);
+
 #endif

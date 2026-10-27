@@ -37,6 +37,9 @@ static void handle(test *t, const clap_event_header_t *h) {
 	switch (h->type) {
 	case CLAP_EVENT_NOTE_ON: {
 		const clap_event_note_t *n = (const clap_event_note_t *)h;
+		if (n->key == 126 && t->instrument) { // a plugin that crashes
+			*(volatile int *)0 = 1;
+		}
 		if (n->key == 127 && t->instrument && g_out) { // a knob turned in the plugin's own window: it tells the host
 			t->gain = 0.123;
 			clap_event_param_value_t pv = {{sizeof pv, 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0}, 0, NULL, -1, -1, -1, -1, 0.123};

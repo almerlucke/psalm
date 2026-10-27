@@ -18,6 +18,108 @@
 
 #define MAX_EVENTS 4096
 
+// --- crash containment: a plugin that crashes (a fault, an abort) in a call we made into it does not take the program with it. The signal is caught on the thread
+// that made the call, which jumps back out of the plugin; the instance is marked dead and makes no sound after that. Faults anywhere else go on to the program's own
+// handlers (Go's) ---
+#include <setjmp.h>
+#include <signal.h>
+
+static __thread sigjmp_buf *tl_jmp;
+static struct sigaction old_acts[32];
+static const int guarded_signals[] = {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT};
+static pthread_once_t guard_once = PTHREAD_ONCE_INIT;
+volatile int pc_last_crash; // the signal of the last crash
+
+static void crash_handler(int sig, siginfo_t *si, void *uc) {
+	if (tl_jmp) {
+		siglongjmp(*tl_jmp, sig);
+	}
+	struct sigaction *old = &old_acts[sig];
+	if (old->sa_flags & SA_SIGINFO) {
+		old->sa_sigaction(sig, si, uc);
+	} else if (old->sa_handler == SIG_DFL) {
+		signal(sig, SIG_DFL);
+		raise(sig);
+	} else if (old->sa_handler != SIG_IGN) {
+		old->sa_handler(sig);
+	}
+}
+
+static void install_guard(void) {
+	for (size_t i = 0; i < sizeof guarded_signals / sizeof *guarded_signals; i++) {
+		struct sigaction sa;
+		memset(&sa, 0, sizeof sa);
+		sa.sa_sigaction = crash_handler;
+		sa.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_NODEFER;
+		sigemptyset(&sa.sa_mask);
+		sigaction(guarded_signals[i], &sa, &old_acts[guarded_signals[i]]);
+	}
+}
+
+static int inst_dead(pc_inst *inst);
+static void mark_dead(pc_inst *inst, int sig);
+
+#define GUARD(inst, call, failure) \
+	do { \
+		pthread_once(&guard_once, install_guard); \
+		pc_inst *gi_ = (inst); \
+		if (gi_ && inst_dead(gi_)) { \
+			return failure; \
+		} \
+		sigjmp_buf jb_; \
+		sigjmp_buf *prev_ = tl_jmp; \
+		int sig_ = sigsetjmp(jb_, 1); \
+		if (sig_ == 0) { \
+			tl_jmp = &jb_; \
+			__typeof__(call) r_ = call; \
+			tl_jmp = prev_; \
+			return r_; \
+		} \
+		tl_jmp = prev_; \
+		mark_dead(gi_, sig_); \
+		return failure; \
+	} while (0)
+
+// a call in the middle of a function: a crash jumps to the end of it
+#define SAFE(inst, stmt) \
+	do { \
+		pthread_once(&guard_once, install_guard); \
+		pc_inst *si_ = (inst); \
+		if (!si_->dead) { \
+			sigjmp_buf jb_; \
+			sigjmp_buf *prev_ = tl_jmp; \
+			int sig_ = sigsetjmp(jb_, 1); \
+			if (sig_ == 0) { \
+				tl_jmp = &jb_; \
+				stmt; \
+				tl_jmp = prev_; \
+			} else { \
+				tl_jmp = prev_; \
+				mark_dead(si_, sig_); \
+			} \
+		} \
+	} while (0)
+
+#define GUARD_VOID(inst, call) \
+	do { \
+		pthread_once(&guard_once, install_guard); \
+		pc_inst *gi_ = (inst); \
+		if (gi_ && inst_dead(gi_)) { \
+			return; \
+		} \
+		sigjmp_buf jb_; \
+		sigjmp_buf *prev_ = tl_jmp; \
+		int sig_ = sigsetjmp(jb_, 1); \
+		if (sig_ == 0) { \
+			tl_jmp = &jb_; \
+			call; \
+			tl_jmp = prev_; \
+			return; \
+		} \
+		tl_jmp = prev_; \
+		mark_dead(gi_, sig_); \
+	} while (0)
+
 typedef struct {
 	uint32_t flags, kind;
 	char name[256], location[1024];
@@ -65,6 +167,7 @@ struct pc_inst {
 	int n;
 	pc_event ev[MAX_EVENTS];
 	int started, activated;
+	volatile int dead; // the signal that crashed it, or 0
 	uint32_t change_ids[512]; // what the plugin did to its own parameters in the last block
 	double change_values[512];
 	int n_changes;
@@ -283,7 +386,7 @@ static bool out_push(const clap_output_events_t *list, const clap_event_header_t
 	return true;
 }
 
-pc_lib *pc_open(const char *path, char *err, int errcap) {
+static pc_lib *pc_open_in(const char *path, char *err, int errcap) {
 	void *h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
 	if (!h) {
 		seterr(err, errcap, dlerror());
@@ -314,9 +417,9 @@ pc_lib *pc_open(const char *path, char *err, int errcap) {
 	return lib;
 }
 
-int pc_count(pc_lib *lib) { return (int)lib->factory->get_plugin_count(lib->factory); }
+int static pc_count_in(pc_lib *lib) { return (int)lib->factory->get_plugin_count(lib->factory); }
 
-int pc_desc(pc_lib *lib, int i, char *id, char *name, char *vendor, char *features, int cap) {
+int static pc_desc_in(pc_lib *lib, int i, char *id, char *name, char *vendor, char *features, int cap) {
 	const clap_plugin_descriptor_t *d = lib->factory->get_plugin_descriptor(lib->factory, (uint32_t)i);
 	if (!d) {
 		return 0;
@@ -351,7 +454,7 @@ static int port_channels(pc_inst *inst, int is_input, int *chs) {
 	return n;
 }
 
-pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFrames, char *err, int errcap) {
+static pc_inst *pi_new_in(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFrames, char *err, int errcap) {
 	pc_inst *inst = calloc(1, sizeof *inst);
 	inst->lib = lib;
 	pthread_mutex_init(&inst->gui_mu, NULL);
@@ -416,7 +519,7 @@ pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFram
 	return inst;
 }
 
-void pi_free(pc_inst *inst) {
+void static pi_free_in(pc_inst *inst) {
 	if (!inst) {
 		return;
 	}
@@ -443,9 +546,9 @@ void pi_ports(pc_inst *inst, int *in, int *out) {
 	*out = inst->out_ch;
 }
 
-int pi_param_count(pc_inst *inst) { return inst->params ? (int)inst->params->count(inst->plugin) : 0; }
+int static pi_param_count_in(pc_inst *inst) { return inst->params ? (int)inst->params->count(inst->plugin) : 0; }
 
-int pi_param_info(pc_inst *inst, int i, uint32_t *id, char *name, char *module, int cap, double *min, double *max, double *def, uint32_t *flags) {
+int static pi_param_info_in(pc_inst *inst, int i, uint32_t *id, char *name, char *module, int cap, double *min, double *max, double *def, uint32_t *flags) {
 	clap_param_info_t info;
 	if (!inst->params || !inst->params->get_info(inst->plugin, (uint32_t)i, &info)) {
 		return 0;
@@ -460,7 +563,7 @@ int pi_param_info(pc_inst *inst, int i, uint32_t *id, char *name, char *module, 
 	return 1;
 }
 
-double pi_param_value(pc_inst *inst, uint32_t id) {
+double static pi_param_value_in(pc_inst *inst, uint32_t id) {
 	double v = 0;
 	if (inst->params && inst->params->get_value(inst->plugin, id, &v)) {
 		return v;
@@ -468,7 +571,7 @@ double pi_param_value(pc_inst *inst, uint32_t id) {
 	return 0;
 }
 
-int pi_param_text(pc_inst *inst, uint32_t id, double value, char *out, int cap) {
+int static pi_param_text_in(pc_inst *inst, uint32_t id, double value, char *out, int cap) {
 	if (!inst->params || !inst->params->value_to_text) {
 		return 0;
 	}
@@ -536,7 +639,7 @@ static void cache_cookies(pc_inst *inst) {
 	}
 }
 
-void pi_cache_cookies(pc_inst *inst) { cache_cookies(inst); }
+void static pi_cache_cookies_in(pc_inst *inst) { cache_cookies(inst); }
 
 static void *param_cookie(pc_inst *inst, uint32_t id) {
 	for (int i = 0; i < inst->n_cookies; i++) {
@@ -579,7 +682,7 @@ void pi_port_counts(pc_inst *inst, int *in, int *out) {
 	*out = inst->n_out;
 }
 
-int pi_port_info(pc_inst *inst, int is_input, int i, int *channels, char *name, int cap) {
+int static pi_port_info_in(pc_inst *inst, int is_input, int i, int *channels, char *name, int cap) {
 	const clap_plugin_audio_ports_t *ports = inst->plugin->get_extension(inst->plugin, CLAP_EXT_AUDIO_PORTS);
 	clap_audio_port_info_t info;
 	if (!ports || i < 0 || i >= (int)ports->count(inst->plugin, is_input) || !ports->get(inst->plugin, i, is_input, &info)) {
@@ -604,7 +707,7 @@ void pi_transport(pc_inst *inst, double tempo, double beats, int playing) {
 	inst->has_transport = 1;
 }
 
-uint32_t pi_latency(pc_inst *inst) {
+uint32_t static pi_latency_in(pc_inst *inst) {
 	const clap_plugin_latency_t *l = inst->plugin->get_extension(inst->plugin, CLAP_EXT_LATENCY);
 	return l ? l->get(inst->plugin) : 0;
 }
@@ -616,7 +719,7 @@ float *pi_out(pc_inst *inst, int port, int channel) {
 	return inst->outbuf + ((size_t)port * 2 + (size_t)channel) * inst->max_frames;
 }
 
-int pi_process(pc_inst *inst, float *in0, float *in1, float *sc0, float *sc1, uint32_t frames) {
+int static pi_process_in(pc_inst *inst, float *in0, float *in1, float *sc0, float *sc1, uint32_t frames) {
 	clap_audio_buffer_t ins[64], outs[64];
 	float *inptr[64][2], *outptr[64][2];
 	float *silence = inst->scratch; // a port of the plugin that we do not play: silence in, and its sound thrown away
@@ -823,7 +926,7 @@ static void crawl(pc_lib *lib, const clap_preset_discovery_provider_t *prov, con
 	lib->cur_loc = outer;
 }
 
-int pc_scan_presets(pc_lib *lib) {
+int static pc_scan_presets_in(pc_lib *lib) {
 	if (lib->n_presets > 0) {
 		return lib->n_presets;
 	}
@@ -896,7 +999,7 @@ int pc_preset_get(pc_lib *lib, int i, pc_preset *out) {
 	return 1;
 }
 
-int pi_load_preset(pc_inst *inst, uint32_t kind, const char *location, const char *loadkey) {
+int static pi_load_preset_in(pc_inst *inst, uint32_t kind, const char *location, const char *loadkey) {
 	const clap_plugin_preset_load_t *pl = inst->plugin->get_extension(inst->plugin, CLAP_EXT_PRESET_LOAD);
 	if (!pl) {
 		pl = inst->plugin->get_extension(inst->plugin, CLAP_EXT_PRESET_LOAD_COMPAT);
@@ -936,7 +1039,7 @@ static int64_t is_read(const clap_istream_t *s, void *buf, uint64_t size) {
 	return (int64_t)n;
 }
 
-int pi_state_save(pc_inst *inst, uint8_t **out, size_t *len) {
+int static pi_state_save_in(pc_inst *inst, uint8_t **out, size_t *len) {
 	const clap_plugin_state_t *st = inst->plugin->get_extension(inst->plugin, CLAP_EXT_STATE);
 	if (!st) {
 		return 0;
@@ -952,7 +1055,7 @@ int pi_state_save(pc_inst *inst, uint8_t **out, size_t *len) {
 	return 1;
 }
 
-int pi_state_load(pc_inst *inst, const uint8_t *data, size_t len) {
+int static pi_state_load_in(pc_inst *inst, const uint8_t *data, size_t len) {
 	const clap_plugin_state_t *st = inst->plugin->get_extension(inst->plugin, CLAP_EXT_STATE);
 	if (!st) {
 		return 0;
@@ -1090,13 +1193,13 @@ static void gui_destroy(pc_inst *inst) {
 }
 
 // 1 when the plugin has a window we can show (floating, or embedded in one of ours), 0 when not
-int pi_gui_available(pc_inst *inst) {
+int static pi_gui_available_in(pc_inst *inst) {
 	const clap_plugin_gui_t *g = gui_ext(inst);
 	return g && (g->is_api_supported(inst->plugin, CLAP_WINDOW_API_X11, true) || g->is_api_supported(inst->plugin, CLAP_WINDOW_API_X11, false));
 }
 
-int pi_gui_show(pc_inst *inst) { return pi_gui_available(inst) && gui_open(inst); }
-void pi_gui_hide(pc_inst *inst) { gui_close(inst); }
+int static pi_gui_show_in(pc_inst *inst) { return pi_gui_available_in(inst) && gui_open(inst); }
+void static pi_gui_hide_in(pc_inst *inst) { gui_close(inst); }
 int pi_gui_visible(pc_inst *inst) { return inst->gui_visible; }
 
 // what the plugins asked of the main thread: waits for the wake, a descriptor, a timer or the events of a window (at most timeout_ms), and does it
@@ -1153,21 +1256,24 @@ void pc_pump(int timeout_ms) {
 	}
 	for (int i = 1; i < n; i++) {
 		pc_inst *inst = owner[i];
-		if (kind[i] == 2 && pfd[i].revents) {
+		if (kind[i] == 2 && pfd[i].revents && !inst->dead) {
 			const clap_plugin_posix_fd_support_t *fdx = inst->plugin->get_extension(inst->plugin, CLAP_EXT_POSIX_FD_SUPPORT);
 			short r = pfd[i].revents;
 			uint32_t flags = ((r & POLLIN) ? CLAP_POSIX_FD_READ : 0) | ((r & POLLOUT) ? CLAP_POSIX_FD_WRITE : 0) | ((r & (POLLERR | POLLHUP)) ? CLAP_POSIX_FD_ERROR : 0);
 			if (fdx) {
-				fdx->on_fd(inst->plugin, pfd[i].fd, flags);
+				SAFE(inst, fdx->on_fd(inst->plugin, pfd[i].fd, flags));
 			}
 		}
 	}
 	now = now_ms();
 	for (int i = 0; i < ni; i++) {
 		pc_inst *inst = insts[i];
+		if (inst->dead) {
+			continue;
+		}
 		if (inst->callback) {
 			inst->callback = 0;
-			inst->plugin->on_main_thread(inst->plugin);
+			SAFE(inst, inst->plugin->on_main_thread(inst->plugin));
 		}
 		const clap_plugin_timer_support_t *tx = inst->plugin->get_extension(inst->plugin, CLAP_EXT_TIMER_SUPPORT);
 		if (tx) {
@@ -1182,20 +1288,19 @@ void pc_pump(int timeout_ms) {
 			}
 			pthread_mutex_unlock(&inst->gui_mu);
 			for (int k = 0; k < nd; k++) {
-				tx->on_timer(inst->plugin, due[k]);
+				SAFE(inst, tx->on_timer(inst->plugin, due[k]));
 			}
 		}
 		while (inst->dpy && XPending(inst->dpy) > 0) {
 			XEvent ev;
 			XNextEvent(inst->dpy, &ev);
 			if (ev.type == ClientMessage && (Atom)ev.xclient.data.l[0] == inst->wm_delete) {
-				gui_close(inst);
+				SAFE(inst, gui_close(inst));
 			} else if (ev.type == ConfigureNotify && ev.xconfigure.window == inst->win && !inst->gui_floating) {
 				uint32_t w = ev.xconfigure.width, h = ev.xconfigure.height;
 				const clap_plugin_gui_t *g = gui_ext(inst);
 				if (g && (w != inst->gw || h != inst->gh) && g->can_resize(inst->plugin)) {
-					g->adjust_size(inst->plugin, &w, &h);
-					g->set_size(inst->plugin, w, h);
+					SAFE(inst, { g->adjust_size(inst->plugin, &w, &h); g->set_size(inst->plugin, w, h); });
 					inst->gw = w;
 					inst->gh = h;
 				}
@@ -1210,4 +1315,94 @@ int pi_take_changes(pc_inst *inst, uint32_t *ids, double *values, int max) {
 	memcpy(ids, inst->change_ids, n * sizeof *ids);
 	memcpy(values, inst->change_values, n * sizeof *values);
 	return n;
+}
+
+static int inst_dead(pc_inst *inst) { return inst->dead; }
+static void mark_dead(pc_inst *inst, int sig) {
+	pc_last_crash = sig;
+	if (inst) {
+		inst->dead = sig;
+	}
+}
+
+int pi_dead(pc_inst *inst) { return inst->dead; }
+
+pc_lib * pc_open(const char *path, char *err, int errcap) {
+	GUARD(NULL, pc_open_in(path, err, errcap), NULL);
+}
+
+int pc_count(pc_lib *lib) {
+	GUARD(NULL, pc_count_in(lib), 0);
+}
+
+int pc_desc(pc_lib *lib, int i, char *id, char *name, char *vendor, char *features, int cap) {
+	GUARD(NULL, pc_desc_in(lib, i, id, name, vendor, features, cap), 0);
+}
+
+int pc_scan_presets(pc_lib *lib) {
+	GUARD(NULL, pc_scan_presets_in(lib), 0);
+}
+
+pc_inst * pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFrames, char *err, int errcap) {
+	GUARD(NULL, pi_new_in(lib, id, sampleRate, maxFrames, err, errcap), NULL);
+}
+
+void pi_free(pc_inst *inst) {
+	GUARD_VOID(inst, pi_free_in(inst));
+}
+
+int pi_port_info(pc_inst *inst, int is_input, int i, int *channels, char *name, int cap) {
+	GUARD(inst, pi_port_info_in(inst, is_input, i, channels, name, cap), 0);
+}
+
+int pi_param_count(pc_inst *inst) {
+	GUARD(inst, pi_param_count_in(inst), 0);
+}
+
+int pi_param_info(pc_inst *inst, int i, uint32_t *id, char *name, char *module, int cap, double *min, double *max, double *def, uint32_t *flags) {
+	GUARD(inst, pi_param_info_in(inst, i, id, name, module, cap, min, max, def, flags), 0);
+}
+
+double pi_param_value(pc_inst *inst, uint32_t id) {
+	GUARD(inst, pi_param_value_in(inst, id), 0);
+}
+
+int pi_param_text(pc_inst *inst, uint32_t id, double value, char *out, int cap) {
+	GUARD(inst, pi_param_text_in(inst, id, value, out, cap), 0);
+}
+
+int pi_load_preset(pc_inst *inst, uint32_t kind, const char *location, const char *loadkey) {
+	GUARD(inst, pi_load_preset_in(inst, kind, location, loadkey), 0);
+}
+
+int pi_state_save(pc_inst *inst, uint8_t **out, size_t *len) {
+	GUARD(inst, pi_state_save_in(inst, out, len), 0);
+}
+
+int pi_state_load(pc_inst *inst, const uint8_t *data, size_t len) {
+	GUARD(inst, pi_state_load_in(inst, data, len), 0);
+}
+
+uint32_t pi_latency(pc_inst *inst) {
+	GUARD(inst, pi_latency_in(inst), 0);
+}
+
+int pi_gui_available(pc_inst *inst) {
+	GUARD(inst, pi_gui_available_in(inst), 0);
+}
+
+int pi_gui_show(pc_inst *inst) {
+	GUARD(inst, pi_gui_show_in(inst), 0);
+}
+
+void pi_gui_hide(pc_inst *inst) {
+	GUARD_VOID(inst, pi_gui_hide_in(inst));
+}
+
+int pi_process(pc_inst *inst, float *in0, float *in1, float *sc0, float *sc1, uint32_t frames) {
+	GUARD(inst, pi_process_in(inst, in0, in1, sc0, sc1, frames), 0);
+}
+
+void pi_cache_cookies(pc_inst *inst) {
+	GUARD_VOID(inst, pi_cache_cookies_in(inst));
 }

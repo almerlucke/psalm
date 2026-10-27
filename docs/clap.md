@@ -39,14 +39,23 @@ go run ./cmd/clap -plugin "Surge XT" -explore "a osc 1 type;a amp eg attack"    
 
 Surge XT: Soft Pluck, Island Pluck, Kalimba, Plucked String, Glass Bell, Warm Pad, Sub Bass, Hawaiian Lead, set to about the same loudness (-18 dB). OB-Xf (Surge Synth Team's virtual analog polysynth, free; `modules/clap/presets/ob-xf/`, about -18 dB, the pluck quieter since its master volume is at the top): Warm Pad, Analog Bass, Brass Stab, Pulse Pluck, Slide Lead. Its filter works from the start (Surge XT's needs the state round trip below). Surge XT Effects is one effect at a time, its type chosen by the `fx type` setting (Delay, Reverb 1 and 2, Spring Reverb, Phaser, Flanger, Chorus, Ensemble, Rotary Speaker, Distortion, Tape, EQ and more than twenty others); a preset sets the type and the mix, and the knobs that follow it are named as for the delay whatever the type is (the host does not follow the plugin renaming them).
 
+## What the host does for a plugin
+
+- **State in the patch:** a plugin's own state is kept with the patch (`state` of its module in the patch file) and given back when it loads; the knobs of the editor are then set to what the plugin has. A plugin that loads a preset, or has a knob turned in its own window, tells the editor the same way.
+- **Names that change:** a plugin that renames its settings (Surge XT Effects, when its type changes) tells the host (`params.rescan`); the editor has the new labels the next time its side panel is opened.
+- **Ports:** every audio output of a plugin is an output of its module (a sampler's parts, Surge's scenes), the second input of an effect is its side chain.
+- **Tempo and position:** the plugin is told the tempo of the patch and the position in beats (4/4) with every block.
+- **Latency:** the latency a plugin says it has is shown on its module. It is not compensated: nothing delays the other paths of the patch to match.
+- **The plugin's own window:** X11 only. A switch "show the plugin's window" at the top of its settings opens it (a plugin that can make its own window does; others are embedded in a window of ours). One thread, the main thread of the plugins, makes every call into a plugin that is marked main-thread and runs the timers, file descriptors and window events they ask for: plugins made with JUCE wait forever for such a thread. `PSALM_CLAP_DEBUG=1` traces it.
+- **A plugin that crashes:** a fault or an abort (SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT) in a call we made into it is caught on that thread, which jumps back out; the plugin is marked dead, makes no more sound, and the module's status says "crashed". Other plugins and the program go on. A plugin that damaged memory before it crashed can still hurt the program, and a plugin that hangs or crashes in a thread of its own is not caught.
+
 ## Limits
 
-- A plugin is given its own state back (`SaveState`, `LoadState`) right after it is made: Surge XT does not filter until it has loaded something, and this makes it. Plugin state can be kept and given back in the same way; keeping it with the patch is not done yet.
-
-- No plugin windows: the parameters are the interface; the knobs do not follow a preset the plugin loaded. State and presets of the plugin are not saved with the patch yet.
-- A plugin runs on the audio thread, so a plugin that crashes takes the program with it, and one that is slow drops out the sound.
-- Stereo and mono ports only: the first port of each is played; a plugin with more (a sampler with an output for every part) is given buffers for the others, which are thrown away; no sidechain, no transport (tempo and position), no latency compensation, no parameter changes back from the plugin (its own knobs), no MIDI output.
+- The settings are the interface of the web page; the plugin's own window is a separate window on the screen, and only on X11 (Linux, also under Wayland through XWayland).
+- Latency is shown, not compensated (see above).
+- Stereo and mono ports; the plugins' MIDI output, and note and parameter events other than notes (with their tuning) and parameter values, are not hosted.
 - A plugin is only let go when the module is taken away, at the next buffer.
+- Linux only so far (the loading, the signals and the window are written for it).
 
 ## Tests
 
