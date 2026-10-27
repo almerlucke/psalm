@@ -183,8 +183,8 @@ func (pp *PingPong) Synthesize() {
 		w := 1 - pp.stereo.Next(stTarget) // how much the echoes bounce
 		dry, wet := mix.EqualPower(pp.mix.Next(mixTo))
 
-		l := pp.left.ReadLinear(pp.samples)
-		r := pp.right.ReadLinear(pp.samples)
+		l := pp.left.ReadHermite(pp.samples)
+		r := pp.right.ReadHermite(pp.samples)
 
 		il := float64(inLeft[i])
 		ir := float64(inRight[i])

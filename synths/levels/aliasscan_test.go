@@ -11,10 +11,13 @@ import (
 	"testing"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/synths/dx"
+	"github.com/almerlucke/psalm/synths/modal"
 	"github.com/almerlucke/psalm/synths/organ"
 	"github.com/almerlucke/psalm/synths/pulsar"
 	"github.com/almerlucke/psalm/synths/shaper"
 	"github.com/almerlucke/psalm/synths/subtractive"
+	"github.com/almerlucke/psalm/synths/supersaw"
 	"github.com/almerlucke/psalm/synths/wavetable"
 	"github.com/almerlucke/psalm/synths/wavetable/gen"
 )
@@ -162,6 +165,25 @@ func TestAliasScan(t *testing.T) {
 	if only("organ") {
 		for n, f := range organ.Presets {
 			add("organ/"+n, func() played { return organ.New(f()) })
+		}
+	}
+	if only("supersaw") {
+		for n, f := range supersaw.Presets {
+			add("supersaw/"+n, func() played { return supersaw.New(f()) })
+		}
+	}
+	if only("dx") {
+		for n, f := range dx.Presets {
+			add("dx/"+n, func() played {
+				p := f()
+				p.Oversample = over
+				return dx.New(p, 2)
+			})
+		}
+	}
+	if only("modal") {
+		for n, f := range modal.Presets {
+			add("modal/"+n, func() played { return modal.New(f()) })
 		}
 	}
 	if only("pulsar") {

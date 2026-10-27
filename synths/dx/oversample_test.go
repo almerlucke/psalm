@@ -141,3 +141,16 @@ func TestOversampleSetting(t *testing.T) {
 		t.Errorf("the setting oversample: found %v, factor %d", found, p.OversampleFactor())
 	}
 }
+
+// the hard presets are played oversampled, the rest and the noises once
+func TestHardPresetsAreOversampled(t *testing.T) {
+	for name, over := range oversampled {
+		if got := Presets[name]().Oversample; got != over {
+			t.Errorf("%s is played at oversample %d, want %d", name, got, over)
+		}
+	}
+
+	if got := Presets["bell"]().Oversample; got != 0 {
+		t.Errorf("bell is played at oversample %d, want none", got)
+	}
+}

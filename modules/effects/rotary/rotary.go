@@ -149,7 +149,7 @@ func (ro *rotor) hear(angle, sr float64) float64 {
 	a := 2 * math.Pi * (ro.phase + angle)
 	d := 1 + ro.doppler*0.001*sr*(1+math.Sin(a))
 	level := 1 - ro.am*(0.5-0.5*math.Cos(a))
-	return ro.line.ReadLinear(d) * level
+	return ro.line.ReadHermite(d) * level
 }
 
 func (r *Rotary) Synthesize() {

@@ -5,7 +5,7 @@
 //	go run ./cmd/examples/presets                          all of them
 //	go run ./cmd/examples/presets -synth vocal             one synth (subtractive has all of its presets)
 //	go run ./cmd/examples/presets -synth subtractive -preset acidBass   one preset
-//	go run ./cmd/examples/presets -synth dx -oversample 2              the dx presets, the operators played four times a sample
+//	go run ./cmd/examples/presets -synth dx -oversample 0              the dx presets, the operators played once a sample (the hard ones have more by default)
 //	go run ./cmd/examples/presets -render presets.wav      render it
 package main
 
@@ -62,7 +62,7 @@ type entry struct {
 
 func main() {
 	only := flag.String("synth", "", "the synth whose presets to play (empty: all)")
-	over := flag.Int("oversample", 0, "dx: play the operators once (0), twice (1) or four times (2) a sample")
+	over := flag.Int("oversample", -1, "dx: play the operators once (0), twice (1) or four times (2) a sample (the default, -1, is how the preset has it)")
 	only2 := flag.String("preset", "", "with -synth: only this preset")
 	renderTo := flag.String("render", "", "render to this WAV file instead of playing")
 	flag.Parse()
