@@ -64,9 +64,17 @@ static void handle(test *t, const clap_event_header_t *h) {
 		}
 		break;
 	}
-	case CLAP_EVENT_PARAM_VALUE:
+	case CLAP_EVENT_PARAM_VALUE: {
+		int loud = t->gain > 0.75;
 		t->gain = ((const clap_event_param_value_t *)h)->value;
+		if (t->instrument && loud != (t->gain > 0.75)) { // above three quarters the parameter is called Loudness: the host is told
+			const clap_host_params_t *hp = t->host ? t->host->get_extension(t->host, CLAP_EXT_PARAMS) : NULL;
+			if (hp) {
+				hp->rescan(t->host, CLAP_PARAM_RESCAN_TEXT);
+			}
+		}
 		break;
+	}
 	}
 }
 
@@ -157,7 +165,7 @@ static bool pa_info(const clap_plugin_t *p, uint32_t i, clap_param_info_t *info)
 	memset(info, 0, sizeof *info);
 	info->id = 0;
 	info->flags = CLAP_PARAM_IS_AUTOMATABLE;
-	strcpy(info->name, "Gain");
+	strcpy(info->name, (t->instrument && t->gain > 0.75) ? "Loudness" : "Gain");
 	strcpy(info->module, "Output");
 	info->min_value = 0;
 	info->max_value = t->instrument ? 1 : 2;

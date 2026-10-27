@@ -194,6 +194,15 @@ func (e *Editor) Values() map[string]float64 { return e.store.values() }
 // left out
 func (e *Editor) Apply(values map[string]float64) { e.store.apply(values) }
 
+// Relabel changes the labels the page shows for settings, by key (a plugin that renames its settings): the page has them when it asks for the panel next
+func (e *Editor) Relabel(labels map[string]string) {
+	for key, label := range labels {
+		if c := e.parts[key]; c != nil {
+			c.SetLabel(label)
+		}
+	}
+}
+
 // Setting returns the control of a setting by its message key ("cutoff", "ampRelease"), nil for none
 func (e *Editor) Setting(key string) *panel.Param { return e.parts[key] }
 

@@ -69,4 +69,7 @@ int pi_state_save(pc_inst *inst, uint8_t **out, size_t *len);
 int pi_state_load(pc_inst *inst, const uint8_t *data, size_t len);
 void pc_free(void *p);
 
+// whether the plugin said its parameters have other names or ranges since this was last asked
+int pi_take_rescan(pc_inst *inst);
+
 #endif

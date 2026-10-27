@@ -203,24 +203,27 @@ type note struct {
 // Plugin is a CLAP plugin as a module: an instrument (it takes notes) or an effect (it takes the audio on its input)
 type Plugin struct {
 	*psalm.Module
-	desc    Descriptor
-	inst    *C.pc_inst
-	inCh    int
-	nIn     int           // audio input ports: the first is played, the second (when there is one) is the side chain
-	nOut    int           // audio output ports, each an output of the module
-	tempo   atomic.Uint64 // where the patch is (float64 bits)
-	beats   atomic.Uint64
-	params  []param
-	keys    map[string]int // the key of a message to the index of the parameter
-	held    map[string]note
-	timed   []note
-	nextID  int32
-	frames  int
-	closed  atomic.Bool // asked to let go: the audio thread does it at its next block
-	presets []Preset
-	syncFn  atomic.Pointer[func(map[string]float64)] // tells the editor the settings the plugin has now
-	preset  atomic.Int64                             // the one loaded last, and one: 0 is none
-	loadMu  sync.Mutex
+	desc       Descriptor
+	inst       *C.pc_inst
+	inCh       int
+	nIn        int           // audio input ports: the first is played, the second (when there is one) is the side chain
+	nOut       int           // audio output ports, each an output of the module
+	tempo      atomic.Uint64 // where the patch is (float64 bits)
+	beats      atomic.Uint64
+	params     []param
+	keys       map[string]int // the key of a message to the index of the parameter
+	held       map[string]note
+	timed      []note
+	nextID     int32
+	frames     int
+	closed     atomic.Bool // asked to let go: the audio thread does it at its next block
+	presets    []Preset
+	syncFn     atomic.Pointer[func(map[string]float64)] // tells the editor the settings the plugin has now
+	nameFn     atomic.Pointer[func(map[string]string)]  // and what they are called
+	preset     atomic.Int64                             // the one loaded last, and one: 0 is none
+	loadMu     sync.Mutex
+	metaMu     sync.RWMutex // the labels and ranges of the parameters, which Relabel changes
+	relabeling atomic.Bool  // the names are being asked for again
 }
 
 // New makes the plugin: active, at the sample rate and buffer size of the patch
@@ -338,6 +341,8 @@ func (p *Plugin) Descriptor() Descriptor { return p.desc }
 // Describe is the settings of the plugin as a synth describes its own: a knob for every parameter, where it is now
 func (p *Plugin) Describe() params.Set {
 	set := params.Set{Name: p.desc.Name}
+	p.metaMu.RLock()
+	defer p.metaMu.RUnlock()
 	if len(p.presets) > 0 {
 		names := make([]string, len(p.presets))
 		for i, pr := range p.presets {
@@ -462,7 +467,10 @@ func (p *Plugin) LoadState(state []byte) error {
 
 // Bind gives the plugin a function that sets the settings of its editor: after a preset or a state is loaded the plugin tells it where all its settings are now,
 // so the knobs follow
-func (p *Plugin) Bind(set func(values map[string]float64)) { p.syncFn.Store(&set) }
+func (p *Plugin) Bind(set func(values map[string]float64), relabel func(labels map[string]string)) {
+	p.syncFn.Store(&set)
+	p.nameFn.Store(&relabel)
+}
 
 // Values are the settings of the plugin as it has them now, by key (and the number of the preset loaded last)
 func (p *Plugin) Values() map[string]float64 {
@@ -494,7 +502,52 @@ func (p *Plugin) tellEditor() {
 		}
 		last = now
 	}
+	if p.Relabel() > 0 { // some plugins rename their settings with the setting of one (an effect with its type)
+		if names := p.nameFn.Load(); names != nil {
+			labels := make(map[string]string, len(p.params))
+			p.metaMu.RLock()
+			for _, q := range p.params {
+				labels[q.key] = q.label
+			}
+			p.metaMu.RUnlock()
+			(*names)(labels)
+		}
+	}
 	(*fn)(last)
+}
+
+// Relabel asks the plugin for the names and ranges of its parameters again (some plugins rename them when a setting changes: an effect that is a delay or a reverb
+// by its type) and returns how many names changed; the keys stay what they were
+func (p *Plugin) Relabel() int {
+	if p.inst == nil {
+		return 0
+	}
+	byID := make(map[uint32]int, len(p.params))
+	for i, q := range p.params {
+		byID[q.id] = i
+	}
+	changed := 0
+	var name, module [256]C.char
+	for j := 0; j < int(C.pi_param_count(p.inst)); j++ {
+		var id, flags C.uint32_t
+		var mn, mx, df C.double
+		if C.pi_param_info(p.inst, C.int(j), &id, &name[0], &module[0], 256, &mn, &mx, &df, &flags) == 0 {
+			continue
+		}
+		i, ok := byID[uint32(id)]
+		if !ok {
+			continue
+		}
+		p.metaMu.Lock()
+		q := &p.params[i]
+		if label := C.GoString(&name[0]); label != q.label {
+			q.label = label
+			changed++
+		}
+		q.min, q.max = float64(mn), float64(mx)
+		p.metaMu.Unlock()
+	}
+	return changed
 }
 
 // Keys are the keys of the messages that move the parameters
@@ -570,7 +623,9 @@ func (p *Plugin) ReceiveMessage(msg psalm.Message) {
 	})
 	for key, i := range p.keys {
 		msg.IfFltVal(key, func(f float64) {
+			p.metaMu.RLock()
 			q := p.params[i]
+			p.metaMu.RUnlock()
 			C.pi_param(p.inst, C.uint32_t(q.id), C.double(min(q.max, max(q.min, f))), 0)
 		})
 	}
@@ -674,6 +729,12 @@ func (p *Plugin) Synthesize() {
 		sc0, sc1 = (*C.float)(unsafe.Pointer(&sc[0][0])), (*C.float)(unsafe.Pointer(&sc[1][0]))
 	}
 	C.pi_process(p.inst, in0, in1, sc0, sc1, C.uint32_t(n))
+	if C.pi_take_rescan(p.inst) != 0 && p.relabeling.CompareAndSwap(false, true) {
+		go func() { // off the audio thread: it asks for every name
+			defer p.relabeling.Store(false)
+			p.tellEditor()
+		}()
+	}
 	for o := 0; o < p.nOut; o++ {
 		out := p.Output(o).Channels
 		for ch := 0; ch < 2 && ch < len(out); ch++ {

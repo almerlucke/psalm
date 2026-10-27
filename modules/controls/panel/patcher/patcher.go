@@ -144,9 +144,10 @@ type Made struct {
 	// thread). A module with a state has it before its texts and settings are set: when it has one, the settings kept are not set again (the state is the sound)
 	State    func() (string, error)
 	SetState func(state string) error
-	// Bind is called once the module has its editor, with a function that sets the settings of the editor (the knobs and the controls) to values by key: for a
-	// module that changes its own settings (a plugin that loads a preset) and tells the editor
-	Bind func(set func(values map[string]float64))
+	// Bind is called once the module has its editor, with a function that sets the settings of the editor (the knobs and the controls) to values by key, and one that
+	// changes the labels of settings by key (the page has them when it asks for the panel next): for a module that changes its own settings, or what they are called
+	// (a plugin that loads a preset), and tells the editor
+	Bind func(set func(values map[string]float64), relabel func(labels map[string]string))
 	// Late is called on every control tick after every module had its own (a Notes module plays the
 	// triggers of the tick there, when the values feeding it are up to date)
 	Late func(tick psalm.CtrlTick)
@@ -521,7 +522,11 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 		}
 		if made.Bind != nil && n.settings != nil {
 			settings := n.settings
-			made.Bind(func(values map[string]float64) { settings.Apply(values) })
+			made.Bind(func(values map[string]float64) { settings.Apply(values) }, func(labels map[string]string) {
+				if r, ok := settings.(interface{ Relabel(map[string]string) }); ok {
+					r.Relabel(labels)
+				}
+			})
 		}
 		add = append(add, l.added...)
 		if made.Added != nil {

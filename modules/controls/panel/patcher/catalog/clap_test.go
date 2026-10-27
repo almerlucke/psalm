@@ -171,8 +171,8 @@ func TestClapStateInPatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	node := func(pt *patcher.Patcher, id string) patcher.Settings {
-		s, ok := pt.SettingsOf(id).(patcher.Settings)
-		if !ok {
+		s := pt.SettingsOf(id)
+		if s == nil {
 			t.Fatal("no settings")
 		}
 		return s
@@ -180,6 +180,13 @@ func TestClapStateInPatch(t *testing.T) {
 	// the preset "Loud" (gain 1): the knob of the editor follows
 	pt.SettingsOf(id).Apply(map[string]float64{"preset": 1})
 	until(p1, "the knob does not follow the preset", func() bool { return node(pt, id).Values()["output gain"] == 1 })
+	// the plugin renames the knob when it is turned up (it tells the host): the editor shows the new label
+	label := func() string {
+		return node(pt, id).(interface{ Setting(string) *panel.Param }).Setting("output gain").Shown()
+	}
+	if l := label(); l != "Loudness" { // at 1 after the preset
+		until(p1, "the knob is not renamed after the preset: "+label(), func() bool { return label() == "Loudness" })
+	}
 	if err := pt.Save("with state"); err != nil {
 		t.Fatal(err)
 	}

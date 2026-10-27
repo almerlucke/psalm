@@ -295,7 +295,7 @@ type Param struct {
 	Curve    Curve
 	Step     float64
 	Unit     string
-	Label    string // shown on the page instead of the name (names are unique, labels can repeat)
+	Label    string // shown on the page instead of the name (names are unique, labels can repeat); SetLabel changes it
 	Default  float64
 	Smooth   float64  // seconds
 	Options  []string // of a select
@@ -316,7 +316,8 @@ type Param struct {
 	caught  atomic.Bool
 	lastPos float64 // the controller's last position, on the MIDI goroutine
 
-	value   atomic.Uint64 // the value asked for (float64 bits)
+	relabel atomic.Pointer[string] // the label changed by SetLabel
+	value   atomic.Uint64          // the value asked for (float64 bits)
 	dirty   atomic.Bool
 	placed  atomic.Bool // placed (Place): the glide goes there, nothing is sent
 	presses atomic.Int64
@@ -339,6 +340,17 @@ func newParam(kind Kind, name string, min, max float64, curve Curve, to Target, 
 	par.value.Store(math.Float64bits(par.Default))
 	par.dirty.Store(kind != ButtonKind && kind != MeterKind && !par.noDefault) // the default goes out when the patch starts
 	return par
+}
+
+// SetLabel changes the label the page shows (from any goroutine): the next time the page asks for the panel, a plugin that renames its settings when another is changed
+func (par *Param) SetLabel(text string) { par.relabel.Store(&text) }
+
+// Shown is the label the page shows: the one SetLabel gave, else the label
+func (par *Param) Shown() string {
+	if l := par.relabel.Load(); l != nil {
+		return *l
+	}
+	return par.Label
 }
 
 // Value returns the value of the control (the last one asked for, a glide may still be on its way)

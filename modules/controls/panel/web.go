@@ -450,7 +450,7 @@ func (pn *Panel) describe() description {
 		i := index[par.Section]
 		c := control{
 			Kind: par.Kind, Name: par.Name, Min: par.Min, Max: par.Max, Curve: par.Curve, Step: par.Step,
-			Unit: par.Unit, Label: par.Label, Default: par.Default, Options: par.Options, Value: par.Value(),
+			Unit: par.Unit, Label: par.Shown(), Default: par.Default, Options: par.Options, Value: par.Value(),
 		}
 		if b, ok := par.Binding(); ok {
 			c.CC = &b
@@ -459,7 +459,7 @@ func (pn *Panel) describe() description {
 			c.Data, c.State = par.custom.data, par.custom.stateNow()
 			for _, part := range par.parts {
 				c.Parts = append(c.Parts, control{Kind: PartKind, Name: part.Name, Min: part.Min, Max: part.Max, Curve: part.Curve,
-					Step: part.Step, Unit: part.Unit, Label: part.Label, Default: part.Default, Value: part.Value()})
+					Step: part.Step, Unit: part.Unit, Label: part.Shown(), Default: part.Default, Value: part.Value()})
 			}
 		}
 		if par.top {

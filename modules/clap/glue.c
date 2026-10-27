@@ -60,6 +60,7 @@ struct pc_inst {
 	pc_event ev[MAX_EVENTS];
 	int started, activated;
 	volatile int callback; // the plugin asked for a call on the main thread
+	volatile int rescan;   // the plugin said its parameters have other names or ranges
 };
 
 static void seterr(char *err, int cap, const char *msg) {
@@ -70,7 +71,23 @@ static void seterr(char *err, int cap, const char *msg) {
 
 // --- the host the plugins see: it offers nothing but its name ---
 
-static const void *host_get_extension(const clap_host_t *host, const char *id) { return NULL; }
+// the host's params extension: a plugin says its parameters have other names or ranges (an effect when its type changes); the host asks again when it can
+static void hp_rescan(const clap_host_t *host, clap_param_rescan_flags flags) {
+	pc_inst *inst = host->host_data;
+	if (flags & (CLAP_PARAM_RESCAN_ALL | CLAP_PARAM_RESCAN_INFO | CLAP_PARAM_RESCAN_TEXT)) {
+		inst->rescan = 1;
+	}
+}
+static void hp_clear(const clap_host_t *host, clap_id param_id, clap_param_clear_flags flags) {}
+static void hp_flush(const clap_host_t *host) {}
+static const clap_host_params_t host_params = {hp_rescan, hp_clear, hp_flush};
+
+static const void *host_get_extension(const clap_host_t *host, const char *id) {
+	if (!strcmp(id, CLAP_EXT_PARAMS)) {
+		return &host_params;
+	}
+	return NULL;
+}
 static void host_nothing(const clap_host_t *host) {}
 static void host_callback(const clap_host_t *host) { ((pc_inst *)host->host_data)->callback = 1; }
 
@@ -732,3 +749,9 @@ int pi_state_load(pc_inst *inst, const uint8_t *data, size_t len) {
 }
 
 void pc_free(void *p) { free(p); }
+
+int pi_take_rescan(pc_inst *inst) {
+	int r = inst->rescan;
+	inst->rescan = 0;
+	return r;
+}
