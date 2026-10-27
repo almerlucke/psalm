@@ -1,6 +1,12 @@
 #include "glue.h"
 
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
 #include <ctype.h>
+#include <poll.h>
+#include <pthread.h>
+#include <time.h>
+#include <unistd.h>
 #include <dirent.h>
 #include <dlfcn.h>
 #include <sys/stat.h>
@@ -59,10 +65,60 @@ struct pc_inst {
 	int n;
 	pc_event ev[MAX_EVENTS];
 	int started, activated;
+	uint32_t *cookie_ids;
+	void **cookies;
+	int n_cookies;
 	volatile int callback; // the plugin asked for a call on the main thread
 	volatile int rescan;   // the plugin said its parameters have other names or ranges
+
+	// the window of the plugin: a thread of its own is the main thread of the plugin (its timers, its file descriptors, the events of its window)
+	pthread_mutex_t gui_mu;
+	volatile int gui_visible;
+	struct {
+		uint32_t id, period;
+		int64_t next;
+	} timers[32];
+	int n_timers;
+	uint32_t next_timer;
+	struct {
+		int fd;
+		uint32_t flags;
+	} fds[32];
+	int n_fds;
+	Display *dpy;
+	Window win;
+	Atom wm_delete;
+	int gui_created, gui_floating;
+	uint32_t gw, gh;
 };
 
+// the instances, for the loop of the main thread; its thread
+static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
+static pc_inst *g_insts[256];
+static int g_n_insts;
+static pthread_t g_main;
+static int g_main_set;
+static int g_wake[2] = {-1, -1};
+static void registry_add(pc_inst *inst) {
+	pthread_mutex_lock(&g_mu);
+	if (g_n_insts < 256) {
+		g_insts[g_n_insts++] = inst;
+	}
+	pthread_mutex_unlock(&g_mu);
+}
+static void registry_remove(pc_inst *inst) {
+	pthread_mutex_lock(&g_mu);
+	for (int i = 0; i < g_n_insts; i++) {
+		if (g_insts[i] == inst) {
+			g_insts[i] = g_insts[--g_n_insts];
+			break;
+		}
+	}
+	pthread_mutex_unlock(&g_mu);
+}
+static void gui_destroy(pc_inst *inst);
+
+static void cache_cookies(pc_inst *inst);
 static void seterr(char *err, int cap, const char *msg) {
 	if (err && cap > 0) {
 		snprintf(err, cap, "%s", msg);
@@ -82,14 +138,132 @@ static void hp_clear(const clap_host_t *host, clap_id param_id, clap_param_clear
 static void hp_flush(const clap_host_t *host) {}
 static const clap_host_params_t host_params = {hp_rescan, hp_clear, hp_flush};
 
+// the host's thread check, timers and file descriptors, and its gui: the window of a plugin is run by a thread of ours (see gui_main)
+int pc_is_main(void);
+static __thread int tl_audio; // this thread is in the plugin's process (or start and stop of processing)
+#include <execinfo.h>
+static bool tc_main(const clap_host_t *host) {
+	int ok = pc_is_main();
+	if (!ok && getenv("PSALM_CLAP_DEBUG")) {
+		void *bt[24];
+		int n = backtrace(bt, 24);
+		fprintf(stderr, "clap: is_main_thread asked on thread %lu, the main is %lu\n", (unsigned long)pthread_self(), (unsigned long)g_main);
+		backtrace_symbols_fd(bt, n, 2);
+	}
+	return ok;
+}
+static bool tc_audio(const clap_host_t *host) { return tl_audio; }
+static const clap_host_thread_check_t host_thread_check = {tc_main, tc_audio};
+
+static int64_t now_ms(void) {
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+void pc_wake(void);
+static void gui_wake(pc_inst *inst, char cmd) { pc_wake(); }
+
+static bool ht_register(const clap_host_t *host, uint32_t period_ms, clap_id *timer_id) {
+	pc_inst *inst = host->host_data;
+	pthread_mutex_lock(&inst->gui_mu);
+	bool ok = inst->n_timers < 32;
+	if (ok) {
+		inst->next_timer++;
+		inst->timers[inst->n_timers].id = inst->next_timer;
+		inst->timers[inst->n_timers].period = period_ms < 10 ? 10 : period_ms;
+		inst->timers[inst->n_timers].next = now_ms() + inst->timers[inst->n_timers].period;
+		*timer_id = inst->next_timer;
+		inst->n_timers++;
+	}
+	pthread_mutex_unlock(&inst->gui_mu);
+	gui_wake(inst, 'T');
+	return ok;
+}
+static bool ht_unregister(const clap_host_t *host, clap_id timer_id) {
+	pc_inst *inst = host->host_data;
+	pthread_mutex_lock(&inst->gui_mu);
+	for (int i = 0; i < inst->n_timers; i++) {
+		if (inst->timers[i].id == timer_id) {
+			inst->timers[i] = inst->timers[--inst->n_timers];
+			break;
+		}
+	}
+	pthread_mutex_unlock(&inst->gui_mu);
+	return true;
+}
+static const clap_host_timer_support_t host_timers = {ht_register, ht_unregister};
+
+static bool hf_register(const clap_host_t *host, int fd, clap_posix_fd_flags_t flags) {
+	pc_inst *inst = host->host_data;
+	pthread_mutex_lock(&inst->gui_mu);
+	bool ok = inst->n_fds < 32;
+	if (ok) {
+		inst->fds[inst->n_fds].fd = fd;
+		inst->fds[inst->n_fds].flags = flags;
+		inst->n_fds++;
+	}
+	pthread_mutex_unlock(&inst->gui_mu);
+	gui_wake(inst, 'T');
+	return ok;
+}
+static bool hf_modify(const clap_host_t *host, int fd, clap_posix_fd_flags_t flags) {
+	pc_inst *inst = host->host_data;
+	pthread_mutex_lock(&inst->gui_mu);
+	for (int i = 0; i < inst->n_fds; i++) {
+		if (inst->fds[i].fd == fd) {
+			inst->fds[i].flags = flags;
+		}
+	}
+	pthread_mutex_unlock(&inst->gui_mu);
+	gui_wake(inst, 'T');
+	return true;
+}
+static bool hf_unregister(const clap_host_t *host, int fd) {
+	pc_inst *inst = host->host_data;
+	pthread_mutex_lock(&inst->gui_mu);
+	for (int i = 0; i < inst->n_fds; i++) {
+		if (inst->fds[i].fd == fd) {
+			inst->fds[i] = inst->fds[--inst->n_fds];
+			break;
+		}
+	}
+	pthread_mutex_unlock(&inst->gui_mu);
+	gui_wake(inst, 'T');
+	return true;
+}
+static const clap_host_posix_fd_support_t host_fds = {hf_register, hf_modify, hf_unregister};
+
+static void hg_nothing(const clap_host_t *host) {}
+static bool hg_false(const clap_host_t *host) { return false; }
+static bool hg_resize(const clap_host_t *host, uint32_t w, uint32_t h);
+static void hg_closed(const clap_host_t *host, bool destroyed) { ((pc_inst *)host->host_data)->gui_visible = 0; }
+static const clap_host_gui_t host_gui = {hg_nothing, hg_resize, hg_false, hg_false, hg_closed};
+
 static const void *host_get_extension(const clap_host_t *host, const char *id) {
 	if (!strcmp(id, CLAP_EXT_PARAMS)) {
 		return &host_params;
 	}
+	if (!strcmp(id, CLAP_EXT_THREAD_CHECK)) {
+		return &host_thread_check;
+	}
+	if (!strcmp(id, CLAP_EXT_TIMER_SUPPORT)) {
+		return &host_timers;
+	}
+	if (!strcmp(id, CLAP_EXT_POSIX_FD_SUPPORT)) {
+		return &host_fds;
+	}
+	if (!strcmp(id, CLAP_EXT_GUI)) {
+		return &host_gui;
+	}
 	return NULL;
 }
 static void host_nothing(const clap_host_t *host) {}
-static void host_callback(const clap_host_t *host) { ((pc_inst *)host->host_data)->callback = 1; }
+void pc_wake(void);
+static void host_callback(const clap_host_t *host) {
+	((pc_inst *)host->host_data)->callback = 1;
+	pc_wake();
+}
 
 static uint32_t in_size(const clap_input_events_t *list) { return ((pc_inst *)list->ctx)->n; }
 static const clap_event_header_t *in_get(const clap_input_events_t *list, uint32_t i) {
@@ -169,6 +343,7 @@ static int port_channels(pc_inst *inst, int is_input, int *chs) {
 pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFrames, char *err, int errcap) {
 	pc_inst *inst = calloc(1, sizeof *inst);
 	inst->lib = lib;
+	pthread_mutex_init(&inst->gui_mu, NULL);
 	inst->host = (clap_host_t){.clap_version = CLAP_VERSION_INIT,
 	                           .host_data = inst,
 	                           .name = "psalm",
@@ -194,6 +369,7 @@ pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFram
 		return NULL;
 	}
 	inst->params = inst->plugin->get_extension(inst->plugin, CLAP_EXT_PARAMS);
+	cache_cookies(inst);
 	inst->n_in = port_channels(inst, 1, inst->in_chs);
 	inst->n_out = port_channels(inst, 0, inst->out_chs);
 	inst->in_ch = inst->n_in > 0 ? inst->in_chs[0] : 0;
@@ -215,7 +391,9 @@ pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFram
 		return NULL;
 	}
 	inst->activated = 1;
+	tl_audio = 1; // start_processing is called on the audio thread
 	inst->started = inst->plugin->start_processing(inst->plugin);
+	tl_audio = 0;
 	if (!inst->started) {
 		seterr(err, errcap, "the plugin would not start processing");
 		inst->plugin->deactivate(inst->plugin);
@@ -223,6 +401,7 @@ pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFram
 		free(inst);
 		return NULL;
 	}
+	registry_add(inst);
 	return inst;
 }
 
@@ -230,8 +409,12 @@ void pi_free(pc_inst *inst) {
 	if (!inst) {
 		return;
 	}
+	gui_destroy(inst);
+	registry_remove(inst);
 	if (inst->started) {
+		tl_audio = 1;
 		inst->plugin->stop_processing(inst->plugin);
+		tl_audio = 0;
 	}
 	if (inst->activated) {
 		inst->plugin->deactivate(inst->plugin);
@@ -239,6 +422,8 @@ void pi_free(pc_inst *inst) {
 	inst->plugin->destroy(inst->plugin);
 	free(inst->scratch);
 	free(inst->outbuf);
+	free(inst->cookie_ids);
+	free(inst->cookies);
 	free(inst);
 }
 
@@ -317,15 +502,35 @@ void pi_note(pc_inst *inst, int on, uint32_t time, int key, double velocity, int
 	}
 }
 
-// the cookie the plugin gave a parameter: it asks for it back in the events that set it
+// the cookie the plugin gave a parameter: it asks for it back in the events that set it. They are asked for once (on the main thread, where the plugin wants to be
+// asked) and kept: an event is made on the audio thread
+static void cache_cookies(pc_inst *inst) {
+	free(inst->cookie_ids);
+	free(inst->cookies);
+	inst->cookie_ids = NULL;
+	inst->cookies = NULL;
+	inst->n_cookies = 0;
+	if (!inst->params) {
+		return;
+	}
+	uint32_t n = inst->params->count(inst->plugin);
+	inst->cookie_ids = malloc(n * sizeof(uint32_t) + 1);
+	inst->cookies = malloc(n * sizeof(void *) + 1);
+	for (uint32_t i = 0; i < n; i++) {
+		clap_param_info_t info;
+		if (inst->params->get_info(inst->plugin, i, &info)) {
+			inst->cookie_ids[inst->n_cookies] = info.id;
+			inst->cookies[inst->n_cookies++] = info.cookie;
+		}
+	}
+}
+
+void pi_cache_cookies(pc_inst *inst) { cache_cookies(inst); }
+
 static void *param_cookie(pc_inst *inst, uint32_t id) {
-	clap_param_info_t info;
-	if (inst->params) {
-		uint32_t n = inst->params->count(inst->plugin);
-		for (uint32_t i = 0; i < n; i++) {
-			if (inst->params->get_info(inst->plugin, i, &info) && info.id == id) {
-				return info.cookie;
-			}
+	for (int i = 0; i < inst->n_cookies; i++) {
+		if (inst->cookie_ids[i] == id) {
+			return inst->cookies[i];
 		}
 	}
 	return NULL;
@@ -439,12 +644,10 @@ int pi_process(pc_inst *inst, float *in0, float *in1, float *sc0, float *sc1, ui
 	                     .in_events = &inst->in_events,
 	                     .out_events = &inst->out_events};
 	sort_events(inst);
+	tl_audio = 1;
 	clap_process_status st = inst->plugin->process(inst->plugin, &pr);
+	tl_audio = 0;
 	inst->n = 0;
-	if (inst->callback) { // what the plugin asked to do on the main thread: done here, between two blocks, as the same thread as the process
-		inst->callback = 0;
-		inst->plugin->on_main_thread(inst->plugin);
-	}
 	for (int p = 0; p < inst->n_out && p < 16; p++) {
 		if (inst->out_chs[p] == 1) { // a mono port is both channels
 			memcpy(outptr[p][1], outptr[p][0], frames * sizeof(float));
@@ -754,4 +957,238 @@ int pi_take_rescan(pc_inst *inst) {
 	int r = inst->rescan;
 	inst->rescan = 0;
 	return r;
+}
+
+
+// --- the main thread of the plugins, and the windows ---
+
+void pc_set_main(void) {
+	g_main = pthread_self();
+	g_main_set = 1;
+	if (pipe(g_wake) != 0) {
+		g_wake[0] = g_wake[1] = -1;
+	}
+}
+int pc_is_main(void) { return g_main_set && pthread_equal(pthread_self(), g_main); }
+void pc_wake(void) {
+	if (g_wake[1] >= 0) {
+		char c = 'w';
+		(void)!write(g_wake[1], &c, 1);
+	}
+}
+
+static const clap_plugin_gui_t *gui_ext(pc_inst *inst) { return inst->plugin->get_extension(inst->plugin, CLAP_EXT_GUI); }
+
+static bool hg_resize(const clap_host_t *host, uint32_t w, uint32_t h) {
+	pc_inst *inst = host->host_data;
+	if (inst->gui_floating || !inst->dpy || !inst->win) {
+		return false;
+	}
+	inst->gw = w;
+	inst->gh = h;
+	XResizeWindow(inst->dpy, inst->win, w, h);
+	XFlush(inst->dpy);
+	return true;
+}
+
+#define TRACE(...) do { if (getenv("PSALM_CLAP_DEBUG")) { fprintf(stderr, "clap: " __VA_ARGS__); fputc(10, stderr); } } while (0)
+
+// makes the window if there is none and shows it
+static int gui_open(pc_inst *inst) {
+	const clap_plugin_gui_t *g = gui_ext(inst);
+	if (!g) {
+		return 0;
+	}
+	if (!inst->gui_created) {
+		int floating = g->is_api_supported(inst->plugin, CLAP_WINDOW_API_X11, true) ? 1 : 0;
+		if (!floating) {
+			if (!inst->dpy) {
+				inst->dpy = XOpenDisplay(NULL);
+			}
+			if (!inst->dpy || !g->is_api_supported(inst->plugin, CLAP_WINDOW_API_X11, false)) {
+				return 0;
+			}
+		}
+		TRACE("creating (floating %d)", floating);
+		if (!g->create(inst->plugin, CLAP_WINDOW_API_X11, floating)) {
+			TRACE("create failed");
+			return 0;
+		}
+		inst->gui_created = 1;
+		inst->gui_floating = floating;
+		if (floating) {
+			g->suggest_title(inst->plugin, inst->plugin->desc->name);
+		} else {
+			uint32_t w = 640, h = 480;
+			g->get_size(inst->plugin, &w, &h);
+			inst->gw = w;
+			inst->gh = h;
+			inst->win = XCreateSimpleWindow(inst->dpy, DefaultRootWindow(inst->dpy), 0, 0, w, h, 0, 0, 0);
+			XStoreName(inst->dpy, inst->win, inst->plugin->desc->name);
+			inst->wm_delete = XInternAtom(inst->dpy, "WM_DELETE_WINDOW", False);
+			XSetWMProtocols(inst->dpy, inst->win, &inst->wm_delete, 1);
+			XSelectInput(inst->dpy, inst->win, StructureNotifyMask);
+			clap_window_t cw = {.api = CLAP_WINDOW_API_X11, .x11 = (clap_xwnd)inst->win};
+			if (!g->set_parent(inst->plugin, &cw)) {
+				TRACE("set_parent failed");
+				g->destroy(inst->plugin);
+				XDestroyWindow(inst->dpy, inst->win);
+				inst->win = 0;
+				inst->gui_created = 0;
+				return 0;
+			}
+		}
+	}
+	if (!inst->gui_floating) {
+		XMapWindow(inst->dpy, inst->win);
+		XFlush(inst->dpy);
+	}
+	g->show(inst->plugin);
+	inst->gui_visible = 1;
+	TRACE("shown");
+	return 1;
+}
+
+static void gui_close(pc_inst *inst) {
+	const clap_plugin_gui_t *g = gui_ext(inst);
+	if (g && inst->gui_created) {
+		g->hide(inst->plugin);
+		if (!inst->gui_floating && inst->win) {
+			XUnmapWindow(inst->dpy, inst->win);
+			XFlush(inst->dpy);
+		}
+	}
+	inst->gui_visible = 0;
+}
+
+static void gui_destroy(pc_inst *inst) {
+	const clap_plugin_gui_t *g = gui_ext(inst);
+	if (g && inst->gui_created) {
+		g->destroy(inst->plugin);
+		inst->gui_created = 0;
+	}
+	if (inst->dpy) {
+		if (inst->win) {
+			XDestroyWindow(inst->dpy, inst->win);
+			inst->win = 0;
+		}
+		XCloseDisplay(inst->dpy);
+		inst->dpy = NULL;
+	}
+	inst->gui_visible = 0;
+}
+
+// 1 when the plugin has a window we can show (floating, or embedded in one of ours), 0 when not
+int pi_gui_available(pc_inst *inst) {
+	const clap_plugin_gui_t *g = gui_ext(inst);
+	return g && (g->is_api_supported(inst->plugin, CLAP_WINDOW_API_X11, true) || g->is_api_supported(inst->plugin, CLAP_WINDOW_API_X11, false));
+}
+
+int pi_gui_show(pc_inst *inst) { return pi_gui_available(inst) && gui_open(inst); }
+void pi_gui_hide(pc_inst *inst) { gui_close(inst); }
+int pi_gui_visible(pc_inst *inst) { return inst->gui_visible; }
+
+// what the plugins asked of the main thread: waits for the wake, a descriptor, a timer or the events of a window (at most timeout_ms), and does it
+void pc_pump(int timeout_ms) {
+	pc_inst *insts[256];
+	pthread_mutex_lock(&g_mu);
+	int ni = g_n_insts;
+	memcpy(insts, g_insts, ni * sizeof *insts);
+	pthread_mutex_unlock(&g_mu);
+
+	struct pollfd pfd[1 + 256 * 2 + 256];
+	pc_inst *owner[1 + 256 * 2 + 256];
+	int kind[1 + 256 * 2 + 256]; // 0 the wake pipe, 1 an X connection, 2 a descriptor of a plugin
+	int n = 0;
+	pfd[n] = (struct pollfd){.fd = g_wake[0], .events = POLLIN};
+	owner[n] = NULL;
+	kind[n++] = 0;
+	int64_t now = now_ms();
+	int wait = timeout_ms;
+	for (int i = 0; i < ni; i++) {
+		pc_inst *inst = insts[i];
+		if (inst->callback) {
+			wait = 0;
+		}
+		if (inst->dpy) {
+			if (XPending(inst->dpy) > 0) {
+				wait = 0;
+			}
+			if (n < 1 + 256 * 2) {
+				pfd[n] = (struct pollfd){.fd = ConnectionNumber(inst->dpy), .events = POLLIN};
+				owner[n] = inst;
+				kind[n++] = 1;
+			}
+		}
+		pthread_mutex_lock(&inst->gui_mu);
+		for (int k = 0; k < inst->n_fds && n < 1 + 256 * 2 + 256; k++) {
+			short ev = ((inst->fds[k].flags & CLAP_POSIX_FD_READ) ? POLLIN : 0) | ((inst->fds[k].flags & CLAP_POSIX_FD_WRITE) ? POLLOUT : 0);
+			pfd[n] = (struct pollfd){.fd = inst->fds[k].fd, .events = ev};
+			owner[n] = inst;
+			kind[n++] = 2;
+		}
+		for (int k = 0; k < inst->n_timers; k++) {
+			int64_t left = inst->timers[k].next - now;
+			if (left < wait) {
+				wait = left < 0 ? 0 : (int)left;
+			}
+		}
+		pthread_mutex_unlock(&inst->gui_mu);
+	}
+	poll(pfd, n, wait);
+	if (pfd[0].revents & POLLIN) {
+		char buf[64];
+		(void)!read(g_wake[0], buf, sizeof buf);
+	}
+	for (int i = 1; i < n; i++) {
+		pc_inst *inst = owner[i];
+		if (kind[i] == 2 && pfd[i].revents) {
+			const clap_plugin_posix_fd_support_t *fdx = inst->plugin->get_extension(inst->plugin, CLAP_EXT_POSIX_FD_SUPPORT);
+			short r = pfd[i].revents;
+			uint32_t flags = ((r & POLLIN) ? CLAP_POSIX_FD_READ : 0) | ((r & POLLOUT) ? CLAP_POSIX_FD_WRITE : 0) | ((r & (POLLERR | POLLHUP)) ? CLAP_POSIX_FD_ERROR : 0);
+			if (fdx) {
+				fdx->on_fd(inst->plugin, pfd[i].fd, flags);
+			}
+		}
+	}
+	now = now_ms();
+	for (int i = 0; i < ni; i++) {
+		pc_inst *inst = insts[i];
+		if (inst->callback) {
+			inst->callback = 0;
+			inst->plugin->on_main_thread(inst->plugin);
+		}
+		const clap_plugin_timer_support_t *tx = inst->plugin->get_extension(inst->plugin, CLAP_EXT_TIMER_SUPPORT);
+		if (tx) {
+			uint32_t due[32];
+			int nd = 0;
+			pthread_mutex_lock(&inst->gui_mu);
+			for (int k = 0; k < inst->n_timers; k++) {
+				if (inst->timers[k].next <= now) {
+					due[nd++] = inst->timers[k].id;
+					inst->timers[k].next = now + inst->timers[k].period;
+				}
+			}
+			pthread_mutex_unlock(&inst->gui_mu);
+			for (int k = 0; k < nd; k++) {
+				tx->on_timer(inst->plugin, due[k]);
+			}
+		}
+		while (inst->dpy && XPending(inst->dpy) > 0) {
+			XEvent ev;
+			XNextEvent(inst->dpy, &ev);
+			if (ev.type == ClientMessage && (Atom)ev.xclient.data.l[0] == inst->wm_delete) {
+				gui_close(inst);
+			} else if (ev.type == ConfigureNotify && ev.xconfigure.window == inst->win && !inst->gui_floating) {
+				uint32_t w = ev.xconfigure.width, h = ev.xconfigure.height;
+				const clap_plugin_gui_t *g = gui_ext(inst);
+				if (g && (w != inst->gw || h != inst->gh) && g->can_resize(inst->plugin)) {
+					g->adjust_size(inst->plugin, &w, &h);
+					g->set_size(inst->plugin, w, h);
+					inst->gw = w;
+					inst->gh = h;
+				}
+			}
+		}
+	}
 }

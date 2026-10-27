@@ -72,4 +72,20 @@ void pc_free(void *p);
 // whether the plugin said its parameters have other names or ranges since this was last asked
 int pi_take_rescan(pc_inst *inst);
 
+// the window of the plugin (X11: it makes its own, or is embedded in one of ours): shown and hidden by a thread of ours that is the main thread of the plugin
+int pi_gui_available(pc_inst *inst);
+int pi_gui_show(pc_inst *inst);
+void pi_gui_hide(pc_inst *inst);
+int pi_gui_visible(pc_inst *inst);
+
+// the main thread of the plugins: called once by the thread that is it, then pc_pump over and over (the timers, descriptors and windows of the plugins);
+// pc_wake gets it out of a wait, pc_is_main says whether the caller is it
+void pc_set_main(void);
+int pc_is_main(void);
+void pc_wake(void);
+void pc_pump(int timeout_ms);
+
+// asks the plugin for the cookies of its parameters again (on the main thread)
+void pi_cache_cookies(pc_inst *inst);
+
 #endif

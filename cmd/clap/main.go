@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/clap"
@@ -37,6 +38,7 @@ func main() {
 	seconds := flag.Float64("seconds", 4, "how long the chord is held")
 	preset := flag.String("preset", "", "text files of settings (key = what the plugin shows for it), separated by commas: applied before the chord, and saved with -save")
 	save := flag.String("save", "", "with -preset: write each as a preset of the editor (a JSON file) in this folder")
+	window := flag.Float64("window", 0, "show the window of the plugin (if it has one) for this many seconds")
 	set := flag.String("set", "", "parameters to set before it plays: key=value, separated by a semicolon")
 	flag.Parse()
 
@@ -71,6 +73,15 @@ func main() {
 		log.Fatal(err)
 	}
 	defer pl.Free()
+	if *window > 0 {
+		fmt.Println("the plugin has a window:", pl.HasWindow())
+		if err := pl.ShowWindow(); err != nil {
+			log.Fatal(err)
+		}
+		time.Sleep(time.Duration(*window * float64(time.Second)))
+		fmt.Println("the window is open:", pl.WindowOpen())
+		return
+	}
 	if *showPresets {
 		for i, p := range pl.Presets() {
 			fmt.Printf("%4d  %-16s %-36s %s\n", i, p.Category, p.Name, p.Creator)

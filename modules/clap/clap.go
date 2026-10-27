@@ -8,7 +8,7 @@ package clap
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/include -std=gnu11
-#cgo LDFLAGS: -ldl
+#cgo LDFLAGS: -ldl -lX11 -lpthread
 #include <stdlib.h>
 #include "glue.h"
 */
@@ -50,7 +50,7 @@ var (
 	libs  = map[string]*C.pc_lib{} // a file is opened once and stays open
 )
 
-func open(path string) (*C.pc_lib, error) {
+func openMain(path string) (*C.pc_lib, error) {
 	libMu.Lock()
 	defer libMu.Unlock()
 	if l, ok := libs[path]; ok {
@@ -104,7 +104,7 @@ func Scan(dirs ...string) []Descriptor {
 	return out
 }
 
-func describe(path string) []Descriptor {
+func describeMain(path string) []Descriptor {
 	lib, err := open(path)
 	if err != nil {
 		return nil
@@ -140,7 +140,7 @@ var (
 )
 
 // PresetsOf are the presets the library of a descriptor has for its plugin, in the order the library lists them
-func PresetsOf(d Descriptor) []Preset {
+func presetsOfMain(d Descriptor) []Preset {
 	lib, err := open(d.Path)
 	if err != nil {
 		return nil
@@ -227,7 +227,7 @@ type Plugin struct {
 }
 
 // New makes the plugin: active, at the sample rate and buffer size of the patch
-func New(d Descriptor) (*Plugin, error) {
+func newMain(d Descriptor) (*Plugin, error) {
 	lib, err := open(d.Path)
 	if err != nil {
 		return nil, err
@@ -339,10 +339,13 @@ func (p *Plugin) pickMain() {
 func (p *Plugin) Descriptor() Descriptor { return p.desc }
 
 // Describe is the settings of the plugin as a synth describes its own: a knob for every parameter, where it is now
-func (p *Plugin) Describe() params.Set {
+func (p *Plugin) describeMain() params.Set {
 	set := params.Set{Name: p.desc.Name}
 	p.metaMu.RLock()
 	defer p.metaMu.RUnlock()
+	if p.hasWindowMain() { // a switch that opens the plugin's own window
+		set.Params = append(set.Params, params.S("Window", windowKey, p.WindowOpen(), params.Label("show the plugin's window")))
+	}
 	if len(p.presets) > 0 {
 		names := make([]string, len(p.presets))
 		for i, pr := range p.presets {
@@ -374,7 +377,7 @@ func (p *Plugin) Describe() params.Set {
 }
 
 // Text is what the plugin shows for a value of the parameter with this key ("Classic", "440 Hz"), empty when it shows none
-func (p *Plugin) Text(key string, value float64) string {
+func (p *Plugin) textMain(key string, value float64) string {
 	i, ok := p.keys[key]
 	if !ok || p.inst == nil {
 		return ""
@@ -387,7 +390,7 @@ func (p *Plugin) Text(key string, value float64) string {
 }
 
 // Value is where the plugin has the parameter with this key now (0 to 1)
-func (p *Plugin) Value(key string) float64 {
+func (p *Plugin) valueMain(key string) float64 {
 	i, ok := p.keys[key]
 	if !ok || p.inst == nil {
 		return 0
@@ -397,6 +400,9 @@ func (p *Plugin) Value(key string) float64 {
 
 // presetKey is the key of the setting that loads a preset of the plugin: the number of the preset
 const presetKey = "preset"
+
+// windowKey is the key of the setting that opens and closes the plugin's window
+const windowKey = "window"
 
 // label is what a preset is called in a list: the kind of sound it is, then its name
 func (pr Preset) label() string {
@@ -410,7 +416,7 @@ func (pr Preset) label() string {
 func (p *Plugin) Presets() []Preset { return p.presets }
 
 // LoadPreset loads the preset with this number into the plugin. The plugin says when it is done: a long preset loads on its own thread, so this is quick
-func (p *Plugin) LoadPreset(i int) error {
+func (p *Plugin) loadPresetMain(i int) error {
 	if i < 0 || i >= len(p.presets) {
 		return fmt.Errorf("no preset %d", i)
 	}
@@ -435,7 +441,7 @@ func (p *Plugin) LoadPreset(i int) error {
 func (p *Plugin) Loaded() int { return int(p.preset.Load()) - 1 }
 
 // SaveState is what the plugin keeps of its sound, to give back with LoadState (its own format: the settings, and what is not a setting, the routing of its modulation)
-func (p *Plugin) SaveState() ([]byte, error) {
+func (p *Plugin) saveStateMain() ([]byte, error) {
 	if p.inst == nil {
 		return nil, errors.New("the plugin is gone")
 	}
@@ -449,7 +455,7 @@ func (p *Plugin) SaveState() ([]byte, error) {
 }
 
 // LoadState gives the plugin a state back. It is quick when the plugin is quick: call it off the audio thread
-func (p *Plugin) LoadState(state []byte) error {
+func (p *Plugin) loadStateMain(state []byte) error {
 	p.loadMu.Lock()
 	defer p.loadMu.Unlock()
 	if p.inst == nil || p.closed.Load() {
@@ -473,7 +479,7 @@ func (p *Plugin) Bind(set func(values map[string]float64), relabel func(labels m
 }
 
 // Values are the settings of the plugin as it has them now, by key (and the number of the preset loaded last)
-func (p *Plugin) Values() map[string]float64 {
+func (p *Plugin) valuesMain() map[string]float64 {
 	out := make(map[string]float64, len(p.params)+1)
 	if p.inst == nil {
 		return out
@@ -518,7 +524,7 @@ func (p *Plugin) tellEditor() {
 
 // Relabel asks the plugin for the names and ranges of its parameters again (some plugins rename them when a setting changes: an effect that is a delay or a reverb
 // by its type) and returns how many names changed; the keys stay what they were
-func (p *Plugin) Relabel() int {
+func (p *Plugin) relabelMain() int {
 	if p.inst == nil {
 		return 0
 	}
@@ -526,6 +532,7 @@ func (p *Plugin) Relabel() int {
 	for i, q := range p.params {
 		byID[q.id] = i
 	}
+	C.pi_cache_cookies(p.inst)
 	changed := 0
 	var name, module [256]C.char
 	for j := 0; j < int(C.pi_param_count(p.inst)); j++ {
@@ -550,6 +557,30 @@ func (p *Plugin) Relabel() int {
 	return changed
 }
 
+// HasWindow is whether the plugin has a window of its own (X11) that can be shown
+func (p *Plugin) hasWindowMain() bool { return p.inst != nil && C.pi_gui_available(p.inst) != 0 }
+
+// ShowWindow opens the window of the plugin (it is made and run by a thread of ours); HideWindow closes it. It is a plugin's own window, on the screen of the
+// program: the windows of the web page are the settings
+func (p *Plugin) showWindowMain() error {
+	if p.inst == nil || p.closed.Load() {
+		return errors.New("the plugin is gone")
+	}
+	if C.pi_gui_show(p.inst) == 0 {
+		return fmt.Errorf("%s has no window to show here", p.desc.Name)
+	}
+	return nil
+}
+
+func (p *Plugin) hideWindowMain() {
+	if p.inst != nil {
+		C.pi_gui_hide(p.inst)
+	}
+}
+
+// WindowOpen is whether the window is showing
+func (p *Plugin) WindowOpen() bool { return p.inst != nil && C.pi_gui_visible(p.inst) != 0 }
+
 // Keys are the keys of the messages that move the parameters
 func (p *Plugin) Keys() []string {
 	out := make([]string, len(p.params))
@@ -563,7 +594,7 @@ func (p *Plugin) Keys() []string {
 func (p *Plugin) Close() { p.closed.Store(true) }
 
 // Free lets the plugin go at once, for a plugin that is not running on the audio thread
-func (p *Plugin) Free() {
+func (p *Plugin) freeMain() {
 	if p.inst != nil {
 		C.pi_free(p.inst)
 		p.inst = nil
@@ -616,6 +647,13 @@ func (p *Plugin) ReceiveMessage(msg psalm.Message) {
 		}
 		return
 	}
+	msg.IfFltVal(windowKey, func(f float64) { // the window is run by the main thread of the plugins: not waited for here
+		if f > 0.5 {
+			go func() { _ = p.ShowWindow() }()
+		} else {
+			go p.HideWindow()
+		}
+	})
 	msg.IfFltVal(presetKey, func(f float64) { // loaded off the audio thread: it reads files
 		if i := int(math.Round(f)); len(p.presets) > 0 && i != p.Loaded() { // the editor tells the plugin the preset it has: nothing to do then
 			go func() { _ = p.LoadPreset(i) }()
@@ -654,7 +692,7 @@ func (p *Plugin) AllNotesOff() {
 }
 
 // PortNames are the names the plugin gives its audio ports: the inputs (the first is played; a second is the side chain) and the outputs
-func (p *Plugin) PortNames() (ins, outs []string) {
+func (p *Plugin) portNamesMain() (ins, outs []string) {
 	if p.inst == nil {
 		return nil, nil
 	}
@@ -674,7 +712,7 @@ func (p *Plugin) PortNames() (ins, outs []string) {
 }
 
 // Latency is how many samples the plugin says it delays the sound (its look ahead, say)
-func (p *Plugin) Latency() int {
+func (p *Plugin) latencyMain() int {
 	if p.inst == nil {
 		return 0
 	}
@@ -746,3 +784,87 @@ func (p *Plugin) Synthesize() {
 }
 
 var _ psalm.Modular = (*Plugin)(nil)
+
+func open(path string) (lib *C.pc_lib, err error) {
+	mainDo(func() { lib, err = openMain(path) })
+	return
+}
+
+func describe(path string) (out []Descriptor) {
+	mainDo(func() { out = describeMain(path) })
+	return
+}
+
+func PresetsOf(d Descriptor) (out []Preset) {
+	mainDo(func() { out = presetsOfMain(d) })
+	return
+}
+
+func New(d Descriptor) (p *Plugin, err error) {
+	mainDo(func() { p, err = newMain(d) })
+	return
+}
+
+func (p *Plugin) Describe() (set params.Set) {
+	mainDo(func() { set = p.describeMain() })
+	return
+}
+
+func (p *Plugin) Text(key string, value float64) (s string) {
+	mainDo(func() { s = p.textMain(key, value) })
+	return
+}
+
+func (p *Plugin) Value(key string) (v float64) {
+	mainDo(func() { v = p.valueMain(key) })
+	return
+}
+
+func (p *Plugin) LoadPreset(i int) (err error) {
+	mainDo(func() { err = p.loadPresetMain(i) })
+	return
+}
+
+func (p *Plugin) SaveState() (st []byte, err error) {
+	mainDo(func() { st, err = p.saveStateMain() })
+	return
+}
+
+func (p *Plugin) LoadState(state []byte) (err error) {
+	mainDo(func() { err = p.loadStateMain(state) })
+	return
+}
+
+func (p *Plugin) Values() (v map[string]float64) {
+	mainDo(func() { v = p.valuesMain() })
+	return
+}
+
+func (p *Plugin) Relabel() (n int) {
+	mainDo(func() { n = p.relabelMain() })
+	return
+}
+
+func (p *Plugin) HasWindow() (b bool) {
+	mainDo(func() { b = p.hasWindowMain() })
+	return
+}
+
+func (p *Plugin) ShowWindow() (err error) {
+	mainDo(func() { err = p.showWindowMain() })
+	return
+}
+
+func (p *Plugin) HideWindow() { mainDo(p.hideWindowMain) }
+
+func (p *Plugin) Free() { mainDo(p.freeMain) }
+
+func (p *Plugin) PortNames() (ins, outs []string) {
+	mainDo(func() { ins, outs = p.portNamesMain() })
+	return
+}
+
+func (p *Plugin) Latency() (n int) {
+	mainDo(func() { n = p.latencyMain() })
+	return
+}

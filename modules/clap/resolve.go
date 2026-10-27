@@ -51,7 +51,7 @@ func (p *Plugin) expand(key string) (string, error) {
 // Resolve finds the value (0 to 1, what a message sets) that makes the plugin show text for the parameter with this key: the text as it shows it ("Sine", "Poly",
 // "Reverb 1"), @ and a value from 0 to 1 for one that shows nothing, or a number and its unit ("423 ms", "12 cents", "-1"): the value that shows the nearest number in that unit. A key may be the end of one ("a osc 1
 // type"). It returns the whole key
-func (p *Plugin) Resolve(key, text string) (string, float64, error) {
+func (p *Plugin) resolveMain(key, text string) (string, float64, error) {
 	full, err := p.expand(key)
 	if err != nil {
 		return "", 0, err
@@ -104,4 +104,10 @@ func (p *Plugin) Resolve(key, text string) (string, float64, error) {
 		lo--
 	}
 	return full, float64(lo+hi) / 2 / steps, nil
+}
+
+// Resolve is resolveMain on the main thread of the plugins (it asks the plugin for the text of thousands of values)
+func (p *Plugin) Resolve(key, text string) (full string, value float64, err error) {
+	mainDo(func() { full, value, err = p.resolveMain(key, text) })
+	return
 }

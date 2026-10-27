@@ -50,10 +50,10 @@ func TestPageClap(t *testing.T) {
 	t.Logf("the side panel opened after %v", time.Since(start))
 	tb.WaitFor(`document.querySelector(".pt-drawer-frame").contentDocument?.querySelectorAll(".control").length > 500`, "the settings of Surge XT in the side panel")
 	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
-	if shut := tb.Eval(frame + `.querySelectorAll(".ed-group")[1].classList.contains("closed") || ` + frame + `.querySelectorAll(".ed-group")[0].classList.contains("closed")`).(bool); shut {
-		t.Error("the preset and the main knobs are not both open")
+	if shut := tb.Eval(`[0, 1, 2].some(i => ` + frame + `.querySelectorAll(".ed-group")[i].classList.contains("closed"))`).(bool); shut {
+		t.Error("the window switch, the preset and the main knobs are not all open")
 	}
-	if first := tb.Eval(frame + `.querySelector(".ed-title").textContent`).(string); first != "Preset (1)" {
+	if first := tb.Eval(frame + `.querySelector(".ed-title").textContent`).(string); first != "Window (1)" {
 		t.Errorf("the first group is %q", first)
 	}
 	if options := tb.Eval(frame + `.querySelector(".ed-group select").options.length`).(float64); options < 1000 {

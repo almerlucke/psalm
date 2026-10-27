@@ -114,10 +114,16 @@ func TestClapRealPlugins(t *testing.T) {
 	}
 	// its own presets, chosen by number as the editor does
 	set := synth.Describe("")
-	if set.Params[0].Key != "preset" || len(set.Params[0].Options) < 1000 {
-		t.Errorf("Surge XT lists %d presets (its data is needed: see docs/clap.md)", len(set.Params[0].Options))
+	var presets []string
+	for _, p := range set.Params {
+		if p.Key == "preset" {
+			presets = p.Options
+		}
+	}
+	if len(presets) < 1000 {
+		t.Errorf("Surge XT lists %d presets (its data is needed: see docs/clap.md)", len(presets))
 	} else {
-		want := slices.Index(set.Params[0].Options, "Plucks / Taped Plucks")
+		want := slices.Index(presets, "Plucks / Taped Plucks")
 		synth.Module.ReceiveMessage(psalm.Message{"preset": float64(want)})
 		pl := synth.Module.(*clap.Plugin)
 		deadline := time.Now().Add(3 * time.Second)
@@ -206,4 +212,39 @@ func TestClapStateInPatch(t *testing.T) {
 		}
 	}
 	until(p2, "after loading the patch the knob is not at 1", func() bool { return node(pt2, id2).Values()["output gain"] == 1 })
+}
+
+// the plugin's own window opens from the switch of the editor (opt in: it puts a window on the screen; CLAP_TEST_DIR names the directory with OB-Xf)
+func TestClapWindow(t *testing.T) {
+	dir := os.Getenv("CLAP_TEST_DIR")
+	if dir == "" || os.Getenv("CLAP_TEST_WINDOW") == "" {
+		t.Skip("CLAP_TEST_DIR and CLAP_TEST_WINDOW are not set")
+	}
+	psalm.PushConfig(psalm.Config{BPM: 100, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	byName := map[string]patcher.Kind{}
+	for _, k := range clapKinds(dir) {
+		byName[k.Name] = k
+	}
+	made, err := byName["clap"].Make("OB-Xf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pl := made.Module.(*clap.Plugin)
+	defer pl.Free()
+	if set := made.Describe(""); set.Params[0].Key != "window" {
+		t.Fatalf("no window switch: %+v", set.Params[0])
+	}
+	made.Module.ReceiveMessage(psalm.Message{"window": 1.0})
+	for deadline := time.Now().Add(5 * time.Second); !pl.WindowOpen() && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+	}
+	if !pl.WindowOpen() {
+		t.Fatal("the window did not open")
+	}
+	made.Module.ReceiveMessage(psalm.Message{"window": 0.0})
+	for deadline := time.Now().Add(5 * time.Second); pl.WindowOpen() && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+	}
+	if pl.WindowOpen() {
+		t.Error("the window did not close")
+	}
 }
