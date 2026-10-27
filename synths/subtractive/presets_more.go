@@ -32,7 +32,7 @@ func MoogBassPreset() Config {
 	cfg.FilterEnv = adsrEnv(1, 260, 0.1, 140)
 	cfg.AmpEnv = adsrEnv(1, 300, 0.7, 120)
 	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Velocity, Dest: "cutoff", Amount: 0.15}
-	cfg.Level = 1.082 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 1.2120 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -127,7 +127,7 @@ func AcidSquarePreset() Config {
 	cfg.AmpEnv = adsrEnv(1, 60, 0.9, 50)
 	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Velocity, Dest: "cutoff", Amount: 0.35}
 	cfg.Mods[1] = modmatrix.Slot{Src: modmatrix.Velocity, Dest: "resonance", Amount: 0.1}
-	cfg.Level = 0.5684 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 0.6367 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -153,7 +153,7 @@ func DubWobblePreset() Config {
 	cfg.AmpEnv = adsrEnv(2, 100, 0.95, 90)
 	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 2.2, KeySync: true, Cutoff: 3.2}
 	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Wheel, Dest: "lfo1Rate", Amount: 0.35}
-	cfg.Level = 0.9224 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 1.0333 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -201,7 +201,7 @@ func WideReesePreset() Config {
 	cfg.AmpEnv = adsrEnv(5, 200, 0.95, 200)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 0.25, Cutoff: 0.8}
 	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Wheel, Dest: "unisonDetune", Amount: 0.7}
-	cfg.Level = 0.5989 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 0.6709 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -761,7 +761,7 @@ func AnalogSeqPreset() Config {
 	cfg.FilterEnv = adsrEnv(1, 130, 0, 60)
 	cfg.AmpEnv = adsrEnv(1, 160, 0.1, 60)
 	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Random, Dest: "cutoff", Amount: 0.12}
-	cfg.Level = 1.4 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 1.7222 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -929,7 +929,7 @@ func DarkDronePreset() Config {
 	cfg.AmpEnv = adsrEnv(3000, 500, 1, 4000)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSampleHold, Rate: 0.9, Cutoff: 0.6}
 	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.LFO1, Dest: "noiseLevel", Amount: 0.2}
-	cfg.Level = 1.236 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 1.3845 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 

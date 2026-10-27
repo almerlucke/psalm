@@ -189,6 +189,9 @@ const (
 	InExt1       = 5 // to InExt1+3
 )
 
+// ladderStageLevel is where the stages of the ladder of the synth clip: a signal of normal level feels it a little (see ladder.SetStageLevel)
+const ladderStageLevel = 1.25
+
 type Voice struct {
 	*psalm.Module
 	cfg       Config
@@ -252,6 +255,7 @@ func New(cfg Config) *Voice {
 	v.svf = svf.New(cfg.Cutoff, cfg.Resonance, sr)
 	v.svf2 = svf.New(max(20, cfg.Filter2Cutoff), cfg.Filter2Resonance, sr)
 	v.ladder = ladder.New(cfg.Cutoff, cfg.Resonance, sr)
+	v.ladder.SetStageLevel(ladderStageLevel)
 	v.formant = formant.New(cfg.Vowel, formantQ(cfg.Resonance), sr)
 	v.filterEnv = adsr.New(&v.cfg.FilterEnv, adsr.NoteOff, sr)
 	v.ampEnv = adsr.New(&v.cfg.AmpEnv, adsr.NoteOff, sr)

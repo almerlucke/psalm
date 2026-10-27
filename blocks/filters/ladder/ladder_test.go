@@ -179,3 +179,25 @@ func TestStagesStayBounded(t *testing.T) {
 		}
 	}
 }
+
+// a lower level for the stages makes the same signal clip more: the resonance of a signal of normal size is held back further
+func TestStageLevelSetsTheClip(t *testing.T) {
+	gain := func(level float64) float64 {
+		l := New(1000, 0.9, 44100)
+		l.SetStageLevel(level)
+		peak := 0.0
+
+		for i := 0; i < 44100; i++ {
+			y := l.Process(0.5*math.Sin(2*math.Pi*900*float64(i)/44100), LowPass24)
+			if i > 30000 {
+				peak = math.Max(peak, math.Abs(y))
+			}
+		}
+
+		return peak
+	}
+
+	if hard, soft := gain(1.25), gain(4); hard >= soft {
+		t.Errorf("a stage level of 1.25 gives a peak of %v, 4 gives %v: the lower should clip more", hard, soft)
+	}
+}

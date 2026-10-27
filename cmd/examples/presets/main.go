@@ -4,6 +4,7 @@
 //
 //	go run ./cmd/examples/presets                          all of them
 //	go run ./cmd/examples/presets -synth vocal             one synth (subtractive has all of its presets)
+//	go run ./cmd/examples/presets -synth subtractive -preset acidBass   one preset
 //	go run ./cmd/examples/presets -render presets.wav      render it
 package main
 
@@ -60,6 +61,7 @@ type entry struct {
 
 func main() {
 	only := flag.String("synth", "", "the synth whose presets to play (empty: all)")
+	only2 := flag.String("preset", "", "with -synth: only this preset")
 	renderTo := flag.String("render", "", "render to this WAV file instead of playing")
 	flag.Parse()
 	psalm.PushConfig(psalm.Config{BPM: 110, PPQ: 240, SampleRate: 44100, BufferSize: 512})
@@ -195,7 +197,7 @@ func main() {
 	tour = append(tour, subtractiveTour()...)
 	var chosen []entry
 	for _, e := range tour {
-		if *only == "" || strings.EqualFold(e.synth, *only) {
+		if (*only == "" || strings.EqualFold(e.synth, *only)) && (*only2 == "" || strings.EqualFold(e.preset, *only2)) {
 			chosen = append(chosen, e)
 		}
 	}

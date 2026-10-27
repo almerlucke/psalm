@@ -120,7 +120,7 @@ func BassPreset() Config {
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.8, 150.0, 1.0, 80.0)
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
-	cfg.Level = 0.7653 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 0.9414 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -140,7 +140,7 @@ func AcidBassPreset() Config {
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
 	cfg.FilterDrive = 1.5
-	cfg.Level = 1.699 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 2.0900 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -461,7 +461,7 @@ func ReeseBassPreset() Config {
 	cfg.LFO1 = LFOConfig{Waveform: LFOTriangle, Rate: 0.3, Cutoff: 1.2}
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
-	cfg.Level = 0.6246 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 0.6997 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -502,7 +502,7 @@ func SquareBassPreset() Config {
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.85, 150.0, 1.0, 100.0)
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
-	cfg.Level = 0.6396 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 0.7868 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 
@@ -746,7 +746,7 @@ func LadderBassPreset() Config {
 	cfg.KeyTrack = 0.4
 	cfg.FilterEnv = *adsr.NewSetting(1.0, 2.0, 0.15, 220.0, 1.0, 120.0)
 	cfg.AmpEnv = *adsr.NewSetting(1.0, 2.0, 0.85, 150.0, 1.0, 100.0)
-	cfg.Level = 1.322 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 1.4809 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 

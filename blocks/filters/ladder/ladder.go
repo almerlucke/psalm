@@ -27,11 +27,12 @@ type Ladder struct {
 	k        float64 // feedback
 	s        [4]float64
 	compGain float64
-	stage    float64 // the level the clip of the stages carries up to
+	stageAt  float64 // the level the clip of the stages carries up to at a drive of 1 (StageLevel)
+	stage    float64 // and now
 }
 
 func New(fc float64, res float64, sr float64) *Ladder {
-	l := &Ladder{sr: sr, fc: fc, res: res, drive: 1.0}
+	l := &Ladder{sr: sr, fc: fc, res: res, drive: 1.0, stageAt: stageLevel}
 	l.update()
 	return l
 }
@@ -39,6 +40,13 @@ func New(fc float64, res float64, sr float64) *Ladder {
 func (l *Ladder) Set(fc float64, res float64) {
 	l.fc = fc
 	l.res = res
+	l.update()
+}
+
+// SetStageLevel sets the level the clip of the stages carries up to at a drive of 1 (4 by default, where only a hot signal feels it; about 1 clips a signal of normal
+// level, which is the sound of an overdriven ladder)
+func (l *Ladder) SetStageLevel(level float64) {
+	l.stageAt = math.Max(0.1, level)
 	l.update()
 }
 
@@ -60,7 +68,7 @@ func (l *Ladder) update() {
 
 	// the ladder loses passband level as the feedback rises, partly compensate it
 	l.compGain = 1.0 + 0.5*l.k
-	l.stage = stageLevel / math.Sqrt(l.drive)
+	l.stage = l.stageAt / math.Sqrt(l.drive)
 }
 
 func (l *Ladder) Clear() {
