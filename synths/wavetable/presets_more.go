@@ -143,6 +143,7 @@ func FMBassPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.25
 	cfg.WarpMode = WarpFMSine
+	cfg.Oversample = 2 // the FM of the warp folds back at a high note
 	cfg.Warp = 0.1
 	cfg.SubLevel = 0.3
 	cfg.Filter = LowPass
@@ -162,6 +163,7 @@ func SyncBassPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.4
 	cfg.WarpMode = WarpSync
+	cfg.Oversample = 1 // the corners and steps of the warp fold back at a high note
 	cfg.SubLevel = 0.4
 	cfg.Filter = LowPass
 	cfg.Cutoff = 900
@@ -183,6 +185,7 @@ func HooverBassPreset(table *Table) Config {
 	cfg.Detune = 70
 	cfg.Spread = 1
 	cfg.WarpMode = WarpBendUp
+	cfg.Oversample = 1 // the corners and steps of the warp fold back at a high note
 	cfg.Warp = 0.5
 	cfg.Filter = LowPass
 	cfg.Cutoff = 2200
@@ -208,6 +211,7 @@ func SyncLeadPreset(table *Table) Config {
 	cfg.Unison = 2
 	cfg.Detune = 10
 	cfg.WarpMode = WarpSync
+	cfg.Oversample = 1 // the corners and steps of the warp fold back at a high note
 	cfg.Warp = 0.15
 	cfg.Filter = LowPass
 	cfg.Cutoff = 4000
@@ -231,6 +235,7 @@ func MirrorLeadPreset(table *Table) Config {
 	cfg.Detune = 14
 	cfg.Spread = 0.7
 	cfg.WarpMode = WarpMirror
+	cfg.Oversample = 1 // the corners and steps of the warp fold back at a high note
 	cfg.Warp = 0.5
 	cfg.Filter = LowPass
 	cfg.Cutoff = 5000
@@ -249,6 +254,7 @@ func FMLeadPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.2
 	cfg.WarpMode = WarpFMB
+	cfg.Oversample = 2 // the FM of the warp folds back at a high note
 	cfg.Warp = 0.2
 	cfg.OscBPosition = 0
 	cfg.OscBOctave = 1
@@ -335,6 +341,7 @@ func EvolvingPadPreset(table *Table) Config {
 	cfg.Detune = 16
 	cfg.Spread = 0.9
 	cfg.WarpMode = WarpMirror
+	cfg.Oversample = 1 // the corners and steps of the warp fold back at a high note
 	cfg.Warp = 0.2
 	cfg.Filter = LowPass
 	cfg.Cutoff = 6000
@@ -464,6 +471,7 @@ func SyncPluckPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.5
 	cfg.WarpMode = WarpSync
+	cfg.Oversample = 1 // the corners and steps of the warp fold back at a high note
 	cfg.Unison = 2
 	cfg.Detune = 8
 	cfg.Spread = 0.5
@@ -480,6 +488,7 @@ func FMPluckPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.1
 	cfg.WarpMode = WarpFMSine
+	cfg.Oversample = 2 // the FM of the warp folds back at a high note
 	cfg.Unison = 2
 	cfg.Detune = 6
 	cfg.Spread = 0.5
@@ -532,6 +541,7 @@ func TineKeysPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.05
 	cfg.WarpMode = WarpFMB
+	cfg.Oversample = 2 // the FM of the warp folds back at a high note
 	cfg.OscBPosition = 0
 	cfg.OscBOctave = 3
 	cfg.Unison = 2
@@ -585,6 +595,7 @@ func FMBellPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.02
 	cfg.WarpMode = WarpFMB
+	cfg.Oversample = 2 // the FM of the warp folds back at a high note
 	cfg.OscBPosition = 0
 	cfg.OscBOctave = 1
 	cfg.OscBSemi = 9.68
@@ -647,6 +658,7 @@ func SynthBrassPreset(table *Table) Config {
 	cfg.Unison = 2
 	cfg.Detune = 9
 	cfg.WarpMode = WarpBendUp
+	cfg.Oversample = 1 // the corners and steps of the warp fold back at a high note
 	cfg.Warp = 0.2
 	cfg.Filter = LowPass
 	cfg.Cutoff = 450
@@ -784,6 +796,7 @@ func FlutePreset(*Table) Config {
 	cfg.PositionEnvAmount = 0.3
 	cfg.PositionEnv = env(1, 150, 0, 100)
 	cfg.WarpMode = WarpFMSine
+	cfg.Oversample = 2 // the FM of the warp folds back at a high note
 	cfg.Warp = 0.04
 	cfg.VibratoRate = 5.3
 	cfg.VibratoDepth = 0.08
@@ -802,6 +815,7 @@ func ArpPluckPreset(table *Table) Config {
 	cfg.Unison = 2
 	cfg.Detune = 10
 	cfg.WarpMode = WarpMirror
+	cfg.Oversample = 1 // the corners and steps of the warp fold back at a high note
 	cfg.Filter = LowPass
 	cfg.Cutoff = 800
 	cfg.Resonance = 0.25
@@ -820,6 +834,7 @@ func ArpGlassPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.15
 	cfg.WarpMode = WarpFMSine
+	cfg.Oversample = 2 // the FM of the warp folds back at a high note
 	cfg.Warp = 0.05
 	cfg.FilterEnv = env(1, 200, 0, 100)
 	route(&cfg, 0, modmatrix.FilterEnv, "warp", 0.25)
@@ -865,6 +880,7 @@ func TensionDronePreset(table *Table) Config {
 	cfg.OscBSemi = 6
 	cfg.OscBPosition = 0.5
 	cfg.WarpMode = WarpMirror
+	cfg.Oversample = 1 // the corners and steps of the warp fold back at a high note
 	cfg.Warp = 0.2
 	cfg.Filter = LowPass
 	cfg.Cutoff = 1800
@@ -897,6 +913,7 @@ func LaserFXPreset(table *Table) Config {
 	cfg := preset(table)
 	cfg.Position = 0.6
 	cfg.WarpMode = WarpFMSine
+	cfg.Oversample = 2 // the FM of the warp folds back at a high note
 	cfg.Warp = 0.1
 	cfg.FilterEnv = env(1, 150, 0, 100)
 	route(&cfg, 0, modmatrix.FilterEnv, "pitch", 1)

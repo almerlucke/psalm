@@ -859,7 +859,10 @@ A second oscillator, B, reads the same table at its own position, octave, semito
 `warpMode` and `warp` (0-1) bend the phase of oscillator A before the table is read: bend +, bend -,
 sync (the frame plays 1 to 8 times per cycle), mirror, fm b (oscillator B modulates the phase) and fm
 sine (`wavetable.WarpModes`). The band limited level of the table is chosen for the steepest slope of
-the warp, so warps stay mostly alias-safe. A wav becomes a table with `wavetable.Load` or
+the warp, which keeps most of the alias out, but a warp makes corners (mirror, bend) and steps (sync) the table cannot band limit, and the FM of the warps puts sidebands past the
+Nyquist frequency. `oversample` (`Config.Oversample`, 0 once, 1 twice, 2 four times a sample, the oscillators only, through `blocks/oversample`) brings those down: at C6 the sync
+has 7 dB less alias at twice a sample and 13 dB at four times, the mirror 6 and 12 dB, the FM tines 30 to 60 dB; the presets with a warp have it on (1 for the sync, mirror and bend,
+2 for the FM, except the noises: `snareHit`, `hatMetal`, `windFx`). A wav becomes a table with `wavetable.Load` or
 `gen.LoadSound`.
 
 `Config.Mods` is an 8 slot [modulation matrix](#modulation-matrix): sources filter env, amp env, lfo 1,

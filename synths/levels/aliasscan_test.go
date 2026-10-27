@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -133,24 +134,37 @@ func TestAliasScan(t *testing.T) {
 		rows = append(rows, row{name, foldBack(mk, 72, 4), foldBack(mk, 72, 2), foldBack(mk, 84, 4)})
 	}
 	over, _ := strconv.Atoi(os.Getenv("OVER"))
-	for n, f := range subtractive.Presets {
-		add("subtractive/"+n, func() played {
-			cfg := f()
-			cfg.FilterOversample = over
-			return subtractive.New(cfg)
-		})
+	only := func(synth string) bool { return os.Getenv("ONLY") == "" || strings.Contains(os.Getenv("ONLY"), synth) }
+	if only("subtractive") {
+		for n, f := range subtractive.Presets {
+			add("subtractive/"+n, func() played {
+				cfg := f()
+				cfg.FilterOversample = over
+				return subtractive.New(cfg)
+			})
+		}
 	}
-	if os.Getenv("ONLY") != "subtractive" {
+	if only("shaper") {
 		for n, f := range shaper.Presets {
 			add("shaper/"+n, func() played { return shaper.New(f()) })
 		}
+	}
+	if only("wavetable") {
 		table := gen.Brightness(32)
 		for n, f := range wavetable.Presets {
-			add("wavetable/"+n, func() played { return wavetable.New(f(table)) })
+			add("wavetable/"+n, func() played {
+				cfg := f(table)
+				cfg.Oversample = over
+				return wavetable.New(cfg)
+			})
 		}
+	}
+	if only("organ") {
 		for n, f := range organ.Presets {
 			add("organ/"+n, func() played { return organ.New(f()) })
 		}
+	}
+	if only("pulsar") {
 		for n, f := range pulsar.Presets {
 			add("pulsar/"+n, func() played { return pulsar.New(f()) })
 		}

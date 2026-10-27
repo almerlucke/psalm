@@ -44,6 +44,7 @@ func Describe(cfg Config) params.Set {
 		params.K("Filter", "filterEnvAmount", -6, 6, cfg.FilterEnvAmount, params.Unit("oct"), params.Label("env amount")),
 		params.K("Filter", "keyTrack", 0, 1, cfg.KeyTrack, params.Label("key track")),
 		params.K("Filter", "filterDrive", 1, 8, max(1, cfg.FilterDrive), params.Exp(), params.Label("drive")),
+		params.C("Filter", "filterOversample", []string{"once", "2x", "4x"}, max(0, min(cfg.FilterOversample, 2)), params.Label("ladder oversample")),
 		params.K("Filter", "vowel", 0, 4, cfg.Vowel),
 		params.K("Filter", "formantShift", 0.5, 2, orOne(cfg.FormantShift), params.Exp(), params.Label("formant shift")),
 

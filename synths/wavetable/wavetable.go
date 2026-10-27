@@ -9,6 +9,7 @@ import (
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/blocks/modmatrix"
+	ovs "github.com/almerlucke/psalm/blocks/oversample"
 	"github.com/almerlucke/psalm/blocks/sine"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -104,6 +105,10 @@ type Config struct {
 
 	Level float64 // output level (0 is treated as 1)
 
+	// Oversample plays the oscillators once (0), twice (1) or four times (2) a sample, filtered down: the warps (bend, mirror, sync, FM) make corners and steps that
+	// fold back at a high note. Costs that many times the oscillators
+	Oversample int
+
 	// Envelopes (durations in milliseconds)
 	PositionEnv adsr.Setting
 	FilterEnv   adsr.Setting
@@ -190,6 +195,8 @@ type Voice struct {
 	filterEnv   *adsr.ADSR
 	positionEnv *adsr.ADSR
 	filters     [2]*svf.SVF
+	overL       *ovs.Oversampler // the oscillators played several times a sample (Config.Oversample), nil for once
+	overR       *ovs.Oversampler
 
 	frequency float64               // target
 	expr      expression.Expression // the pitch bend; the mod wheel moves through the table and opens the filter
@@ -235,6 +242,7 @@ func New(cfg Config) *Voice {
 	for c := range v.filters {
 		v.filters[c] = svf.New(cfg.Cutoff, cfg.Resonance, sr)
 	}
+	v.setOversample()
 	v.mods = modmatrix.New(Dests)
 	for i, sl := range cfg.Mods {
 		v.mods.Set(i, sl)
@@ -256,6 +264,19 @@ func (v *Voice) SetFrequency(frequency float64) {
 
 func (v *Voice) SetPitch(pitch float64) {
 	v.SetFrequency(440.0 * math.Pow(2.0, (pitch-69.0)/12.0))
+}
+
+// setOversample makes (or drops) the samplers for the oversampling of the config
+func (v *Voice) setOversample() {
+	factor := 1 << max(0, min(v.cfg.Oversample, 2))
+	if factor == 1 {
+		v.overL, v.overR = nil, nil
+		return
+	}
+	if v.overL == nil || v.overL.Factor != factor {
+		v.overL = ovs.New(factor, ovs.TapsPerPhase)
+		v.overR = ovs.New(factor, ovs.TapsPerPhase)
+	}
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
@@ -283,6 +304,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("spread", func(f float64) { cfg.Spread = f })
 	msg.IfFltVal("subLevel", func(f float64) { cfg.SubLevel = f })
 	msg.IfFltVal("warp", func(f float64) { cfg.Warp = f })
+	msg.IfIntVal("oversample", func(n int) { cfg.Oversample = max(0, min(n, 2)); v.setOversample() })
 	msg.IfIntVal("warpMode", func(m int) { cfg.WarpMode = WarpMode(max(0, min(m, int(numWarpModes)-1))) })
 	msg.IfFltVal("oscBLevel", func(f float64) { cfg.OscBLevel = f })
 	msg.IfFltVal("oscBPosition", func(f float64) { cfg.OscBPosition = f })
@@ -345,6 +367,10 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 	}
 
 	if !wasActive {
+		if v.overL != nil {
+			v.overL.Reset() // what is left in the filters of the note before
+			v.overR.Reset()
+		}
 		// unison oscillators start at random phases so they don't start out as one loud wave
 		for u := range v.phases {
 			v.phases[u] = 0
@@ -571,7 +597,7 @@ func (v *Voice) Synthesize() {
 		}
 
 		// oscillator B (also the modulator of the FM warp)
-		inc := freq / sr
+		inc0 := freq / sr
 		levelB := cfg.OscBLevel
 		if bModded {
 			levelB += mods.Mod(dOscBLevel)
@@ -585,96 +611,118 @@ func (v *Voice) Synthesize() {
 		if wamt == 0 {
 			wmode = WarpOff
 		}
-		var oB, oBl, oBr, l, r float64
-		if levelB > 0 || (wmode == WarpFMB) {
-			posB, centsB := cfg.OscBPosition, cfg.OscBDetune
-			if bModded {
-				posB += mods.Mod(dOscBPosition)
-				centsB += mods.Mod(dOscBDetune)
-			}
-			incB := inc * baseRatioB * math.Exp2(centsB/1200)
-			cb := table.cursor(posB, incB)
-			gB := 1.0
-			if cfg.Normalize {
-				gB = cb.gain
-			}
-			if nB == 1 {
-				pb := v.phaseB
-				if wmode != WarpFMB && wmode != WarpFMSine {
-					pb = warp(wmode, wamt, pb, 0)
-					cb = table.cursor(posB, incB*warpSlope(wmode, wamt))
+		// the oscillators, played this many times a sample (Config.Oversample): the warps bend the phase and make corners and steps that fold back at the pitch itself
+		factor := 1
+		if v.overL != nil {
+			factor = v.overL.Factor
+		}
+		inc := inc0 / float64(factor)
+		var l, r float64
+		for range factor {
+			var oB, oBl, oBr float64
+			l, r = 0, 0
+			if levelB > 0 || (wmode == WarpFMB) {
+				posB, centsB := cfg.OscBPosition, cfg.OscBDetune
+				if bModded {
+					posB += mods.Mod(dOscBPosition)
+					centsB += mods.Mod(dOscBDetune)
 				}
-				oB = cb.read(pb) * gB
-				oBl, oBr = oB, oB
-				v.phaseB += incB
-				v.phaseB -= math.Floor(v.phaseB)
-			} else {
-				fm := wmode == WarpFMB || wmode == WarpFMSine
-				slopeB := 1.0
-				if !fm {
-					slopeB = warpSlope(wmode, wamt)
-				}
-				cb = table.cursor(posB, incB*ratiosB[nB-1]*slopeB)
+				incB := inc * baseRatioB * math.Exp2(centsB/1200)
+				cb := table.cursor(posB, incB)
+				gB := 1.0
 				if cfg.Normalize {
 					gB = cb.gain
 				}
-				for u := range nB {
-					p := &v.phaseB
-					if u > 0 {
-						p = &v.phasesB[u]
-					}
-					pb := *p
-					if !fm {
+				if nB == 1 {
+					pb := v.phaseB
+					if wmode != WarpFMB && wmode != WarpFMSine {
 						pb = warp(wmode, wamt, pb, 0)
+						cb = table.cursor(posB, incB*warpSlope(wmode, wamt))
 					}
-					x := cb.read(pb) * gB
-					oBl += x * gainBL[u]
-					oBr += x * gainBR[u]
-					*p += incB * ratiosB[u]
-					*p -= math.Floor(*p)
+					oB = cb.read(pb) * gB
+					oBl, oBr = oB, oB
+					v.phaseB += incB
+					v.phaseB -= math.Floor(v.phaseB)
+				} else {
+					fm := wmode == WarpFMB || wmode == WarpFMSine
+					slopeB := 1.0
+					if !fm {
+						slopeB = warpSlope(wmode, wamt)
+					}
+					cb = table.cursor(posB, incB*ratiosB[nB-1]*slopeB)
+					if cfg.Normalize {
+						gB = cb.gain
+					}
+					for u := range nB {
+						p := &v.phaseB
+						if u > 0 {
+							p = &v.phasesB[u]
+						}
+						pb := *p
+						if !fm {
+							pb = warp(wmode, wamt, pb, 0)
+						}
+						x := cb.read(pb) * gB
+						oBl += x * gainBL[u]
+						oBr += x * gainBR[u]
+						*p += incB * ratiosB[u]
+						*p -= math.Floor(*p)
+					}
+					oB = (oBl + oBr) / 2
 				}
-				oB = (oBl + oBr) / 2
 			}
-		}
 
-		// oscillator A, the highest unison oscillator picks the band limited level for all
-		slope := warpSlope(wmode, wamt)
-		c := table.cursor(pos, inc*ratios[n-1]*slope)
-		frameGain := 1.0
-		if cfg.Normalize {
-			frameGain = c.gain
-		}
-		mod := 0.0
-		switch wmode {
-		case WarpFMB:
-			mod = oB
-		case WarpFMSine:
-			mod = sine.Cycle(v.warpPhase)
-		}
-		for u := range n {
-			p := v.phases[u]
-			if wmode != WarpOff {
-				p = warp(wmode, wamt, p, mod)
+			// oscillator A, the highest unison oscillator picks the band limited level for all
+			slope := warpSlope(wmode, wamt)
+			c := table.cursor(pos, inc*ratios[n-1]*slope)
+			frameGain := 1.0
+			if cfg.Normalize {
+				frameGain = c.gain
 			}
-			x := c.read(p) * frameGain
-			l += x * gainL[u]
-			r += x * gainR[u]
-			v.phases[u] += inc * ratios[u]
-			v.phases[u] -= math.Floor(v.phases[u])
+			mod := 0.0
+			switch wmode {
+			case WarpFMB:
+				mod = oB
+			case WarpFMSine:
+				mod = sine.Cycle(v.warpPhase)
+			}
+			for u := range n {
+				p := v.phases[u]
+				if wmode != WarpOff {
+					p = warp(wmode, wamt, p, mod)
+				}
+				x := c.read(p) * frameGain
+				l += x * gainL[u]
+				r += x * gainR[u]
+				v.phases[u] += inc * ratios[u]
+				v.phases[u] -= math.Floor(v.phases[u])
+			}
+			v.warpPhase += inc
+			v.warpPhase -= math.Floor(v.warpPhase)
+			if levelB > 0 {
+				l += oBl * levelB
+				r += oBr * levelB
+			}
+			if sub := cfg.SubLevel + mods.Mod(dSubLevel); sub > 0 {
+				sub *= sine.Cycle(v.subPhase)
+				l += sub
+				r += sub
+			}
+			v.subPhase += inc * 0.5
+			v.subPhase -= math.Floor(v.subPhase)
+			if factor > 1 {
+				v.overL.Push(l)
+				if stereo {
+					v.overR.Push(r)
+				}
+			}
 		}
-		v.warpPhase += inc
-		v.warpPhase -= math.Floor(v.warpPhase)
-		if levelB > 0 {
-			l += oBl * levelB
-			r += oBr * levelB
+		if factor > 1 {
+			l = v.overL.Out()
+			if stereo {
+				r = v.overR.Out()
+			}
 		}
-		if sub := cfg.SubLevel + mods.Mod(dSubLevel); sub > 0 {
-			sub *= sine.Cycle(v.subPhase)
-			l += sub
-			r += sub
-		}
-		v.subPhase += inc * 0.5
-		v.subPhase -= math.Floor(v.subPhase)
 
 		// filter
 		if cfg.Filter != FilterOff {

@@ -28,6 +28,7 @@ func Describe(cfg Config) params.Set {
 
 		params.C("Oscillator", "warpMode", WarpModes, int(cfg.WarpMode), params.Label("warp mode")),
 		params.K("Oscillator", "warp", 0, 1, cfg.Warp),
+		params.C("Oscillator", "oversample", []string{"once", "2x", "4x"}, max(0, min(cfg.Oversample, 2))),
 
 		params.K("Oscillator B", "oscBLevel", 0, 1, cfg.OscBLevel, params.Label("level")),
 		params.K("Oscillator B", "oscBPosition", 0, 1, cfg.OscBPosition, params.Label("position")),

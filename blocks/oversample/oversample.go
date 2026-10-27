@@ -125,6 +125,13 @@ func (o *Oversampler) Down(f func(k int) float64) float64 {
 	return o.filter()
 }
 
+// Push puts one oversampled point in the history, and Out gives the sample at the original rate that the last Factor points make: Down for a loop that is
+// not a function (call Push Factor times, then Out)
+func (o *Oversampler) Push(v float64) { o.push(v) }
+
+// Out is the history through the lowpass (see Push)
+func (o *Oversampler) Out() float64 { return o.filter() }
+
 // DownDelay is how many samples at the original rate Down delays what it is given: read a wave this far ahead
 // and the sample it gives is the wave at the moment
 func (o *Oversampler) DownDelay() float64 { return float64(len(o.taps)-1) / (2 * float64(o.Factor)) }
