@@ -215,14 +215,16 @@ func TestShimmer(t *testing.T) {
 	var g glottis
 	g.rng.s = 12345
 	var lows []float64
-	low := 0.0
+	low, cycles := 0.0, 0
 	for range 400 * 100 {
 		d, _ := g.tick(0.01, 0.6, 1.4, 0, 0.05)
-		low = math.Min(low, d)
-		if g.phase < 0.01 && low < 0 && g.cycles > 0 && d == 0 {
-			lows = append(lows, -low)
-			low = 0
+		if g.cycles != cycles { // a cycle ended with this sample: its lowest point
+			if cycles > 0 && low < 0 {
+				lows = append(lows, -low)
+			}
+			cycles, low = g.cycles, 0
 		}
+		low = math.Min(low, d)
 	}
 	if len(lows) < 100 {
 		t.Fatalf("%d cycles", len(lows))

@@ -397,6 +397,9 @@ func squareNumber(x float64) float64 {
 	return x * x
 }
 
+// BLEP is the correction for a jump of height 2 at the phase 0 of a cycle (t 0-1, dt the step of the phase a sample): add it to a wave with such a jump to band limit it
+func BLEP(t float64, dt float64) float64 { return blep(t, dt) }
+
 // blep is the correction to add to a waveform with a jump of height 2 at phase 0 (and at every whole phase) so that it is band limited: the difference between the
 // jump after a low pass of windowed sinc (8 samples to both sides, Blackman-Harris) and the jump itself, seen from the phase t (0-1) with a step of dt a sample.
 // The jumps of the cycles before and after the one at hand are added when the kernel is longer than a cycle (high notes), so the alias stays low up the keyboard
@@ -543,6 +546,10 @@ func bleResidual(d float64) float64 {
 
 	return table[i] + frac*(table[i+1]-table[i])
 }
+
+// BLAMP is the correction for a corner at the phase 0 of a cycle (t 0-1, dt the step of the phase a sample), for a change of slope of 2 a sample: for a change of slope of
+// s a cycle, add s*dt/2*BLAMP(t, dt) to the wave
+func BLAMP(t float64, dt float64) float64 { return blamp(t, dt) }
 
 // blamp is the correction of a corner (a change of slope) at phase 0, for a change of two a sample (the callers' c*dt*blamp is a change of 2*c*dt), by the same windowed sinc as blep: the difference between the
 // corner after the low pass and the corner itself. Callers scale it by the change of slope a cycle times dt

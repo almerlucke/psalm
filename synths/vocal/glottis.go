@@ -1,12 +1,16 @@
 package vocal
 
-import "math"
+import (
+	"math"
+
+	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
+)
 
 // The glottal source: the flow of air through the vocal folds as one cycle of a Rosenberg-Klatt
 // pulse with an open quotient, a speed quotient (how much sooner it opens than closes) and a return
 // (the soft end of the closing, a one-pole low-pass on the pulse, whose cut-off is the voice's tilt).
 // What the voice sings is the derivative of the flow: the lips radiate it. The pulse is band-limited
-// at the instant the folds snap shut, the one hard edge of the cycle.
+// at the instant the folds snap shut, the one hard edge of the cycle, by the windowed sinc of the oscillators (blosc.BLEP).
 
 const sinN = 2048
 
@@ -43,19 +47,6 @@ type glottis struct {
 	fl     float64 // the flow of the Liljencrants-Fant pulse so far this cycle
 }
 
-// polyBLEP is the correction of a unit step at t = 0 (phase 0-1, dt the step per sample)
-func polyBLEP(t, dt float64) float64 {
-	if t < dt {
-		t /= dt
-		return t + t - t*t - 1
-	}
-	if t > 1-dt {
-		t = (t - 1) / dt
-		return t*t + t + t + 1
-	}
-	return 0
-}
-
 // tick returns the next sample of the flow's derivative and the flow (0-1), for a pitch of inc
 // (cycles a sample)
 func (g *glottis) tick(inc, oq, sq, jitter, shimmer float64) (dv, flow float64) {
@@ -81,7 +72,16 @@ func (g *glottis) tick(inc, oq, sq, jitter, shimmer float64) (dv, flow float64) 
 	if t < 0 {
 		t++
 	}
-	dv += glottalScale * math.Pi / (2 * tn) / 2 * polyBLEP(t, dt)
+	dv += glottalScale * math.Pi / (2 * tn) / 2 * blosc.BLEP(t, dt)
+	// and the derivative has two corners, where the folds begin to open (from flat to rising) and where they are open the widest (from the opening to the closing)
+	a1, a2 := glottalScale*math.Pi/(2*tp), glottalScale*math.Pi/(2*tn)
+	slopeOpen := a1 * math.Pi / tp
+	slopePeak := a1*math.Pi/tp - a2*math.Pi/(2*tn)
+	tPeak := p - tp
+	if tPeak < 0 {
+		tPeak++
+	}
+	dv += 0.5 * dt * (slopeOpen*blosc.BLAMP(p, dt) + slopePeak*blosc.BLAMP(tPeak, dt))
 	dv *= g.amp
 	g.advance(dt, inc, jitter, shimmer)
 	return dv, flow
@@ -115,7 +115,7 @@ func (g *glottis) tickLF(inc float64, p *lfPulse, jitter, shimmer float64) (dv, 
 		g.mul, g.amp = 1, 1
 	}
 	dt := math.Min(inc/g.mul, 0.45)
-	d := p.at(g.phase)
+	d := p.at(g.phase) + p.corners(g.phase, dt)
 	g.fl += d * dt
 	flow = math.Max(0, math.Min(g.fl, 1))
 	dv = d * p.out * g.amp
@@ -249,6 +249,23 @@ func (p *lfPulse) at(t float64) float64 {
 		return p.e0 * math.Exp(p.alpha*t) * sinTurn(t/(2*p.tp))
 	}
 	return p.ret * (math.Exp(-p.eps*(t-p.te)) - p.ebt)
+}
+
+// corners is the correction of the two corners of the derivative at the phase t (0-1), a step of dt a sample: where the cycle begins (the return has run out, with its slope,
+// and the opening begins with another) and where the folds close (the opening turns into the return)
+func (p *lfPulse) corners(t, dt float64) float64 {
+	w := math.Pi / p.tp
+	slopeOpen := p.e0 * w                           // at 0, the opening
+	slopeEnd := -p.ret * p.eps * p.ebt              // at 1, the return
+	atTe := p.e0 * math.Exp(p.alpha*p.te)           // the opening, at te
+	sinTe, cosTe := math.Sincos(w * p.te)           //
+	slopeBefore := atTe * (p.alpha*sinTe + w*cosTe) // the opening's slope at te
+	slopeAfter := -p.ret * p.eps                    // the return's slope at te
+	tClose := t - p.te
+	if tClose < 0 {
+		tClose++
+	}
+	return 0.5 * dt * ((slopeOpen-slopeEnd)*blosc.BLAMP(t, dt) + (slopeAfter-slopeBefore)*blosc.BLAMP(tClose, dt))
 }
 
 // harmN is how many harmonics of the source's spectrum are tabulated
