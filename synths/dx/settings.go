@@ -32,6 +32,7 @@ var Settings = func() []Setting {
 	s := []Setting{
 		ints("feedback", 7, func(p *Patch) *int { return &p.Feedback }),
 		ints("transpose", 48, func(p *Patch) *int { return &p.Transpose }),
+		ints("oversample", 2, func(p *Patch) *int { return &p.Oversample }),
 		bools("oscSync", func(p *Patch) *bool { return &p.OscKeySync }),
 		ints("lfoWaveform", 5, func(p *Patch) *int { return &p.LFOWaveform }),
 		ints("lfoSpeed", 99, func(p *Patch) *int { return &p.LFOSpeed }),

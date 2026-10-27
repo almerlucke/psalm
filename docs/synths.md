@@ -523,12 +523,14 @@ clipping, DC offset and voices that never finish.
 
 **Messages**: `pitch`, `frequency`, `velocity`, `modScale` (brightness), and the [pitch bend, mod wheel and aftertouch](#pitch-bend-mod-wheel-and-aftertouch).
 Every setting of the patch by its name, played from the next note: `algorithm` (1-32), `feedback`,
-`transpose` (24 in tune), `oscSync`, `lfoWaveform`, `lfoSpeed`, `lfoDelay`, `lfoPitchDepth`,
+`transpose` (24 in tune), `oversample` (0-2, see below), `oscSync`, `lfoWaveform`, `lfoSpeed`, `lfoDelay`, `lfoPitchDepth`,
 `lfoAmpDepth`, `lfoSync`, `pitchModSens`, `pitchRate1`-`4`, `pitchLevel1`-`4`, and for each
 operator `op<N>Coarse`, `Fine`, `Detune`, `Level`, `Fixed`, `VelocitySens`, `RateScaling`,
 `AmpModSens`, `Rate1`-`4`, `Level1`-`4`, `BreakPoint`, `LeftDepth`, `RightDepth`, `LeftCurve`,
 `RightCurve` (`"op3Coarse": 2.0`), in the DX7's own ranges (`dx.Settings` lists them,
 `Patch.Set` and `Patch.Get` take them by name). A whole `patch` (a `dx.Patch`) or a `routing`.
+
+**Oversampling** (`oversample`, `Patch.Oversample`, off by default): 1 plays the operators twice a sample and 2 four times, and a lowpass (`blocks/oversample`) brings them down, so the sidebands that hard FM (a high index, feedback, a high note) puts above the Nyquist frequency do not fold back as inharmonic alias. The envelopes, the LFO, the filter and the DC blocker run once a sample; the sound is delayed by about 0.4 ms. Most presets have little to gain (the median of the harmonic ones improves by about 1 dB), the hard ones a lot: `syncLead` at C5 has its alias at -20 dB, at -27 dB with 2 and at -33 dB with 4, for 2 and 4 times the work of the operators. `TestOversamplingKeepsTheSoundAndLowersTheAlias` measures it.
 
 ### An algorithm of your own
 

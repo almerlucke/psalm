@@ -10,6 +10,7 @@ import (
 	msgenv "github.com/almerlucke/psalm/blocks/envelope"
 	"github.com/almerlucke/psalm/blocks/expression"
 	"github.com/almerlucke/psalm/blocks/modmatrix"
+	"github.com/almerlucke/psalm/blocks/oversample"
 	"github.com/almerlucke/psalm/blocks/voicefilter"
 	"github.com/almerlucke/psalm/modules/poly"
 )
@@ -76,6 +77,8 @@ type Voice struct {
 	random  float64 // for the note, -1 to 1
 	lfo2    float64 // the phase of the second LFO
 	ampLast float64 // the loudest carrier at the last sample
+
+	over *oversample.Oversampler // the operators are played this many times a sample (Patch.Oversample), nil for once
 }
 
 func New(patch Patch, numChannels int) *Voice {
@@ -115,6 +118,11 @@ func (v *Voice) SetPatch(patch Patch) {
 	}
 	v.patch = patch
 	v.alg = patch.Routed()
+	if factor := patch.OversampleFactor(); factor < 2 {
+		v.over = nil
+	} else if v.over == nil || v.over.Factor != factor {
+		v.over = oversample.New(factor, oversample.TapsPerPhase)
+	}
 	v.filter.SetConfig(patch.filter().Config())
 	for i, sl := range patch.Mods {
 		v.mods.Set(i, sl)
@@ -242,6 +250,9 @@ func (v *Voice) start(duration float64, amplitude float64, message psalm.Message
 	}
 	v.waitSamps = tick.SampleOffset
 	v.noteOffSamps = 0
+	if v.over != nil && !wasActive {
+		v.over.Reset() // what is left in the filter of the note before
+	}
 	if duration > 0.0 {
 		v.noteOffSamps = max(1, int(duration*sr))
 	}
@@ -447,6 +458,10 @@ func (v *Voice) Synthesize() {
 		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(baseFreq/261.6255653005986)/5, 1))
 	}
 	filtered := v.filter.On()
+	over, factor := v.over, 1
+	if over != nil {
+		factor = over.Factor
+	}
 	for i := v.waitSamps; i < bufSize; i++ {
 		if v.noteOffSamps > 0 {
 			v.noteOffSamps--
@@ -498,74 +513,97 @@ func (v *Voice) Synthesize() {
 			v.vibFade = math.Min(1.0, v.vibFade+v.vibInc)
 		}
 
-		// operators from 6 down to 1, modulators always have a higher number than their targets
-		sample := 0.0
+		// what every operator is this sample, apart from the wave it plays: the envelopes move once a sample, however often the operators are played
+		var outMul, carMul, fbMul [NumOperators]float64
 		ampNow := 0.0
-		for op := NumOperators - 1; op >= 0; op-- {
-			pm := 0.0
-			for _, m := range v.modTargets[op] {
-				pm += v.out[m]
-			}
-			pm *= math.Max(0, 1+mods.Mod(dModDepth))
+		for op := range NumOperators {
 			free := p.Ops[op].FreeOn
-			if op == v.alg.FeedbackTo {
-				if fb := math.Max(0, p.FreeFeedback+mods.Mod(dFeedback)); free && fb > 0.0 {
-					pm += (v.fb[0] + v.fb[1]) * 0.5 * fb
-				} else if fb := math.Max(0, fbAmount+mods.Mod(dFeedback)); !free && fb > 0.0 {
-					pm += (v.fb[0] + v.fb[1]) * 0.5 * fb
-				}
-			}
-
-			var s float64
-			if w := p.Ops[op].Wave; w == 0 {
-				s = sine.Cycle(v.phase[op] + pm)
-			} else {
-				s = wave(w, v.phase[op]+pm)
-			}
 			if free { // an envelope and a level of its own, in the sound's units
 				env := v.freeEnv[op].Generate()
-				if op == v.alg.FeedbackFrom {
-					v.fb[1], v.fb[0] = v.fb[0], s*env
-				}
-				v.out[op] = s * env * math.Max(0, v.freeLevel[op]+mods.Mod(dOp1Gain+op))
+				level := env * math.Max(0, v.freeLevel[op]+mods.Mod(dOp1Gain+op))
+				fbMul[op] = env
+				outMul[op] = level
 				if v.isCarrier[op] {
-					sample += v.out[op]
+					carMul[op] = level
 					ampNow = math.Max(ampNow, env)
 				} else {
-					v.out[op] *= v.curModScale
+					outMul[op] *= v.curModScale
 				}
-			} else {
-				level := v.envs[op].next()
-				if v.ampCount == 0 {
-					v.opAmpInc[op] = (levelToAmp(level)*v.opLevel[op] - v.opAmp[op]) / ampUpdate
-				}
-				v.opAmp[op] += v.opAmpInc[op]
-				amp := v.opAmp[op]
+				continue
+			}
+			level := v.envs[op].next()
+			if v.ampCount == 0 {
+				v.opAmpInc[op] = (levelToAmp(level)*v.opLevel[op] - v.opAmp[op]) / ampUpdate
+			}
+			v.opAmp[op] += v.opAmpInc[op]
+			amp := v.opAmp[op]
 
-				if ams := p.Ops[op].AmpModSens; ams > 0 && amDepth > 0.0 {
-					amp *= 1.0 - amDepth*ampModDepth[ams]*(0.5+0.5*lfo)
-				}
-
-				amp = math.Max(0, amp+mods.Mod(dOp1Gain+op))
-				if op == v.alg.FeedbackFrom {
-					v.fb[1], v.fb[0] = v.fb[0], s*amp
-				}
-
-				// what it modulates with (an algorithm of your own can have a carrier modulate too), what
-				// it adds to the sound
-				v.out[op] = s * amp * modIndex * v.curModScale
-				if v.isCarrier[op] {
-					sample += s * amp
-					ampNow = math.Max(ampNow, amp)
-				}
+			if ams := p.Ops[op].AmpModSens; ams > 0 && amDepth > 0.0 {
+				amp *= 1.0 - amDepth*ampModDepth[ams]*(0.5+0.5*lfo)
 			}
 
+			amp = math.Max(0, amp+mods.Mod(dOp1Gain+op))
+			fbMul[op] = amp
+			// what it modulates with (an algorithm of your own can have a carrier modulate too), what it adds to the sound
+			outMul[op] = amp * modIndex * v.curModScale
+			if v.isCarrier[op] {
+				carMul[op] = amp
+				ampNow = math.Max(ampNow, amp)
+			}
+		}
+		pmScale := math.Max(0, 1+mods.Mod(dModDepth))
+		fbPM := 0.0
+		if fbOp := v.alg.FeedbackTo; p.Ops[fbOp].FreeOn {
+			if fb := math.Max(0, p.FreeFeedback+mods.Mod(dFeedback)); fb > 0.0 {
+				fbPM = fb
+			}
+		} else if fb := math.Max(0, fbAmount+mods.Mod(dFeedback)); fb > 0.0 {
+			fbPM = fb
+		}
+		var inc [NumOperators]float64 // the phase an operator moves a play, a play being a sample over the factor
+		for op := range NumOperators {
 			f := v.fixed[op]
 			if f == 0.0 {
 				f = freq * v.freqMult[op]
 			}
-			v.phase[op] += f / sr
-			v.phase[op] -= math.Floor(v.phase[op])
+			inc[op] = f / sr / float64(factor)
+		}
+
+		// operators from 6 down to 1, modulators always have a higher number than their targets
+		play := func() float64 {
+			sample := 0.0
+			for op := NumOperators - 1; op >= 0; op-- {
+				pm := 0.0
+				for _, m := range v.modTargets[op] {
+					pm += v.out[m]
+				}
+				pm *= pmScale
+				if op == v.alg.FeedbackTo && fbPM > 0 {
+					pm += (v.fb[0] + v.fb[1]) * 0.5 * fbPM
+				}
+
+				var s float64
+				if w := p.Ops[op].Wave; w == 0 {
+					s = sine.Cycle(v.phase[op] + pm)
+				} else {
+					s = wave(w, v.phase[op]+pm)
+				}
+				if op == v.alg.FeedbackFrom {
+					v.fb[1], v.fb[0] = v.fb[0], s*fbMul[op]
+				}
+				v.out[op] = s * outMul[op]
+				sample += s * carMul[op]
+
+				v.phase[op] += inc[op]
+				v.phase[op] -= math.Floor(v.phase[op])
+			}
+			return sample
+		}
+		var sample float64
+		if over != nil {
+			sample = over.Down(func(int) float64 { return play() })
+		} else {
+			sample = play()
 		}
 
 		v.ampCount = (v.ampCount + 1) % ampUpdate

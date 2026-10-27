@@ -65,6 +65,7 @@ type Patch struct {
 	PitchModSens  int                    // 0-7
 	Transpose     int                    // 0-48, 24 is no transposition
 	Level         float64                // output gain (0 is 1), for calibrating, not part of the SysEx data
+	Oversample    int                    // 0-2: the operators are played once (0), twice (1) or four times (2) a sample and filtered down, so what FM puts above the Nyquist frequency does not fold back; not part of the SysEx data
 
 	// Routing is an algorithm of your own instead of Algorithm (nil plays Algorithm): which operator
 	// modulates which, the carriers, the feedback loop (see Algorithm.Check). It isn't part of the
@@ -93,6 +94,9 @@ type Patch struct {
 	Filter    Filter
 	FilterSet bool
 }
+
+// OversampleFactor is how many times a sample the operators are played: 1, 2 or 4
+func (p *Patch) OversampleFactor() int { return 1 << max(0, min(p.Oversample, 2)) }
 
 // Routed returns the algorithm the patch plays: its own Routing, or one of the 32
 func (p *Patch) Routed() Algorithm {
