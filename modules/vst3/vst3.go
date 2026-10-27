@@ -243,6 +243,42 @@ func (p *Plugin) readParams() {
 // Descriptor is the plugin as it was found
 func (p *Plugin) Descriptor() Descriptor { return p.desc }
 
+func (p *Plugin) relabelMain() int {
+	if p.inst == nil {
+		return 0
+	}
+	changed := 0
+	var title, units [256]C.char
+	for i := 0; i < int(C.v3_param_count(p.inst)); i++ {
+		var id C.uint32_t
+		var steps, flags, unit C.int
+		var def C.double
+		if C.v3_param_info(p.inst, C.int(i), &id, &title[0], &units[0], 256, &steps, &def, &flags, &unit) == 0 {
+			continue
+		}
+		j, ok := p.byID[uint32(id)]
+		if !ok {
+			continue
+		}
+		if label := strings.TrimSpace(C.GoString(&title[0])); label != "" {
+			p.metaMu.Lock()
+			if p.params[j].label != label {
+				p.params[j].label = label
+				changed++
+			}
+			p.metaMu.Unlock()
+		}
+	}
+	return changed
+}
+
+// Relabel asks the plugin for the titles of its parameters again (some plugins rename them when a setting changes) and returns how many changed; the keys stay what
+// they were
+func (p *Plugin) Relabel() (n int) {
+	mainDo(func() { n = p.relabelMain() })
+	return
+}
+
 func (p *Plugin) describeMain() params.Set {
 	set := params.Set{Name: p.desc.Name}
 	p.metaMu.RLock()
@@ -323,6 +359,10 @@ func (p *Plugin) Bind(set func(values map[string]float64), relabel func(labels m
 
 // tellEditor waits until the plugin has settled on what it loaded and then tells the editor the settings it has
 func (p *Plugin) tellEditor() {
+	p.tellEditorWith(false)
+}
+
+func (p *Plugin) tellEditorWith(titles bool) {
 	fn := p.syncFn.Load()
 	if fn == nil {
 		return
@@ -335,6 +375,17 @@ func (p *Plugin) tellEditor() {
 			break
 		}
 		last = now
+	}
+	if titles && p.Relabel() > 0 {
+		if names := p.nameFn.Load(); names != nil {
+			labels := make(map[string]string, len(p.params))
+			p.metaMu.RLock()
+			for _, q := range p.params {
+				labels[q.key] = q.label
+			}
+			p.metaMu.RUnlock()
+			(*names)(labels)
+		}
 	}
 	(*fn)(last)
 }
@@ -690,7 +741,7 @@ func (p *Plugin) Synthesize() {
 	if flags := int(C.v3_take_restart(p.inst)); flags&(4|16) != 0 && p.telling.CompareAndSwap(false, true) { // the values or the titles of the parameters changed
 		go func() {
 			defer p.telling.Store(false)
-			p.tellEditor()
+			p.tellEditorWith(flags&16 != 0)
 		}()
 	}
 }
