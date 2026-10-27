@@ -54,17 +54,18 @@ func aliasLevel(sig []float64, f, sr float64) float64 {
 	return 10 * math.Log10(alias/harmonic)
 }
 
-// the edges of a saw, a square and a rectangle are band limited: what folds back from above the Nyquist frequency stays far below the harmonics, up the keyboard
-func TestEdgesAreBandLimited(t *testing.T) {
+// every waveform is band limited: its jumps and its corners are corrected by the windowed sinc, so what folds back from above the Nyquist frequency stays far below
+// the harmonics, up the keyboard
+func TestWaveformsAreBandLimited(t *testing.T) {
 	const sr = 44100.0
 
-	for _, wf := range []struct {
-		name string
-		wave Waveform
-	}{{"sawtooth", Sawtooth}, {"ramp", Ramp}, {"square", Square}, {"rectangle", Rectangle}} {
+	names := []string{"sine", "cosine", "triangle", "square", "rectangle", "sawtooth", "ramp", "modified triangle", "modified square", "half wave rectified sine",
+		"full wave rectified sine", "triangular pulse", "trapezoid", "variable trapezoid"}
+
+	for wf := Sine; wf <= TrapezoidVariable; wf++ {
 		for _, f := range []float64{65.4, 261.6, 1046.5, 2093, 4186} {
 			f *= 1.0001
-			o := New(f, sr, 0, 0.3, 1, wf.wave)
+			o := New(f, sr, 0, 0.3, 1, wf)
 			sig := make([]float64, 1<<15)
 
 			for i := range sig {
@@ -72,7 +73,7 @@ func TestEdgesAreBandLimited(t *testing.T) {
 			}
 
 			if level := aliasLevel(sig, f, sr); level > -55 {
-				t.Errorf("%s at %.0f Hz: the alias is at %.1f dB, want below -55", wf.name, f, level)
+				t.Errorf("%s at %.0f Hz: the alias is at %.1f dB, want below -55", names[wf], f, level)
 			}
 		}
 	}

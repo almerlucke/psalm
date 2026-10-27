@@ -447,11 +447,11 @@ func bessel0(x float64) float64 {
 	return sum
 }
 
-var bleBefore, bleAfter = makeBleTables()
+var bleBefore, bleAfter, bleCorners = makeBleTables()
 
 // makeBleTables are the residual of a jump of height 2 for the distances before it (-bleBreadth up to 0) and after it (0 up to bleBreadth), in samples: the integral of
 // the windowed sinc minus the jump. The two sides are kept apart, so that the interpolation does not reach over the jump
-func makeBleTables() (before, after []float64) {
+func makeBleTables() (before, after, corners []float64) {
 	n := 2 * bleBreadth * bleSteps
 	kernel := make([]float64, n+1)
 	total := 0.0
@@ -490,7 +490,38 @@ func makeBleTables() (before, after []float64) {
 		}
 	}
 
-	return before, after
+	// the corner: the integral of the step of the low pass, minus the corner itself (the same on both sides of it), from the distance 0 up to bleBreadth
+	corners = make([]float64, half+1)
+	integral := 0.0
+
+	for i := 0; i < half; i++ { // from the distance -bleBreadth up to 0: the step is 'before' (a step of height 2, so half of it)
+		integral += 0.5 * (before[i] + before[i+1]) / 2 / bleSteps
+	}
+
+	step := func(i int) float64 { return after[i]/2 + 1 } // the step after the jump, of height 1
+
+	corners[0] = integral
+
+	for i := 0; i < half; i++ {
+		integral += 0.5 * (step(i) + step(i+1)) / bleSteps
+		corners[i+1] = integral - float64(i+1)/bleSteps
+	}
+
+	return before, after, corners
+}
+
+// bleCorner is the residual of a corner at d samples from it (either side) for a change of slope of 2 a sample
+func bleCorner(d float64) float64 {
+	pos := d * bleSteps
+	i := int(pos)
+
+	if i < 0 || i >= len(bleCorners)-1 {
+		return 0
+	}
+
+	frac := pos - float64(i)
+
+	return 2 * (bleCorners[i] + frac*(bleCorners[i+1]-bleCorners[i])) // for a change of slope of 2 a sample, as the callers count it
 }
 
 // bleResidual is the residual at d samples after a jump (negative: before it), linearly interpolated
@@ -513,16 +544,34 @@ func bleResidual(d float64) float64 {
 	return table[i] + frac*(table[i+1]-table[i])
 }
 
+// blamp is the correction of a corner (a change of slope) at phase 0, for a change of two a sample (the callers' c*dt*blamp is a change of 2*c*dt), by the same windowed sinc as blep: the difference between the
+// corner after the low pass and the corner itself. Callers scale it by the change of slope a cycle times dt
 func blamp(t float64, dt float64) float64 {
-	if t < dt {
-		t = t/dt - 1.0
-		return -1.0 / 3.0 * squareNumber(t) * t
-	} else if t > 1.0-dt {
-		t = (t-1.0)/dt + 1.0
-		return 1.0 / 3.0 * squareNumber(t) * t
+	if dt <= 0 || math.IsNaN(t) || math.IsNaN(dt) {
+		return 0
 	}
 
-	return 0
+	sum := 0.0
+
+	for k := 0.0; ; k++ { // the corners behind
+		d := (t + k) / dt
+		if d >= bleBreadth {
+			break
+		}
+
+		sum += bleCorner(d)
+	}
+
+	for k := 0.0; ; k++ { // and ahead
+		d := (t - 1 - k) / dt
+		if d <= -bleBreadth {
+			break
+		}
+
+		sum += bleCorner(-d)
+	}
+
+	return sum
 }
 
 func integerPart(x float64) float64 {
