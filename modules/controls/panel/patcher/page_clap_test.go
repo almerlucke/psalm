@@ -8,6 +8,7 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/midi"
+	"github.com/almerlucke/psalm/modules/clap"
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/paneltest"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
@@ -45,19 +46,50 @@ func TestPageClap(t *testing.T) {
 	}
 	start = time.Now()
 	head := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, surge)
-	doubleTap(tb, head)
+	// Alt held: the settings of ours (a plain double click opens the window of the plugin); the browser not letting a window open, they are in the side panel
+	tb.Eval(`window.open = () => null; ` + head + `.dispatchEvent(new MouseEvent("dblclick", {altKey: true, bubbles: true}))`)
 	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-frame").contentDocument?.querySelector(".control")`, "the side panel of Surge XT")
 	t.Logf("the side panel opened after %v", time.Since(start))
 	tb.WaitFor(`document.querySelector(".pt-drawer-frame").contentDocument?.querySelectorAll(".control").length > 500`, "the settings of Surge XT in the side panel")
 	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
-	if shut := tb.Eval(`[0, 1, 2].some(i => ` + frame + `.querySelectorAll(".ed-group")[i].classList.contains("closed"))`).(bool); shut {
-		t.Error("the window switch, the preset and the main knobs are not all open")
+	if shut := tb.Eval(`[0, 1].some(i => ` + frame + `.querySelectorAll(".ed-group")[i].classList.contains("closed"))`).(bool); shut {
+		t.Error("the preset and the main knobs are not both open")
 	}
-	if first := tb.Eval(frame + `.querySelector(".ed-title").textContent`).(string); first != "Window (1)" {
+	if first := tb.Eval(frame + `.querySelector(".ed-title").textContent`).(string); first != "Preset (1)" {
 		t.Errorf("the first group is %q", first)
 	}
 	if options := tb.Eval(frame + `.querySelector(".ed-group select").options.length`).(float64); options < 1000 {
 		t.Errorf("%v presets to choose from, want the thousands Surge XT has", options)
 	}
 	t.Logf("its settings after %v", time.Since(start))
+}
+
+// a double click on a plugin opens the plugin's own window (opt in: it puts a window on the screen)
+func TestPageClapNativeWindow(t *testing.T) {
+	dir := os.Getenv("CLAP_TEST_DIR")
+	if dir == "" || os.Getenv("CLAP_TEST_WINDOW") == "" {
+		t.Skip("CLAP_TEST_DIR and CLAP_TEST_WINDOW are not set")
+	}
+	t.Setenv("CLAP_PATH", dir)
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("clap", "OB-Xf", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pl := pt.Module(id).(*clap.Plugin)
+	t.Cleanup(pl.HideWindow)
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 2`)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	paneltest.Eventually(t, "the window of the plugin opened by a double click", func() bool { return pl.WindowOpen() })
+	if !tb.Eval(`document.querySelector(".pt-drawer").hidden`).(bool) {
+		t.Error("the side panel opens besides the window of the plugin")
+	}
 }

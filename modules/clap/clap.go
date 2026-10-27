@@ -352,9 +352,6 @@ func (p *Plugin) describeMain() params.Set {
 	set := params.Set{Name: p.desc.Name}
 	p.metaMu.RLock()
 	defer p.metaMu.RUnlock()
-	if p.hasWindowMain() { // a switch that opens the plugin's own window
-		set.Params = append(set.Params, params.S("Window", windowKey, p.WindowOpen(), params.Label("show the plugin's window")))
-	}
 	if len(p.presets) > 0 {
 		names := make([]string, len(p.presets))
 		for i, pr := range p.presets {
@@ -410,7 +407,7 @@ func (p *Plugin) valueMain(key string) float64 {
 // presetKey is the key of the setting that loads a preset of the plugin: the number of the preset
 const presetKey = "preset"
 
-// windowKey is the key of the setting that opens and closes the plugin's window
+// windowKey is the key of the message that opens and closes the plugin's window (a script can send it; a double click on the module opens it)
 const windowKey = "window"
 
 // label is what a preset is called in a list: the kind of sound it is, then its name

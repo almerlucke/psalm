@@ -224,7 +224,7 @@ func TestClapStateInPatch(t *testing.T) {
 	until(p2, "after loading the patch the knob is not at 1", func() bool { return node(pt2, id2).Values()["output gain"] == 1 })
 }
 
-// the plugin's own window opens from the switch of the editor (opt in: it puts a window on the screen; CLAP_TEST_DIR names the directory with OB-Xf)
+// the plugin's own window opens (what a double click on its module does) (opt in: it puts a window on the screen; CLAP_TEST_DIR names the directory with OB-Xf)
 func TestClapWindow(t *testing.T) {
 	dir := os.Getenv("CLAP_TEST_DIR")
 	if dir == "" || os.Getenv("CLAP_TEST_WINDOW") == "" {
@@ -242,10 +242,12 @@ func TestClapWindow(t *testing.T) {
 	}
 	pl := made.Module.(*clap.Plugin)
 	defer pl.Free()
-	if set := made.Describe(""); set.Params[0].Key != "window" {
-		t.Fatalf("no window switch: %+v", set.Params[0])
+	if made.Open == nil {
+		t.Fatal("a plugin with a window has it to open")
 	}
-	made.Module.ReceiveMessage(psalm.Message{"window": 1.0})
+	if err := made.Open(); err != nil {
+		t.Fatal(err)
+	}
 	for deadline := time.Now().Add(5 * time.Second); !pl.WindowOpen() && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 	}
 	if !pl.WindowOpen() {

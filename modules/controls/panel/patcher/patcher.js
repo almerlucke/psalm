@@ -211,7 +211,7 @@ psalm.register("patcher", (p, api) => {
 		// panel, or closes it
 		const onIt = e => !e.target.closest(".pt-port, input, textarea, button, select") && !(e.shiftKey || e.ctrlKey || e.metaKey);
 		box.addEventListener("click", e => { if (onIt(e) && !e.target.closest(".pt-head")) tapped(n.id); });
-		box.addEventListener("dblclick", e => { if (onIt(e)) doubleTapped(n.id); });
+		box.addEventListener("dblclick", e => { if (onIt(e)) doubleTapped(n.id, e.altKey); });
 		area.append(box);
 		return {el: box, title, ins, outs, texts, inputs: {}, sig: ""};
 	}
@@ -419,7 +419,8 @@ psalm.register("patcher", (p, api) => {
 		taps = [taps[1], follow];
 		if (follow) openSide(id);
 	}
-	// a double tap opens the window of a module (its texts and its settings, a window of its own: module.html), or brings it to the front; where the browser does not
+	// a double tap opens the window of a module (its texts and its settings, a window of its own: module.html), or brings it to the front; a module that has a window of
+	// its own (a plugin) shows that, and its settings with Alt held; where the browser does not
 	// let a window open, the side panel is used. Not when its first tap brought the side panel to it (the tap before the last: a double tap is two taps, then this)
 	const windows = {}; // the windows opened, by module
 	function openWindow(id) {
@@ -438,9 +439,11 @@ psalm.register("patcher", (p, api) => {
 		windows[id] = w;
 		return true;
 	}
-	function doubleTapped(id) {
+	function doubleTapped(id, alt) {
 		if (taps[0]) { taps = [false, false]; return; }
 		if (editing && editing.id === id) { closeEditor(); return; }
+		const n = nodeOf(id);
+		if (n && n.native && !alt) { send({open: id}); return; } // a plugin's own window; with Alt held its settings
 		if (!openWindow(id)) openSide(id);
 	}
 	function openSide(id) {

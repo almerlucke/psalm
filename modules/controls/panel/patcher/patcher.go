@@ -153,6 +153,8 @@ type Made struct {
 	// changes the labels of settings by key (the page has them when it asks for the panel next): for a module that changes its own settings, or what they are called
 	// (a plugin that loads a preset), and tells the editor
 	Bind func(set func(values map[string]float64), relabel func(labels map[string]string))
+	// Open shows the module's own window (a plugin's): what a double click opens in place of the settings window, which a double click with Alt held opens. nil: it has none
+	Open func() error
 	// Late is called on every control tick after every module had its own (a Notes module plays the
 	// triggers of the tick there, when the values feeding it are up to date)
 	Late func(tick psalm.CtrlTick)
@@ -387,6 +389,7 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		Pos      *[2]float64 `json:"pos"`
 		Copy     []string    `json:"copy"`
 		Paste    bool        `json:"paste"`
+		Open     string      `json:"open"`
 	}
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return err
@@ -404,6 +407,13 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		return err
 	case m.Move != "" && m.Pos != nil:
 		pt.Move(m.Move, m.Pos[0], m.Pos[1])
+	case m.Open != "":
+		pt.mu.Lock()
+		n := pt.node(m.Open)
+		pt.mu.Unlock()
+		if n != nil && n.made != nil && n.made.Open != nil {
+			return n.made.Open()
+		}
 	case m.Remove != "":
 		return pt.Remove(m.Remove)
 	case m.Select != nil:
@@ -1001,9 +1011,10 @@ type nodeState struct {
 	Texts    []Text            `json:"texts,omitempty"`  // its settings of text, as they are
 	Errors   map[string]string `json:"errors,omitempty"` // what was wrong with one typed
 	Status   string            `json:"status,omitempty"`
-	Log      *string           `json:"log,omitempty"`   // a log for the side panel (nil: it has none)
-	Page     bool              `json:"page,omitempty"`  // it has settings to show (its editor)
-	Lanes    *LanesView        `json:"lanes,omitempty"` // lanes to draw and edit at the bottom of the patch (an automation module's)
+	Log      *string           `json:"log,omitempty"`    // a log for the side panel (nil: it has none)
+	Page     bool              `json:"page,omitempty"`   // it has settings to show (its editor)
+	Native   bool              `json:"native,omitempty"` // it has a window of its own (a plugin's): a double click opens that
+	Lanes    *LanesView        `json:"lanes,omitempty"`  // lanes to draw and edit at the bottom of the patch (an automation module's)
 }
 
 type state struct {
@@ -1046,6 +1057,7 @@ func (pt *Patcher) state() any {
 			ns.Errors = maps.Clone(n.textErr)
 		}
 		ns.Page = n.page != nil
+		ns.Native = n.made != nil && n.made.Open != nil
 		if n.made.Status != nil {
 			ns.Status = n.made.Status()
 		}

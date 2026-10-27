@@ -82,6 +82,9 @@ func clapKinds(dirs ...string) []patcher.Kind {
 						}
 						return ""
 					}}
+				if pl.HasWindow() { // what a double click opens: its own window (Alt: our settings)
+					made.Open = pl.ShowWindow
+				}
 				// a plugin with more audio ports than one has them as ports of the module: its outputs (a sampler with one for every part) and a side chain
 				insN, outsN := pl.PortNames()
 				if len(outsN) > 1 {

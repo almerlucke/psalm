@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -12,6 +13,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel/paneltest"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/catalog"
+	"github.com/almerlucke/psalm/modules/effects/gain"
 )
 
 // a double click on a module opens its window (window.open of module.html: the module, the folder of the page and the theme in the address), the same window again
@@ -73,4 +75,41 @@ func TestPageModuleWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	win.WaitFor(`!document.getElementById("gone").hidden`, "the window says its module is gone")
+}
+
+// a module with a window of its own (a plugin's): a double click opens that, not the window of settings; with Alt held it is the settings
+func TestPageNativeWindow(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	var opened atomic.Int32
+	kinds := []patcher.Kind{{Name: "native", Group: "Test", Outs: []patcher.Port{{Name: "out", Type: patcher.Audio}}, Make: func(string) (*patcher.Made, error) {
+		return &patcher.Made{Module: gain.New(1), Texts: []patcher.Text{{Key: "note", Label: "note", Lines: 1, Value: "hello"}}, SetText: func(string, string) error { return nil },
+			Open: func() error { opened.Add(1); return nil }}, nil
+	}}}
+	pt := patcher.New(p, ctl, "Patch", kinds)
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("native", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 2`)
+	tb.Size(1300, 900)
+	tb.Eval(`window.__recording = true; window.__opened = []; window.open = (url, name, features) => { window.__opened.push(url); return {closed: false, focus() {}}; }`)
+	head := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id)
+	doubleTap(tb, head)
+	paneltest.Eventually(t, "the window of the module opened", func() bool { return opened.Load() == 1 })
+	if n := tb.Eval(`window.__opened.length`).(float64); n != 0 {
+		t.Errorf("%v windows of settings opened with it", n)
+	}
+	// Alt held: the settings (the texts) in a window of ours
+	tb.Eval(`(() => { const h = ` + head + `; h.dispatchEvent(new MouseEvent("dblclick", {altKey: true, bubbles: true})); })()`)
+	tb.WaitFor(`window.__opened.length === 1`, "the settings window opened by Alt and a double click")
+	if opened.Load() != 1 {
+		t.Errorf("the window of the module opened %d times", opened.Load())
+	}
 }

@@ -850,7 +850,7 @@ from a palette, move them by their heads, and draw cables from an output to an i
 kind: audio (the sound), notes (a keyboard to the synths it plays) and modulation (an LFO, a random
 source or the mod wheel to any setting of a module, over a part of its range: drawn to a module's
 mod input, the setting and the range are chosen below the patch). A tap on a module chooses it, a double
-click opens a window of its own for it (a browser window: `plugins/patcher/module.html`): its script (a box of lines) and its
+click opens a window of its own for it (for a plugin that has a window of its own, that one, and with Alt held ours) (a browser window: `plugins/patcher/module.html`): its script (a box of lines) and its
 settings (its editor, with its presets and yours); another double click brings that window to the front, Esc in its boxes (or closing it) takes what is typed.
 Where the browser does not let a window open, the side panel is used as it was: it shows the same, a double tap on the module again, Esc or × closes it, and with the
 panel open a tap on another module shows that one. The page of one module is served at `mount/<name>@<id>/` (a mounter that gives a panel by an argument: `panel.ArgMounter`). Click a cable to take it
