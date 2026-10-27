@@ -279,6 +279,10 @@ func (v *Voice) Receive(value any, index int) {
 	}
 }
 
+// CutsOnRestart: a note on a voice that sounds retunes and excites it again from what it was (poly fades the sound that was there and clears the voice, as it does for a
+// voice it steals)
+func (v *Voice) CutsOnRestart() bool { return true }
+
 func (v *Voice) NoteOn(amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
 	v.note(adsr.NoteOff, 0.0, amplitude, message, tick)
 }

@@ -2,6 +2,7 @@ package poly
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/almerlucke/psalm"
 )
@@ -26,6 +27,7 @@ type Poly[T Voice] struct {
 	activePool   []*voiceInfo[T]
 	fadeOut      psalm.Channels
 	hasFadeOut   bool
+	faded        []*voiceInfo[T] // the voices that fade out in this buffer (a voice started again twice in a buffer fades once)
 	triggerCount int64
 
 	// mono: one voice, the notes held in a stack (the last one sounds)
@@ -62,6 +64,7 @@ func New[T Voice](numChannels int, voices []T) *Poly[T] {
 		poly.freePool[i].voice = voices[i]
 	}
 	poly.activePool = make([]*voiceInfo[T], 0, len(voices))
+	poly.faded = make([]*voiceInfo[T], 0, len(voices))
 
 	poly.fadeOut = psalm.NewChannels(numChannels, poly.Config().BufferSize)
 
@@ -151,9 +154,35 @@ func (p *Poly[T]) monoOn(id string, msg psalm.Message, amp float64, tick psalm.C
 	}
 	if !v.IsActive() {
 		v.Clear()
+	} else if cutsOnRestart(v) {
+		p.fadeVoice(vi)
+		v.Clear()
 	}
 	p.activate(vi)
 	v.NoteOn(amp, msg, tick, p.Config())
+}
+
+// cutsOnRestart is whether a voice that sounds and starts again in mono stops at once (its envelopes and its phases start from zero): a voice that does not carries on
+// from where it was, and fading it as well would add the two. A voice says so with a method CutsOnRestart
+func cutsOnRestart(v Voice) bool {
+	c, ok := v.(interface{ CutsOnRestart() bool })
+	return ok && c.CutsOnRestart()
+}
+
+// fadeVoice lets a voice that sounds and is about to start again (a stolen one, the voice of mono) fade out over the next buffer, so the start of the new note
+// is not a cut of what was sounding
+func (p *Poly[T]) fadeVoice(vi *voiceInfo[T]) {
+	if slices.Contains(p.faded, vi) {
+		return
+	}
+	p.faded = append(p.faded, vi)
+	v := vi.voice
+	p.hasFadeOut = true
+	v.Synthesize()
+	inv := 1.0 / float32(len(p.fadeOut[0]))
+	p.fadeOut.CopyWithFunc(v.Output(0).Channels, func(buf psalm.Buffer, samp float32, index int) {
+		buf[index] += samp * (1.0 - inv*float32(index))
+	})
 }
 
 // monoOff lets go of a note in mono: the note held before it comes back, or the voice lets go
@@ -181,6 +210,10 @@ func (p *Poly[T]) monoOff(id string, tick psalm.CtrlTick) {
 	if p.legato && v.IsActive() {
 		v.ReceiveMessage(back.msg)
 		return
+	}
+	if v.IsActive() && cutsOnRestart(v) {
+		p.fadeVoice(p.monoVoice)
+		v.Clear()
 	}
 	v.NoteOn(back.amp, back.msg, tick, p.Config())
 }
@@ -222,15 +255,10 @@ func (p *Poly[T]) handleTriggerMessage(msg psalm.Message, tick psalm.CtrlTick, i
 	v, ok := p.getFreeVoice()
 	if !ok {
 		// Steal oldest active voice
-		v, ok = p.getOldestActiveVoice()
-		if ok {
-			// Fade out stolen voice
-			p.hasFadeOut = true
-			v.Synthesize()
-			invBufferSize := 1.0 / float32(len(p.fadeOut[0]))
-			p.fadeOut.CopyWithFunc(v.Output(0).Channels, func(buf psalm.Buffer, samp float32, index int) {
-				buf[index] += samp * (1.0 - invBufferSize*float32(index))
-			})
+		var vi *voiceInfo[T]
+		if vi = p.getOldestActiveVoice(); vi != nil {
+			v, ok = vi.voice, true
+			p.fadeVoice(vi)
 		}
 	}
 
@@ -316,9 +344,8 @@ func (p *Poly[T]) ReceiveMessage(msg psalm.Message) {
 	}
 }
 
-func (p *Poly[T]) getOldestActiveVoice() (T, bool) {
+func (p *Poly[T]) getOldestActiveVoice() *voiceInfo[T] {
 	var oldest *voiceInfo[T]
-	var nilVoice T
 
 	for _, info := range p.activePool {
 		if oldest == nil || info.triggeredAt < oldest.triggeredAt {
@@ -328,10 +355,9 @@ func (p *Poly[T]) getOldestActiveVoice() (T, bool) {
 
 	if oldest != nil {
 		oldest.triggeredAt = p.triggerCount
-		return oldest.voice, true
 	}
 
-	return nilVoice, false
+	return oldest
 }
 
 func (p *Poly[T]) getFreeVoice() (T, bool) {
@@ -379,6 +405,7 @@ func (p *Poly[T]) Synthesize() {
 		out.Copy(p.fadeOut)
 		p.fadeOut.Clear()
 		p.hasFadeOut = false
+		p.faded = p.faded[:0]
 	} else {
 		out.Clear()
 	}

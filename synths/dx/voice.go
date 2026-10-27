@@ -238,6 +238,9 @@ func (v *Voice) Note(duration float64, amplitude float64, message psalm.Message,
 	v.start(duration, amplitude, message, tick)
 }
 
+// CutsOnRestart: the operators start from zero again (poly fades out the note that was sounding)
+func (v *Voice) CutsOnRestart() bool { return true }
+
 func (v *Voice) start(duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
 	sr := v.Config().SampleRate
 	wasActive := v.IsActive()
