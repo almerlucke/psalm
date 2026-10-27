@@ -90,6 +90,11 @@ static clap_process_status t_process(const clap_plugin_t *p, const clap_process_
 	test *t = p->plugin_data;
 	uint32_t n = pr->in_events->size(pr->in_events), e = 0;
 	float *o0 = pr->audio_outputs[0].data32[0], *o1 = pr->audio_outputs[0].data32[1];
+	for (uint32_t port = 1; port < pr->audio_outputs_count; port++) { // every port has to have buffers
+		for (uint32_t ch = 0; ch < pr->audio_outputs[port].channel_count; ch++) {
+			memset(pr->audio_outputs[port].data32[ch], 0, pr->frames_count * sizeof(float));
+		}
+	}
 	for (uint32_t i = 0; i < pr->frames_count; i++) {
 		while (e < n && pr->in_events->get(pr->in_events, e)->time <= i) {
 			handle(t, pr->in_events->get(pr->in_events, e++));
@@ -116,7 +121,10 @@ static clap_process_status t_process(const clap_plugin_t *p, const clap_process_
 
 static uint32_t ap_count(const clap_plugin_t *p, bool is_input) {
 	test *t = p->plugin_data;
-	return (is_input && t->instrument) ? 0 : 1;
+	if (!t->instrument) {
+		return 1;
+	}
+	return is_input ? 0 : 3; // an instrument with outputs for its parts, as a sampler has: the first is the one that is played
 }
 static bool ap_get(const clap_plugin_t *p, uint32_t i, bool is_input, clap_audio_port_info_t *info) {
 	info->id = 0;

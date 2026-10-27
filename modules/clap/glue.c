@@ -47,6 +47,10 @@ struct pc_inst {
 	const clap_plugin_t *plugin;
 	const clap_plugin_params_t *params;
 	int in_ch, out_ch;
+	int n_in, n_out;        // how many audio ports the plugin has (the first of each is the one that is used; the others get buffers that are thrown away)
+	int in_chs[64], out_chs[64];
+	float *scratch;         // for the ports that are not used: two channels each, and silence for the inputs
+	uint32_t max_frames;
 	clap_input_events_t in_events;
 	clap_output_events_t out_events;
 	int n;
@@ -125,16 +129,21 @@ int pc_desc(pc_lib *lib, int i, char *id, char *name, char *vendor, char *featur
 	return 1;
 }
 
-static int port_channels(pc_inst *inst, int is_input) {
+// the channels of every audio port; the count of ports
+static int port_channels(pc_inst *inst, int is_input, int *chs) {
 	const clap_plugin_audio_ports_t *ports = inst->plugin->get_extension(inst->plugin, CLAP_EXT_AUDIO_PORTS);
-	if (!ports || ports->count(inst->plugin, is_input) == 0) {
+	if (!ports) {
 		return 0;
 	}
-	clap_audio_port_info_t info;
-	if (!ports->get(inst->plugin, 0, is_input, &info)) {
-		return 0;
+	int n = (int)ports->count(inst->plugin, is_input);
+	if (n > 64) {
+		n = 64;
 	}
-	return (int)info.channel_count;
+	for (int i = 0; i < n; i++) {
+		clap_audio_port_info_t info;
+		chs[i] = ports->get(inst->plugin, i, is_input, &info) ? (int)info.channel_count : 0;
+	}
+	return n;
 }
 
 pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFrames, char *err, int errcap) {
@@ -165,8 +174,13 @@ pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFram
 		return NULL;
 	}
 	inst->params = inst->plugin->get_extension(inst->plugin, CLAP_EXT_PARAMS);
-	inst->in_ch = port_channels(inst, 1);
-	inst->out_ch = port_channels(inst, 0);
+	inst->n_in = port_channels(inst, 1, inst->in_chs);
+	inst->n_out = port_channels(inst, 0, inst->out_chs);
+	inst->in_ch = inst->n_in > 0 ? inst->in_chs[0] : 0;
+	inst->out_ch = inst->n_out > 0 ? inst->out_chs[0] : 0;
+	inst->max_frames = maxFrames;
+	// a plugin with more ports than the one we play (a sampler with an output for every part) has to be given buffers for them: they are thrown away
+	inst->scratch = calloc((size_t)(inst->n_in + inst->n_out + 1) * 2 * maxFrames * 2, sizeof(float));
 	if (inst->in_ch > 2 || inst->out_ch > 2 || inst->out_ch == 0) {
 		seterr(err, errcap, "the plugin has no stereo or mono output");
 		inst->plugin->destroy(inst->plugin);
@@ -202,6 +216,7 @@ void pi_free(pc_inst *inst) {
 		inst->plugin->deactivate(inst->plugin);
 	}
 	inst->plugin->destroy(inst->plugin);
+	free(inst->scratch);
 	free(inst);
 }
 
@@ -324,15 +339,32 @@ static void sort_events(pc_inst *inst) {
 int pi_process(pc_inst *inst, float *in0, float *in1, float *out0, float *out1, uint32_t frames) {
 	float *inch[2] = {in0, in1};
 	float *outch[2] = {out0, out1};
-	clap_audio_buffer_t in = {.data32 = inch, .data64 = NULL, .channel_count = (uint32_t)inst->in_ch, .latency = 0, .constant_mask = 0};
-	clap_audio_buffer_t out = {.data32 = outch, .data64 = NULL, .channel_count = (uint32_t)inst->out_ch, .latency = 0, .constant_mask = 0};
+	clap_audio_buffer_t ins[64], outs[64];
+	float *inptr[64][2], *outptr[64][2];
+	float *silence = inst->scratch; // a port of the plugin that we do not play: silence in, and its sound thrown away
+	float *junk = inst->scratch + 2 * inst->max_frames;
+	for (int p = 0; p < inst->n_in; p++) {
+		inptr[p][0] = inptr[p][1] = silence;
+		ins[p] = (clap_audio_buffer_t){.data32 = inptr[p], .channel_count = (uint32_t)inst->in_chs[p]};
+	}
+	if (inst->n_in > 0 && in0) {
+		inptr[0][0] = inch[0];
+		inptr[0][1] = inch[1];
+	}
+	for (int p = 0; p < inst->n_out; p++) {
+		outptr[p][0] = junk;
+		outptr[p][1] = junk + inst->max_frames;
+		outs[p] = (clap_audio_buffer_t){.data32 = outptr[p], .channel_count = (uint32_t)inst->out_chs[p]};
+	}
+	outptr[0][0] = outch[0];
+	outptr[0][1] = outch[1];
 	clap_process_t pr = {.steady_time = -1,
 	                     .frames_count = frames,
 	                     .transport = NULL,
-	                     .audio_inputs = (inst->in_ch > 0 && in0) ? &in : NULL,
-	                     .audio_outputs = &out,
-	                     .audio_inputs_count = (inst->in_ch > 0 && in0) ? 1 : 0,
-	                     .audio_outputs_count = 1,
+	                     .audio_inputs = inst->n_in > 0 ? ins : NULL,
+	                     .audio_outputs = outs,
+	                     .audio_inputs_count = (uint32_t)inst->n_in,
+	                     .audio_outputs_count = (uint32_t)inst->n_out,
 	                     .in_events = &inst->in_events,
 	                     .out_events = &inst->out_events};
 	sort_events(inst);

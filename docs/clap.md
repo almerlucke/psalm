@@ -45,7 +45,7 @@ Surge XT: Soft Pluck, Island Pluck, Kalimba, Plucked String, Glass Bell, Warm Pa
 
 - No plugin windows: the parameters are the interface; the knobs do not follow a preset the plugin loaded. State and presets of the plugin are not saved with the patch yet.
 - A plugin runs on the audio thread, so a plugin that crashes takes the program with it, and one that is slow drops out the sound.
-- Stereo and mono ports only (the first port of each); no sidechain, no transport (tempo and position), no latency compensation, no parameter changes back from the plugin (its own knobs), no MIDI output.
+- Stereo and mono ports only: the first port of each is played; a plugin with more (a sampler with an output for every part) is given buffers for the others, which are thrown away; no sidechain, no transport (tempo and position), no latency compensation, no parameter changes back from the plugin (its own knobs), no MIDI output.
 - A plugin is only let go when the module is taken away, at the next buffer.
 
 ## Tests
