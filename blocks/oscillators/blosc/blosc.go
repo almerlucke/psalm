@@ -397,14 +397,120 @@ func squareNumber(x float64) float64 {
 	return x * x
 }
 
+// blep is the correction to add to a waveform with a jump of height 2 at phase 0 (and at every whole phase) so that it is band limited: the difference between the
+// jump after a low pass of windowed sinc (8 samples to both sides, Blackman-Harris) and the jump itself, seen from the phase t (0-1) with a step of dt a sample.
+// The jumps of the cycles before and after the one at hand are added when the kernel is longer than a cycle (high notes), so the alias stays low up the keyboard
 func blep(t float64, dt float64) float64 {
-	if t < dt {
-		return -squareNumber(t/dt - 1)
-	} else if t > 1-dt {
-		return squareNumber((t-1)/dt + 1)
+	if dt <= 0 || math.IsNaN(t) || math.IsNaN(dt) {
+		return 0
 	}
 
-	return 0
+	sum := 0.0
+
+	for k := 0.0; ; k++ { // the jumps behind, in samples after them
+		d := (t + k) / dt
+		if d >= bleBreadth {
+			break
+		}
+
+		sum += bleResidual(d)
+	}
+
+	for k := 0.0; ; k++ { // and ahead
+		d := (t - 1 - k) / dt
+		if d <= -bleBreadth {
+			break
+		}
+
+		sum += bleResidual(d)
+	}
+
+	return sum
+}
+
+const (
+	bleBreadth = 16   // the kernel reaches this many samples to both sides of the jump
+	bleSteps   = 1024 // the table has this many entries to a sample
+	bleCutoff  = 0.9  // the low pass of the kernel, as a part of the Nyquist frequency
+	bleBeta    = 9.0  // the shape of the Kaiser window
+)
+
+// bessel0 is the modified Bessel function of the first kind and order 0
+func bessel0(x float64) float64 {
+	sum, term := 1.0, 1.0
+
+	for k := 1.0; k < 50; k++ {
+		term *= (x / (2 * k)) * (x / (2 * k))
+		sum += term
+	}
+
+	return sum
+}
+
+var bleBefore, bleAfter = makeBleTables()
+
+// makeBleTables are the residual of a jump of height 2 for the distances before it (-bleBreadth up to 0) and after it (0 up to bleBreadth), in samples: the integral of
+// the windowed sinc minus the jump. The two sides are kept apart, so that the interpolation does not reach over the jump
+func makeBleTables() (before, after []float64) {
+	n := 2 * bleBreadth * bleSteps
+	kernel := make([]float64, n+1)
+	total := 0.0
+
+	for i := range kernel {
+		x := float64(i)/bleSteps - bleBreadth // samples from the jump
+		w := float64(i) / float64(n)          // 0-1 over the window
+		r := 2*w - 1
+		window := bessel0(bleBeta*math.Sqrt(1-r*r)) / bessel0(bleBeta) // Kaiser
+		sinc := bleCutoff
+
+		if x != 0 {
+			sinc = math.Sin(math.Pi*bleCutoff*x) / (math.Pi * x)
+		}
+
+		kernel[i] = sinc * window
+		total += kernel[i]
+	}
+
+	total -= 0.5 * (kernel[0] + kernel[n])
+	half := bleBreadth * bleSteps
+	before, after = make([]float64, half+1), make([]float64, half+1)
+	acc := 0.0
+
+	for i := 0; i <= n; i++ {
+		acc += 0.5 * kernel[i] // the integral up to this entry (the trapezoid: half of the entry itself)
+		step := 2 * (acc / total)
+		acc += 0.5 * kernel[i]
+
+		if i <= half {
+			before[i] = step
+		}
+
+		if i >= half {
+			after[i-half] = step - 2
+		}
+	}
+
+	return before, after
+}
+
+// bleResidual is the residual at d samples after a jump (negative: before it), linearly interpolated
+func bleResidual(d float64) float64 {
+	table := bleAfter
+	pos := d * bleSteps
+
+	if d < 0 {
+		table = bleBefore
+		pos = (d + bleBreadth) * bleSteps
+	}
+
+	i := int(pos)
+	if i < 0 || i >= len(table)-1 {
+		return 0
+	}
+
+	frac := pos - float64(i)
+
+	return table[i] + frac*(table[i+1]-table[i])
 }
 
 func blamp(t float64, dt float64) float64 {

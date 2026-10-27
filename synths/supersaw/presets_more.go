@@ -66,7 +66,7 @@ func HardstyleLead() Config {
 func ArpSaw() Config {
 	return Config{Saws: 5, Detune: 0.3, Mix: 0.6, Stereo: 0.7, HighPass: true, Cutoff: 700, Resonance: 0.25, FilterEnvAmount: 3.5,
 		KeyTrack: 0.8, FilterEnv: env(1, 160, 0, 80), AmpEnv: env(1, 220, 0, 80),
-		Mods: [modmatrix.Slots]modmatrix.Slot{mod(modmatrix.Velocity, "cutoff", 0.2)}, Level: 0.9175}
+		Mods: [modmatrix.Slots]modmatrix.Slot{mod(modmatrix.Velocity, "cutoff", 0.2)}, Level: 0.853}
 }
 
 // GatedPad is the trance gate: a pad chopped into eighth notes by the level, in time with the tempo
@@ -94,7 +94,7 @@ func DubstepGrowl() Config {
 func HouseStab() Config {
 	return Config{Detune: 0.3, Mix: 0.6, Stereo: 0.9, Sub: 0.3, HPCutoff: 150, Cutoff: 1500, Resonance: 0.2, FilterEnvAmount: 3,
 		KeyTrack: 0.6, FilterEnv: env(2, 140, 0.15, 100), AmpEnv: env(2, 200, 0.3, 120),
-		Mods: [modmatrix.Slots]modmatrix.Slot{mod(modmatrix.Velocity, "cutoff", 0.15)}, Level: 1.14}
+		Mods: [modmatrix.Slots]modmatrix.Slot{mod(modmatrix.Velocity, "cutoff", 0.15)}, Level: 1.06}
 }
 
 // Dive is an effect that falls: the pitch drops an octave over the first seconds as the filter closes
@@ -139,7 +139,7 @@ func ReeseBass() Config {
 // RavePluck is a bright plucked chord with a touch of ensemble: the filter snaps shut
 func RavePluck() Config {
 	return Config{Detune: 0.5, Mix: 0.7, Stereo: 1, HighPass: true, Cutoff: 1200, Resonance: 0.3, FilterEnvAmount: 3.5, KeyTrack: 0.6,
-		FilterEnv: env(1, 260, 0, 200), AmpEnv: env(1, 500, 0, 250), Ensemble: 0.3, Level: 1.25}
+		FilterEnv: env(1, 260, 0, 200), AmpEnv: env(1, 500, 0, 250), Ensemble: 0.3, Level: 1.16}
 }
 
 // AnalogPad is a pad that is never the same twice: every note gets a random detune and a hair of random pitch

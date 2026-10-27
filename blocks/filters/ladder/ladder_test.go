@@ -97,3 +97,36 @@ func TestResonancePeakAndSelfOscillation(t *testing.T) {
 		t.Fatalf("expected self oscillation to keep ringing, tail %v", tail)
 	}
 }
+
+// a resonance of 1 sings on by itself, at the cutoff; 0.9 only rings and dies
+func TestSelfOscillation(t *testing.T) {
+	for _, c := range []struct {
+		res    float64
+		sings  bool
+		cutoff float64
+	}{{0.9, false, 1000}, {1.0, true, 1000}, {1.0, true, 300}} {
+		l := New(c.cutoff, c.res, 44100)
+		l.Process(1, LowPass24)
+		peak, crossings, last := 0.0, 0, 0.0
+
+		for i := 1; i < 88200; i++ {
+			y := l.Process(0, LowPass24)
+			if i > 44100 {
+				peak = math.Max(peak, math.Abs(y))
+				if last < 0 && y >= 0 {
+					crossings++
+				}
+			}
+
+			last = y
+		}
+
+		if sings := peak > 0.02; sings != c.sings {
+			t.Errorf("resonance %v: the peak after a second is %v, sings should be %v", c.res, peak, c.sings)
+		}
+
+		if c.sings && math.Abs(float64(crossings)-c.cutoff) > c.cutoff*0.02 {
+			t.Errorf("sings at %d Hz, want %v", crossings, c.cutoff)
+		}
+	}
+}

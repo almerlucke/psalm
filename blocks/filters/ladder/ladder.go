@@ -17,7 +17,7 @@ const (
 
 // Ladder is a Moog style 4 pole (24 dB/oct) transistor ladder filter, built from four zero-delay
 // feedback (TPT) one pole stages with a resolved global feedback loop. Resonance 0-1 maps to a
-// feedback of 0-4, the filter self-oscillates near 1. Drive saturates the input of the ladder
+// feedback of 0-4.2, the filter self-oscillates at 1. Drive saturates the input of the ladder
 type Ladder struct {
 	sr       float64
 	fc       float64
@@ -52,7 +52,10 @@ func (l *Ladder) update() {
 	g := math.Tan(math.Pi * fc / l.sr)
 
 	l.g = g / (1.0 + g)
-	l.k = 4.0 * math.Max(0.0, math.Min(l.res, 1.0))
+	// the feedback of 4 is where the ladder would oscillate, but the saturation takes a little of the loop's gain away: the last part of the range goes over 4, so that
+	// a resonance of 1 sings on by itself (a sine at the cutoff) and 0.95 does not yet
+	res := math.Max(0.0, math.Min(l.res, 1.0))
+	l.k = 4.0*res + 0.2*math.Pow(res, 6)
 
 	// the ladder loses passband level as the feedback rises, partly compensate it
 	l.compGain = 1.0 + 0.5*l.k
