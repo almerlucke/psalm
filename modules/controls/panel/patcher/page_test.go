@@ -348,6 +348,9 @@ func sortedIDs(ids ...string) []string { slices.Sort(ids); return ids }
 
 // doubleTap taps an element twice, quickly (a double click)
 func doubleTap(tb *paneltest.Tab, expr string) {
+	// a double click opens the window of a module; most tests are of what shows in it, which the side panel shows too when the browser does not let a window open: it
+	// is made not to (a test that wants the window sets window.__recording)
+	tb.Eval(`if (!window.__recording) window.open = () => null`)
 	x, y := tb.Center(expr, 0.5)
 	for _, n := range []int{1, 2} {
 		tb.Mouse("mousePressed", x, y, map[string]any{"clickCount": n})

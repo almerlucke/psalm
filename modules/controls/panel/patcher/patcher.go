@@ -16,7 +16,7 @@
 package patcher
 
 import (
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,8 +49,13 @@ var styles string
 //go:embed lanes.js
 var lanesScript string
 
+// the window of a module (a double click opens it): its page, styles and script, served under plugins/patcher/
+//
+//go:embed module.html module.css module.js
+var moduleFiles embed.FS
+
 // Plugin is the plugin (New uses it)
-var Plugin = panel.Plugin{Name: "patcher", JS: lanesScript + "\n" + script, CSS: styles}
+var Plugin = panel.Plugin{Name: "patcher", JS: lanesScript + "\n" + script, CSS: styles, Files: moduleFiles}
 
 // PortType is what goes through a port: sound, notes or modulation
 type PortType string
@@ -330,6 +335,16 @@ func (pt *Patcher) Tempo() *panel.Param { return pt.tempo }
 type selection struct{ pt *Patcher }
 
 func (s selection) Mounted() *panel.Panel { return s.pt.selectedPage.Load() }
+
+// MountedAs is the page of one module, by its id (mount/<name>@<id>/): the window of a module has its own
+func (s selection) MountedAs(id string) *panel.Panel {
+	s.pt.mu.Lock()
+	defer s.pt.mu.Unlock()
+	if n := s.pt.node(id); n != nil {
+		return n.page
+	}
+	return nil
+}
 
 // worker does what the page asks, in order (off the audio thread: making modules, reading files)
 func (pt *Patcher) worker() {

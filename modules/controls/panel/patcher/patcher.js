@@ -419,11 +419,29 @@ psalm.register("patcher", (p, api) => {
 		taps = [taps[1], follow];
 		if (follow) openSide(id);
 	}
-	// a double tap opens the side panel of a module, or closes it; not when its first tap brought the
-	// panel to it (the tap before the last: a double tap is two taps, then this)
+	// a double tap opens the window of a module (its texts and its settings, a window of its own: module.html), or brings it to the front; where the browser does not
+	// let a window open, the side panel is used. Not when its first tap brought the side panel to it (the tap before the last: a double tap is two taps, then this)
+	const windows = {}; // the windows opened, by module
+	function openWindow(id) {
+		const n = nodeOf(id);
+		if (!n) return true;
+		const texts = n.texts || [];
+		if (!texts.length && !n.page) return true; // nothing to show
+		const had = windows[id];
+		if (had && !had.closed) { had.focus(); return true; }
+		const base = new URL(".", location.href).href;
+		const q = new URLSearchParams({base, id, patcher: p.name, mount: p.data.mount, theme: api.theme(), mode: document.documentElement.dataset.mode || ""});
+		const script = texts.some(t => t.lines > 1);
+		const w = window.open(base + "plugins/patcher/module.html?" + q, "pt-module-" + p.name + "-" + id,
+			"popup=yes,width=" + (script ? 760 : 560) + ",height=" + (script ? 820 : texts.length ? 720 : 640));
+		if (!w) return false;
+		windows[id] = w;
+		return true;
+	}
 	function doubleTapped(id) {
 		if (taps[0]) { taps = [false, false]; return; }
-		if (editing && editing.id === id) closeEditor(); else openSide(id);
+		if (editing && editing.id === id) { closeEditor(); return; }
+		if (!openWindow(id)) openSide(id);
 	}
 	function openSide(id) {
 		const n = nodeOf(id);

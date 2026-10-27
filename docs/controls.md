@@ -547,7 +547,7 @@ playlist keeps the controls of every song this way. A mounter that is a `panel.M
 (`BindingsMount`, `SetBindingsMount`) keeps MIDI bindings the same way: they are in `Bindings()` as
 `"<mount>/..."`, so `KeepBindings` saves and loads what was learned on every song's controls.
 `ctl.Mount(...).Hide()` keeps a mount off the page while it is still served and reached by MIDI,
-for a plugin to show it where it wants: the patcher shows a module's settings in its side panel so.
+for a plugin to show it where it wants: the patcher shows a module's settings in a window of its own (or its side panel) so; a mounter that is an `ArgMounter` also serves a panel by an argument, `mount/<name>@<arg>/`.
 
 **Labels**: `panel.Label("M")` shows a short text on the page instead of the name (names have to
 be unique, labels can repeat).
@@ -850,9 +850,10 @@ from a palette, move them by their heads, and draw cables from an output to an i
 kind: audio (the sound), notes (a keyboard to the synths it plays) and modulation (an LFO, a random
 source or the mod wheel to any setting of a module, over a part of its range: drawn to a module's
 mod input, the setting and the range are chosen below the patch). A tap on a module chooses it, a double
-tap opens its side panel: its script (a box of lines) and its settings (its editor, with its presets
-and yours); a double tap on it again, Esc or × closes it. With the panel open, a tap on another module
-shows that one. Click a cable to take it
+click opens a window of its own for it (a browser window: `plugins/patcher/module.html`): its script (a box of lines) and its
+settings (its editor, with its presets and yours); another double click brings that window to the front, Esc in its boxes (or closing it) takes what is typed.
+Where the browser does not let a window open, the side panel is used as it was: it shows the same, a double tap on the module again, Esc or × closes it, and with the
+panel open a tap on another module shows that one. The page of one module is served at `mount/<name>@<id>/` (a mounter that gives a panel by an argument: `panel.ArgMounter`). Click a cable to take it
 away (or Delete); Delete (or Backspace) takes the modules chosen away with their cables. Patches are kept by name in a folder: the modules, where they are, the
 cables and every setting. Every change is made between two buffers while it plays.
 

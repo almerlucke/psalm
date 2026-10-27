@@ -3,6 +3,7 @@ package panel
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -14,6 +15,13 @@ const MountKind Kind = "mount"
 // thread
 type Mounter interface {
 	Mounted() *Panel
+}
+
+// ArgMounter is a mounter that gives a panel by an argument too: mount/<name>@<arg>/ is the panel it gives for the argument (the settings of one module of a
+// patch, in a window of its own)
+type ArgMounter interface {
+	Mounter
+	MountedAs(arg string) *Panel
 }
 
 // MountKeeper is a mounter that keeps the values of the panels it mounts in snapshots (and so in
@@ -94,19 +102,24 @@ func (pn *Panel) mountList() []*Mount {
 
 // serveMount serves the page and the API of a mounted panel under /mount/<name>/
 func (pn *Panel) serveMount(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+	full := r.PathValue("name")
+	name, arg, hasArg := strings.Cut(full, "@")
 	pn.mu.Lock()
 	mt := pn.mounts[name]
 	pn.mu.Unlock()
 	var child *Panel
 	if mt != nil {
-		child = mt.Mounted()
+		if am, ok := mt.m.(ArgMounter); ok && hasArg {
+			child = am.MountedAs(arg)
+		} else if !hasArg {
+			child = mt.Mounted()
+		}
 	}
 	if child == nil {
 		http.Error(w, fmt.Sprintf("nothing mounted at %q", name), http.StatusNotFound)
 		return
 	}
-	http.StripPrefix("/mount/"+name, child.Handler()).ServeHTTP(w, r)
+	http.StripPrefix("/mount/"+full, child.Handler()).ServeHTTP(w, r)
 }
 
 // mountDesc is a mount as the page sees it: the title of the panel mounted ("" for none) and its

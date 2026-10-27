@@ -1,0 +1,45 @@
+/* the window of a module of the patcher: its texts (a pattern, values, a script) and its settings, in a window of its own (module.js) */
+:root {
+	--bg: #f4f4f2; --card: #ffffff; --ink: #1d1d1f; --muted: #6e6e73; --line: #d8d8d4;
+	--track: #e6e6e2; --accent: #2f6fdb; --accent-ink: #ffffff; --meter-low: #2fa36b;
+	--meter-mid: #d9a514; --meter-high: #d94a3d; --shadow: 0 1px 3px rgba(0,0,0,.08);
+	--font: system-ui, -apple-system, "Segoe UI", sans-serif; --radius: 12px;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-mode="light"]) {
+		--bg: #141416; --card: #1f1f22; --ink: #ececee; --muted: #9a9aa0; --line: #34343a;
+		--track: #2c2c31; --accent: #5b8ff0; --accent-ink: #0e0e10; --shadow: none;
+	}
+}
+:root[data-mode="dark"] {
+	--bg: #141416; --card: #1f1f22; --ink: #ececee; --muted: #9a9aa0; --line: #34343a;
+	--track: #2c2c31; --accent: #5b8ff0; --accent-ink: #0e0e10; --shadow: none;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.35 var(--font); }
+button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: calc(var(--radius) * 2 / 3); cursor: pointer; }
+.mw { height: 100%; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
+.mw-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+.mw-title { flex: 1; }
+.mw-head button { min-height: 28px; padding: 2px 10px; font-size: 13px; }
+.mw-live { width: 9px; height: 9px; border-radius: 50%; background: var(--meter-high); }
+.mw-live.on { background: var(--meter-low); }
+.mw-code { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.mw-code[hidden], .mw-settings[hidden], .mw-gone[hidden] { display: none; }
+.mw.both .mw-code { flex: 0 0 45%; }
+.mw.short .mw-code { flex: 0 0 auto; height: 18em; }
+.mw-boxes { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.mw-box { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.mw-label { color: var(--muted); }
+.mw-help { margin: 0 0 4px; padding-left: 16px; font-size: 12px; line-height: 1.45; color: var(--muted); flex: none; }
+.mw-help code { font: 11.5px ui-monospace, Menlo, Consolas, monospace; color: var(--ink); background: var(--track); border-radius: 3px; padding: 0 3px; }
+.mw-text { flex: 1; min-height: 0; width: 100%; min-width: 0; resize: none; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--ink); background: var(--track);
+	border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; tab-size: 2; white-space: pre; }
+.mw-text.bad { border-color: var(--meter-high); }
+.mw-status { font: 11px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); white-space: pre-wrap; min-height: 1.3em; }
+.mw-status:empty { display: none; }
+.mw-status.bad { color: var(--meter-high); }
+.mw-settings { flex: 1; min-height: 0; overflow: auto; }
+.mw-settings iframe { width: 100%; border: 0; display: block; height: 0; color-scheme: normal; }
+.mw-gone { color: var(--muted); padding: 20px 0; text-align: center; }
