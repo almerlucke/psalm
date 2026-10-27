@@ -195,6 +195,50 @@ func (p *Plugin) readParams() {
 		p.keys[key] = len(p.params)
 		p.params = append(p.params, param{id: uint32(id), key: key, label: label, group: group, min: float64(mn), max: float64(mx), def: float64(df), stepped: flags&stepped != 0})
 	}
+	p.pickMain()
+}
+
+// mainWords are what a plugin with many parameters is played with: the first parameter whose name has the word is in the group "Main" at the top (a plugin with
+// forty parameters or fewer needs no such group)
+var mainWords = []string{"volume", "gain", "cutoff", "resonance", "attack", "decay", "sustain", "release", "drive", "mix", "reverb", "delay", "width"}
+
+func (p *Plugin) pickMain() {
+	if len(p.params) <= 40 {
+		return
+	}
+	var main, rest []param
+	taken := map[int]bool{}
+	for _, w := range mainWords {
+		pick := -1
+		for i, q := range p.params {
+			name := strings.ToLower(q.group + " " + q.label)
+			if taken[i] || !strings.Contains(strings.ToLower(q.label), w) || strings.Contains(name, "lfo") || strings.Contains(name, "macro") {
+				continue
+			}
+			if pick < 0 {
+				pick = i
+			}
+			if strings.Contains(name, "filter") || strings.Contains(name, "amp") || strings.Contains(name, "master") || strings.Contains(name, "global") {
+				pick = i // the one that is the sound's own: its filter, its amplifier, the master
+				break
+			}
+		}
+		if pick >= 0 {
+			taken[pick] = true
+			q := p.params[pick]
+			q.group = "Main"
+			main = append(main, q)
+		}
+	}
+	for i, q := range p.params {
+		if !taken[i] {
+			rest = append(rest, q)
+		}
+	}
+	p.params = append(main, rest...)
+	for i, q := range p.params {
+		p.keys[q.key] = i
+	}
 }
 
 // Descriptor is the plugin as it was found

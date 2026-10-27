@@ -49,5 +49,12 @@ func TestPageClap(t *testing.T) {
 	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-frame").contentDocument?.querySelector(".control")`, "the side panel of Surge XT")
 	t.Logf("the side panel opened after %v", time.Since(start))
 	tb.WaitFor(`document.querySelector(".pt-drawer-frame").contentDocument?.querySelectorAll(".control").length > 500`, "the settings of Surge XT in the side panel")
+	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	if open := tb.Eval(frame + `.querySelectorAll(".ed-group:not(.closed)").length`).(float64); open != 1 {
+		t.Errorf("%v groups of the settings are open, want the first (Main) only", open)
+	}
+	if first := tb.Eval(frame + `.querySelector(".ed-title").textContent`).(string); first != "Main (11)" {
+		t.Errorf("the first group is %q", first)
+	}
 	t.Logf("its settings after %v", time.Since(start))
 }
