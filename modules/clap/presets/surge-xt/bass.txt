@@ -1,0 +1,10 @@
+# name: Surge Sub Bass
+# A sine an octave down, one note at a time.
+a osc 1 type = Sine
+a osc 1 octave = -1
+a common a play mode = Mono
+a amp eg attack = 0 ms
+a amp eg decay = 200 ms
+a amp eg sustain = @0.8
+a amp eg release = 120 ms
+a common a volume = -4 dB

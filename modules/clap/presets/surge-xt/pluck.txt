@@ -1,0 +1,10 @@
+# name: Surge Soft Pluck
+# A soft wavetable voice plucked: no attack, a short decay, nothing sustained, two voices a few cents apart. Marimba-like.
+a osc 1 type = Wavetable
+a osc 1 unison voices = 2 voices
+a osc 1 unison detune = 6 cents
+a amp eg attack = 2 ms
+a amp eg decay = 450 ms
+a amp eg sustain = @0
+a amp eg release = 250 ms
+a common a volume = -2 dB

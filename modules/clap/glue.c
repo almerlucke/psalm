@@ -33,6 +33,7 @@ struct pc_inst {
 	int n;
 	pc_event ev[MAX_EVENTS];
 	int started, activated;
+	volatile int callback; // the plugin asked for a call on the main thread
 };
 
 static void seterr(char *err, int cap, const char *msg) {
@@ -45,6 +46,7 @@ static void seterr(char *err, int cap, const char *msg) {
 
 static const void *host_get_extension(const clap_host_t *host, const char *id) { return NULL; }
 static void host_nothing(const clap_host_t *host) {}
+static void host_callback(const clap_host_t *host) { ((pc_inst *)host->host_data)->callback = 1; }
 
 static uint32_t in_size(const clap_input_events_t *list) { return ((pc_inst *)list->ctx)->n; }
 static const clap_event_header_t *in_get(const clap_input_events_t *list, uint32_t i) {
@@ -128,7 +130,7 @@ pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFram
 	                           .get_extension = host_get_extension,
 	                           .request_restart = host_nothing,
 	                           .request_process = host_nothing,
-	                           .request_callback = host_nothing};
+	                           .request_callback = host_callback};
 	inst->in_events = (clap_input_events_t){.ctx = inst, .size = in_size, .get = in_get};
 	inst->out_events = (clap_output_events_t){.ctx = inst, .try_push = out_push};
 	inst->plugin = lib->factory->create_plugin(lib->factory, &inst->host, id);
@@ -214,6 +216,14 @@ double pi_param_value(pc_inst *inst, uint32_t id) {
 	return 0;
 }
 
+int pi_param_text(pc_inst *inst, uint32_t id, double value, char *out, int cap) {
+	if (!inst->params || !inst->params->value_to_text) {
+		return 0;
+	}
+	out[0] = 0;
+	return inst->params->value_to_text(inst->plugin, id, value, out, (uint32_t)cap) && out[0] != 0;
+}
+
 static pc_event *push(pc_inst *inst, uint16_t type, uint32_t size, uint32_t time) {
 	if (inst->n >= MAX_EVENTS) {
 		return NULL;
@@ -251,13 +261,27 @@ void pi_note(pc_inst *inst, int on, uint32_t time, int key, double velocity, int
 	}
 }
 
+// the cookie the plugin gave a parameter: it asks for it back in the events that set it
+static void *param_cookie(pc_inst *inst, uint32_t id) {
+	clap_param_info_t info;
+	if (inst->params) {
+		uint32_t n = inst->params->count(inst->plugin);
+		for (uint32_t i = 0; i < n; i++) {
+			if (inst->params->get_info(inst->plugin, i, &info) && info.id == id) {
+				return info.cookie;
+			}
+		}
+	}
+	return NULL;
+}
+
 void pi_param(pc_inst *inst, uint32_t id, double value, uint32_t time) {
 	pc_event *e = push(inst, CLAP_EVENT_PARAM_VALUE, sizeof(clap_event_param_value_t), time);
 	if (!e) {
 		return;
 	}
 	e->param.param_id = id;
-	e->param.cookie = NULL;
+	e->param.cookie = param_cookie(inst, id);
 	e->param.note_id = -1;
 	e->param.port_index = -1;
 	e->param.channel = -1;
@@ -295,6 +319,10 @@ int pi_process(pc_inst *inst, float *in0, float *in1, float *out0, float *out1, 
 	sort_events(inst);
 	clap_process_status st = inst->plugin->process(inst->plugin, &pr);
 	inst->n = 0;
+	if (inst->callback) { // what the plugin asked to do on the main thread: done here, between two blocks, as the same thread as the process
+		inst->callback = 0;
+		inst->plugin->on_main_thread(inst->plugin);
+	}
 	if (inst->out_ch == 1) {
 		memcpy(out1, out0, frames * sizeof(float));
 	}

@@ -1,0 +1,5 @@
+# name: Surge FX Delay
+# Echoes: the default delay, a little under half a second.
+# What the knobs do depends on the type: the plugin labels them as for the delay.
+fx type = Delay
+output mix = 35 %

@@ -3,16 +3,19 @@
 //	go run ./cmd/clap                                          list the plugins (the places searched are in the doc of modules/clap)
 //	go run ./cmd/clap -plugin "Surge XT" -params               and the parameters of one
 //	go run ./cmd/clap -plugin "Surge XT" -render chord.wav     a chord (-notes 60,64,67.02 -seconds 4); pitches may lie between the keys
+//	go run ./cmd/clap -plugin "Surge XT" -preset pluck.txt -save editors-presets/clap   make a preset of a text (lines "a osc 1 type = Sine", "a amp eg attack = 5 ms")
 //	go run ./cmd/clap -dir ~/plugins                           search another directory
 package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -24,10 +27,13 @@ func main() {
 	dir := flag.String("dir", "", "search this directory instead of the usual ones")
 	name := flag.String("plugin", "", "the plugin to use (its name or id)")
 	showParams := flag.Bool("params", false, "list the parameters of the plugin")
+	explore := flag.String("explore", "", "parameter keys (separated by a semicolon): what the plugin shows over their range")
 	out := flag.String("render", "", "play a chord on the plugin and write it to this WAV file")
 	notes := flag.String("notes", "60,64,67", "the pitches of the chord (MIDI, may be fractional)")
 	buffer := flag.Int("buffer", 256, "the size of a buffer in samples")
 	seconds := flag.Float64("seconds", 4, "how long the chord is held")
+	preset := flag.String("preset", "", "text files of settings (key = what the plugin shows for it), separated by commas: applied before the chord, and saved with -save")
+	save := flag.String("save", "", "with -preset: write each as a preset of the editor (a JSON file) in this folder")
 	set := flag.String("set", "", "parameters to set before it plays: key=value, separated by a semicolon")
 	flag.Parse()
 
@@ -65,6 +71,45 @@ func main() {
 	if *showParams {
 		for _, p := range pl.Describe().Params {
 			fmt.Printf("%-40q %g .. %g  (%g)\n", p.Key, p.Min, p.Max, p.Value)
+		}
+	}
+	if *explore != "" { // what a parameter shows over its range
+		for _, k := range strings.Split(*explore, ";") {
+			k = strings.TrimSpace(k)
+			fmt.Printf("%q:", k)
+			last := ""
+			for i := 0; i <= 200; i++ {
+				v := float64(i) / 200
+				if t := pl.Text(k, v); t != last {
+					fmt.Printf("  %.3f=%s", v, t)
+					last = t
+				}
+			}
+			fmt.Println()
+		}
+	}
+	for _, file := range strings.Split(*preset, ",") {
+		if file = strings.TrimSpace(file); file == "" {
+			continue
+		}
+		name, settings, err := readPreset(pl, file)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if *save != "" {
+			if err := os.MkdirAll(*save, 0o755); err != nil {
+				log.Fatal(err)
+			}
+			data, _ := json.MarshalIndent(map[string]any{"settings": settings}, "", " ")
+			if err := os.WriteFile(filepath.Join(*save, name+".json"), data, 0o644); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("saved %s (%d settings)\n", name, len(settings))
+		}
+		if *out != "" {
+			for k, v := range settings {
+				pl.ReceiveMessage(psalm.Message{k: v})
+			}
 		}
 	}
 	if *out == "" {
@@ -109,6 +154,37 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Println("wrote", *out)
+}
+
+// readPreset reads a text of settings: a line "key = what the plugin shows" (the key may be the end of one), # starts a comment, "# name: Pluck" names the preset
+// (else the file does)
+func readPreset(pl *clap.Plugin, file string) (name string, settings map[string]float64, err error) {
+	data, err := os.ReadFile(file)
+	if err != nil {
+		return "", nil, err
+	}
+	name = strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+	settings = map[string]float64{}
+	for n, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if rest, ok := strings.CutPrefix(line, "# name:"); ok {
+			name = strings.TrimSpace(rest)
+			continue
+		}
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, text, ok := strings.Cut(line, "=")
+		if !ok {
+			return "", nil, fmt.Errorf("%s:%d: no =", file, n+1)
+		}
+		full, v, err := pl.Resolve(strings.TrimSpace(key), strings.TrimSpace(text))
+		if err != nil {
+			return "", nil, fmt.Errorf("%s:%d: %w", file, n+1, err)
+		}
+		settings[full] = v
+	}
+	return name, settings, nil
 }
 
 func writeWAV(path string, pcm []int16, rate int) error {

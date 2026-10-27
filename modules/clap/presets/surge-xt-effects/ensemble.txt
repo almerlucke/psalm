@@ -1,0 +1,5 @@
+# name: Surge FX Ensemble
+# A string-machine ensemble: three voices drifting apart.
+# What the knobs do depends on the type: the plugin labels them as for the delay.
+fx type = Ensemble
+output mix = 50 %

@@ -270,6 +270,28 @@ func (p *Plugin) Describe() params.Set {
 	return set
 }
 
+// Text is what the plugin shows for a value of the parameter with this key ("Classic", "440 Hz"), empty when it shows none
+func (p *Plugin) Text(key string, value float64) string {
+	i, ok := p.keys[key]
+	if !ok || p.inst == nil {
+		return ""
+	}
+	var buf [256]C.char
+	if C.pi_param_text(p.inst, C.uint32_t(p.params[i].id), C.double(value), &buf[0], 256) == 0 {
+		return ""
+	}
+	return C.GoString(&buf[0])
+}
+
+// Value is where the plugin has the parameter with this key now (0 to 1)
+func (p *Plugin) Value(key string) float64 {
+	i, ok := p.keys[key]
+	if !ok || p.inst == nil {
+		return 0
+	}
+	return float64(C.pi_param_value(p.inst, C.uint32_t(p.params[i].id)))
+}
+
 // Keys are the keys of the messages that move the parameters
 func (p *Plugin) Keys() []string {
 	out := make([]string, len(p.params))

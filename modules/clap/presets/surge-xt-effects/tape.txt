@@ -1,0 +1,5 @@
+# name: Surge FX Tape
+# Tape saturation and wobble: warms and ages a sound.
+# What the knobs do depends on the type: the plugin labels them as for the delay.
+fx type = Tape
+output mix = 100 %

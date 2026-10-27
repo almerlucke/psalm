@@ -21,7 +21,21 @@ go run ./cmd/clap -plugin "Surge XT" -params             and its parameters
 go run ./cmd/clap -plugin "Surge XT" -render chord.wav -notes 60,64,67.02 -seconds 4 -set "key=value;..."
 ```
 
+## Presets
+
+The presets of the plugins on this page are in `modules/clap/presets/` as text, a line a setting, written the way the plugin shows its values: `a osc 1 type = Wavetable`, `a amp eg decay = 450 ms`, `a common a volume = -2 dB` (`@0.7` for a parameter that shows nothing: its value from 0 to 1; a key may be the end of a key). `go run ./cmd/clap` looks the values up (it asks the plugin what text each value shows), and saves a preset of the editor:
+
+```
+go run ./cmd/clap -plugin "Surge XT" -preset modules/clap/presets/surge-xt/pluck.txt -save editors-presets/clap
+go run ./cmd/clap -plugin "Surge XT" -preset modules/clap/presets/surge-xt/pluck.txt -notes 60,64,67 -render pluck.wav
+go run ./cmd/clap -plugin "Surge XT" -explore "a osc 1 type;a amp eg attack"     what a parameter shows over its range
+```
+
+Surge XT: Soft Pluck, Kalimba, Plucked String, Glass Bell, Warm Pad, Sub Bass, Hawaiian Lead. Surge XT Effects is one effect at a time, its type chosen by the `fx type` setting (Delay, Reverb 1 and 2, Spring Reverb, Phaser, Flanger, Chorus, Ensemble, Rotary Speaker, Distortion, Tape, EQ and more than twenty others); a preset sets the type and the mix, and the knobs that follow it are named as for the delay whatever the type is (the host does not follow the plugin renaming them).
+
 ## Limits
+
+- **Surge XT's filters and waveshaper do not respond** when played from here (the settings are accepted and read back, but the sound does not change; its oscillators, unison, envelopes, volume and mixer do respond, and the effects plugin responds to everything). I read Surge's source for the path of a parameter event and could not find why: the presets are made of what works.
 
 - No plugin windows: the parameters are the interface. No presets of the plugin either (CLAP's preset discovery is not hosted yet): a plugin starts from its default sound, and Surge XT's own patches need its data directory (the full install, not the plugins only download). State and presets of the plugin are not saved with the patch yet.
 - A plugin runs on the audio thread, so a plugin that crashes takes the program with it, and one that is slow drops out the sound.

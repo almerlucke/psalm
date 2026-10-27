@@ -1,0 +1,14 @@
+# name: Surge Glass Bell
+# An FM voice an octave up and a sine two octaves up, mixed softly: a bell that rings out over several seconds.
+a osc 1 type = FM2
+a osc 1 octave = 1
+a osc 2 type = Sine
+a osc 2 octave = 2
+a mixer a osc 2 mute = Off
+a mixer a osc 2 volume = -9 dB
+a amp eg attack = 0 ms
+a amp eg decay = 3 s
+a amp eg sustain = @0
+a amp eg release = 3 s
+a common a width = 100 %
+a common a volume = -12 dB

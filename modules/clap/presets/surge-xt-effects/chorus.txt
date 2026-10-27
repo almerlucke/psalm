@@ -1,0 +1,5 @@
+# name: Surge FX Chorus
+# Doubles the sound with a slow wobble: wider and lusher.
+# What the knobs do depends on the type: the plugin labels them as for the delay.
+fx type = Chorus
+output mix = 50 %

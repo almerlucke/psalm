@@ -1,0 +1,5 @@
+# name: Surge FX Rotary Speaker
+# The swirl of a Leslie cabinet.
+# What the knobs do depends on the type: the plugin labels them as for the delay.
+fx type = Rotary Speaker
+output mix = 100 %

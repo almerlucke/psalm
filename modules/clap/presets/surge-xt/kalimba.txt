@@ -1,0 +1,9 @@
+# name: Surge Kalimba
+# The windowed oscillator, an octave up, short and round: a thumb piano.
+a osc 1 type = Window
+a osc 1 octave = 1
+a amp eg attack = 0 ms
+a amp eg decay = 700 ms
+a amp eg sustain = @0
+a amp eg release = 400 ms
+a common a volume = 12 dB

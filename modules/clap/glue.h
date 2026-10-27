@@ -23,6 +23,8 @@ void pi_ports(pc_inst *inst, int *in, int *out);
 int pi_param_count(pc_inst *inst);
 int pi_param_info(pc_inst *inst, int i, uint32_t *id, char *name, char *module, int cap, double *min, double *max, double *def, uint32_t *flags);
 double pi_param_value(pc_inst *inst, uint32_t id);
+// the text the plugin shows for a value of a parameter ("440 Hz", "Classic"); 0 when it has none
+int pi_param_text(pc_inst *inst, uint32_t id, double value, char *out, int cap);
 
 // events for the next block, in the order they come (they are sorted by time when it is processed)
 void pi_note(pc_inst *inst, int on, uint32_t time, int key, double velocity, int32_t noteID, double tuning);

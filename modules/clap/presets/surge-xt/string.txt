@@ -1,0 +1,8 @@
+# name: Surge Plucked String
+# The oscillator that models a plucked string: a long ring, no sustain. Tropical when played in sixths.
+a osc 1 type = String
+a amp eg attack = 0 ms
+a amp eg decay = 2 s
+a amp eg sustain = @0
+a amp eg release = 1.4 s
+a common a volume = 9 dB

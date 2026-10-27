@@ -1,0 +1,15 @@
+# name: Surge Warm Pad
+# A soft wavetable with five unison voices and a sine an octave below: a slow bloom and a long fade.
+a osc 1 type = Wavetable
+a osc 1 unison voices = 5 voices
+a osc 1 unison detune = 12 cents
+a osc 2 type = Sine
+a osc 2 octave = -1
+a mixer a osc 2 mute = Off
+a mixer a osc 2 volume = -6 dB
+a amp eg attack = 1.4 s
+a amp eg decay = 1.4 s
+a amp eg sustain = @0.7
+a amp eg release = 1.8 s
+a common a width = 100 %
+a common a volume = -7 dB

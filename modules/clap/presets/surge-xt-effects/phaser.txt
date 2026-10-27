@@ -1,0 +1,5 @@
+# name: Surge FX Phaser
+# A sweeping phaser.
+# What the knobs do depends on the type: the plugin labels them as for the delay.
+fx type = Phaser
+output mix = 50 %
