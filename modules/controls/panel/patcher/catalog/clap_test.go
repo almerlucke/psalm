@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/modules/clap"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 )
 
@@ -36,7 +38,7 @@ func TestClapKinds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if set := made.Describe(""); len(set.Params) != 1 || set.Params[0].Key != "output gain" {
+	if set := made.Describe(""); len(set.Params) != 2 || set.Params[0].Key != "preset" || set.Params[1].Key != "output gain" { // the plugin's own presets first
 		t.Errorf("settings %+v", set)
 	}
 	m := made.Module
@@ -96,6 +98,22 @@ func TestClapRealPlugins(t *testing.T) {
 		}
 		for _, s := range synth.Module.Output(0).Channels[0] {
 			dry = math.Max(dry, math.Abs(float64(s)))
+		}
+	}
+	// its own presets, chosen by number as the editor does
+	set := synth.Describe("")
+	if set.Params[0].Key != "preset" || len(set.Params[0].Options) < 1000 {
+		t.Errorf("Surge XT lists %d presets (its data is needed: see docs/clap.md)", len(set.Params[0].Options))
+	} else {
+		want := slices.Index(set.Params[0].Options, "Plucks / Taped Plucks")
+		synth.Module.ReceiveMessage(psalm.Message{"preset": float64(want)})
+		pl := synth.Module.(*clap.Plugin)
+		deadline := time.Now().Add(3 * time.Second)
+		for pl.Loaded() != want && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if pl.Loaded() != want || want < 0 {
+			t.Errorf("preset %d (Plucks / Taped Plucks) not loaded: %d", want, pl.Loaded())
 		}
 	}
 	t.Logf("Surge XT %d settings, Surge XT Effects %d; the synth peaks at %.3f, through the effect %.3f", len(synth.Describe("").Params), len(fx.Describe("").Params), dry, peak)

@@ -5,9 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/params"
 )
 
 // testPlugins compiles the test plugins (testdata/testplugin.c) into a directory and returns it
@@ -76,7 +79,7 @@ func TestInstrument(t *testing.T) {
 	if keys := p.Keys(); len(keys) != 1 || keys[0] != "output gain" {
 		t.Fatalf("keys %v", keys)
 	}
-	if set := p.Describe(); len(set.Params) != 1 || set.Params[0].Max != 1 || set.Params[0].Value != 0.5 {
+	if set := p.Describe(); len(set.Params) != 2 || set.Params[0].Key != "preset" || set.Params[1].Max != 1 || set.Params[1].Value != 0.5 {
 		t.Fatalf("describe %+v", set)
 	}
 	freq := func(pitch float64) float64 {
@@ -170,4 +173,81 @@ func TestEffect(t *testing.T) {
 		t.Errorf("gain 0.5: %v", got)
 	}
 	_ = os.Stdout
+}
+
+// presets: two inside the plugin and the files of a directory, listed for the plugin they are for, loaded by number
+func TestPresets(t *testing.T) {
+	presetDir := t.TempDir()
+	for name, gain := range map[string]string{"bell": "0.3", "organ": "0.9"} {
+		if err := os.WriteFile(filepath.Join(presetDir, name+".tpreset"), []byte(gain), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(presetDir, "readme.txt"), []byte("not a preset"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PSALM_TEST_PRESETS", presetDir)
+	dir := testPlugins(t)
+	p, err := New(find(t, dir, "psalm.test.sine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Free()
+	var names []string
+	for _, pr := range p.Presets() {
+		names = append(names, pr.label())
+	}
+	slices.Sort(names)
+	folder := filepath.Base(presetDir) // a file is filed under the folder it is in
+	if want := []string{folder + " / bell", folder + " / organ", "soft / Quiet", "strong / Loud"}; !slices.Equal(names, want) {
+		t.Fatalf("presets %v, want %v", names, want)
+	}
+	if fx, err := New(find(t, dir, "psalm.test.gain")); err != nil || len(fx.Presets()) != 0 {
+		t.Errorf("the effect has no presets of its own: %v %v", err, fx)
+	}
+	set := p.Describe()
+	if len(set.Params) != 2 || set.Params[0].Key != "preset" || set.Params[0].Kind != params.Choice || len(set.Params[0].Options) != 4 {
+		t.Fatalf("settings %+v", set.Params)
+	}
+	gain := func() float64 { // what the sound of a note is: its amplitude is the gain
+		p.AllNotesOff()
+		block(p)
+		p.ReceiveMessage(trigger(map[string]any{"noteOn": "g", "amplitude": 1.0, "message": psalm.Message{"pitch": 60.0}, "tick": psalm.CtrlTick{}}))
+		var peak float64
+		for range 8 {
+			for _, s := range block(p) {
+				peak = math.Max(peak, math.Abs(float64(s)))
+			}
+		}
+		return peak
+	}
+	index := func(label string) int {
+		for i, pr := range p.Presets() {
+			if pr.label() == label {
+				return i
+			}
+		}
+		t.Fatalf("no preset %q", label)
+		return -1
+	}
+	for label, want := range map[string]float64{"soft / Quiet": 0.1, "strong / Loud": 1.0, folder + " / bell": 0.3, folder + " / organ": 0.9} {
+		if err := p.LoadPreset(index(label)); err != nil {
+			t.Fatal(err)
+		}
+		if got := gain(); math.Abs(got-want) > 0.03 {
+			t.Errorf("%s: the note peaks at %v, want %v", label, got, want)
+		}
+	}
+	// by a message, off the audio thread
+	p.ReceiveMessage(psalm.Message{"preset": float64(index("soft / Quiet"))})
+	deadline := time.Now().Add(2 * time.Second)
+	for p.Loaded() != index("soft / Quiet") && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := gain(); math.Abs(got-0.1) > 0.03 {
+		t.Errorf("by message: %v", got)
+	}
+	if p.LoadPreset(99) == nil {
+		t.Error("a preset that is not there")
+	}
 }

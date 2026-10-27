@@ -1,6 +1,9 @@
 #include "glue.h"
 
+#include <ctype.h>
+#include <dirent.h>
 #include <dlfcn.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,10 +12,26 @@
 
 #define MAX_EVENTS 4096
 
+typedef struct {
+	uint32_t flags, kind;
+	char name[256], location[1024];
+} pc_location;
+
 struct pc_lib {
 	void *handle;
 	const clap_plugin_entry_t *entry;
 	const clap_plugin_factory_t *factory;
+
+	// the preset discovery: what the providers declared, and the presets found
+	char (*exts)[32];
+	int n_exts;
+	pc_location *locs;
+	int n_locs;
+	pc_preset *presets;
+	int n_presets, cap_presets;
+	pc_preset cur; // the preset being told by a provider
+	int cur_open;
+	pc_location *cur_loc;
 };
 
 typedef union {
@@ -327,4 +346,244 @@ int pi_process(pc_inst *inst, float *in0, float *in1, float *out0, float *out1, 
 		memcpy(out1, out0, frames * sizeof(float));
 	}
 	return st != CLAP_PROCESS_ERROR;
+}
+
+// --- preset discovery: the indexer the providers declare to, the receiver they tell the presets to ---
+
+static bool ix_filetype(const clap_preset_discovery_indexer_t *ix, const clap_preset_discovery_filetype_t *ft) {
+	pc_lib *lib = ix->indexer_data;
+	if (!ft || !ft->file_extension) {
+		return false;
+	}
+	lib->exts = realloc(lib->exts, (lib->n_exts + 1) * sizeof *lib->exts);
+	snprintf(lib->exts[lib->n_exts++], 32, "%s", ft->file_extension);
+	return true;
+}
+
+static bool ix_location(const clap_preset_discovery_indexer_t *ix, const clap_preset_discovery_location_t *l) {
+	pc_lib *lib = ix->indexer_data;
+	if (!l || (l->kind == CLAP_PRESET_DISCOVERY_LOCATION_FILE && !l->location)) {
+		return false;
+	}
+	lib->locs = realloc(lib->locs, (lib->n_locs + 1) * sizeof *lib->locs);
+	pc_location *p = &lib->locs[lib->n_locs++];
+	memset(p, 0, sizeof *p);
+	p->flags = l->flags;
+	p->kind = l->kind;
+	snprintf(p->name, sizeof p->name, "%s", l->name ? l->name : "");
+	snprintf(p->location, sizeof p->location, "%s", l->location ? l->location : "");
+	return true;
+}
+
+static bool ix_soundpack(const clap_preset_discovery_indexer_t *ix, const clap_preset_discovery_soundpack_t *sp) { return true; }
+static const void *ix_extension(const clap_preset_discovery_indexer_t *ix, const char *id) { return NULL; }
+
+static void flush_preset(pc_lib *lib) {
+	if (!lib->cur_open) {
+		return;
+	}
+	lib->cur_open = 0;
+	if (lib->n_presets == lib->cap_presets) {
+		lib->cap_presets = lib->cap_presets ? lib->cap_presets * 2 : 256;
+		lib->presets = realloc(lib->presets, lib->cap_presets * sizeof *lib->presets);
+	}
+	lib->presets[lib->n_presets++] = lib->cur;
+}
+
+static void rc_error(const clap_preset_discovery_metadata_receiver_t *r, int32_t os_error, const char *msg) {}
+
+static bool rc_begin(const clap_preset_discovery_metadata_receiver_t *r, const char *name, const char *load_key) {
+	pc_lib *lib = r->receiver_data;
+	flush_preset(lib);
+	memset(&lib->cur, 0, sizeof lib->cur);
+	snprintf(lib->cur.name, sizeof lib->cur.name, "%s", name ? name : "");
+	snprintf(lib->cur.loadkey, sizeof lib->cur.loadkey, "%s", load_key ? load_key : "");
+	lib->cur.kind = lib->cur_loc->kind;
+	snprintf(lib->cur.location, sizeof lib->cur.location, "%s", lib->cur_loc->location);
+	lib->cur.flags = lib->cur_loc->flags;
+	lib->cur_open = 1;
+	return true;
+}
+
+static void rc_plugin(const clap_preset_discovery_metadata_receiver_t *r, const clap_universal_plugin_id_t *id) {
+	pc_lib *lib = r->receiver_data;
+	if (lib->cur_open && id && id->abi && !strcmp(id->abi, "clap") && !lib->cur.plugin[0]) {
+		snprintf(lib->cur.plugin, sizeof lib->cur.plugin, "%s", id->id ? id->id : "");
+	}
+}
+
+static void rc_soundpack(const clap_preset_discovery_metadata_receiver_t *r, const char *id) {}
+static void rc_flags(const clap_preset_discovery_metadata_receiver_t *r, uint32_t flags) {
+	pc_lib *lib = r->receiver_data;
+	if (lib->cur_open) {
+		lib->cur.flags = flags;
+	}
+}
+static void rc_creator(const clap_preset_discovery_metadata_receiver_t *r, const char *creator) {
+	pc_lib *lib = r->receiver_data;
+	if (lib->cur_open && creator && !lib->cur.creator[0]) {
+		snprintf(lib->cur.creator, sizeof lib->cur.creator, "%s", creator);
+	}
+}
+static void rc_description(const clap_preset_discovery_metadata_receiver_t *r, const char *d) {
+	pc_lib *lib = r->receiver_data;
+	if (lib->cur_open && d) {
+		snprintf(lib->cur.description, sizeof lib->cur.description, "%s", d);
+	}
+}
+static void rc_timestamps(const clap_preset_discovery_metadata_receiver_t *r, clap_timestamp a, clap_timestamp b) {}
+static void rc_feature(const clap_preset_discovery_metadata_receiver_t *r, const char *f) {
+	pc_lib *lib = r->receiver_data;
+	if (lib->cur_open && f) {
+		size_t used = strlen(lib->cur.features);
+		snprintf(lib->cur.features + used, sizeof lib->cur.features - used, "%s%s", used ? "\x1f" : "", f);
+	}
+}
+static void rc_extra(const clap_preset_discovery_metadata_receiver_t *r, const char *k, const char *v) {}
+
+static int has_ext(pc_lib *lib, const char *path) {
+	const char *dot = strrchr(path, '.');
+	if (!dot) {
+		return 0;
+	}
+	for (int i = 0; i < lib->n_exts; i++) {
+		const char *e = lib->exts[i];
+		if (e[0] == '.') {
+			e++;
+		}
+		const char *d = dot + 1;
+		size_t n = strlen(e);
+		if (strlen(d) == n) {
+			int same = 1;
+			for (size_t k = 0; k < n; k++) {
+				if (tolower((unsigned char)e[k]) != tolower((unsigned char)d[k])) {
+					same = 0;
+					break;
+				}
+			}
+			if (same) {
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+static void crawl(pc_lib *lib, const clap_preset_discovery_provider_t *prov, const clap_preset_discovery_metadata_receiver_t *rc, const char *path, int depth) {
+	struct stat st;
+	if (depth > 12 || stat(path, &st) != 0) {
+		return;
+	}
+	if (S_ISDIR(st.st_mode)) {
+		DIR *d = opendir(path);
+		if (!d) {
+			return;
+		}
+		struct dirent *e;
+		while ((e = readdir(d))) {
+			if (e->d_name[0] == '.') {
+				continue;
+			}
+			char sub[2048];
+			snprintf(sub, sizeof sub, "%s/%s", path, e->d_name);
+			crawl(lib, prov, rc, sub, depth + 1);
+		}
+		closedir(d);
+		return;
+	}
+	if (!has_ext(lib, path)) {
+		return;
+	}
+	pc_location loc = {0, CLAP_PRESET_DISCOVERY_LOCATION_FILE, "", ""};
+	snprintf(loc.location, sizeof loc.location, "%s", path);
+	loc.flags = lib->cur_loc ? lib->cur_loc->flags : 0;
+	pc_location *outer = lib->cur_loc;
+	lib->cur_loc = &loc;
+	prov->get_metadata(prov, CLAP_PRESET_DISCOVERY_LOCATION_FILE, path, rc);
+	flush_preset(lib);
+	lib->cur_loc = outer;
+}
+
+int pc_scan_presets(pc_lib *lib) {
+	if (lib->n_presets > 0) {
+		return lib->n_presets;
+	}
+	const clap_preset_discovery_factory_t *f = lib->entry->get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID);
+	if (!f) {
+		f = lib->entry->get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID_COMPAT);
+	}
+	if (!f) {
+		return 0;
+	}
+	for (uint32_t i = 0; i < f->count(f); i++) {
+		const clap_preset_discovery_provider_descriptor_t *d = f->get_descriptor(f, i);
+		if (!d) {
+			continue;
+		}
+		clap_preset_discovery_indexer_t ix = {.clap_version = CLAP_VERSION_INIT,
+		                                      .name = "psalm",
+		                                      .vendor = "psalm",
+		                                      .url = "",
+		                                      .version = "1",
+		                                      .indexer_data = lib,
+		                                      .declare_filetype = ix_filetype,
+		                                      .declare_location = ix_location,
+		                                      .declare_soundpack = ix_soundpack,
+		                                      .get_extension = ix_extension};
+		const clap_preset_discovery_provider_t *prov = f->create(f, &ix, d->id);
+		if (!prov) {
+			continue;
+		}
+		if (!prov->init(prov)) {
+			prov->destroy(prov);
+			continue;
+		}
+		clap_preset_discovery_metadata_receiver_t rc = {.receiver_data = lib,
+		                                                .on_error = rc_error,
+		                                                .begin_preset = rc_begin,
+		                                                .add_plugin_id = rc_plugin,
+		                                                .set_soundpack_id = rc_soundpack,
+		                                                .set_flags = rc_flags,
+		                                                .add_creator = rc_creator,
+		                                                .set_description = rc_description,
+		                                                .set_timestamps = rc_timestamps,
+		                                                .add_feature = rc_feature,
+		                                                .add_extra_info = rc_extra};
+		// the declarations are done in init: crawl what was declared
+		int n = lib->n_locs;
+		pc_location *locs = malloc(n * sizeof *locs);
+		memcpy(locs, lib->locs, n * sizeof *locs);
+		for (int k = 0; k < n; k++) {
+			lib->cur_loc = &locs[k];
+			if (locs[k].kind == CLAP_PRESET_DISCOVERY_LOCATION_FILE) {
+				crawl(lib, prov, &rc, locs[k].location, 0);
+			} else {
+				prov->get_metadata(prov, locs[k].kind, locs[k].location[0] ? locs[k].location : NULL, &rc);
+				flush_preset(lib);
+			}
+		}
+		free(locs);
+		lib->cur_loc = NULL;
+		prov->destroy(prov);
+	}
+	return lib->n_presets;
+}
+
+int pc_preset_get(pc_lib *lib, int i, pc_preset *out) {
+	if (i < 0 || i >= lib->n_presets) {
+		return 0;
+	}
+	*out = lib->presets[i];
+	return 1;
+}
+
+int pi_load_preset(pc_inst *inst, uint32_t kind, const char *location, const char *loadkey) {
+	const clap_plugin_preset_load_t *pl = inst->plugin->get_extension(inst->plugin, CLAP_EXT_PRESET_LOAD);
+	if (!pl) {
+		pl = inst->plugin->get_extension(inst->plugin, CLAP_EXT_PRESET_LOAD_COMPAT);
+	}
+	if (!pl || !pl->from_location) {
+		return 0;
+	}
+	return pl->from_location(inst->plugin, kind, location && location[0] ? location : NULL, loadkey && loadkey[0] ? loadkey : NULL) ? 1 : 0;
 }

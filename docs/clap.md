@@ -21,7 +21,13 @@ go run ./cmd/clap -plugin "Surge XT" -params             and its parameters
 go run ./cmd/clap -plugin "Surge XT" -render chord.wav -notes 60,64,67.02 -seconds 4 -set "key=value;..."
 ```
 
-## Presets
+## The plugin's own presets
+
+A plugin that has presets (CLAP's preset discovery: the places it keeps them, and ones inside it) gets a **Preset** group at the top of its settings with a list to choose from: the kind of sound (its category, or the folder the file is in) and the name, sorted ("Plucks / Taped Plucks"). Choosing one loads it into the plugin on a thread of its own. The knobs of the editor keep the values they had: they do not follow what a preset sets inside the plugin. `go run ./cmd/clap -plugin "Surge XT" -presets` lists them, `-load "Taped Plucks" -notes 60,64,67 -render x.wav` plays one.
+
+Surge XT keeps its presets (about 3000 of them, and the wavetables they use) in its data folder, which the plugins-only download does not have. Take the full download (`surge-xt-linux-x86_64-*.tar.gz` of the [Surge XT releases](https://github.com/surge-synthesizer/releases-xt/releases)): its `lib/clap/*.clap` go in `~/.clap` and its `share/surge-xt` in `~/.local/share/surge-xt`, or leave them where they are and run with `CLAP_PATH=<where>/lib/clap SURGE_DATA_HOME=<where>/share/surge-xt`.
+
+## Presets of your own, made from text
 
 The presets of the plugins on this page are in `modules/clap/presets/` as text, a line a setting, written the way the plugin shows its values: `a osc 1 type = Wavetable`, `a amp eg decay = 450 ms`, `a common a volume = -2 dB` (`@0.7` for a parameter that shows nothing: its value from 0 to 1; a key may be the end of a key). `go run ./cmd/clap` looks the values up (it asks the plugin what text each value shows), and saves a preset of the editor:
 
@@ -37,7 +43,7 @@ Surge XT: Soft Pluck, Kalimba, Plucked String, Glass Bell, Warm Pad, Sub Bass, H
 
 - **Surge XT's filters and waveshaper do not respond** when played from here (the settings are accepted and read back, but the sound does not change; its oscillators, unison, envelopes, volume and mixer do respond, and the effects plugin responds to everything). I read Surge's source for the path of a parameter event and could not find why: the presets are made of what works.
 
-- No plugin windows: the parameters are the interface. No presets of the plugin either (CLAP's preset discovery is not hosted yet): a plugin starts from its default sound, and Surge XT's own patches need its data directory (the full install, not the plugins only download). State and presets of the plugin are not saved with the patch yet.
+- No plugin windows: the parameters are the interface; the knobs do not follow a preset the plugin loaded. State and presets of the plugin are not saved with the patch yet.
 - A plugin runs on the audio thread, so a plugin that crashes takes the program with it, and one that is slow drops out the sound.
 - Stereo and mono ports only (the first port of each); no sidechain, no transport (tempo and position), no latency compensation, no parameter changes back from the plugin (its own knobs), no MIDI output.
 - A plugin is only let go when the module is taken away, at the next buffer.

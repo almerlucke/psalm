@@ -33,4 +33,23 @@ void pi_param(pc_inst *inst, uint32_t id, double value, uint32_t time);
 // processes a block: the input channels (NULL for an instrument), the output channels (the second is filled from the first when the plugin has one channel)
 int pi_process(pc_inst *inst, float *in0, float *in1, float *out0, float *out1, uint32_t frames);
 
+// the presets of a library, found by its preset discovery (the plugins' own: files it declares places for, and presets that are in the plugin itself)
+typedef struct {
+	char name[256];
+	char plugin[256]; // the id of the plugin it is for ("" for any of the library)
+	char creator[256];
+	char features[256]; // separated by 0x1f
+	char description[512];
+	uint32_t kind;       // 0 a file, 1 in the plugin
+	char location[1024]; // the file, or empty
+	char loadkey[256];
+	uint32_t flags;
+} pc_preset;
+
+// crawls the places the library declares; returns how many presets it found (0 when it has no preset discovery)
+int pc_scan_presets(pc_lib *lib);
+int pc_preset_get(pc_lib *lib, int i, pc_preset *out);
+// loads one into the instance; 0 when the plugin has no preset loading or says it failed
+int pi_load_preset(pc_inst *inst, uint32_t kind, const char *location, const char *loadkey);
+
 #endif

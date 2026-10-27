@@ -8,7 +8,7 @@ psalm.register("editor", (p, api) => {
 	const root = document.createElement("div");
 	root.className = "editor";
 	const cards = {};
-	// a synth with very many settings (a plugin's): the groups of more than a few are closed, a click on the title opens one; the first group stays open
+	// a synth with very many settings (a plugin's): the groups are closed, a click on the title opens one; the first stays open, and the next two when they are small
 	const crowded = d.params.length > 100;
 	d.groups.forEach((g, i) => {
 		const card = document.createElement("div");
@@ -23,7 +23,7 @@ psalm.register("editor", (p, api) => {
 			const n = d.params.filter(q => q.group === g).length;
 			h.textContent = `${g} (${n})`;
 			h.classList.add("ed-fold");
-			card.classList.toggle("closed", i > 0);
+			card.classList.toggle("closed", i > 0 && (i > 2 || n > 12)); // the first, and the next two when they are small (a preset to choose, the main knobs)
 			h.addEventListener("click", () => card.classList.toggle("closed"));
 		}
 		root.append(card);

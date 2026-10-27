@@ -14,7 +14,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/catalog"
 )
 
-// the demo patch with Surge XT on the page: choosing the plugin shows its 775 settings in the side panel (CLAP_TEST_DIR names the directory with Surge XT)
+// the demo patch with Surge XT on the page: choosing the plugin shows its 775 settings in the side panel (CLAP_TEST_DIR names the directory with Surge XT and its data: see docs/clap.md)
 func TestPageClap(t *testing.T) {
 	dir := os.Getenv("CLAP_TEST_DIR")
 	if dir == "" {
@@ -50,11 +50,14 @@ func TestPageClap(t *testing.T) {
 	t.Logf("the side panel opened after %v", time.Since(start))
 	tb.WaitFor(`document.querySelector(".pt-drawer-frame").contentDocument?.querySelectorAll(".control").length > 500`, "the settings of Surge XT in the side panel")
 	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
-	if open := tb.Eval(frame + `.querySelectorAll(".ed-group:not(.closed)").length`).(float64); open != 1 {
-		t.Errorf("%v groups of the settings are open, want the first (Main) only", open)
+	if shut := tb.Eval(frame + `.querySelectorAll(".ed-group")[1].classList.contains("closed") || ` + frame + `.querySelectorAll(".ed-group")[0].classList.contains("closed")`).(bool); shut {
+		t.Error("the preset and the main knobs are not both open")
 	}
-	if first := tb.Eval(frame + `.querySelector(".ed-title").textContent`).(string); first != "Main (11)" {
+	if first := tb.Eval(frame + `.querySelector(".ed-title").textContent`).(string); first != "Preset (1)" {
 		t.Errorf("the first group is %q", first)
+	}
+	if options := tb.Eval(frame + `.querySelector(".ed-group select").options.length`).(float64); options < 1000 {
+		t.Errorf("%v presets to choose from, want the thousands Surge XT has", options)
 	}
 	t.Logf("its settings after %v", time.Since(start))
 }

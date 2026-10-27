@@ -15,6 +15,7 @@ package clap
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -117,6 +118,70 @@ func describe(path string) []Descriptor {
 	return out
 }
 
+// Preset is a preset the plugin's library tells of (its preset discovery): a file it knows how to read, or one that is inside the plugin
+type Preset struct {
+	Name        string
+	Creator     string
+	Features    []string // what kind of sound it is ("bass", "pad"), as the plugin's authors say
+	Description string
+	Category    string // the kind of sound: the first of its features, else the folder a file is in
+	Factory     bool   // it comes with the plugin; the others are the user's
+	kind        uint32
+	location    string
+	loadKey     string
+	plugin      string // the plugin it is for: empty for any in the library
+}
+
+var (
+	presetMu sync.Mutex
+	presets  = map[string][]Preset{} // by file: the presets of a library are found once
+)
+
+// PresetsOf are the presets the library of a descriptor has for its plugin, in the order the library lists them
+func PresetsOf(d Descriptor) []Preset {
+	lib, err := open(d.Path)
+	if err != nil {
+		return nil
+	}
+	presetMu.Lock()
+	all, done := presets[d.Path]
+	if !done {
+		n := int(C.pc_scan_presets(lib))
+		for i := 0; i < n; i++ {
+			var c C.pc_preset
+			if C.pc_preset_get(lib, C.int(i), &c) == 0 {
+				continue
+			}
+			all = append(all, Preset{Name: C.GoString(&c.name[0]), Creator: C.GoString(&c.creator[0]), Description: C.GoString(&c.description[0]),
+				Features: splitFeatures(C.GoString(&c.features[0])), Factory: c.flags&1 != 0, kind: uint32(c.kind), location: C.GoString(&c.location[0]),
+				loadKey: C.GoString(&c.loadkey[0]), plugin: C.GoString(&c.plugin[0])})
+			pr := &all[len(all)-1]
+			if len(pr.Features) > 0 {
+				pr.Category = pr.Features[0]
+			} else if pr.kind == 0 && pr.location != "" {
+				pr.Category = filepath.Base(filepath.Dir(pr.location))
+			}
+		}
+		presets[d.Path] = all
+	}
+	presetMu.Unlock()
+	var mine []Preset
+	for _, pr := range all {
+		if pr.plugin == "" || pr.plugin == d.ID {
+			mine = append(mine, pr)
+		}
+	}
+	slices.SortStableFunc(mine, func(a, b Preset) int { return strings.Compare(strings.ToLower(a.label()), strings.ToLower(b.label())) })
+	return mine
+}
+
+func splitFeatures(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, "\x1f")
+}
+
 // param is a parameter of the plugin
 type param struct {
 	id            uint32
@@ -136,16 +201,19 @@ type note struct {
 // Plugin is a CLAP plugin as a module: an instrument (it takes notes) or an effect (it takes the audio on its input)
 type Plugin struct {
 	*psalm.Module
-	desc   Descriptor
-	inst   *C.pc_inst
-	inCh   int
-	params []param
-	keys   map[string]int // the key of a message to the index of the parameter
-	held   map[string]note
-	timed  []note
-	nextID int32
-	frames int
-	closed atomic.Bool // asked to let go: the audio thread does it at its next block
+	desc    Descriptor
+	inst    *C.pc_inst
+	inCh    int
+	params  []param
+	keys    map[string]int // the key of a message to the index of the parameter
+	held    map[string]note
+	timed   []note
+	nextID  int32
+	frames  int
+	closed  atomic.Bool // asked to let go: the audio thread does it at its next block
+	presets []Preset
+	preset  atomic.Int64 // the one loaded last, and one: 0 is none
+	loadMu  sync.Mutex
 }
 
 // New makes the plugin: active, at the sample rate and buffer size of the patch
@@ -164,7 +232,7 @@ func New(d Descriptor) (*Plugin, error) {
 	}
 	var in, out C.int
 	C.pi_ports(inst, &in, &out)
-	p := &Plugin{desc: d, inst: inst, inCh: int(in), held: map[string]note{}, keys: map[string]int{}, frames: cfg.BufferSize}
+	p := &Plugin{desc: d, inst: inst, inCh: int(in), held: map[string]note{}, keys: map[string]int{}, frames: cfg.BufferSize, presets: PresetsOf(d)}
 	p.Module = psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo})
 	p.SetSelf(p)
 	p.readParams()
@@ -247,6 +315,13 @@ func (p *Plugin) Descriptor() Descriptor { return p.desc }
 // Describe is the settings of the plugin as a synth describes its own: a knob for every parameter, where it is now
 func (p *Plugin) Describe() params.Set {
 	set := params.Set{Name: p.desc.Name}
+	if len(p.presets) > 0 {
+		names := make([]string, len(p.presets))
+		for i, pr := range p.presets {
+			names[i] = pr.label()
+		}
+		set.Params = append(set.Params, params.Param{Key: presetKey, Label: "preset", Group: "Preset", Kind: params.Choice, Options: names, Min: 0, Max: float64(len(names) - 1), Step: 1, Value: float64(max(p.Loaded(), 0))})
+	}
 	for _, q := range p.params {
 		group := q.group
 		if group == "" {
@@ -291,6 +366,44 @@ func (p *Plugin) Value(key string) float64 {
 	}
 	return float64(C.pi_param_value(p.inst, C.uint32_t(p.params[i].id)))
 }
+
+// presetKey is the key of the setting that loads a preset of the plugin: the number of the preset
+const presetKey = "preset"
+
+// label is what a preset is called in a list: the kind of sound it is, then its name
+func (pr Preset) label() string {
+	if pr.Category != "" {
+		return pr.Category + " / " + pr.Name
+	}
+	return pr.Name
+}
+
+// Presets are the presets the plugin has, as it lists them
+func (p *Plugin) Presets() []Preset { return p.presets }
+
+// LoadPreset loads the preset with this number into the plugin. The plugin says when it is done: a long preset loads on its own thread, so this is quick
+func (p *Plugin) LoadPreset(i int) error {
+	if i < 0 || i >= len(p.presets) {
+		return fmt.Errorf("no preset %d", i)
+	}
+	p.loadMu.Lock()
+	defer p.loadMu.Unlock()
+	if p.inst == nil || p.closed.Load() {
+		return errors.New("the plugin is gone")
+	}
+	pr := p.presets[i]
+	loc, key := C.CString(pr.location), C.CString(pr.loadKey)
+	defer C.free(unsafe.Pointer(loc))
+	defer C.free(unsafe.Pointer(key))
+	if C.pi_load_preset(p.inst, C.uint32_t(pr.kind), loc, key) == 0 {
+		return fmt.Errorf("%s: the plugin would not load it", pr.Name)
+	}
+	p.preset.Store(int64(i + 1))
+	return nil
+}
+
+// Loaded is the number of the preset loaded last, -1 when none was
+func (p *Plugin) Loaded() int { return int(p.preset.Load()) - 1 }
 
 // Keys are the keys of the messages that move the parameters
 func (p *Plugin) Keys() []string {
@@ -358,6 +471,11 @@ func (p *Plugin) ReceiveMessage(msg psalm.Message) {
 		}
 		return
 	}
+	msg.IfFltVal(presetKey, func(f float64) { // loaded off the audio thread: it reads files
+		if len(p.presets) > 0 {
+			go func() { _ = p.LoadPreset(int(math.Round(f))) }()
+		}
+	})
 	for key, i := range p.keys {
 		msg.IfFltVal(key, func(f float64) {
 			q := p.params[i]

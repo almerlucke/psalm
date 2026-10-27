@@ -4,6 +4,7 @@
 //	go run ./cmd/clap -plugin "Surge XT" -params               and the parameters of one
 //	go run ./cmd/clap -plugin "Surge XT" -render chord.wav     a chord (-notes 60,64,67.02 -seconds 4); pitches may lie between the keys
 //	go run ./cmd/clap -plugin "Surge XT" -preset pluck.txt -save editors-presets/clap   make a preset of a text (lines "a osc 1 type = Sine", "a amp eg attack = 5 ms")
+//	go run ./cmd/clap -plugin "Surge XT" -presets              the plugin's own presets (Surge XT needs its data: see docs/clap.md); -load "Name" -render x.wav plays one
 //	go run ./cmd/clap -dir ~/plugins                           search another directory
 package main
 
@@ -26,6 +27,8 @@ import (
 func main() {
 	dir := flag.String("dir", "", "search this directory instead of the usual ones")
 	name := flag.String("plugin", "", "the plugin to use (its name or id)")
+	showPresets := flag.Bool("presets", false, "list the presets the plugin has of its own")
+	loadPreset := flag.String("load", "", "with -render: load this preset of the plugin's own first (its name, or the start of it)")
 	showParams := flag.Bool("params", false, "list the parameters of the plugin")
 	explore := flag.String("explore", "", "parameter keys (separated by a semicolon): what the plugin shows over their range")
 	out := flag.String("render", "", "play a chord on the plugin and write it to this WAV file")
@@ -72,6 +75,30 @@ func main() {
 		for _, p := range pl.Describe().Params {
 			fmt.Printf("%-40q %g .. %g  (%g)\n", p.Key, p.Min, p.Max, p.Value)
 		}
+	}
+	if *showPresets {
+		for i, p := range pl.Presets() {
+			fmt.Printf("%4d  %-16s %-36s %s\n", i, p.Category, p.Name, p.Creator)
+		}
+		fmt.Println(len(pl.Presets()), "presets")
+	}
+	if *loadPreset != "" {
+		found := -1
+		for i, p := range pl.Presets() {
+			if p.Name == *loadPreset || (found < 0 && strings.HasPrefix(strings.ToLower(p.Name), strings.ToLower(*loadPreset))) {
+				found = i
+				if p.Name == *loadPreset {
+					break
+				}
+			}
+		}
+		if found < 0 {
+			log.Fatalf("no preset %q", *loadPreset)
+		}
+		if err := pl.LoadPreset(found); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("loaded", pl.Presets()[found].Name)
 	}
 	if *explore != "" { // what a parameter shows over its range
 		for _, k := range strings.Split(*explore, ";") {
