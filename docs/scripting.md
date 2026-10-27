@@ -3,7 +3,7 @@
 The patcher (`modules/controls/panel/patcher`, see [Controls](controls.md#panel)) makes music in a
 patch with **generators**: modules that send triggers, values and notes on cables. This page is the
 reference for them: what each module takes, its settings and their defaults, the text you type in its
-side panel, and the **script** module, which runs JavaScript with genny's generators.
+window, and the **script** module, which runs JavaScript with genny's generators.
 
 - [Cables](#cables)
 - [Typing into a module](#typing-into-a-module)
@@ -39,7 +39,7 @@ The tempo is the one in the bar at the top of the page (30 to 300 bpm), kept wit
 
 ## Typing into a module
 
-Double tap a module to open its side panel. A module of text (a clock's pattern, a sequence's values,
+Double tap a module to open its window. A module of text (a clock's pattern, a sequence's values,
 a script) has a box of lines there, with what to know to type it shown above it.
 
 - **Ctrl+Enter** (or **Run**) takes the text; so does leaving the box or closing the panel.
@@ -148,7 +148,7 @@ These follow the form of a song. One song a patch (the last made).
 | song | `Intro 4, Verse 8, Chorus 8, Outro 4` (default) | sections with a number of bars; outputs: a trigger every bar and at every section, the section's number, and how far through it (mod). Its tiles play a section next, switch one off, repeat or loop |
 | lane | a curve a line: `Intro: 0 → 1`, `Chorus: 0.2 → 0.8 smooth` (`lin`, `exp`, `smooth`); default `0 → 1` | a value per section, moving through it as it plays; mod output (0-1) to any setting, or a value output |
 | automation | a line a lane: `Cutoff: 0 0.2, 6 0.8 smooth, 12 0.5 step` (a position in bars from the start, a value 0-1, then `lin`, `smooth`, `step` or `exp`); `bars` for the round without a song | lanes of points over the bars of the song, drawn on the page (the Lanes button) or typed, or recorded from a knob moved while the song plays (the ● of a lane); a mod output (0-1) for every lane (the preset says how many) |
-| gate | the sections it plays in: `Verse, Chorus`, `not Intro`, `all` | sound, notes and triggers pass in those sections only, and when it is on. Its name is a tile in the song's side panel. A note let go always goes through |
+| gate | the sections it plays in: `Verse, Chorus`, `not Intro`, `all` | sound, notes and triggers pass in those sections only, and when it is on. Its name is a tile in the song's window. A note let go always goes through |
 | part | notes a step each: `C3 Eb3 G3 - Bb3 . G3 Eb3` (default) | `.` a rest, `-` the note before held a step longer, `C3+Eb3+G3` a chord, `[C3 D3 Eb3]` a group in a step, `*2`, `?25` as in a clock's pattern. Division, swing, chance, velocity, length (of its step), transpose; per section too |
 
 ## script

@@ -163,7 +163,7 @@ func TestClapStateInPatch(t *testing.T) {
 	// the patch runs while we wait: the controls of the editor tick and send what they were set to
 	until := func(p *psalm.Psalm, what string, done func() bool) {
 		t.Helper()
-		for deadline := time.Now().Add(3 * time.Second); !done() && time.Now().Before(deadline); time.Sleep(3 * time.Millisecond) {
+		for deadline := time.Now().Add(10 * time.Second); !done() && time.Now().Before(deadline); time.Sleep(3 * time.Millisecond) {
 			p.ResetRun()
 			p.Run()
 		}

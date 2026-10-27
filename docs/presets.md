@@ -345,7 +345,7 @@ They were designed from knowledge of the classic sounds and checked by measureme
 
 ## shaper
 
-The chains of every preset are in the module's side panel in the patcher (see [synths](synths.md#shaper)). `go run ./cmd/examples/presets -synth shaper` plays all of them, two bars each. Every preset is held to the same measures by a test: no clipping, as loud as the others (a sustained sound at about -15 dB rms, a short one peaking near 0.5), under -18 dB of its energy above 6 kHz (the effects excepted), silent within 12 seconds of the key being let go, and not like any other preset.
+The chains of every preset are in the module's window in the patcher (see [synths](synths.md#shaper)). `go run ./cmd/examples/presets -synth shaper` plays all of them, two bars each. Every preset is held to the same measures by a test: no clipping, as loud as the others (a sustained sound at about -15 dB rms, a short one peaking near 0.5), under -18 dB of its energy above 6 kHz (the effects excepted), silent within 12 seconds of the key being let go, and not like any other preset.
 
 ### Basses
 

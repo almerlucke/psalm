@@ -19,12 +19,10 @@
 html, body { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.35 var(--font); }
 button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: calc(var(--radius) * 2 / 3); cursor: pointer; }
-.mw { height: 100%; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
+.mw { height: 100%; display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; }
 .mw-head { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
 .mw-title { flex: 1; }
 .mw-head button { min-height: 28px; padding: 2px 10px; font-size: 13px; }
-.mw-live { width: 9px; height: 9px; border-radius: 50%; background: var(--meter-high); }
-.mw-live.on { background: var(--meter-low); }
 .mw-code { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
 .mw-code[hidden], .mw-settings[hidden], .mw-gone[hidden] { display: none; }
 .mw.both .mw-code { flex: 0 0 45%; }
@@ -43,3 +41,5 @@ button { font: inherit; border: 1px solid var(--line); background: var(--card); 
 .mw-settings { flex: 1; min-height: 0; overflow: auto; }
 .mw-settings iframe { width: 100%; border: 0; display: block; height: 0; color-scheme: normal; }
 .mw-gone { color: var(--muted); padding: 20px 0; text-align: center; }
+.mw-title { display: none; } /* the title is the one of the window */
+.mw-head { justify-content: flex-end; }

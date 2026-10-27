@@ -547,7 +547,7 @@ playlist keeps the controls of every song this way. A mounter that is a `panel.M
 (`BindingsMount`, `SetBindingsMount`) keeps MIDI bindings the same way: they are in `Bindings()` as
 `"<mount>/..."`, so `KeepBindings` saves and loads what was learned on every song's controls.
 `ctl.Mount(...).Hide()` keeps a mount off the page while it is still served and reached by MIDI,
-for a plugin to show it where it wants: the patcher shows a module's settings in a window of its own (or its side panel) so; a mounter that is an `ArgMounter` also serves a panel by an argument, `mount/<name>@<arg>/`.
+for a plugin to show it where it wants: the patcher shows a module's settings in a window of its own, inside the page, so; a mounter that is an `ArgMounter` also serves a panel by an argument, `mount/<name>@<arg>/`.
 
 **Labels**: `panel.Label("M")` shows a short text on the page instead of the name (names have to
 be unique, labels can repeat).
@@ -850,10 +850,12 @@ from a palette, move them by their heads, and draw cables from an output to an i
 kind: audio (the sound), notes (a keyboard to the synths it plays) and modulation (an LFO, a random
 source or the mod wheel to any setting of a module, over a part of its range: drawn to a module's
 mod input, the setting and the range are chosen below the patch). A tap on a module chooses it, a double
-click opens a window of its own for it (for a plugin that has a window of its own, that one, and with Alt held ours) (a browser window: `plugins/patcher/module.html`): its script (a box of lines) and its
-settings (its editor, with its presets and yours); another double click brings that window to the front, Esc in its boxes (or closing it) takes what is typed. A window keeps its size and place (in the browser's local storage, per kind of module: `psalm.patcher.window.<patcher>.<kind>`) and the next window of that kind opens there; a browser that does not let a page place its windows (Wayland) keeps the size only.
-Where the browser does not let a window open, the side panel is used as it was: it shows the same, a double tap on the module again, Esc or × closes it, and with the
-panel open a tap on another module shows that one. The page of one module is served at `mount/<name>@<id>/` (a mounter that gives a panel by an argument: `panel.ArgMounter`). Click a cable to take it
+click opens a window for it, inside the page (a frame over the patch, not a browser window, so it has no address bar): its script (a box of lines) and its settings
+(its editor, with its presets and yours), what is wrong with what is typed below the boxes. For a plugin that has a window of its own that one opens, and with Alt held a
+double click opens ours. A window has a title to move it by, a corner to size it by and an × (Esc, in a box or on the page, closes the one in front; closing takes what
+is typed); there is one for each module and they stay open together, a double click on a module that has one brings it to the front. A window keeps its size and place
+(in the browser's local storage, per kind of module: `psalm.patcher.window.<patcher>.<kind>`) and the next window of that kind opens there. What is in a window is
+`plugins/patcher/module.html` in a frame, which the page tells its module as it changes. The page of one module is served at `mount/<name>@<id>/` (a mounter that gives a panel by an argument: `panel.ArgMounter`). Click a cable to take it
 away (or Delete); Delete (or Backspace) takes the modules chosen away with their cables. Patches are kept by name in a folder: the modules, where they are, the
 cables and every setting. Every change is made between two buffers while it plays.
 
@@ -864,10 +866,10 @@ first when there are several), Esc lets go of them. Ctrl+C (cmd on a Mac) copies
 settings, scripts and the cables between them, Ctrl+V pastes them a little further each time (chosen
 then, to drag them where they go), Ctrl+D duplicates, Ctrl+X cuts; the copy is the patcher's, so it
 outlives the modules copied. From code: `Copy(ids...)`, `Paste()`. A cable is taken hold of a little beside its
-line too. **Log** opens the log of the patch over the patch: a line for everything the scripts `log()`, each starting with the time and the module (`14:03:22.510  script m3  now: Creation`), the newest below, with **Clear log**; the button counts the lines. An error of a module (a script that doesn't compile, a text that can't be read) is a toast in the corner of the page, with the module's name, gone after twelve seconds or when tapped, and the module gets a red edge while it has the error (no text is on a module: a status line, such as what a sampler made of its sounds, is in its side panel); the same error is shown once. **Full screen** puts the patch over the whole screen (Esc, or the button again, brings it
-back). In the side panel a script has room to work: Ctrl+Enter (or Run) runs it, its error or what
-it logs is below it (and on its module), what was typed is taken when it closes; the panel's edge
-drags it wider or narrower. Over the whole screen the patch goes beside the side panel.
+line too. **Log** opens the log of the patch over the patch: a line for everything the scripts `log()`, each starting with the time and the module (`14:03:22.510  script m3  now: Creation`), the newest below, with **Clear log**; the button counts the lines. An error of a module (a script that doesn't compile, a text that can't be read) is a toast in the corner of the page, with the module's name, gone after twelve seconds or when tapped, and the module gets a red edge while it has the error (no text is on a module: a status line, such as what a sampler made of its sounds, is in its window); the same error is shown once. **Full screen** puts the patch over the whole screen (Esc, or the button again, brings it
+back). In its window a script has room to work: Ctrl+Enter (or Run) runs it, its error or what
+it logs is below it (and on its module), what was typed is taken when it closes; the window's corner
+makes it bigger or smaller.
 
 ```go
 kinds := catalog.Kinds(catalog.Config{Input: keys, IR: hall}) // every synth and effect, a keyboard
@@ -875,7 +877,7 @@ pt := patcher.New(p, ctl, "Patch", kinds, patcher.Keep("patches"), patcher.Prese
 mix.Channel("patch", pt.Out(), mixer.StripConfig{})
 ```
 
-**The sampler and the grains** are modules of the patch too, with their sounds as a text in the side panel. The sampler's text has a line for every
+**The sampler and the grains** are modules of the patch too, with their sounds as a text in the window. The sampler's text has a line for every
 sound: `36 assets/sounds/various/tabla_loop.wav hits 9 0.08` (the first key, the file, how it is cut: `hits` rise-in-dB and least gap, `change`
 for a sung line, `pauses` depth, least pause and longest piece for speech, `even n`, `notes from to pitch ...` (the played notes of a recording, in seconds and MIDI pitch, five keys apart), `whole hiKey root`, or `sfz` for an SFZ instrument; `vol=`, `pan=` and `name=` after it, and `loop=1.5` to make a sound go round while its key is down, the end fading into the start over 1.5 seconds: the sea, an ambience); the pieces of a sound are on the
 keys from the first, and a script plays them with `note(key, velocity, steps)` (see [Synths](synths.md#slices)). A text that can't be read
@@ -908,8 +910,8 @@ are `patcher.Generators()`, built on genny:
 
 | Module | In | Out | Settings |
 |---|---|---|---|
-| clock | | trigger | division (1/4 to 1/32, triplets), swing, chance; a pattern typed in its side panel, looping: `x . x x` a hit or a rest a step, `x3` a roll in a step, `[x x x]` a group filling a step, `*2` a step (or group) lasting 2 steps, `x?` a hit by chance (`x?25`); a trigger carries how long its hit lasts |
-| sequence | trigger, reset | value, after (a trigger once the value is out) | values typed in its side panel (numbers, note names `C3 Eb3`, chords `[C3 E3 G3]`), the order: in order, shuffled, random, up and down, converge, alternate, backwards (genny's sequence, bucket, arpeggio) |
+| clock | | trigger | division (1/4 to 1/32, triplets), swing, chance; a pattern typed in its window, looping: `x . x x` a hit or a rest a step, `x3` a roll in a step, `[x x x]` a group filling a step, `*2` a step (or group) lasting 2 steps, `x?` a hit by chance (`x?25`); a trigger carries how long its hit lasts |
+| sequence | trigger, reset | value, after (a trigger once the value is out) | values typed in its window (numbers, note names `C3 Eb3`, chords `[C3 E3 G3]`), the order: in order, shuffled, random, up and down, converge, alternate, backwards (genny's sequence, bucket, arpeggio) |
 | notes | trigger, pitch, velocity, length (steps) | notes | the pitch, velocity, length and transposition for the inputs not patched. A length is in steps of the clock that triggered the note (at 1/16 and 120 bpm a step is 125 ms: a length of 8 is a second) |
 | quantize | value | value | a key and a scale (tools/harmony): every pitch, every note of a chord, to its nearest note in it |
 | arp | notes, clock (trigger) | notes | an arpeggiator: the notes it gets (a keyboard, a note editor) are held, and on every trigger of the clock it plays the next, in a mode (up, down, up & down, down & up, as played, random, chord) over 1-4 octaves; gate (how much of a step a note lasts), hold (the notes stay after the keys, until new ones), transpose |
@@ -922,15 +924,15 @@ are `patcher.Generators()`, built on genny:
 
 A notes module plays the triggers of a control tick at its end, after every other module had its
 tick: the values feeding it are up to date whatever order the cables were drawn in. Texts (a clock's
-pattern, a sequence's values, a script) are typed in the module's side panel (a double tap on it), in
+pattern, a sequence's values, a script) are typed in the module's window (a double tap on it), in
 a box of lines each, as a script: Ctrl+Enter or Run takes them, or the panel closing; a pattern or
 values may go over lines. One that can't be read is shown in red with what is wrong with it below,
 the module goes on with the one before. They are kept with
 the patch.
 
-**A song** gives a patch sections. A song module's sections are typed in its side panel (a name and
+**A song** gives a patch sections. A song module's sections are typed in its window (a name and
 a number of bars each: `Intro 4, Verse 8, Chorus 8, Outro 4`); a transport (arrange) plays them on
-the patch's clock, from the start again on a restart. Its tiles (in its side panel) play a section
+the patch's clock, from the start again on a restart. Its tiles (in its window) play a section
 next, switch one off (skipped), with repeat (the section playing again and again), when a section
 asked for starts (the end of the section playing, or the next bar) and loop; the bar at the top of
 the page shows the section playing, its bar and the one asked for. Its outputs: a trigger every bar
@@ -959,7 +961,7 @@ and at every section (a note of a step lasts a bar), the section's number and ho
   to the points that matter (what the lane had there is taken away, outside the move it is as it was), and the move is over when the setting has been still for a
   moment. The button lights while it writes; press it again and the lane plays what it has.
 - a gate makes a part of the song: sound, notes and triggers go through it in its sections only
-  (a note let go always goes through), and when it is on. The song's side panel has a tile for
+  (a note let go always goes through), and when it is on. The song's window has a tile for
   every gate of the patch, by its name: a tap switches the part off and on while it plays, the
   parts playing light up.
 - a part plays notes written per step, as a clock plays its pattern: per section too.
@@ -1039,15 +1041,15 @@ random source (a new value at a rate, gliding to it) and a mixer of 4, 8 or 16 c
 preset): every channel at a level, panned, muted or not and sent to four buses, A to D, after its
 level; its outputs are the main mix and sends A to D (patch a send into a reverb, a delay, a granulator or a shimmer and its
 output back into the return of the same letter, each at a level of its own);
-a note editor (`noteroll`, package `panel/noteroll`: a piano roll in the side panel to draw a loop of notes on, 1 to 64 beats, that plays with the patch's tempo and sends its notes to the synths it is cabled to; kept with the patch), a log (Tools) that shows the last 12 values and triggers sent to it in a box of its side panel (`Made.Log`), and sends them on;
+a note editor (`noteroll`, package `panel/noteroll`: a piano roll in the window to draw a loop of notes on, 1 to 64 beats, that plays with the patch's tempo and sends its notes to the synths it is cabled to; kept with the patch), a log (Tools) that shows the last 12 values and triggers sent to it in a box of its side panel (`Made.Log`), and sends them on;
 `patcher/catalog` adds a keyboard (notes, and the mod wheel and pressure as modulation), every
 synth with its presets (the DX7 with its own editor), the drum machine (the `stepseq` grid of the
-drum machine example in its side panel, 16 patterns of up to 32 steps (16 to start with), a sample for every row chosen from the folder (kept with the patch by a number from its path), a `pattern` input (a value, from 0: a song's section number, a sequence) and a `next` input (a trigger, through the patterns in the rotation: A to D to start with) that ask for a pattern, switching when the pattern comes round (`Made.ValueIn`: the module that takes the value cables, when it isn't the one heard), a kit of samples from `Config.Drums`, "assets/sounds/drums"
+drum machine example in its window, 16 patterns of up to 32 steps (16 to start with), a sample for every row chosen from the folder (kept with the patch by a number from its path), a `pattern` input (a value, from 0: a song's section number, a sequence) and a `next` input (a trigger, through the patterns in the rotation: A to D to start with) that ask for a pattern, switching when the pattern comes round (`Made.ValueIn`: the module that takes the value cables, when it isn't the one heard), a kit of samples from `Config.Drums`, "assets/sounds/drums"
 by default; left out without them; `Made.Added` gives the patch what an editor adds, its sequencer)
 and every effect. From code: `Add`, `Connect`,
 `Disconnect`, `Remove`, `Move`, `SetText`, `Texts`, `TextError`, `Status`, `Copy`, `Paste`, `Save`, `Load`, `Clear`,
 `Nodes`, `Cables`. A module's `Made.Texts` and `SetText` give it settings of text (`Help`: what to
-know to type one, shown above its box in the side panel, a point a line, `code` in backquotes), `Made.Late` a function at the end of every control tick (a notes module's),
+know to type one, shown above its box in the window, a point a line, `code` in backquotes), `Made.Late` a function at the end of every control tick (a notes module's),
 `Made.Status` a line shown under it (a script's error), `Made.Attach` gives it the patch's log (`Journal`, `pt.Journal()`: `Add(source, text)`). A module whose ports
 depend on how it is made (the mixer's channels) gives them in `Made.Ins` and `Made.Outs`. Cables
 are drawn over the modules, so one going back (a return) stays in sight, the ports over them.

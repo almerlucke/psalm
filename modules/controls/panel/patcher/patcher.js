@@ -347,7 +347,8 @@ psalm.register("patcher", (p, api) => {
 	const typing = () => /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
 	window.addEventListener("keydown", e => {
 		if (e.key === "Escape") {
-			if (editing) closeEditor();
+			const top = Object.values(windows).sort((a, b) => (+b.el.style.zIndex) - (+a.el.style.zIndex))[0];
+			if (top) closeWindow(top.id);
 			else if (picked || chosen.size) { picked = ""; chosen.clear(); showChosen(); drawCables(); showInspector(); }
 			else if (maxed) setMax(false);
 			return;
@@ -387,182 +388,122 @@ psalm.register("patcher", (p, api) => {
 	});
 	document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && maxed) setMax(false); });
 
-	// --- the side panel of a module: its settings of text (a pattern, values, a script), each in a box
-	// of lines, what is wrong or what it says below them; its settings (its editor, served by the
-	// patcher's hidden mount) below ---
-	const drawer = el("div", "pt-drawer"); drawer.hidden = true;
-	const grip = el("div", "pt-drawer-grip"); grip.title = "drag to make it wider or narrower";
-	const dHead = el("div", "pt-drawer-head");
-	const dTitle = el("span", "pt-drawer-title");
-	const runBtn = el("button", "", "Run"); runBtn.title = "take what is typed (Ctrl+Enter)";
-	const closeBtn = el("button", "pt-x", "×"); closeBtn.title = "close (Esc): what is typed is taken";
-	dHead.append(dTitle, runBtn, closeBtn);
-	const dCode = el("div", "pt-drawer-code");
-	const dBoxes = el("div", "pt-drawer-boxes");
-	const dStatus = el("div", "pt-status");
-	dCode.append(dBoxes, dStatus);
-	const dSettings = el("div", "pt-drawer-settings");
-	const frame = el("iframe", "pt-drawer-frame"); frame.title = "settings";
-	api.frame(frame); // its height, the theme, learn mode: as the page's own frames
-	dSettings.append(frame);
-	drawer.append(grip, dHead, dCode, dSettings);
-	root.append(drawer);
-	let editing = null;  // {id, boxes}: the module in the side panel, the boxes of its texts by key
-	let framed = "";     // the module whose settings the frame shows
-	const textOf = (id, key) => { const n = st.nodes.find(x => x.id === id); const t = n && (n.texts || []).find(x => x.key === key); return t ? t.value : null; };
+	// --- the window of a module: its settings of text (a pattern, values, a script), each in a box of lines, what is wrong or what it says below them, its settings (its
+	// editor) below. A window inside the page (no browser window: it has no address bar), movable by its title, as big as it is made, one for each module, over the
+	// patch. What is in it is module.html in a frame: this page tells it the module as it changes, it takes what is typed itself (see module.js) ---
+	const windows = {}; // the windows open, by module: {el, frame, id, kind, key}
+	let zTop = 60;
 	const nodeOf = id => st.nodes.find(x => x.id === id);
-	// a tap chooses a module; with the side panel open, the panel shows it
-	let taps = [false, false]; // the last two taps: whether each brought the panel to its module
+	// a tap chooses a module; a double tap opens its window
 	function tapped(id) {
 		chosen.clear(); chosen.add(id); showChosen();
-		const follow = !!editing && editing.id !== id;
-		taps = [taps[1], follow];
-		if (follow) openSide(id);
 	}
-	// a double tap opens the window of a module (its texts and its settings, a window of its own: module.html), or brings it to the front; a module that has a window of
-	// its own (a plugin) shows that, and its settings with Alt held; where the browser does not
-	// let a window open, the side panel is used. Not when its first tap brought the side panel to it (the tap before the last: a double tap is two taps, then this)
-	const windows = {}; // the windows opened, by module
-	function openWindow(id) {
-		const n = nodeOf(id);
-		if (!n) return true;
-		const texts = n.texts || [];
-		if (!texts.length && !n.page) return true; // nothing to show
-		const had = windows[id];
-		if (had && !had.closed) { had.focus(); return true; }
-		const base = new URL(".", location.href).href;
-		const q = new URLSearchParams({base, id, patcher: p.name, mount: p.data.mount, theme: api.theme(), mode: document.documentElement.dataset.mode || ""});
-		const script = texts.some(t => t.lines > 1);
-		// where it was, and how big, the last time a window of a module of this kind was open (the window keeps it: module.js); not off the screen it is on now
-		const store = "psalm.patcher.window." + p.name + "." + n.kind;
-		let was = {};
-		try { was = JSON.parse(localStorage.getItem(store) || "{}") || {}; } catch (e) { was = {}; }
-		const num = (v, lo, hi) => Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : null;
-		const width = num(was.w, 300, screen.availWidth) || (script ? 760 : 560);
-		const height = num(was.h, 200, screen.availHeight) || (script ? 820 : texts.length ? 720 : 640);
-		const left = num(was.x, 0, Math.max(0, screen.availWidth - 120)), top = num(was.y, 0, Math.max(0, screen.availHeight - 80));
-		q.set("store", store);
-		const w = window.open(base + "plugins/patcher/module.html?" + q, "pt-module-" + p.name + "-" + id,
-			"popup=yes,width=" + width + ",height=" + height + (left !== null && top !== null ? ",left=" + left + ",top=" + top : ""));
-		if (!w) return false;
-		windows[id] = w;
-		return true;
+	const storeKey = n => "psalm.patcher.window." + p.name + "." + n.kind;
+	const kept = key => { try { return JSON.parse(localStorage.getItem(key) || "{}") || {}; } catch (e) { return {}; } };
+	const num = (v, lo, hi) => Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : null;
+	function keepPlace(w) {
+		const r = w.el.getBoundingClientRect();
+		try { localStorage.setItem(w.key, JSON.stringify({x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height)})); } catch (e) { /* no storage */ }
 	}
+	function toFront(w) { w.el.style.zIndex = ++zTop; }
+	// a double tap opens the window of a module, or brings it to the front; a module that has a window of its own (a plugin) shows that, and its settings with Alt held
 	function doubleTapped(id, alt) {
-		if (taps[0]) { taps = [false, false]; return; }
-		if (editing && editing.id === id) { closeEditor(); return; }
 		const n = nodeOf(id);
-		if (n && n.native && !alt) { send({open: id}); return; } // a plugin's own window; with Alt held its settings
-		if (!openWindow(id)) openSide(id);
+		if (!n) return;
+		if (n.native && !alt) { send({open: id}); return; }
+		openWindow(id);
 	}
-	function openSide(id) {
+	function openWindow(id) {
 		const n = nodeOf(id);
 		if (!n) return;
 		const texts = n.texts || [];
-		if (!texts.length && !n.page) { if (editing) closeEditor(); return; } // nothing to show
-		if (editing) closeEditor();
-		editing = {id, boxes: {}};
-		dTitle.textContent = n.kind + (n.preset ? " · " + n.preset : "");
-		dBoxes.innerHTML = "";
-		for (const t of texts) { // a box each: Ctrl+Enter (or Run) takes them, Tab is a tab
-			const wrap = el("label", "pt-drawer-box");
-			if (texts.length > 1) wrap.append(el("span", "pt-label", t.label));
-			if (t.help) wrap.append(helpOf(t.help));
-			const ta = el("textarea", "pt-drawer-text"); ta.spellcheck = false; ta.wrap = "off"; ta.value = t.value;
-			ta.addEventListener("keydown", e => {
-				e.stopPropagation();
-				if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }
-				else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitEditor(); }
-				else if (e.key === "Escape") { e.preventDefault(); closeEditor(); }
-			});
-			wrap.append(ta);
-			dBoxes.append(wrap);
-			editing.boxes[t.key] = ta;
-		}
-		if (n.log !== undefined && n.log !== null) { // a log: its own box, below the texts (they stay small)
-			for (const w of dBoxes.children) w.style.flex = "0 0 auto";
-			const wrap = el("label", "pt-drawer-box pt-drawer-logbox");
-			const ta = el("textarea", "pt-drawer-text pt-drawer-log"); ta.readOnly = true; ta.spellcheck = false; ta.wrap = "off";
-			wrap.append(ta); dBoxes.append(wrap);
-			editing.log = ta;
-		}
-		dCode.hidden = runBtn.hidden = !texts.length;
-		dSettings.hidden = !n.page;
-		// a script gets the room; a pattern or values a few lines, the settings the rest
+		if (!texts.length && !n.page) return; // nothing to show
+		if (windows[id]) { toFront(windows[id]); return; }
 		const script = texts.some(t => t.lines > 1);
-		drawer.classList.toggle("both", !!texts.length && !!n.page && script);
-		drawer.classList.toggle("short", !!texts.length && !!n.page && !script);
-		send({select: n.page ? id : ""}); // the frame follows once it is chosen (update)
-		drawer.hidden = false;
-		roomForDrawer();
-		updateEditor();
-		const first = dBoxes.querySelector("textarea");
-		if (first) first.focus();
+		const was = kept(storeKey(n));
+		const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+		const width = num(was.w, 300, vw) || Math.min(script ? 760 : 560, vw - 20);
+		const height = num(was.h, 200, vh) || Math.min(script ? 780 : texts.length ? 680 : 600, vh - 20);
+		const n_open = Object.keys(windows).length;
+		const kx = num(was.x, 0, Math.max(0, vw - 120)), ky = num(was.y, 0, Math.max(0, vh - 60));
+		const left = kx !== null && ky !== null ? kx : Math.max(10, vw - width - 20 - 30 * n_open);
+		const top = kx !== null && ky !== null ? ky : Math.min(Math.max(10, vh - height - 10), 50 + 30 * n_open);
+		const el_ = el("div", "pt-win");
+		el_.style.cssText = `left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
+		const head = el("div", "pt-win-head");
+		const title = el("span", "pt-win-title", n.kind + (n.preset ? " · " + n.preset : ""));
+		const x = el("button", "pt-x", "×"); x.title = "close (Esc in a box): what is typed is taken";
+		head.append(title, x);
+		const frame = el("iframe", "pt-win-frame"); frame.title = n.kind;
+		const grip = el("div", "pt-win-grip"); grip.title = "drag to resize";
+		el_.append(head, frame, grip);
+		root.append(el_);
+		const w = {el: el_, frame, title, id, key: storeKey(n), sent: ""};
+		windows[id] = w;
+		toFront(w);
+		const base = new URL(".", location.href).href;
+		const q = new URLSearchParams({base, id, patcher: p.name, mount: p.data.mount, theme: api.theme(), mode: document.documentElement.dataset.mode || "", float: "1"});
+		frame.src = base + "plugins/patcher/module.html?" + q;
+		el_.addEventListener("pointerdown", () => toFront(w));
+		x.addEventListener("click", () => closeWindow(id));
+		// moved by its title, resized by its corner; the frames do not take the pointer meanwhile
+		const drag = (target, onMove) => target.addEventListener("pointerdown", e => {
+			if (e.target.closest("button")) return;
+			e.preventDefault();
+			target.setPointerCapture(e.pointerId);
+			root.classList.add("pt-dragging");
+			const r = el_.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY;
+			const move = ev => onMove(r, ev.clientX - x0, ev.clientY - y0);
+			const up = () => {
+				target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", up); target.removeEventListener("pointercancel", up);
+				root.classList.remove("pt-dragging");
+				keepPlace(w);
+			};
+			target.addEventListener("pointermove", move);
+			target.addEventListener("pointerup", up);
+			target.addEventListener("pointercancel", up);
+		});
+		const vwNow = () => document.documentElement.clientWidth, vhNow = () => document.documentElement.clientHeight;
+		drag(head, (r, dx, dy) => {
+			el_.style.left = Math.max(-r.width + 80, Math.min(vwNow() - 80, r.left + dx)) + "px";
+			el_.style.top = Math.max(0, Math.min(vhNow() - 30, r.top + dy)) + "px";
+		});
+		drag(grip, (r, dx, dy) => {
+			el_.style.width = Math.max(300, Math.min(vwNow() - r.left, r.width + dx)) + "px";
+			el_.style.height = Math.max(200, Math.min(vhNow() - r.top, r.height + dy)) + "px";
+		});
 	}
-	// what to know to type a text: a point a line, `code` in backquotes
-	function helpOf(text) {
-		const list = el("ul", "pt-help");
-		for (const line of text.split("\n")) {
-			const li = el("li");
-			line.split("`").forEach((part, i) => { if (part) li.append(i % 2 ? el("code", "", part) : document.createTextNode(part)); });
-			list.append(li);
+	function closeWindow(id) {
+		const w = windows[id];
+		if (!w) return;
+		delete windows[id];
+		if (w.frame.contentWindow) w.frame.contentWindow.postMessage({psalm: "module-commit"}, "*"); // what is typed is taken
+		keepPlace(w);
+		setTimeout(() => w.el.remove(), 60); // the frame's request leaves first
+	}
+	// the windows of modules that are gone close; the others are told their module when it changes
+	function updateWindows() {
+		for (const [id, w] of Object.entries(windows)) {
+			const n = nodeOf(id);
+			if (!n) { closeWindow(id); continue; }
+			const title = n.kind + (n.preset ? " · " + n.preset : "");
+			if (w.title.textContent !== title) w.title.textContent = title;
+			sendNode(w, n);
 		}
-		return list;
 	}
-	function commitText(key, value) {
-		if (editing) send({text: {id: editing.id, key, value}});
+	function sendNode(w, n) {
+		const s = JSON.stringify(n);
+		if (s === w.sent || !w.frame.contentWindow || !w.ready) return;
+		w.sent = s;
+		w.frame.contentWindow.postMessage({psalm: "module", node: n}, "*");
 	}
-	// what is typed taken: every text (only those changed, when closing)
-	function commitEditor(changed) {
-		if (!editing) return;
-		for (const [key, ta] of Object.entries(editing.boxes)) if (!changed || ta.value !== textOf(editing.id, key)) commitText(key, ta.value);
-	}
-	function closeEditor() {
-		commitEditor(true);
-		editing = null;
-		drawer.hidden = true;
-		frame.src = "about:blank"; frame.style.height = "0"; framed = "";
-		send({select: ""});
-		roomForDrawer();
-	}
-	// over the whole screen the patch goes beside the side panel, not under it
-	function roomForDrawer() {
-		root.style.setProperty("--drawer-width", drawer.hidden ? "0px" : drawer.offsetWidth + "px");
-		requestAnimationFrame(drawCables);
-	}
-	function updateEditor() {
-		if (!editing) return;
-		const n = nodeOf(editing.id);
-		if (!n) { closeEditor(); return; }
-		if (n.page && st.selected === n.id && framed !== n.id) { // its page is the one served now
-			framed = n.id;
-			frame.src = "mount/" + encodeURIComponent(p.data.mount) + "/?embed&id=" + encodeURIComponent(n.id) + "&theme=" + encodeURIComponent(api.theme());
+	window.addEventListener("message", e => {
+		const m = e.data || {};
+		for (const w of Object.values(windows)) {
+			if (w.frame.contentWindow !== e.source) continue;
+			if (m.psalm === "module-ready") { w.ready = true; w.sent = ""; const n = nodeOf(w.id); if (n) sendNode(w, n); }
+			if (m.psalm === "module-close") closeWindow(w.id);
 		}
-		if (editing.log && typeof n.log === "string" && editing.log.value !== n.log) { // the newest lines stay in view
-			const ta = editing.log, atEnd = ta.scrollTop + ta.clientHeight >= ta.scrollHeight - 4;
-			ta.value = n.log;
-			if (atEnd) ta.scrollTop = ta.scrollHeight;
-		}
-		let say = "";
-		for (const [key, ta] of Object.entries(editing.boxes)) { // what is wrong with a text: below the boxes
-			const e = n.errors && n.errors[key];
-			ta.classList.toggle("bad", !!e);
-			if (e && !say) say = "error: " + (Object.keys(editing.boxes).length > 1 ? key + ": " : "") + e;
-		}
-		if (!say) say = n.status || "";
-		dStatus.textContent = say;
-		dStatus.classList.toggle("bad", /^error/i.test(say));
-	}
-	runBtn.addEventListener("click", () => commitEditor());
-	closeBtn.addEventListener("click", closeEditor);
-	grip.addEventListener("pointerdown", e => {
-		e.preventDefault();
-		grip.setPointerCapture(e.pointerId);
-		const right = drawer.getBoundingClientRect().right;
-		const move = ev => { drawer.style.width = Math.max(280, Math.min(right - 40, right - ev.clientX)) + "px"; roomForDrawer(); };
-		const up = () => { grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); };
-		grip.addEventListener("pointermove", move);
-		grip.addEventListener("pointerup", up);
 	});
 
 	function updatePatches() {
@@ -607,7 +548,7 @@ psalm.register("patcher", (p, api) => {
 			drawCables();
 			if (!inspector.contains(document.activeElement)) showInspector();
 			updatePatches();
-			updateEditor();
+			updateWindows();
 		},
 		restyle() { drawCables(); lanes.restyle(); },
 	};

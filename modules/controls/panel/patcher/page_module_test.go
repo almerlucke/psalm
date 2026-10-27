@@ -2,7 +2,6 @@ package patcher_test
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -16,9 +15,8 @@ import (
 	"github.com/almerlucke/psalm/modules/effects/gain"
 )
 
-// a double click on a module opens its window (window.open of module.html: the module, the folder of the page and the theme in the address), the same window again
-// is brought to the front; the window shows the texts of the module and its settings, takes what is typed, follows the patch and says when its module is gone
-func TestPageModuleWindow(t *testing.T) {
+func newPage(t *testing.T) (*paneltest.Browser, *patcher.Patcher, string) {
+	t.Helper()
 	b := paneltest.Start(t)
 	p := psalm.New(paneltest.NewEngine(t))
 	ctl := panel.New(p, "Patcher")
@@ -28,53 +26,74 @@ func TestPageModuleWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = p.AudioStop() })
+	return b, pt, paneltest.Serve(t, ctl.Handler())
+}
+
+// a double click on a module opens its window inside the page (a frame of module.html, no window of the browser: it has no address bar): its texts, its settings, what is
+// wrong with what is typed; it follows the patch; it is closed by its x or Esc and when its module goes; one for each module, a double click on the module again brings its
+// window to the front
+func TestPageModuleWindow(t *testing.T) {
+	b, pt, base := newPage(t)
 	clk, err := pt.Add("clock", "", 60, 40)
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := paneltest.Serve(t, ctl.Handler())
 	tb := b.Open(t, base, `document.querySelectorAll(".pt-node").length === 2`)
 	tb.Size(1300, 900)
-
-	// what window.open is asked: recorded, the window it gives is one that is still open
-	tb.Eval(`window.__recording = true; window.__opened = []; window.__focused = 0; window.open = (url, name, features) => { window.__opened.push([url, name, features]); return {closed: false, focus() { window.__focused++; }}; }`)
 	head := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, clk)
 	doubleTap(tb, head)
-	tb.WaitFor(`window.__opened.length === 1`, "a window opened by the double click")
-	if !tb.Eval(`document.querySelector(".pt-drawer").hidden`).(bool) {
-		t.Error("the side panel opens besides the window")
+	tb.WaitFor(`document.querySelectorAll(".pt-win").length === 1 && document.querySelector(".pt-win-title").textContent === "clock"`, "the window of the clock")
+	tb.WaitFor(`W().querySelector(".mw-text").value === "x"`, "the pattern of the clock in its window")
+	tb.WaitFor(`S()?.querySelector(".control")`, "the settings of the clock in its window")
+	if tb.Eval(`!!document.querySelector(".pt-win iframe").src.match(/^about:|^$/)`).(bool) {
+		t.Error("the window is not a page of the server")
 	}
-	opened := tb.Eval(`window.__opened[0][0]`).(string)
-	u, err := url.Parse(opened)
-	if err != nil || !strings.HasSuffix(u.Path, "/plugins/patcher/module.html") || u.Query().Get("id") != clk || u.Query().Get("patcher") != "Patch" || u.Query().Get("mount") != "Patch module" {
-		t.Fatalf("the window is asked for at %q", opened)
-	}
-	if !strings.Contains(tb.Eval(`window.__opened[0][2]`).(string), "popup") {
-		t.Error("the window is not a window of its own (popup)")
-	}
-	doubleTap(tb, head)
-	tb.WaitFor(`window.__focused === 1`, "the window brought to the front")
-	if n := tb.Eval(`window.__opened.length`).(float64); n != 1 {
-		t.Errorf("%v windows for one module", n)
+	// it is a frame in the page: inside the viewport, over the patch
+	if !tb.Eval(`(() => { const r = document.querySelector(".pt-win").getBoundingClientRect(); return r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && r.width > 300 && r.height > 200; })()`).(bool) {
+		t.Error("the window is not on the page")
 	}
 
-	// the window itself: its own tab here
-	win := b.Open(t, opened, `document.getElementById("title").textContent === "clock" && document.querySelector(".mw-text")`)
-	win.Size(700, 800)
-	win.WaitFor(`document.querySelector(".mw-text").value === "x"`, "the pattern of the clock in its window")
-	win.WaitFor(`document.getElementById("frame").contentDocument?.querySelector(".control")`, "the settings of the clock in its window")
-	win.WaitFor(`document.getElementById("live").classList.contains("on")`, "the window connected to the patch")
-	win.Eval(`(() => { const i = document.querySelector(".mw-text"); i.focus(); i.value = "x . x x"; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
+	// moved by its title, the size by its corner: kept, per kind of module, for the next window
+	before := tb.Eval(`(() => { const r = document.querySelector(".pt-win").getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; })()`).([]any)
+	x, y := tb.Center(`document.querySelector(".pt-win-title")`, 0.5)
+	tb.Mouse("mousePressed", x, y, nil)
+	for i := 1; i <= 4; i++ {
+		tb.Mouse("mouseMoved", x-40*float64(i), y+20*float64(i), nil)
+	}
+	tb.Mouse("mouseReleased", x-160, y+80, nil)
+	tb.WaitFor(fmt.Sprintf(`Math.abs(document.querySelector(".pt-win").getBoundingClientRect().left - %v) > 100`, before[0]), "the window moved by its title")
+	gx, gy := tb.Center(`document.querySelector(".pt-win-grip")`, 0.5)
+	tb.Mouse("mousePressed", gx, gy, nil)
+	for i := 1; i <= 4; i++ {
+		tb.Mouse("mouseMoved", gx-30*float64(i), gy-20*float64(i), nil)
+	}
+	tb.Mouse("mouseReleased", gx-120, gy-80, nil)
+	tb.WaitFor(fmt.Sprintf(`document.querySelector(".pt-win").getBoundingClientRect().width < %v - 50`, before[2]), "the window made smaller by its corner")
+	kept := tb.Eval(`(() => { const r = document.querySelector(".pt-win").getBoundingClientRect(); return JSON.stringify({x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height)}) === localStorage.getItem("psalm.patcher.window.Patch.clock"); })()`).(bool)
+	if !kept {
+		t.Error("the place and size of the window are not kept")
+	}
+	// closed by its x, a window again at the place it was
+	tb.Tap(`document.querySelector(".pt-win .pt-x")`)
+	tb.WaitFor(`!document.querySelector(".pt-win")`, "the window closed by its ×")
+	doubleTap(tb, head)
+	tb.WaitFor(fmt.Sprintf(`Math.abs(document.querySelector(".pt-win").getBoundingClientRect().width - %v) < 3`, tb.Eval(`JSON.parse(localStorage.getItem("psalm.patcher.window.Patch.clock")).w`)), "the next window opens as big as the last was")
+
+	// what is typed is taken (Ctrl+Enter), a bad pattern is told in the window (and in a toast, which is over the corner of the page: after the moving above)
+	tb.Eval(`(() => { const i = W().querySelector(".mw-text"); i.focus(); i.value = "x . x x"; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
 	paneltest.Eventually(t, "the pattern typed in the window taken", func() bool { tx := pt.Texts(clk); return len(tx) == 1 && tx[0].Value == "x . x x" })
-	// a bad pattern: what is wrong, in the window
-	win.Eval(`(() => { const i = document.querySelector(".mw-text"); i.value = "x ?"; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
-	win.WaitFor(`document.querySelector(".mw-text").classList.contains("bad") && document.getElementById("status").textContent.startsWith("error")`, "a bad pattern shown in the window")
-	// a setting moved in the window reaches the module
-	// the module taken away: the window says so
+	tb.Eval(`(() => { const i = W().querySelector(".mw-text"); i.value = "x ?"; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
+	tb.WaitFor(`W().querySelector(".mw-text").classList.contains("bad") && W().getElementById("status").textContent.startsWith("error")`, "a bad pattern shown in the window")
+
+	// Esc in a box closes it; the module taken away closes it
+	tb.Key("Escape")
+	tb.WaitFor(`!document.querySelector(".pt-win")`, "the window closed by Esc")
+	doubleTap(tb, head)
+	tb.WaitFor(`!!document.querySelector(".pt-win")`, "the window again")
 	if err := pt.Remove(clk); err != nil {
 		t.Fatal(err)
 	}
-	win.WaitFor(`!document.getElementById("gone").hidden`, "the window says its module is gone")
+	tb.WaitFor(`!document.querySelector(".pt-win")`, "the window of a module that is gone closed")
 }
 
 // a module with a window of its own (a plugin's): a double click opens that, not the window of settings; with Alt held it is the settings
@@ -99,72 +118,16 @@ func TestPageNativeWindow(t *testing.T) {
 	}
 	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 2`)
 	tb.Size(1300, 900)
-	tb.Eval(`window.__recording = true; window.__opened = []; window.open = (url, name, features) => { window.__opened.push(url); return {closed: false, focus() {}}; }`)
 	head := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id)
 	doubleTap(tb, head)
 	paneltest.Eventually(t, "the window of the module opened", func() bool { return opened.Load() == 1 })
-	if n := tb.Eval(`window.__opened.length`).(float64); n != 0 {
-		t.Errorf("%v windows of settings opened with it", n)
+	if tb.Eval(`document.querySelectorAll(".pt-win").length`).(float64) != 0 {
+		t.Error("a window of settings opens with it")
 	}
-	// Alt held: the settings (the texts) in a window of ours
 	tb.Eval(`(() => { const h = ` + head + `; h.dispatchEvent(new MouseEvent("dblclick", {altKey: true, bubbles: true})); })()`)
-	tb.WaitFor(`window.__opened.length === 1`, "the settings window opened by Alt and a double click")
+	tb.WaitFor(`document.querySelectorAll(".pt-win").length === 1`, "the settings window opened by Alt and a double click")
 	if opened.Load() != 1 {
 		t.Errorf("the window of the module opened %d times", opened.Load())
 	}
-}
-
-// the window of a module keeps where it is and how big, per kind of module, and the next one opens there
-func TestPageModuleWindowKeepsPlace(t *testing.T) {
-	b := paneltest.Start(t)
-	p := psalm.New(paneltest.NewEngine(t))
-	ctl := panel.New(p, "Patcher")
-	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}), patcher.Keep(t.TempDir()))
-	p.Out(pt.Out())
-	if err := p.AudioStart(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = p.AudioStop() })
-	clk, err := pt.Add("clock", "", 60, 40)
-	if err != nil {
-		t.Fatal(err)
-	}
-	base := paneltest.Serve(t, ctl.Handler())
-	tb := b.Open(t, base, `document.querySelectorAll(".pt-node").length === 2`)
-	tb.Size(1300, 900)
-
-	// what was kept is asked for: the size and the place (the window keeps its place off a screen that is smaller now)
-	tb.Eval(`window.__recording = true; window.__opened = []; localStorage.setItem("psalm.patcher.window.Patch.clock", JSON.stringify({x: 120, y: 80, w: 640, h: 555}));
-		window.open = (url, name, features) => { window.__opened.push([url, name, features]); return {closed: false, focus() {}}; }`)
-	head := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, clk)
-	doubleTap(tb, head)
-	tb.WaitFor(`window.__opened.length === 1`, "the window asked for")
-	features := tb.Eval(`window.__opened[0][2]`).(string)
-	for _, want := range []string{"width=640", "height=555", "left=120", "top=80"} {
-		if !strings.Contains(features, want) {
-			t.Errorf("the window is asked for with %q, want %s", features, want)
-		}
-	}
-	opened := tb.Eval(`window.__opened[0][0]`).(string)
-	if !strings.Contains(opened, "store=psalm.patcher.window.Patch.clock") {
-		t.Errorf("the window is not told where to keep its place: %s", opened)
-	}
-
-	// nothing kept: the sizes it opens with
-	clk2, err := pt.Add("clock", "", 60, 300) // another module of the kind: the window of the first is still open
-	if err != nil {
-		t.Fatal(err)
-	}
-	tb.WaitFor(fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s']")`, clk2), "the second clock on the patch")
-	tb.Eval(`localStorage.clear(); window.__opened = []`)
-	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, clk2))
-	tb.WaitFor(`window.__opened.length === 1`, "the window asked for, nothing kept")
-	if f := tb.Eval(`window.__opened[0][2]`).(string); strings.Contains(f, "left=") || !strings.Contains(f, "width=") {
-		t.Errorf("with nothing kept the window is asked for with %q", f)
-	}
-
-	// the window keeps its size
-	win := b.Open(t, opened, `document.getElementById("title").textContent === "clock"`)
-	win.Size(700, 600)
-	win.WaitFor(`(() => { try { const v = JSON.parse(localStorage.getItem("psalm.patcher.window.Patch.clock")); return v && v.w === window.innerWidth && v.h === window.innerHeight && v.w > 0; } catch (e) { return false; } })()`, "the window keeps its size")
+	_ = strings.TrimSpace
 }

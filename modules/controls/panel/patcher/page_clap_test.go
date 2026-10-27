@@ -46,12 +46,13 @@ func TestPageClap(t *testing.T) {
 	}
 	start = time.Now()
 	head := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, surge)
-	// Alt held: the settings of ours (a plain double click opens the window of the plugin); the browser not letting a window open, they are in the side panel
-	tb.Eval(`window.open = () => null; ` + head + `.dispatchEvent(new MouseEvent("dblclick", {altKey: true, bubbles: true}))`)
-	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-frame").contentDocument?.querySelector(".control")`, "the side panel of Surge XT")
-	t.Logf("the side panel opened after %v", time.Since(start))
-	tb.WaitFor(`document.querySelector(".pt-drawer-frame").contentDocument?.querySelectorAll(".control").length > 500`, "the settings of Surge XT in the side panel")
-	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	// Alt held: the settings of ours, in a window inside the page (a plain double click opens the window of the plugin)
+	tb.Eval(windowHelpers)
+	tb.Eval(head + `.dispatchEvent(new MouseEvent("dblclick", {altKey: true, bubbles: true}))`)
+	tb.WaitFor(`!!document.querySelector(".pt-win") && S()?.querySelector(".control")`, "the window of the settings of Surge XT")
+	t.Logf("the window opened after %v", time.Since(start))
+	tb.WaitFor(`S()?.querySelectorAll(".control").length > 500`, "the settings of Surge XT in its window")
+	frame := `S()`
 	if shut := tb.Eval(`[0, 1].some(i => ` + frame + `.querySelectorAll(".ed-group")[i].classList.contains("closed"))`).(bool); shut {
 		t.Error("the preset and the main knobs are not both open")
 	}
@@ -89,7 +90,7 @@ func TestPageClapNativeWindow(t *testing.T) {
 	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 2`)
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
 	paneltest.Eventually(t, "the window of the plugin opened by a double click", func() bool { return pl.WindowOpen() })
-	if !tb.Eval(`document.querySelector(".pt-drawer").hidden`).(bool) {
-		t.Error("the side panel opens besides the window of the plugin")
+	if tb.Eval(`document.querySelectorAll(".pt-win").length`).(float64) != 0 {
+		t.Error("a window of settings opens besides the window of the plugin")
 	}
 }

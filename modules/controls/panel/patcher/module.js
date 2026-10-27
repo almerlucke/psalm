@@ -1,12 +1,12 @@
-// the window of a module of the patcher (opened by a double click on the module): its texts, each in a box of lines (what is wrong or what it says below them), its
-// settings (its editor, served by the patcher's mount for this module: mount/<name>@<id>/) below. The patch lives on the page that opened it: this window asks the
-// page's server for the patch as it changes (server sent events), and tells it what is typed. Query: base (the folder of the page), id, patcher (the name of the
-// patcher on the page), mount, theme, mode
+// the window of a module of the patcher (a double click on the module opens it, inside the page, in a frame): its texts, each in a box of lines (what is wrong or what it
+// says below them), its settings (its editor, served by the patcher's mount for this module: mount/<name>@<id>/) below. The page that holds the frame tells it its
+// module as it changes (a message) and moves and closes the window; what is typed goes to the server from here. Query: base (the folder of the page), id, patcher
+// (the name of the patcher on the page), mount, theme, mode
 "use strict";
 (() => {
 	const q = new URLSearchParams(location.search);
 	const base = q.get("base") || "../../", id = q.get("id") || "", patcher = q.get("patcher") || "", mount = q.get("mount") || "";
-	const theme = q.get("theme") || "", mode = q.get("mode") || "", store = q.get("store") || "";
+	const theme = q.get("theme") || "", mode = q.get("mode") || "";
 	const $ = name => document.getElementById(name);
 	const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 	if (mode) document.documentElement.dataset.mode = mode;
@@ -50,7 +50,7 @@
 				e.stopPropagation();
 				if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }
 				else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(); }
-				else if (e.key === "Escape") { e.preventDefault(); commit(true); window.close(); }
+				else if (e.key === "Escape") { e.preventDefault(); commit(true); window.parent.postMessage({psalm: "module-close"}, "*"); }
 			});
 			wrap.append(ta);
 			holder.append(wrap);
@@ -97,41 +97,26 @@
 		if (!say) say = n.status || "";
 		$("status").textContent = say;
 		$("status").classList.toggle("bad", /^error/i.test(say));
+		document.body.dataset.ready = "1"; // it has its module (tests wait for it)
 	}
 
 	// the settings frame tells its height; it gets the theme and the mode like the frames of the page
 	window.addEventListener("message", e => {
 		const m = e.data || {};
 		if (e.source === $("frame").contentWindow && m.psalm === "height") $("frame").style.height = m.height + "px";
+		if (e.source === window.parent) {
+			if (m.psalm === "module") show(m.node);
+			if (m.psalm === "module-commit") commit(true);
+		}
 	});
 	$("frame").addEventListener("load", () => {
 		const w = $("frame").contentWindow;
 		if (w && theme) w.postMessage({psalm: "theme", name: theme}, "*");
 		if (w && mode) w.postMessage({psalm: "mode", mode}, "*");
 	});
-	// where the window is and how big: kept, for the next window of a module of this kind (the page that opens it reads it back). Nothing tells when a window is moved:
-	// it is looked at now and then
-	let kept = "";
-	function keep() {
-		if (!store || window.innerWidth < 100 || window.innerHeight < 100) return;
-		const v = JSON.stringify({x: window.screenX, y: window.screenY, w: window.innerWidth, h: window.innerHeight});
-		if (v === kept) return;
-		kept = v;
-		try { localStorage.setItem(store, v); } catch (e) { /* no storage: the window opens as it does */ }
-	}
-	setInterval(keep, 600);
-	window.addEventListener("resize", keep);
 	$("run").addEventListener("click", () => commit());
 	window.addEventListener("pagehide", () => commit(true));
 
-	// the patch, as it changes: the server sends the state of the patcher when it does
-	const events = new EventSource(base + "api/events");
-	events.onopen = () => $("live").classList.add("on");
-	events.onerror = () => $("live").classList.remove("on");
-	events.onmessage = e => {
-		$("live").classList.add("on");
-		const u = JSON.parse(e.data);
-		const s = u.states && u.states[patcher];
-		if (s && s.nodes) show(s.nodes.find(n => n.id === id) || null);
-	};
+	// the page tells the module as it changes: it is asked for it now
+	window.parent.postMessage({psalm: "module-ready"}, "*");
 })();

@@ -42,7 +42,7 @@ Surge XT: Soft Pluck, Island Pluck, Kalimba, Plucked String, Glass Bell, Warm Pa
 ## What the host does for a plugin
 
 - **State in the patch:** a plugin's own state is kept with the patch (`state` of its module in the patch file) and given back when it loads; the knobs of the editor are then set to what the plugin has. A plugin that loads a preset, or has a knob turned in its own window, tells the editor the same way.
-- **Names that change:** a plugin that renames its settings (Surge XT Effects, when its type changes) tells the host (`params.rescan`); the editor has the new labels the next time its side panel is opened.
+- **Names that change:** a plugin that renames its settings (Surge XT Effects, when its type changes) tells the host (`params.rescan`); the editor has the new labels the next time its window is opened.
 - **Ports:** every audio output of a plugin is an output of its module (a sampler's parts, Surge's scenes), the second input of an effect is its side chain.
 - **Tempo and position:** the plugin is told the tempo of the patch and the position in beats (4/4) with every block.
 - **Latency:** the latency a plugin says it has is shown on its module. It is not compensated: nothing delays the other paths of the patch to match.

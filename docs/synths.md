@@ -1212,7 +1212,7 @@ sound out; a sound that is not held plays to its end, like a drum), `speed=2` (a
 `pan=` and `name=`. A single line plays on every key. `streamer.Open(path, key)` makes an
 instrument of one file, `streamer.NewInstrument(&streamer.Entry{...})` one of entries.
 
-In the patcher the kind `streamer` has the text in its side panel (`sounds`), with the report
+In the patcher the kind `streamer` has the text in its window (`sounds`), with the report
 of what every line made, and takes notes like the sampler. A loop is not crossfaded at its seam:
 cut it where it goes round, or use a file that does. It plays forwards at a fixed speed
 (interpolated between frames); for sounds you cut into pieces on keys, or play backwards or by
@@ -1819,7 +1819,7 @@ plucks (`pluck`, `harp`, `kalimba`, `marimba`, `ePiano`, `clav`, `vibes`, `stab`
 shrill, silent after the key is let go, and not like another.
 
 In the patcher the synth is a module of its own (Synths, "shaper"): its four chains are boxes in the
-side panel (Ctrl+Enter takes one, an error shows in red and the sound goes on; choosing a factory
+window (Ctrl+Enter takes one, an error shows in red and the sound goes on; choosing a factory
 preset puts that preset's chains in the boxes). The same text is a shaper in a script:
 `genny.shapers.chain("mult 3 | sin")` (see [scripting](scripting.md#shapers)).
 

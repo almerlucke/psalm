@@ -123,18 +123,18 @@ func TestPagePatcher(t *testing.T) {
 	lfoHead := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, lfo)
 	tb.Tap(lfoHead)
 	tb.WaitFor(lfoHead+`.parentNode.classList.contains("selected")`, "the LFO chosen")
-	if !tb.Eval(`document.querySelector(".pt-drawer").hidden`).(bool) {
+	if !tb.Eval(`!document.querySelector(".pt-win")`).(bool) {
 		t.Error("a tap chooses a module, it doesn't open its side panel")
 	}
 	doubleTap(tb, lfoHead)
-	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-frame").contentDocument?.querySelector(".control")`, "the LFO's settings in the side panel")
+	tb.WaitFor(`!!document.querySelector(".pt-win") && S()?.querySelector(".control")`, "the LFO's settings in the side panel")
 	if tb.Eval(`!!document.querySelector("section.mounthost")`).(bool) {
 		t.Error("the settings of the module chosen are in the side panel, not in a section below the patch")
 	}
 	// a module taken away by the Delete key, its cables with it, its side panel closed
 	tb.Key("Delete")
 	paneltest.Eventually(t, "the LFO gone", func() bool { return len(pt.Nodes()) == 3 })
-	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "its side panel closed")
+	tb.WaitFor(`!document.querySelector(".pt-win")`, "its side panel closed")
 
 	// a generator's text in its side panel, in a box as a script's (none on the module): a good
 	// pattern taken (Ctrl+Enter, over lines too), a bad one shown with what is wrong with it; its
@@ -149,15 +149,15 @@ func TestPagePatcher(t *testing.T) {
 		t.Error("the clock's pattern is in its side panel, not on its module")
 	}
 	doubleTap(tb, clkNode+`.querySelector(".pt-head")`)
-	input := `document.querySelector(".pt-drawer-text")`
-	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+input+`?.value === "x" && document.querySelector(".pt-drawer-frame").contentDocument?.querySelector(".control")`, "the pattern and the clock's settings in its side panel")
+	input := `W().querySelector(".mw-text")`
+	tb.WaitFor(`!!document.querySelector(".pt-win") && `+input+`?.value === "x" && S()?.querySelector(".control")`, "the pattern and the clock's settings in its side panel")
 	enter := func(text string) {
 		tb.Eval(`(() => { const i = ` + input + `; i.focus(); i.value = ` + strconv.Quote(text) + `; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
 	}
-	if !tb.Eval(`!!([...document.querySelectorAll(".pt-drawer .pt-help li")].some(li => li.textContent.includes("a hit")) && document.querySelector(".pt-help code"))`).(bool) {
+	if !tb.Eval(`!!([...W().querySelectorAll(".mw-help li")].some(li => li.textContent.includes("a hit")) && W().querySelector(".mw-help code"))`).(bool) {
 		t.Error("what to know to type a pattern is not above its box")
 	}
-	if !tb.Eval(`document.querySelector(".pt-drawer-text").getBoundingClientRect().right <= document.querySelector(".pt-drawer").getBoundingClientRect().right - 8`).(bool) {
+	if !tb.Eval(`W().querySelector(".mw-text").getBoundingClientRect().right <= document.querySelector(".pt-win").getBoundingClientRect().right - 8`).(bool) {
 		t.Error("the box of a text runs past the side panel")
 	}
 	enter("x . x x\nx x . .")
@@ -166,9 +166,9 @@ func TestPagePatcher(t *testing.T) {
 		t.Errorf("a pattern over two lines: %s", e)
 	}
 	enter("x ?")
-	tb.WaitFor(input+`.classList.contains("bad") && document.querySelector(".pt-drawer .pt-status").textContent.startsWith("error")`, "a bad pattern shown, what is wrong below it")
+	tb.WaitFor(input+`.classList.contains("bad") && W().getElementById("status").textContent.startsWith("error")`, "a bad pattern shown, what is wrong below it")
 	tb.Key("Escape")
-	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "the side panel closed")
+	tb.WaitFor(`!document.querySelector(".pt-win")`, "the side panel closed")
 
 	// a script, opened in the side panel by a tap (no box of it on the module): an error of it shown
 	// on its line, in the side panel and on the module, then what it logs
@@ -182,9 +182,9 @@ func TestPagePatcher(t *testing.T) {
 		t.Error("a script has no box on its module")
 	}
 	doubleTap(tb, node+`.querySelector(".pt-head")`)
-	box, status := `document.querySelector(".pt-drawer-text")`, `document.querySelector(".pt-drawer .pt-status")`
-	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+box+`.value.includes("function trigger")`, "the script in the side panel")
-	tb.WaitFor(`[...document.querySelectorAll(".pt-drawer .pt-help li")].some(li => li.textContent.includes("function trigger(ev)"))`, "what to know to write a script above it")
+	box, status := `W().querySelector(".mw-text")`, `W().getElementById("status")`
+	tb.WaitFor(`!!document.querySelector(".pt-win") && `+box+`.value.includes("function trigger")`, "the script in the side panel")
+	tb.WaitFor(`[...W().querySelectorAll(".mw-help li")].some(li => li.textContent.includes("function trigger(ev)"))`, "what to know to write a script above it")
 	run := func(code string) {
 		tb.Eval(`(() => { const b = ` + box + `; b.focus(); b.value = ` + strconv.Quote(code) + `; b.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
 	}
@@ -266,7 +266,7 @@ func TestPageWorkspace(t *testing.T) {
 	})
 
 	// Esc lets go of them; a rectangle around both chooses them again
-	if !tb.Eval(`document.querySelector(".pt-drawer").hidden`).(bool) {
+	if !tb.Eval(`!document.querySelector(".pt-win")`).(bool) {
 		t.Error("taps choose modules, they don't open a side panel")
 	}
 	tb.Key("Escape")
@@ -297,38 +297,36 @@ func TestPageWorkspace(t *testing.T) {
 
 	// the script in the side panel: typed there, run with Ctrl+Enter, what it logs below; Esc closes
 	doubleTap(tb, node(scr)+`.querySelector(".pt-head")`)
-	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-text").value.includes("function trigger")`, "the script in the side panel")
-	tb.Eval(`(() => { const d = document.querySelector(".pt-drawer-text"); d.focus(); d.value = "log('wide')"; d.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
+	tb.WaitFor(`!!document.querySelector(".pt-win") && W().querySelector(".mw-text").value.includes("function trigger")`, "the script in the side panel")
+	tb.Eval(`(() => { const d = W().querySelector(".mw-text"); d.focus(); d.value = "log('wide')"; d.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
 	tb.WaitFor(`document.querySelector(".pt-log-text").value.endsWith("  wide")`, "what it logs in the log of the patch")
 	if tx := pt.Texts(scr); len(tx) != 1 || tx[0].Value != "log('wide')" {
 		t.Fatalf("the script typed in the side panel: %v", tx)
 	}
 	tb.Key("Escape")
-	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "the side panel closed")
+	tb.WaitFor(`!document.querySelector(".pt-win")`, "the side panel closed")
 
-	// the side panel open: a tap on another module shows that one, a double tap on it closes it
-	doubleTap(tb, node(scr)+`.querySelector(".pt-head")`)
-	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden`, "the script's side panel again")
-	tb.Tap(node(lfo) + `.querySelector(".pt-head")`)
-	tb.WaitFor(`document.querySelector(".pt-drawer-title").textContent === "lfo" && document.querySelector(".pt-drawer-code").hidden`, "the LFO in the side panel, after a tap")
-	doubleTap(tb, node(lfo)+`.querySelector(".pt-head")`)
-	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "the side panel closed by a double tap")
-	doubleTap(tb, node(lfo)+`.querySelector(".pt-head")`)
-	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden`, "the LFO's side panel by a double tap")
-	// a double tap on another module, the panel open: its first tap brings the panel, which stays
-	doubleTap(tb, node(scr)+`.querySelector(".pt-head")`)
-	if open := tb.Eval(`new Promise(r => setTimeout(() => r(!document.querySelector(".pt-drawer").hidden && document.querySelector(".pt-drawer-title").textContent.startsWith("script")), 150))`).(bool); !open {
-		t.Error("a double tap on another module, the panel open, should show that module, not close the panel")
-	}
-	tb.Tap(`document.querySelector(".pt-drawer .pt-x")`)
-	tb.WaitFor(`document.querySelector(".pt-drawer").hidden`, "the side panel closed by its ×")
+	// a window for each module, at the same time: a double tap on a module that has its window brings it to the front (it does not close it), the × closes the one it is on,
+	// Esc (in a box, or on the page) the one in front
+	head := func(id string) string { return node(id) + `.querySelector(".pt-head")` }
+	front := `[...document.querySelectorAll(".pt-win")].sort((a, b) => b.style.zIndex - a.style.zIndex)[0].querySelector(".pt-win-title").textContent`
+	doubleTap(tb, head(scr))
+	doubleTap(tb, head(lfo))
+	tb.WaitFor(`document.querySelectorAll(".pt-win").length === 2 && `+front+` === "lfo"`, "a window for each of the two modules, the LFO's in front")
+	doubleTap(tb, head(scr))
+	tb.WaitFor(`document.querySelectorAll(".pt-win").length === 2 && `+front+`.startsWith("script")`, "the script's window in front again, not a third window")
+	closeFront := `[...document.querySelectorAll(".pt-win")].sort((a, b) => b.style.zIndex - a.style.zIndex)[0].querySelector(".pt-x")`
+	tb.Tap(closeFront)
+	tb.WaitFor(`document.querySelectorAll(".pt-win").length === 1 && document.querySelector(".pt-win-title").textContent === "lfo"`, "the script's window, the one in front, closed by its ×")
+	tb.Tap(closeFront)
+	tb.WaitFor(`!document.querySelector(".pt-win")`, "the last window closed by its ×")
 
 	// the patch over the whole screen, and back
 	if os.Getenv("SHOT") != "" {
 		doubleTap(tb, node(scr)+`.querySelector(".pt-head")`)
 		tb.Tap(`document.querySelector(".pt-max-btn")`)
 		tb.Screenshot(os.Getenv("SHOT"))
-		tb.Tap(`document.querySelector(".pt-drawer .pt-x")`)
+		tb.Tap(`document.querySelector(".pt-win .pt-x")`)
 		tb.Tap(`document.querySelector(".pt-max-btn")`)
 	}
 	tb.Tap(`document.querySelector(".pt-max-btn")`)
@@ -348,15 +346,18 @@ func sortedIDs(ids ...string) []string { slices.Sort(ids); return ids }
 
 // doubleTap taps an element twice, quickly (a double click)
 func doubleTap(tb *paneltest.Tab, expr string) {
-	// a double click opens the window of a module; most tests are of what shows in it, which the side panel shows too when the browser does not let a window open: it
-	// is made not to (a test that wants the window sets window.__recording)
-	tb.Eval(`if (!window.__recording) window.open = () => null`)
+	tb.Eval(windowHelpers)
 	x, y := tb.Center(expr, 0.5)
 	for _, n := range []int{1, 2} {
 		tb.Mouse("mousePressed", x, y, map[string]any{"clickCount": n})
 		tb.Mouse("mouseReleased", x, y, map[string]any{"clickCount": n})
 	}
+	// the window of a module, if it has one to show, is ready: what is in it (module.html) has the module
+	tb.WaitFor(`!document.querySelector(".pt-win") || W()?.body?.dataset.ready === "1"`, "the window of the module ready")
 }
+
+// windowHelpers: W() is the document in the window of a module (the first), S() the document of its settings frame
+const windowHelpers = `window.W = () => document.querySelector(".pt-win-frame")?.contentDocument; window.S = () => W()?.getElementById("frame")?.contentDocument; 0`
 
 // the keys: Ctrl+C copies the modules chosen, Ctrl+V pastes them (chosen then, to move them),
 // Ctrl+D duplicates, Ctrl+X cuts
@@ -429,8 +430,8 @@ func TestPageSong(t *testing.T) {
 	tb.WaitFor(`!document.querySelector(".pt-songbar").hidden && document.querySelector(".pt-songbar span").textContent.startsWith("Intro ")`, "the song in the bar at the top")
 
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, song))
-	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
-	tb.WaitFor(`document.querySelector(".pt-drawer-text")?.value === "Intro 64, Verse 64" && `+frame+`?.querySelectorAll(".cue").length === 2`, "its sections and their tiles in the side panel")
+	frame := `S()`
+	tb.WaitFor(`W().querySelector(".mw-text")?.value === "Intro 64, Verse 64" && `+frame+`?.querySelectorAll(".cue").length === 2`, "its sections and their tiles in the side panel")
 	tb.Eval(`[...` + frame + `.querySelectorAll(".cue")].find(c => c.textContent.includes("Verse")).click()`)
 	tb.WaitFor(`document.querySelector(".pt-songbar span").textContent.includes("→ Verse")`, "the section asked for next in the bar at the top")
 
@@ -463,8 +464,8 @@ func TestPageDrumMachine(t *testing.T) {
 	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
 	tb.Size(1300, 900)
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
-	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
-	tb.WaitFor(`!document.querySelector(".pt-drawer").hidden && `+frame+`?.querySelectorAll(".cell").length === 7*32`, "its grid in the side panel")
+	frame := `S()`
+	tb.WaitFor(`!!document.querySelector(".pt-win") && `+frame+`?.querySelectorAll(".cell").length === 7*32`, "its grid in the side panel")
 	shown := `[...` + frame + `.querySelectorAll(".cell")].filter(c => !c.hidden && c.offsetParent).length`
 	tb.WaitFor(shown+` === 7*16 && `+frame+`.querySelectorAll(".gridhead > button").length === 16`, "sixteen patterns of sixteen steps")
 	tb.Eval(frame + `.querySelector("input.stepsin").value = "24"; ` + frame + `.querySelector("input.stepsin").dispatchEvent(new Event("change"))`)
@@ -499,8 +500,8 @@ func TestPageLog(t *testing.T) {
 		t.Error("the log is not on the module")
 	}
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, lg))
-	tb.WaitFor(`document.querySelector(".pt-drawer-log")?.value.includes("trigger step")`, "the log in a box of the side panel")
-	if !tb.Eval(`document.querySelector(".pt-drawer-log").readOnly && document.querySelector(".pt-drawer-text:not(.pt-drawer-log)").getBoundingClientRect().bottom <= document.querySelector(".pt-drawer-log").getBoundingClientRect().top`).(bool) {
+	tb.WaitFor(`W().querySelector(".mw-text[readonly]")?.value.includes("trigger step")`, "the log in a box of the side panel")
+	if !tb.Eval(`W().querySelector(".mw-text[readonly]").readOnly && W().querySelector(".mw-text:not([readonly])").getBoundingClientRect().bottom <= W().querySelector(".mw-text[readonly]").getBoundingClientRect().top`).(bool) {
 		t.Error("the label above the log, the log read only")
 	}
 }
@@ -523,12 +524,12 @@ func TestPageNoteRoll(t *testing.T) {
 	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
 	tb.Size(1300, 900)
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
-	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	frame := `S()`
 	canvas := frame + `.querySelector(".noteroll canvas")`
-	tb.WaitFor(`!!`+canvas+` && `+canvas+`.clientHeight > 300 && parseInt(document.querySelector(".pt-drawer-frame").style.height) > 400`, "the roll in the side panel, at its size")
+	tb.WaitFor(`!!`+canvas+` && `+canvas+`.clientHeight > 300 && parseInt(W().getElementById("frame").style.height) > 400`, "the roll in the side panel, at its size")
 	// where a beat and a key are on the canvas (in the page), 8 beats, 36 keys from C3
 	at := func(beat, key float64) (float64, float64) {
-		r := tb.Eval(fmt.Sprintf(`(() => { const f = document.querySelector(".pt-drawer-frame").getBoundingClientRect(), c = %s, r = c.getBoundingClientRect();
+		r := tb.Eval(fmt.Sprintf(`(() => { const g = document.querySelector(".pt-win-frame").getBoundingClientRect(), f0 = W().getElementById("frame").getBoundingClientRect(), f = {left: g.left + f0.left, top: g.top + f0.top}, c = %s, r = c.getBoundingClientRect();
 			const pxb = (r.width - 52) / 8, rowH = r.height / 36;
 			return [f.left + r.left + 52 + %v * pxb, f.top + r.top + (36 - 1 - (%v - 48)) * rowH + rowH / 2]; })()`, canvas, beat, key)).([]any)
 		return r[0].(float64), r[1].(float64)
@@ -580,7 +581,7 @@ func TestPageArp(t *testing.T) {
 	node := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s']")`, id)
 	tb.WaitFor(node+`.querySelectorAll(".pt-port").length >= 3`, "its ports: notes and clock in, notes out")
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
-	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	frame := `S()`
 	tb.WaitFor(`!!`+frame+` && !!`+frame+`.body && `+frame+`.body.innerText.includes("octaves")`, "its settings in the side panel")
 }
 
@@ -603,7 +604,7 @@ func TestPageLooper(t *testing.T) {
 	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
 	tb.Size(1300, 900)
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
-	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	frame := `S()`
 	tb.WaitFor(frame+`.querySelectorAll(".looper .lp-bar").length === 3`, "a cell for every bar of the loop")
 	tb.WaitFor(`/bar \d, beat \d/.test(`+frame+`.querySelector(".looper .lp-status").textContent)`, "the bar and beat it is at")
 
@@ -657,7 +658,7 @@ func TestPageAudioLooper(t *testing.T) {
 	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
 	tb.Size(1300, 900)
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
-	frame := `document.querySelector(".pt-drawer-frame").contentDocument`
+	frame := `S()`
 	tb.WaitFor(frame+`.querySelectorAll(".looper .lp-bar").length === 1`, "a cell for the bar of the loop")
 	pt.SettingsOf(id).Apply(map[string]float64{"record": 1})
 	tb.WaitFor(frame+`.querySelector(".looper .lp-status").textContent.startsWith("recording layer")`, "the page to say it records")
