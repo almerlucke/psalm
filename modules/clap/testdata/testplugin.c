@@ -88,6 +88,9 @@ static void t_on_main(const clap_plugin_t *p) {}
 
 static clap_process_status t_process(const clap_plugin_t *p, const clap_process_t *pr) {
 	test *t = p->plugin_data;
+	if (t->instrument && pr->audio_outputs_count != 3) {
+		return CLAP_PROCESS_ERROR; // the host has to give a buffer for every port it was told of
+	}
 	uint32_t n = pr->in_events->size(pr->in_events), e = 0;
 	float *o0 = pr->audio_outputs[0].data32[0], *o1 = pr->audio_outputs[0].data32[1];
 	for (uint32_t port = 1; port < pr->audio_outputs_count; port++) { // every port has to have buffers
