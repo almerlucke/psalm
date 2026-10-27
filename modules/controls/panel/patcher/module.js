@@ -6,7 +6,7 @@
 (() => {
 	const q = new URLSearchParams(location.search);
 	const base = q.get("base") || "../../", id = q.get("id") || "", patcher = q.get("patcher") || "", mount = q.get("mount") || "";
-	const theme = q.get("theme") || "", mode = q.get("mode") || "";
+	const theme = q.get("theme") || "", mode = q.get("mode") || "", store = q.get("store") || "";
 	const $ = name => document.getElementById(name);
 	const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 	if (mode) document.documentElement.dataset.mode = mode;
@@ -109,6 +109,18 @@
 		if (w && theme) w.postMessage({psalm: "theme", name: theme}, "*");
 		if (w && mode) w.postMessage({psalm: "mode", mode}, "*");
 	});
+	// where the window is and how big: kept, for the next window of a module of this kind (the page that opens it reads it back). Nothing tells when a window is moved:
+	// it is looked at now and then
+	let kept = "";
+	function keep() {
+		if (!store || window.innerWidth < 100 || window.innerHeight < 100) return;
+		const v = JSON.stringify({x: window.screenX, y: window.screenY, w: window.innerWidth, h: window.innerHeight});
+		if (v === kept) return;
+		kept = v;
+		try { localStorage.setItem(store, v); } catch (e) { /* no storage: the window opens as it does */ }
+	}
+	setInterval(keep, 600);
+	window.addEventListener("resize", keep);
 	$("run").addEventListener("click", () => commit());
 	window.addEventListener("pagehide", () => commit(true));
 

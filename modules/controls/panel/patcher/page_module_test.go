@@ -113,3 +113,58 @@ func TestPageNativeWindow(t *testing.T) {
 		t.Errorf("the window of the module opened %d times", opened.Load())
 	}
 }
+
+// the window of a module keeps where it is and how big, per kind of module, and the next one opens there
+func TestPageModuleWindowKeepsPlace(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}), patcher.Keep(t.TempDir()))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	clk, err := pt.Add("clock", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := paneltest.Serve(t, ctl.Handler())
+	tb := b.Open(t, base, `document.querySelectorAll(".pt-node").length === 2`)
+	tb.Size(1300, 900)
+
+	// what was kept is asked for: the size and the place (the window keeps its place off a screen that is smaller now)
+	tb.Eval(`window.__recording = true; window.__opened = []; localStorage.setItem("psalm.patcher.window.Patch.clock", JSON.stringify({x: 120, y: 80, w: 640, h: 555}));
+		window.open = (url, name, features) => { window.__opened.push([url, name, features]); return {closed: false, focus() {}}; }`)
+	head := fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, clk)
+	doubleTap(tb, head)
+	tb.WaitFor(`window.__opened.length === 1`, "the window asked for")
+	features := tb.Eval(`window.__opened[0][2]`).(string)
+	for _, want := range []string{"width=640", "height=555", "left=120", "top=80"} {
+		if !strings.Contains(features, want) {
+			t.Errorf("the window is asked for with %q, want %s", features, want)
+		}
+	}
+	opened := tb.Eval(`window.__opened[0][0]`).(string)
+	if !strings.Contains(opened, "store=psalm.patcher.window.Patch.clock") {
+		t.Errorf("the window is not told where to keep its place: %s", opened)
+	}
+
+	// nothing kept: the sizes it opens with
+	clk2, err := pt.Add("clock", "", 60, 300) // another module of the kind: the window of the first is still open
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb.WaitFor(fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s']")`, clk2), "the second clock on the patch")
+	tb.Eval(`localStorage.clear(); window.__opened = []`)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, clk2))
+	tb.WaitFor(`window.__opened.length === 1`, "the window asked for, nothing kept")
+	if f := tb.Eval(`window.__opened[0][2]`).(string); strings.Contains(f, "left=") || !strings.Contains(f, "width=") {
+		t.Errorf("with nothing kept the window is asked for with %q", f)
+	}
+
+	// the window keeps its size
+	win := b.Open(t, opened, `document.getElementById("title").textContent === "clock"`)
+	win.Size(700, 600)
+	win.WaitFor(`(() => { try { const v = JSON.parse(localStorage.getItem("psalm.patcher.window.Patch.clock")); return v && v.w === window.innerWidth && v.h === window.innerHeight && v.w > 0; } catch (e) { return false; } })()`, "the window keeps its size")
+}

@@ -433,8 +433,17 @@ psalm.register("patcher", (p, api) => {
 		const base = new URL(".", location.href).href;
 		const q = new URLSearchParams({base, id, patcher: p.name, mount: p.data.mount, theme: api.theme(), mode: document.documentElement.dataset.mode || ""});
 		const script = texts.some(t => t.lines > 1);
+		// where it was, and how big, the last time a window of a module of this kind was open (the window keeps it: module.js); not off the screen it is on now
+		const store = "psalm.patcher.window." + p.name + "." + n.kind;
+		let was = {};
+		try { was = JSON.parse(localStorage.getItem(store) || "{}") || {}; } catch (e) { was = {}; }
+		const num = (v, lo, hi) => Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : null;
+		const width = num(was.w, 300, screen.availWidth) || (script ? 760 : 560);
+		const height = num(was.h, 200, screen.availHeight) || (script ? 820 : texts.length ? 720 : 640);
+		const left = num(was.x, 0, Math.max(0, screen.availWidth - 120)), top = num(was.y, 0, Math.max(0, screen.availHeight - 80));
+		q.set("store", store);
 		const w = window.open(base + "plugins/patcher/module.html?" + q, "pt-module-" + p.name + "-" + id,
-			"popup=yes,width=" + (script ? 760 : 560) + ",height=" + (script ? 820 : texts.length ? 720 : 640));
+			"popup=yes,width=" + width + ",height=" + height + (left !== null && top !== null ? ",left=" + left + ",top=" + top : ""));
 		if (!w) return false;
 		windows[id] = w;
 		return true;
