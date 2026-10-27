@@ -17,7 +17,7 @@ const (
 
 // Ladder is a Moog style 4 pole (24 dB/oct) transistor ladder filter, built from four zero-delay
 // feedback (TPT) one pole stages with a resolved global feedback loop. Resonance 0-1 maps to a
-// feedback of 0-4.2, the filter self-oscillates at 1. Drive saturates the input of the ladder
+// feedback of 0-4.2, the filter self-oscillates at 1. Drive saturates the input of the ladder, and every stage after the first clips softly (stageClip)
 type Ladder struct {
 	sr       float64
 	fc       float64
@@ -27,6 +27,7 @@ type Ladder struct {
 	k        float64 // feedback
 	s        [4]float64
 	compGain float64
+	stage    float64 // the level the clip of the stages carries up to
 }
 
 func New(fc float64, res float64, sr float64) *Ladder {
@@ -59,10 +60,29 @@ func (l *Ladder) update() {
 
 	// the ladder loses passband level as the feedback rises, partly compensate it
 	l.compGain = 1.0 + 0.5*l.k
+	l.stage = stageLevel / math.Sqrt(l.drive)
 }
 
 func (l *Ladder) Clear() {
 	l.s = [4]float64{}
+}
+
+// stageLevel is the level the clip of the stages carries up to at a drive of 1: a signal that is hot (a loud one into a high resonance, a drive) reaches it, a
+// quiet one does not feel it. More drive brings it down
+const stageLevel = 4.0
+
+// stageClip is a soft clip with a gain of 1 around zero (the shape of tanh, a rational approximation of it) that carries up to the level: a signal of a tenth of it keeps
+// its level within a percent, and one the size of the level loses about a dB
+func stageClip(x float64, level float64) float64 {
+	x /= level
+
+	if x > 3 {
+		return level
+	} else if x < -3 {
+		return -level
+	}
+
+	return level * x * (27 + x*x) / (27 + 9*x*x)
 }
 
 // Process filters a single sample and returns the output for the given mode
@@ -81,10 +101,17 @@ func (l *Ladder) Process(x float64, mode Mode) float64 {
 	// keeps unity gain for small signals
 	u := math.Tanh((x-l.k*y4)*l.drive) / l.drive
 
+	// every stage after the first gets what the one before it gives through a soft clip, as the transistor pairs of a real ladder do: a loud signal and a high
+	// resonance compress and grow harmonics where a linear ladder would only get louder
 	var y [5]float64
 	y[0] = u
 	for i := range 4 {
-		v := (y[i] - l.s[i]) * G
+		in := y[i]
+		if i > 0 {
+			in = stageClip(in, l.stage)
+		}
+
+		v := (in - l.s[i]) * G
 		y[i+1] = v + l.s[i]
 		l.s[i] = y[i+1] + v
 	}

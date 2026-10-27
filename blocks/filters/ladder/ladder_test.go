@@ -130,3 +130,52 @@ func TestSelfOscillation(t *testing.T) {
 		}
 	}
 }
+
+// peakGain is the level a sine of an amplitude comes out at, as dB of what went in
+func peakGain(fc, res, f, amp, drive float64) float64 {
+	l := New(fc, res, 44100)
+	l.SetDrive(drive)
+	peak := 0.0
+
+	for i := 0; i < 44100; i++ {
+		y := l.Process(amp*math.Sin(2*math.Pi*f*float64(i)/44100), LowPass24)
+		if i > 30000 {
+			peak = math.Max(peak, math.Abs(y))
+		}
+	}
+
+	return 20 * math.Log10(peak/amp)
+}
+
+// the stages clip softly: a small signal sees the linear filter, a loud one at a high resonance is held back where the resonance would grow it
+func TestStagesClip(t *testing.T) {
+	quiet := peakGain(1000, 0.9, 900, 0.01, 1)
+	loud := peakGain(1000, 0.9, 900, 1, 1)
+
+	if quiet < 8 {
+		t.Errorf("a quiet signal at the resonance gains %.1f dB, want the peak of the linear filter (over 8)", quiet)
+	}
+
+	if loud > quiet-10 {
+		t.Errorf("a loud signal gains %.1f dB against %.1f dB for a quiet one: the stages should hold the resonance back", loud, quiet)
+	}
+}
+
+// whatever goes in, nothing blows up
+func TestStagesStayBounded(t *testing.T) {
+	for _, res := range []float64{0, 0.9, 1} {
+		l := New(800, res, 44100)
+		l.SetDrive(6)
+
+		for i := 0; i < 20000; i++ {
+			x := 40 * math.Sin(float64(i)*0.05)
+			if i%700 < 3 {
+				x = 100
+			}
+
+			if y := l.Process(x, LowPass24); math.IsNaN(y) || math.Abs(y) > 20 {
+				t.Fatalf("resonance %v: sample %d is %v", res, i, y)
+			}
+		}
+	}
+}
