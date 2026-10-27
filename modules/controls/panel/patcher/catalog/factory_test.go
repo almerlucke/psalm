@@ -115,7 +115,7 @@ func TestFactoryPresetsAreThePresetsMade(t *testing.T) {
 	defer psalm.PopConfig()
 	kinds := catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Drums: "../../../../../assets/sounds/drums"})
 	for _, k := range kinds {
-		if k.Group != "Synths" || len(k.Presets) < 2 || k.Name == "dx" || k.Name == "clap" || k.Name == "drummachine" || k.Name == "drumsynth" {
+		if k.Group != "Synths" || len(k.Presets) < 2 || k.Name == "dx" || k.Name == "clap" || k.Name == "vst3" || k.Name == "drummachine" || k.Name == "drumsynth" {
 			continue
 		}
 		t.Run(k.Name, func(t *testing.T) {

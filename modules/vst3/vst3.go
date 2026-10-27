@@ -140,6 +140,10 @@ type param struct {
 	steps      int
 }
 
+// mainWords are what a plugin with many parameters is played with: the first parameter whose name has the word is in the group "Main" at the top (a plugin with forty
+// parameters or fewer needs no such group)
+var mainWords = []string{"volume", "gain", "cutoff", "resonance", "attack", "decay", "sustain", "release", "drive", "mix", "reverb", "delay", "width"}
+
 // note is a note that sounds: the id the plugin knows it by, its key, and for a note of a duration the samples it has left
 type note struct {
 	id      int32
@@ -150,28 +154,32 @@ type note struct {
 // Plugin is a VST3 plugin as a module: an instrument (it takes notes) or an effect (it takes the audio on its input)
 type Plugin struct {
 	*psalm.Module
-	desc     Descriptor
-	inst     *C.v3_inst
-	nIn      int // audio input buses: the first is played; the second (when there is one) is the side chain
-	nOut     int // audio output buses, each an output of the module
-	params   []param
-	keys     map[string]int
-	byID     map[uint32]int
-	held     map[string]note
-	timed    []note
-	nextID   int32
-	frames   int
-	tempo    atomic.Uint64
-	beats    atomic.Uint64
-	closed   atomic.Bool
-	syncFn   atomic.Pointer[func(map[string]float64)]
-	nameFn   atomic.Pointer[func(map[string]string)]
-	loadMu   sync.Mutex
-	metaMu   sync.RWMutex
-	changeMu sync.Mutex
-	changes  map[string]float64
-	flushing bool
-	telling  atomic.Bool
+	desc      Descriptor
+	inst      *C.v3_inst
+	nIn       int // audio input buses: the first is played; the second (when there is one) is the side chain
+	nOut      int // audio output buses, each an output of the module
+	params    []param
+	keys      map[string]int
+	byID      map[uint32]int
+	held      map[string]note
+	timed     []note
+	nextID    int32
+	frames    int
+	tempo     atomic.Uint64
+	beats     atomic.Uint64
+	closed    atomic.Bool
+	syncFn    atomic.Pointer[func(map[string]float64)]
+	nameFn    atomic.Pointer[func(map[string]string)]
+	loadMu    sync.Mutex
+	metaMu    sync.RWMutex
+	changeMu  sync.Mutex
+	changes   map[string]float64
+	flushing  bool
+	telling   atomic.Bool
+	presets   []Preset
+	preset    atomic.Int64 // the one loaded last, and one: 0 is none
+	progParam uint32
+	progSteps int
 }
 
 func newMain(d Descriptor) (*Plugin, error) {
@@ -201,6 +209,8 @@ func newMain(d Descriptor) (*Plugin, error) {
 	p.Module = psalm.NewModule(ins, outs)
 	p.SetSelf(p)
 	p.readParams()
+	p.readPrograms()
+	p.presets = append(p.presets, filePresets(d)...)
 	return p, nil
 }
 
@@ -234,9 +244,57 @@ func (p *Plugin) readParams() {
 		if _, dup := p.keys[key]; dup {
 			key = fmt.Sprintf("%s %d", key, id)
 		}
+		group := ""
+		if unit != 0 {
+			var gn [256]C.char
+			if C.v3_unit_name(p.inst, unit, &gn[0], 256) != 0 {
+				group = C.GoString(&gn[0])
+			}
+		}
 		p.keys[key] = len(p.params)
 		p.byID[uint32(id)] = len(p.params)
-		p.params = append(p.params, param{id: uint32(id), key: key, label: label, def: float64(def), steps: int(steps)})
+		p.params = append(p.params, param{id: uint32(id), key: key, label: label, group: group, def: float64(def), steps: int(steps)})
+	}
+	p.pickMain()
+}
+
+func (p *Plugin) pickMain() {
+	if len(p.params) <= 40 {
+		return
+	}
+	var main, rest []param
+	taken := map[int]bool{}
+	for _, w := range mainWords {
+		pick := -1
+		for i, q := range p.params {
+			name := strings.ToLower(q.group + " " + q.label)
+			if taken[i] || !strings.Contains(strings.ToLower(q.label), w) || strings.Contains(name, "lfo") || strings.Contains(name, "macro") {
+				continue
+			}
+			if pick < 0 {
+				pick = i
+			}
+			if strings.Contains(name, "filter") || strings.Contains(name, "amp") || strings.Contains(name, "master") || strings.Contains(name, "global") {
+				pick = i // the one that is the sound's own: its filter, its amplifier, the master
+				break
+			}
+		}
+		if pick >= 0 {
+			taken[pick] = true
+			q := p.params[pick]
+			q.group = "Main"
+			main = append(main, q)
+		}
+	}
+	for i, q := range p.params {
+		if !taken[i] {
+			rest = append(rest, q)
+		}
+	}
+	p.params = append(main, rest...)
+	for i, q := range p.params {
+		p.keys[q.key] = i
+		p.byID[q.id] = i
 	}
 }
 
@@ -283,9 +341,20 @@ func (p *Plugin) describeMain() params.Set {
 	set := params.Set{Name: p.desc.Name}
 	p.metaMu.RLock()
 	defer p.metaMu.RUnlock()
+	if len(p.presets) > 0 {
+		names := make([]string, len(p.presets)+1)
+		names[0] = "—" // no preset: the plugin has the sound it was given some other way (a state, its own window); the others are the presets, one number higher than Loaded
+		for i, pr := range p.presets {
+			names[i+1] = pr.label()
+		}
+		set.Params = append(set.Params, params.Param{Key: presetKey, Label: "preset", Group: "Preset", Kind: params.Choice, Options: names, Min: 0, Max: float64(len(names) - 1), Step: 1, Value: float64(p.Loaded() + 1)})
+	}
 	for _, q := range p.params {
 		v := float64(C.v3_param_value(p.inst, C.uint32_t(q.id)))
-		group := p.desc.Name
+		group := q.group
+		if group == "" {
+			group = p.desc.Name
+		}
 		var pr params.Param
 		switch {
 		case q.steps == 1:
@@ -331,6 +400,9 @@ func (p *Plugin) valuesMain() map[string]float64 {
 	}
 	for _, q := range p.params {
 		out[q.key] = float64(C.v3_param_value(p.inst, C.uint32_t(q.id)))
+	}
+	if len(p.presets) > 0 {
+		out[presetKey] = float64(p.Loaded() + 1) // 0 is none
 	}
 	return out
 }
@@ -488,15 +560,11 @@ func (p *Plugin) loadStateMain(state []byte) error {
 		return errors.New("a state cut short")
 	}
 	ctrl := state[12+cl : 12+cl+tl]
-	var cp, tp *C.uint8_t
-	if len(comp) > 0 {
-		cp = (*C.uint8_t)(unsafe.Pointer(&comp[0]))
-	}
-	if len(ctrl) > 0 {
-		tp = (*C.uint8_t)(unsafe.Pointer(&ctrl[0]))
-	}
-	if C.v3_state_load(p.inst, cp, C.size_t(len(comp)), tp, C.size_t(len(ctrl))) == 0 {
-		return fmt.Errorf("%s would not take the state", p.desc.Name)
+	p.loadMu.Unlock()
+	err := p.loadStateParts(comp, ctrl)
+	p.loadMu.Lock()
+	if err != nil {
+		return err
 	}
 	go p.tellEditor()
 	return nil
@@ -649,6 +717,11 @@ func (p *Plugin) ReceiveMessage(msg psalm.Message) {
 		}
 		return
 	}
+	msg.IfFltVal(presetKey, func(f float64) { // loaded off the audio thread: it reads files
+		if i := int(math.Round(f)) - 1; len(p.presets) > 0 && i >= 0 && i != p.Loaded() { // the editor tells the plugin the preset it has (0: none): nothing to do then
+			go func() { _ = p.LoadPreset(i) }()
+		}
+	})
 	for key, i := range p.keys {
 		msg.IfFltVal(key, func(f float64) {
 			C.v3_param(p.inst, C.uint32_t(p.params[i].id), C.double(min(1, max(0, f))), 0)

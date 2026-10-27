@@ -461,6 +461,7 @@ struct v3_inst {
 	double sr = 44100;
 	uint32_t maxFrames = 256;
 	bool active = false, processing = false;
+	ProgramListID progList = kNoProgramListId;
 	bool tuningExpression = false; // the plugin takes the tuning of a note as a note expression (else as the tuning of the note on)
 
 	// the audio buses (the first of the inputs, and the second as a side chain; every output up to 16)
@@ -972,6 +973,11 @@ void v3_param(v3_inst *inst, uint32_t id, double value, uint32_t offset) {
 	inst->ctrlSets.emplace_back(id, value);
 }
 
+// sets a parameter on the controller now (on the main thread), and has the processor told
+void v3_param_set_now(v3_inst *inst, uint32_t id, double value) {
+	SAFE(inst, if (inst->ctrl) inst->ctrl->setParamNormalized(id, value));
+}
+
 void v3_transport(v3_inst *inst, double tempo, double beats, int playing) {
 	ProcessContext &c = inst->ctx;
 	c.state = ProcessContext::kTempoValid | ProcessContext::kTimeSigValid | ProcessContext::kProjectTimeMusicValid | (playing ? ProcessContext::kPlaying : 0);
@@ -1104,6 +1110,80 @@ static int v3_state_load_in(v3_inst *inst, const uint8_t *comp, size_t complen, 
 }
 
 void v3_free_bytes(void *p) { free(p); }
+
+// --- the programs of a plugin: the parameter that selects one, and their names ---
+
+static int v3_programs_in(v3_inst *inst, uint32_t *param, int *steps) {
+	IUnitInfo *ui = nullptr;
+	if (!inst->ctrl || inst->ctrl->queryInterface(IUnitInfo::iid.toTUID(), (void **)&ui) != kResultOk || !ui) return 0;
+	int count = 0;
+	UnitID unit = -1;
+	int32 n = inst->ctrl->getParameterCount();
+	bool found = false;
+	for (int32 i = 0; i < n; i++) {
+		ParameterInfo pi{};
+		if (inst->ctrl->getParameterInfo(i, pi) == kResultOk && (pi.flags & ParameterInfo::kIsProgramChange)) {
+			*param = pi.id;
+			*steps = pi.stepCount;
+			unit = pi.unitId;
+			found = true;
+			break;
+		}
+	}
+	if (found) {
+		ProgramListID list = kNoProgramListId;
+		for (int32 u = 0; u < ui->getUnitCount(); u++) {
+			UnitInfo info{};
+			if (ui->getUnitInfo(u, info) == kResultOk && info.id == unit) list = info.programListId;
+		}
+		for (int32 l = 0; l < ui->getProgramListCount(); l++) {
+			ProgramListInfo info{};
+			if (ui->getProgramListInfo(l, info) == kResultOk && info.id == list) count = info.programCount;
+		}
+		inst->progList = list;
+	}
+	ui->release();
+	return count;
+}
+
+static int v3_program_name_in(v3_inst *inst, int index, char *name, int cap) {
+	IUnitInfo *ui = nullptr;
+	if (!inst->ctrl || inst->ctrl->queryInterface(IUnitInfo::iid.toTUID(), (void **)&ui) != kResultOk || !ui) return 0;
+	String128 s;
+	s[0] = 0;
+	bool ok = ui->getProgramName(inst->progList, index, s) == kResultOk;
+	ui->release();
+	if (!ok) return 0;
+	utf16_to_utf8(s, name, cap);
+	return 1;
+}
+
+// the name of a unit (a group of parameters), with the units it is in: "Oscillators / Osc 1"
+static int v3_unit_name_in(v3_inst *inst, int unit, char *name, int cap) {
+	IUnitInfo *ui = nullptr;
+	name[0] = 0;
+	if (!inst->ctrl || inst->ctrl->queryInterface(IUnitInfo::iid.toTUID(), (void **)&ui) != kResultOk || !ui) return 0;
+	std::string out;
+	UnitID id = unit;
+	for (int depth = 0; depth < 6 && id != kRootUnitId && id != kNoParentUnitId; depth++) {
+		UnitInfo info{};
+		bool found = false;
+		for (int32 u = 0; u < ui->getUnitCount(); u++) {
+			if (ui->getUnitInfo(u, info) == kResultOk && info.id == id) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) break;
+		char part[256];
+		utf16_to_utf8(info.name, part, sizeof part);
+		out = out.empty() ? std::string(part) : std::string(part) + " / " + out;
+		id = info.parentUnitId;
+	}
+	ui->release();
+	snprintf(name, cap, "%s", out.c_str());
+	return out.empty() ? 0 : 1;
+}
 
 // --- the window of a plugin ---
 
@@ -1336,6 +1416,9 @@ uint32_t v3_latency(v3_inst *inst) { GUARD(inst, v3_latency_in(inst), 0u); }
 int v3_process(v3_inst *inst, float *in0, float *in1, float *sc0, float *sc1, uint32_t frames) { GUARD(inst, v3_process_in(inst, in0, in1, sc0, sc1, frames), 0); }
 int v3_state_save(v3_inst *inst, uint8_t **comp, size_t *complen, uint8_t **ctrl, size_t *ctrllen) { GUARD(inst, v3_state_save_in(inst, comp, complen, ctrl, ctrllen), 0); }
 int v3_state_load(v3_inst *inst, const uint8_t *comp, size_t complen, const uint8_t *ctrl, size_t ctrllen) { GUARD(inst, v3_state_load_in(inst, comp, complen, ctrl, ctrllen), 0); }
+int v3_unit_name(v3_inst *inst, int unit, char *name, int cap) { GUARD(inst, v3_unit_name_in(inst, unit, name, cap), 0); }
+int v3_programs(v3_inst *inst, uint32_t *param, int *steps) { GUARD(inst, v3_programs_in(inst, param, steps), 0); }
+int v3_program_name(v3_inst *inst, int index, char *name, int cap) { GUARD(inst, v3_program_name_in(inst, index, name, cap), 0); }
 int v3_gui_available(v3_inst *inst) { GUARD(inst, gui_available_in(inst) ? 1 : 0, 0); }
 int v3_gui_show(v3_inst *inst) { GUARD(inst, gui_open(inst), 0); }
 void v3_gui_hide(v3_inst *inst) { GUARD_VOID(inst, gui_close(inst)); }

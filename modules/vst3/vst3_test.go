@@ -1,10 +1,12 @@
 package vst3
 
 import (
+	"encoding/binary"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -94,7 +96,7 @@ func TestInstrument(t *testing.T) {
 	if keys := p.Keys(); len(keys) != 1 || keys[0] != "gain" {
 		t.Fatalf("keys %v", keys)
 	}
-	if set := p.Describe(); len(set.Params) != 1 || set.Params[0].Value != 0.5 {
+	if set := p.Describe(); len(set.Params) != 2 || set.Params[0].Key != "preset" || set.Params[1].Value != 0.5 { // its programs first
 		t.Fatalf("describe %+v", set)
 	}
 	freq := func(pitch float64) float64 {
@@ -293,4 +295,81 @@ func TestCrash(t *testing.T) {
 	bad.ReceiveMessage(noteOn("b", 60))
 	bad.ResetRun()
 	bad.Synthesize()
+}
+
+// writeVstpreset makes a preset file: the header, the chunk of the state of the component, the list of chunks
+func writeVstpreset(t *testing.T, path, classID, comp string) {
+	t.Helper()
+	var b []byte
+	b = append(b, "VST3"...)
+	b = binary.LittleEndian.AppendUint32(b, 1)
+	b = append(b, classID...)
+	listAt := uint64(48 + len(comp))
+	b = binary.LittleEndian.AppendUint64(b, listAt)
+	b = append(b, comp...)
+	b = append(b, "List"...)
+	b = binary.LittleEndian.AppendUint32(b, 1)
+	b = append(b, "Comp"...)
+	b = binary.LittleEndian.AppendUint64(b, 48)
+	b = binary.LittleEndian.AppendUint64(b, uint64(len(comp)))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// presets: the programs the plugin tells of, and the files made for its class (presets/<vendor>/<plugin>/*.vstpreset), chosen by number; by a message, off the audio thread
+func TestPresets(t *testing.T) {
+	dir := testPlugins(t)
+	d := find(t, dir, "Psalm VST3 Sine")
+	presets := t.TempDir()
+	writeVstpreset(t, filepath.Join(presets, "psalm", "sine", "mine.vstpreset"), d.CID, "gain=0.300000")
+	writeVstpreset(t, filepath.Join(presets, "psalm", "sine", "other.vstpreset"), "00000000000000000000000000000000", "gain=0.9")
+	t.Setenv("VST3_PRESET_PATH", presets)
+	p, err := New(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Free()
+	var names []string
+	for _, pr := range p.Presets() {
+		names = append(names, pr.label())
+	}
+	if want := []string{"program / Quiet", "program / Middle", "program / Loud", "psalm/sine / mine"}; !slices.Equal(names, want) {
+		t.Fatalf("presets %v, want %v", names, want)
+	}
+	if set := p.Describe(); set.Params[0].Key != "preset" || len(set.Params[0].Options) != 5 {
+		t.Fatalf("settings %+v", set.Params)
+	}
+	gain := func() float64 {
+		p.AllNotesOff()
+		block(p)
+		p.ReceiveMessage(noteOn("g", 60))
+		var m float64
+		for range 8 {
+			m = math.Max(m, peak(block(p)))
+		}
+		return m
+	}
+	for i, want := range []float64{0.1, 0.5, 0.9, 0.3} {
+		if err := p.LoadPreset(i); err != nil {
+			t.Fatal(err)
+		}
+		block(p)
+		if got := gain(); math.Abs(got-want) > 0.03 {
+			t.Errorf("%s: the note peaks at %v, want %v", p.Presets()[i].label(), got, want)
+		}
+	}
+	p.ReceiveMessage(psalm.Message{"preset": 1.0})
+	for deadline := time.Now().Add(2 * time.Second); p.Loaded() != 0 && time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+	}
+	block(p)
+	if got := gain(); math.Abs(got-0.1) > 0.03 {
+		t.Errorf("by message: %v", got)
+	}
+	if p.LoadPreset(99) == nil {
+		t.Error("a preset that is not there")
+	}
 }

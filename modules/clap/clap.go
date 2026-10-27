@@ -353,11 +353,12 @@ func (p *Plugin) describeMain() params.Set {
 	p.metaMu.RLock()
 	defer p.metaMu.RUnlock()
 	if len(p.presets) > 0 {
-		names := make([]string, len(p.presets))
+		names := make([]string, len(p.presets)+1)
+		names[0] = "—" // no preset: the plugin has the sound it was given some other way (a state, its own window); the others are the presets, one number higher than Loaded
 		for i, pr := range p.presets {
-			names[i] = pr.label()
+			names[i+1] = pr.label()
 		}
-		set.Params = append(set.Params, params.Param{Key: presetKey, Label: "preset", Group: "Preset", Kind: params.Choice, Options: names, Min: 0, Max: float64(len(names) - 1), Step: 1, Value: float64(max(p.Loaded(), 0))})
+		set.Params = append(set.Params, params.Param{Key: presetKey, Label: "preset", Group: "Preset", Kind: params.Choice, Options: names, Min: 0, Max: float64(len(names) - 1), Step: 1, Value: float64(p.Loaded() + 1)})
 	}
 	for _, q := range p.params {
 		group := q.group
@@ -443,7 +444,7 @@ func (p *Plugin) loadPresetMain(i int) error {
 	return nil
 }
 
-// Loaded is the number of the preset loaded last, -1 when none was
+// Loaded is the number of the preset loaded last, -1 when none was (the editor's list has "none" first: its numbers are one higher)
 func (p *Plugin) Loaded() int { return int(p.preset.Load()) - 1 }
 
 // SaveState is what the plugin keeps of its sound, to give back with LoadState (its own format: the settings, and what is not a setting, the routing of its modulation)
@@ -494,7 +495,7 @@ func (p *Plugin) valuesMain() map[string]float64 {
 		out[q.key] = float64(C.pi_param_value(p.inst, C.uint32_t(q.id)))
 	}
 	if len(p.presets) > 0 {
-		out[presetKey] = float64(max(p.Loaded(), 0))
+		out[presetKey] = float64(p.Loaded() + 1) // 0 is none
 	}
 	return out
 }
@@ -706,7 +707,7 @@ func (p *Plugin) ReceiveMessage(msg psalm.Message) {
 		}
 	})
 	msg.IfFltVal(presetKey, func(f float64) { // loaded off the audio thread: it reads files
-		if i := int(math.Round(f)); len(p.presets) > 0 && i != p.Loaded() { // the editor tells the plugin the preset it has: nothing to do then
+		if i := int(math.Round(f)) - 1; len(p.presets) > 0 && i >= 0 && i != p.Loaded() { // the editor tells the plugin the preset it has (0: none): nothing to do then
 			go func() { _ = p.LoadPreset(i) }()
 		}
 	})

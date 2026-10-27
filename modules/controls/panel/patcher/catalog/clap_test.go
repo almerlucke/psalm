@@ -123,8 +123,8 @@ func TestClapRealPlugins(t *testing.T) {
 	if len(presets) < 1000 {
 		t.Errorf("Surge XT lists %d presets (its data is needed: see docs/clap.md)", len(presets))
 	} else {
-		want := slices.Index(presets, "Plucks / Taped Plucks")
-		synth.Module.ReceiveMessage(psalm.Message{"preset": float64(want)})
+		want := slices.Index(presets, "Plucks / Taped Plucks") - 1 // the list has "none" first
+		synth.Module.ReceiveMessage(psalm.Message{"preset": float64(want + 1)})
 		pl := synth.Module.(*clap.Plugin)
 		deadline := time.Now().Add(3 * time.Second)
 		for pl.Loaded() != want && time.Now().Before(deadline) {
@@ -160,6 +160,7 @@ func TestClapStateInPatch(t *testing.T) {
 		return pt, p
 	}
 	keep := t.TempDir()
+	var dbg func() any
 	// the patch runs while we wait: the controls of the editor tick and send what they were set to
 	until := func(p *psalm.Psalm, what string, done func() bool) {
 		t.Helper()
@@ -168,7 +169,7 @@ func TestClapStateInPatch(t *testing.T) {
 			p.Run()
 		}
 		if !done() {
-			t.Fatal(what)
+			t.Fatalf("%s (%v)", what, dbg())
 		}
 	}
 	pt, p1 := newPatcher(keep)
@@ -187,7 +188,7 @@ func TestClapStateInPatch(t *testing.T) {
 		return s
 	}
 	// the preset "Loud" (gain 1): the knob of the editor follows
-	pt.SettingsOf(id).Apply(map[string]float64{"preset": 1})
+	pt.SettingsOf(id).Apply(map[string]float64{"preset": 2}) // "none", "Quiet", "Loud"
 	until(p1, "the knob does not follow the preset", func() bool { return node(pt, id).Values()["output gain"] == 1 })
 	// the plugin renames the knob when it is turned up (it tells the host): the editor shows the new label
 	label := func() string {
@@ -221,7 +222,16 @@ func TestClapStateInPatch(t *testing.T) {
 			id2 = n.ID
 		}
 	}
+	dbg = func() any { return node(pt2, id2).Values() }
 	until(p2, "after loading the patch the knob is not at 1", func() bool { return node(pt2, id2).Values()["output gain"] == 1 })
+	// and it stays: what the editor is told (the preset: none) is not a preset to load over the state
+	for deadline := time.Now().Add(1500 * time.Millisecond); time.Now().Before(deadline); time.Sleep(3 * time.Millisecond) {
+		p2.ResetRun()
+		p2.Run()
+	}
+	if g := node(pt2, id2).Values()["output gain"]; g != 1 {
+		t.Errorf("the knob went to %v after the state was given back, want it to stay at 1", g)
+	}
 }
 
 // the plugin's own window opens (what a double click on its module does) (opt in: it puts a window on the screen; CLAP_TEST_DIR names the directory with OB-Xf)

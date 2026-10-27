@@ -29,6 +29,8 @@ func main() {
 	notes := flag.String("notes", "60,64,67", "the pitches of the chord (MIDI, may be fractional)")
 	buffer := flag.Int("buffer", 256, "the size of a buffer in samples")
 	seconds := flag.Float64("seconds", 4, "how long the chord is held")
+	showPresets := flag.Bool("presets", false, "list the presets the plugin has: its programs and the files made for it")
+	load := flag.String("load", "", "with -render: load this preset first (its name, or the start of it)")
 	window := flag.Float64("window", 0, "show the window of the plugin (if it has one) for this many seconds")
 	set := flag.String("set", "", "parameters to set before it plays: key=value (0 to 1), separated by a semicolon")
 	flag.Parse()
@@ -67,6 +69,27 @@ func main() {
 		for _, p := range pl.Describe().Params {
 			fmt.Printf("%-40q %g .. %g  (%g)\n", p.Key, p.Min, p.Max, p.Value)
 		}
+	}
+	if *showPresets {
+		for i, p := range pl.Presets() {
+			fmt.Printf("%4d  %s\n", i, p.Name)
+		}
+		fmt.Println(len(pl.Presets()), "presets")
+	}
+	if *load != "" {
+		found := -1
+		for i, p := range pl.Presets() {
+			if p.Name == *load || (found < 0 && strings.HasPrefix(strings.ToLower(p.Name), strings.ToLower(*load))) {
+				found = i
+			}
+		}
+		if found < 0 {
+			log.Fatalf("no preset %q", *load)
+		}
+		if err := pl.LoadPreset(found); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("loaded", pl.Presets()[found].Name)
 	}
 	if *window > 0 {
 		fmt.Println("the plugin has a window:", pl.HasWindow())

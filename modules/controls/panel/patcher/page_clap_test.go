@@ -13,6 +13,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel/paneltest"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/catalog"
+	"github.com/almerlucke/psalm/modules/vst3"
 )
 
 // the demo patch with Surge XT on the page: choosing the plugin shows its 775 settings in the side panel (CLAP_TEST_DIR names the directory with Surge XT and its data: see docs/clap.md)
@@ -86,6 +87,36 @@ func TestPageClapNativeWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	pl := pt.Module(id).(*clap.Plugin)
+	t.Cleanup(pl.HideWindow)
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 2`)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	paneltest.Eventually(t, "the window of the plugin opened by a double click", func() bool { return pl.WindowOpen() })
+	if tb.Eval(`document.querySelectorAll(".pt-win").length`).(float64) != 0 {
+		t.Error("a window of settings opens besides the window of the plugin")
+	}
+}
+
+// a double click on a VST3 plugin opens the plugin's own window (opt in: it puts a window on the screen; VST3_TEST_DIR names the directory with the VST3 build of OB-Xf)
+func TestPageVST3NativeWindow(t *testing.T) {
+	dir := os.Getenv("VST3_TEST_DIR")
+	if dir == "" || os.Getenv("CLAP_TEST_WINDOW") == "" {
+		t.Skip("VST3_TEST_DIR and CLAP_TEST_WINDOW are not set")
+	}
+	t.Setenv("VST3_PATH", dir)
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("vst3", "OB-Xf", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pl := pt.Module(id).(*vst3.Plugin)
 	t.Cleanup(pl.HideWindow)
 	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 2`)
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))

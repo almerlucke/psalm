@@ -47,6 +47,8 @@ int v3_param_text(v3_inst *inst, uint32_t id, double value, char *out, int cap);
 // events for the next block: a note (pitch a MIDI key, the tuning in cents above it) and a parameter value (0 to 1) at a sample of the block
 void v3_note(v3_inst *inst, int on, uint32_t offset, int pitch, double velocity, int32_t noteID, double tuningCents);
 void v3_param(v3_inst *inst, uint32_t id, double value, uint32_t offset);
+// a value set on the controller now, on the main thread
+void v3_param_set_now(v3_inst *inst, uint32_t id, double value);
 
 // where the host is: the tempo, the position in beats, whether it plays
 void v3_transport(v3_inst *inst, double tempo, double beats, int playing);
@@ -66,6 +68,13 @@ int v3_take_restart(v3_inst *inst);
 int v3_state_save(v3_inst *inst, uint8_t **comp, size_t *complen, uint8_t **ctrl, size_t *ctrllen);
 int v3_state_load(v3_inst *inst, const uint8_t *comp, size_t complen, const uint8_t *ctrl, size_t ctrllen);
 void v3_free_bytes(void *p);
+
+// the name of a unit (a group of parameters) with the units it is in, "Oscillators / Osc 1"; 0 for the root and for a unit it does not know
+int v3_unit_name(v3_inst *inst, int unit, char *name, int cap);
+
+// the programs of the plugin (its own list of sounds): how many, the parameter that selects one and its steps; the name of one (0 when it has none)
+int v3_programs(v3_inst *inst, uint32_t *param, int *steps);
+int v3_program_name(v3_inst *inst, int index, char *name, int cap);
 
 // the window of the plugin (X11, embedded in a window of ours), shown and hidden on the main thread
 int v3_gui_available(v3_inst *inst);

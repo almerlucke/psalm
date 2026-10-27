@@ -16,6 +16,7 @@
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
+#include "pluginterfaces/vst/ivstunits.h"
 #include "pluginterfaces/vst/vstspeaker.h"
 
 using namespace Steinberg;
@@ -133,6 +134,11 @@ public:
 				int32 n = q->getPointCount(), off;
 				ParamValue v;
 				if (q->getParameterId() == 0 && n > 0 && q->getPoint(n - 1, off, v) == kResultOk) gain = instrument ? v : v * 2;
+				if (q->getParameterId() == 1 && n > 0 && q->getPoint(n - 1, off, v) == kResultOk) { // a program: its gain
+					static const double programs[3] = {0.1, 0.5, 0.9};
+					int index = (int)lround(v * 2);
+					gain = (instrument ? 1 : 2) * programs[index < 0 ? 0 : index > 2 ? 2 : index];
+				}
 			}
 		}
 		if (d.numOutputs < 1) return kResultOk;
@@ -185,10 +191,10 @@ public:
 	}
 };
 
-class TestController : public Obj<IEditController> {
+class TestController : public Obj<IEditController, IUnitInfo> {
 public:
 	bool instrument;
-	double value;
+	double value, program = 0;
 	IComponentHandler *handler = nullptr;
 	explicit TestController(bool inst) : instrument(inst), value(0.5) {}
 	tresult PLUGIN_API initialize(FUnknown *) override { return kResultOk; }
@@ -201,8 +207,18 @@ public:
 	}
 	tresult PLUGIN_API setState(IBStream *) override { return kResultOk; }
 	tresult PLUGIN_API getState(IBStream *) override { return kResultOk; }
-	int32 PLUGIN_API getParameterCount() override { return 1; }
+	int32 PLUGIN_API getParameterCount() override { return 2; }
 	tresult PLUGIN_API getParameterInfo(int32 i, ParameterInfo &info) override {
+		if (i == 1) { // the program
+			memset(&info, 0, sizeof info);
+			info.id = 1;
+			const char *t = "Program";
+			for (int k = 0; t[k]; k++) info.title[k] = (char16)t[k];
+			info.stepCount = 2;
+			info.unitId = 1;
+			info.flags = ParameterInfo::kCanAutomate | ParameterInfo::kIsProgramChange | ParameterInfo::kIsList;
+			return kResultOk;
+		}
 		if (i != 0) return kResultFalse;
 		memset(&info, 0, sizeof info);
 		info.id = 0;
@@ -221,8 +237,15 @@ public:
 	tresult PLUGIN_API getParamValueByString(ParamID, TChar *, ParamValue &) override { return kResultFalse; }
 	ParamValue PLUGIN_API normalizedParamToPlain(ParamID, ParamValue v) override { return v; }
 	ParamValue PLUGIN_API plainParamToNormalized(ParamID, ParamValue v) override { return v; }
-	ParamValue PLUGIN_API getParamNormalized(ParamID) override { return value; }
-	tresult PLUGIN_API setParamNormalized(ParamID, ParamValue v) override {
+	ParamValue PLUGIN_API getParamNormalized(ParamID id) override { return id == 1 ? program : value; }
+	tresult PLUGIN_API setParamNormalized(ParamID id, ParamValue v) override {
+		if (id == 1) { // a program: the gain it has
+			program = v;
+			static const double programs[3] = {0.1, 0.5, 0.9};
+			int index = (int)lround(v * 2);
+			value = programs[index < 0 ? 0 : index > 2 ? 2 : index] * (instrument ? 1 : 1);
+			return kResultOk;
+		}
 		bool was = value > 0.75;
 		value = v;
 		if (instrument && handler && was != (v > 0.75)) handler->restartComponent(kParamTitlesChanged);
@@ -233,6 +256,39 @@ public:
 		return kResultOk;
 	}
 	IPlugView *PLUGIN_API createView(FIDString) override { return nullptr; }
+	// the programs: one list of three in the unit 1
+	int32 PLUGIN_API getUnitCount() override { return 2; }
+	tresult PLUGIN_API getUnitInfo(int32 i, UnitInfo &info) override {
+		memset(&info, 0, sizeof info);
+		info.id = i == 0 ? kRootUnitId : 1;
+		info.parentUnitId = i == 0 ? kNoParentUnitId : kRootUnitId;
+		info.programListId = i == 0 ? kNoProgramListId : 7;
+		const char *n = "Programs";
+		if (i == 1) for (int k = 0; n[k]; k++) info.name[k] = (char16)n[k];
+		return i < 2 ? kResultOk : kResultFalse;
+	}
+	int32 PLUGIN_API getProgramListCount() override { return 1; }
+	tresult PLUGIN_API getProgramListInfo(int32 i, ProgramListInfo &info) override {
+		if (i != 0) return kResultFalse;
+		memset(&info, 0, sizeof info);
+		info.id = 7;
+		info.programCount = 3;
+		return kResultOk;
+	}
+	tresult PLUGIN_API getProgramName(ProgramListID list, int32 index, String128 name) override {
+		static const char *names[3] = {"Quiet", "Middle", "Loud"};
+		if (list != 7 || index < 0 || index > 2) return kResultFalse;
+		memset(name, 0, sizeof(String128));
+		for (int k = 0; names[index][k]; k++) name[k] = (char16)names[index][k];
+		return kResultOk;
+	}
+	tresult PLUGIN_API getProgramInfo(ProgramListID, int32, Vst::CString, String128) override { return kResultFalse; }
+	tresult PLUGIN_API hasProgramPitchNames(ProgramListID, int32) override { return kResultFalse; }
+	tresult PLUGIN_API getProgramPitchName(ProgramListID, int32, int16, String128) override { return kResultFalse; }
+	UnitID PLUGIN_API getSelectedUnit() override { return kRootUnitId; }
+	tresult PLUGIN_API selectUnit(UnitID) override { return kResultOk; }
+	tresult PLUGIN_API getUnitByBus(MediaType, BusDirection, int32, int32, UnitID &) override { return kResultFalse; }
+	tresult PLUGIN_API setUnitProgramData(int32, int32, IBStream *) override { return kResultFalse; }
 };
 
 class TestFactory : public Obj<IPluginFactory3> {

@@ -206,7 +206,7 @@ func TestPresets(t *testing.T) {
 		t.Errorf("the effect has no presets of its own: %v %v", err, fx)
 	}
 	set := p.Describe()
-	if len(set.Params) != 2 || set.Params[0].Key != "preset" || set.Params[0].Kind != params.Choice || len(set.Params[0].Options) != 4 {
+	if len(set.Params) != 2 || set.Params[0].Key != "preset" || set.Params[0].Kind != params.Choice || len(set.Params[0].Options) != 5 {
 		t.Fatalf("settings %+v", set.Params)
 	}
 	gain := func() float64 { // what the sound of a note is: its amplitude is the gain
@@ -239,7 +239,7 @@ func TestPresets(t *testing.T) {
 		}
 	}
 	// by a message, off the audio thread
-	p.ReceiveMessage(psalm.Message{"preset": float64(index("soft / Quiet"))})
+	p.ReceiveMessage(psalm.Message{"preset": float64(index("soft / Quiet") + 1)})
 	deadline := time.Now().Add(2 * time.Second)
 	for p.Loaded() != index("soft / Quiet") && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)

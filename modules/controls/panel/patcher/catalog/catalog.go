@@ -197,6 +197,7 @@ func Kinds(cfg Config) []patcher.Kind {
 		}, func(n string) params.Set { return drumsynth.Describe(drumsynth.Config{Kit: drumsynth.Kits[n]()}) }, v),
 	)
 	kinds = append(kinds, clapKinds()...)
+	kinds = append(kinds, vst3Kinds()...)
 	kinds = append(kinds,
 		effect("chorus", func() (psalm.Modular, func() params.Set) {
 			m := chorus.New(chorus.DefaultConfig())
