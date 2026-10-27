@@ -3,7 +3,7 @@
 // for the drum kits. The name of each prints as it starts.
 //
 //	go run ./cmd/examples/presets                          all of them
-//	go run ./cmd/examples/presets -synth vocal             one synth
+//	go run ./cmd/examples/presets -synth vocal             one synth (subtractive has all of its presets)
 //	go run ./cmd/examples/presets -render presets.wav      render it
 package main
 
@@ -192,6 +192,7 @@ func main() {
 		{"drumsynth", "trap", beat, 0, kit(drumsynth.KitTrap)},
 		{"drumsynth", "industrial", beat, 0, kit(drumsynth.KitIndustrial)},
 	}
+	tour = append(tour, subtractiveTour()...)
 	var chosen []entry
 	for _, e := range tour {
 		if *only == "" || strings.EqualFold(e.synth, *only) {
