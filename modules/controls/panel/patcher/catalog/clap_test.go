@@ -7,11 +7,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/clap"
+	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 )
 
@@ -120,4 +122,71 @@ func TestClapRealPlugins(t *testing.T) {
 	if dry < 0.05 || peak == 0 || math.IsNaN(peak) {
 		t.Errorf("silent: %v %v", dry, peak)
 	}
+}
+
+// a plugin in a patch that is kept: its state comes back (the sound is not the settings of the knobs of the time), and after a preset the editor's knobs follow the plugin
+func TestClapStateInPatch(t *testing.T) {
+	cc, err := exec.LookPath("cc")
+	if err != nil {
+		t.Skip("no C compiler")
+	}
+	dir := t.TempDir()
+	root := "../../../../clap"
+	if out, err := exec.Command(cc, "-shared", "-fPIC", "-I", filepath.Join(root, "include"), "-o", filepath.Join(dir, "test.clap"), filepath.Join(root, "testdata/testplugin.c"), "-lm").CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	psalm.PushConfig(psalm.Config{BPM: 100, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	newPatcher := func(keep string) (*patcher.Patcher, *psalm.Psalm) {
+		p := psalm.New(nil)
+		pt := patcher.New(p, panel.New(p, "Test"), "Patch", clapKinds(dir), patcher.Keep(keep))
+		p.Out(pt.Out())
+		return pt, p
+	}
+	keep := t.TempDir()
+	// the patch runs while we wait: the controls of the editor tick and send what they were set to
+	until := func(p *psalm.Psalm, what string, done func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(3 * time.Second); !done() && time.Now().Before(deadline); time.Sleep(3 * time.Millisecond) {
+			p.ResetRun()
+			p.Run()
+		}
+		if !done() {
+			t.Fatal(what)
+		}
+	}
+	pt, p1 := newPatcher(keep)
+	id, err := pt.Add("clap", "Psalm Test Sine", 10, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	node := func(pt *patcher.Patcher, id string) patcher.Settings {
+		s, ok := pt.SettingsOf(id).(patcher.Settings)
+		if !ok {
+			t.Fatal("no settings")
+		}
+		return s
+	}
+	// the preset "Loud" (gain 1): the knob of the editor follows
+	pt.SettingsOf(id).Apply(map[string]float64{"preset": 1})
+	until(p1, "the knob does not follow the preset", func() bool { return node(pt, id).Values()["output gain"] == 1 })
+	if err := pt.Save("with state"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(keep, "with state.json"))
+	if !strings.Contains(string(data), `"state"`) {
+		t.Errorf("no state in the patch kept: %s", data)
+	}
+	// another patcher loads it: the plugin has gain 1 again (a plugin made new has 0.5)
+	pt2, p2 := newPatcher(keep)
+	if err := pt2.Load("with state"); err != nil {
+		t.Fatal(err)
+	}
+	var id2 string
+	for _, n := range pt2.Nodes() {
+		if n.Kind == "clap" {
+			id2 = n.ID
+		}
+	}
+	until(p2, "after loading the patch the knob is not at 1", func() bool { return node(pt2, id2).Values()["output gain"] == 1 })
 }

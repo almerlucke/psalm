@@ -140,6 +140,13 @@ type Made struct {
 	// PresetTexts gives the texts a preset of the kind has (by key), asked when a factory preset is
 	// chosen in the editor, so the boxes show the text of the new sound
 	PresetTexts func(preset string) map[string]string
+	// State is what the module keeps of its sound besides its settings (a plugin's own state), as a text a patch keeps; SetState gives it back (off the audio
+	// thread). A module with a state has it before its texts and settings are set: when it has one, the settings kept are not set again (the state is the sound)
+	State    func() (string, error)
+	SetState func(state string) error
+	// Bind is called once the module has its editor, with a function that sets the settings of the editor (the knobs and the controls) to values by key: for a
+	// module that changes its own settings (a plugin that loads a preset) and tells the editor
+	Bind func(set func(values map[string]float64))
 	// Late is called on every control tick after every module had its own (a Notes module plays the
 	// triggers of the tick there, when the values feeding it are up to date)
 	Late func(tick psalm.CtrlTick)
@@ -511,6 +518,10 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 				_ = ed.Keep(filepath.Join(pt.presets, kindName))
 			}
 			n.settings = ed
+		}
+		if made.Bind != nil && n.settings != nil {
+			settings := n.settings
+			made.Bind(func(values map[string]float64) { settings.Apply(values) })
 		}
 		add = append(add, l.added...)
 		if made.Added != nil {
@@ -1058,6 +1069,7 @@ type patchFile struct {
 		node
 		Settings map[string]float64 `json:"settings,omitempty"`
 		Texts    map[string]string  `json:"texts,omitempty"`
+		State    string             `json:"state,omitempty"`
 	} `json:"nodes"`
 	Cables []*Cable `json:"cables"`
 	BPM    float64  `json:"bpm,omitempty"` // the tempo
@@ -1105,9 +1117,15 @@ func (pt *Patcher) snapshot(keep map[string]bool) patchFile {
 			node
 			Settings map[string]float64 `json:"settings,omitempty"`
 			Texts    map[string]string  `json:"texts,omitempty"`
+			State    string             `json:"state,omitempty"`
 		}{node: *n}
 		if n.settings != nil {
 			e.Settings = n.settings.Values()
+		}
+		if n.made != nil && n.made.State != nil {
+			if st, err := n.made.State(); err == nil {
+				e.State = st
+			}
 		}
 		if len(n.texts) > 0 {
 			e.Texts = maps.Clone(n.texts)
@@ -1141,10 +1159,23 @@ func (pt *Patcher) place(f patchFile, dx, dy float64, out bool) (map[string]stri
 			continue
 		}
 		ids[n.ID] = id
+		hasState := false
+		if n.State != "" {
+			pt.mu.Lock()
+			made := pt.node(id)
+			pt.mu.Unlock()
+			if made != nil && made.made != nil && made.made.SetState != nil {
+				if err := made.made.SetState(n.State); err != nil {
+					failed = append(failed, n.Kind+": "+err.Error())
+				} else {
+					hasState = true // the sound is the state's: the settings kept are those of the knobs of that time
+				}
+			}
+		}
 		for key, value := range n.Texts {
 			_ = pt.SetText(id, key, value)
 		}
-		if len(n.Settings) > 0 {
+		if len(n.Settings) > 0 && !hasState {
 			pt.mu.Lock()
 			made := pt.node(id)
 			pt.mu.Unlock()

@@ -17,6 +17,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -24,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/almerlucke/psalm"
@@ -212,7 +214,8 @@ type Plugin struct {
 	frames  int
 	closed  atomic.Bool // asked to let go: the audio thread does it at its next block
 	presets []Preset
-	preset  atomic.Int64 // the one loaded last, and one: 0 is none
+	syncFn  atomic.Pointer[func(map[string]float64)] // tells the editor the settings the plugin has now
+	preset  atomic.Int64                             // the one loaded last, and one: 0 is none
 	loadMu  sync.Mutex
 }
 
@@ -404,6 +407,7 @@ func (p *Plugin) LoadPreset(i int) error {
 		return fmt.Errorf("%s: the plugin would not load it", pr.Name)
 	}
 	p.preset.Store(int64(i + 1))
+	go p.tellEditor()
 	return nil
 }
 
@@ -437,7 +441,45 @@ func (p *Plugin) LoadState(state []byte) error {
 	if C.pi_state_load(p.inst, (*C.uint8_t)(unsafe.Pointer(&state[0])), C.size_t(len(state))) == 0 {
 		return fmt.Errorf("%s would not take the state", p.desc.Name)
 	}
+	go p.tellEditor()
 	return nil
+}
+
+// Bind gives the plugin a function that sets the settings of its editor: after a preset or a state is loaded the plugin tells it where all its settings are now,
+// so the knobs follow
+func (p *Plugin) Bind(set func(values map[string]float64)) { p.syncFn.Store(&set) }
+
+// Values are the settings of the plugin as it has them now, by key (and the number of the preset loaded last)
+func (p *Plugin) Values() map[string]float64 {
+	out := make(map[string]float64, len(p.params)+1)
+	if p.inst == nil {
+		return out
+	}
+	for _, q := range p.params {
+		out[q.key] = float64(C.pi_param_value(p.inst, C.uint32_t(q.id)))
+	}
+	if len(p.presets) > 0 {
+		out[presetKey] = float64(max(p.Loaded(), 0))
+	}
+	return out
+}
+
+// tellEditor waits until the plugin has settled on what it loaded (a plugin may load on a thread of its own) and then tells the editor the settings it has
+func (p *Plugin) tellEditor() {
+	fn := p.syncFn.Load()
+	if fn == nil {
+		return
+	}
+	last := p.Values()
+	for i := 0; i < 60; i++ { // up to three seconds
+		time.Sleep(50 * time.Millisecond)
+		now := p.Values()
+		if maps.Equal(now, last) && i > 1 {
+			break
+		}
+		last = now
+	}
+	(*fn)(last)
 }
 
 // Keys are the keys of the messages that move the parameters
@@ -507,8 +549,8 @@ func (p *Plugin) ReceiveMessage(msg psalm.Message) {
 		return
 	}
 	msg.IfFltVal(presetKey, func(f float64) { // loaded off the audio thread: it reads files
-		if len(p.presets) > 0 {
-			go func() { _ = p.LoadPreset(int(math.Round(f))) }()
+		if i := int(math.Round(f)); len(p.presets) > 0 && i != p.Loaded() { // the editor tells the plugin the preset it has: nothing to do then
+			go func() { _ = p.LoadPreset(i) }()
 		}
 	})
 	for key, i := range p.keys {

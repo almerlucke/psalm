@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"encoding/base64"
 	"fmt"
 	"slices"
 	"sync"
@@ -58,7 +59,19 @@ func clapKinds(dirs ...string) []patcher.Kind {
 				if err != nil {
 					return nil, err
 				}
-				return &patcher.Made{Module: pl, Describe: func(string) params.Set { return pl.Describe() }, Close: pl.Close}, nil
+				return &patcher.Made{Module: pl, Describe: func(string) params.Set { return pl.Describe() }, Close: pl.Close,
+					State: func() (string, error) {
+						st, err := pl.SaveState()
+						return base64.StdEncoding.EncodeToString(st), err
+					},
+					SetState: func(state string) error {
+						st, err := base64.StdEncoding.DecodeString(state)
+						if err != nil {
+							return err
+						}
+						return pl.LoadState(st)
+					},
+					Bind: pl.Bind}, nil
 			}})
 	}
 	return kinds

@@ -252,12 +252,33 @@ static const clap_preset_discovery_provider_t *pf_create(const clap_preset_disco
 }
 static const clap_preset_discovery_factory_t preset_factory = {pf_count, pf_desc, pf_create};
 
+// the state: the gain, as text
+static bool st_save(const clap_plugin_t *p, const clap_ostream_t *s) {
+	char buf[64];
+	int n = snprintf(buf, sizeof buf, "gain=%.6f", ((test *)p->plugin_data)->gain);
+	return s->write(s, buf, n) == n;
+}
+static bool st_load(const clap_plugin_t *p, const clap_istream_t *s) {
+	char buf[64] = {0};
+	int64_t n = s->read(s, buf, sizeof buf - 1);
+	double g;
+	if (n <= 0 || sscanf(buf, "gain=%lf", &g) != 1) {
+		return false;
+	}
+	((test *)p->plugin_data)->gain = g;
+	return true;
+}
+static const clap_plugin_state_t state_ext = {st_save, st_load};
+
 static const void *t_extension(const clap_plugin_t *p, const char *id) {
 	if (!strcmp(id, CLAP_EXT_AUDIO_PORTS)) {
 		return &audio_ports;
 	}
 	if (!strcmp(id, CLAP_EXT_PARAMS)) {
 		return &params;
+	}
+	if (!strcmp(id, CLAP_EXT_STATE)) {
+		return &state_ext;
 	}
 	if (!strcmp(id, CLAP_EXT_PRESET_LOAD)) {
 		return &preset_load;

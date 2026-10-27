@@ -107,7 +107,7 @@ func sample(name string, presets []string) []string {
 	return out
 }
 
-// TestFactoryPresetsAreThePresetsMade: choosing a factory preset on the page of a synth (the editor's
+// TestFactoryPresetsAreThePresetsMade (not for the plugins of the clap kind: their presets are the plugins): choosing a factory preset on the page of a synth (the editor's
 // own load, as the side panel of the patcher does) gives the sound of the synth made at that preset,
 // whatever preset the page started on. AUDIT=1 tries every preset of every synth
 func TestFactoryPresetsAreThePresetsMade(t *testing.T) {
@@ -115,7 +115,7 @@ func TestFactoryPresetsAreThePresetsMade(t *testing.T) {
 	defer psalm.PopConfig()
 	kinds := catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Drums: "../../../../../assets/sounds/drums"})
 	for _, k := range kinds {
-		if k.Group != "Synths" || len(k.Presets) < 2 || k.Name == "dx" || k.Name == "drummachine" || k.Name == "drumsynth" {
+		if k.Group != "Synths" || len(k.Presets) < 2 || k.Name == "dx" || k.Name == "clap" || k.Name == "drummachine" || k.Name == "drumsynth" {
 			continue
 		}
 		t.Run(k.Name, func(t *testing.T) {
