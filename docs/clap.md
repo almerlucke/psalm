@@ -37,7 +37,7 @@ go run ./cmd/clap -plugin "Surge XT" -preset modules/clap/presets/surge-xt/pluck
 go run ./cmd/clap -plugin "Surge XT" -explore "a osc 1 type;a amp eg attack"     what a parameter shows over its range
 ```
 
-Surge XT: Soft Pluck, Island Pluck, Kalimba, Plucked String, Glass Bell, Warm Pad, Sub Bass, Hawaiian Lead, set to about the same loudness (-18 dB). Surge XT Effects is one effect at a time, its type chosen by the `fx type` setting (Delay, Reverb 1 and 2, Spring Reverb, Phaser, Flanger, Chorus, Ensemble, Rotary Speaker, Distortion, Tape, EQ and more than twenty others); a preset sets the type and the mix, and the knobs that follow it are named as for the delay whatever the type is (the host does not follow the plugin renaming them).
+Surge XT: Soft Pluck, Island Pluck, Kalimba, Plucked String, Glass Bell, Warm Pad, Sub Bass, Hawaiian Lead, set to about the same loudness (-18 dB). OB-Xf (Surge Synth Team's virtual analog polysynth, free; `modules/clap/presets/ob-xf/`, about -18 dB, the pluck quieter since its master volume is at the top): Warm Pad, Analog Bass, Brass Stab, Pulse Pluck, Slide Lead. Its filter works from the start (Surge XT's needs the state round trip below). Surge XT Effects is one effect at a time, its type chosen by the `fx type` setting (Delay, Reverb 1 and 2, Spring Reverb, Phaser, Flanger, Chorus, Ensemble, Rotary Speaker, Distortion, Tape, EQ and more than twenty others); a preset sets the type and the mix, and the knobs that follow it are named as for the delay whatever the type is (the host does not follow the plugin renaming them).
 
 ## Limits
 

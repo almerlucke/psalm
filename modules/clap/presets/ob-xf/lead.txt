@@ -1,0 +1,24 @@
+# name: OB-Xf Slide Lead
+# One voice with glide between the notes, saw and pulse together, an octave-up second oscillator: a lead that slides, like the steel guitar of the island pieces.
+oscillators osc 1 saw wave = On
+oscillators osc 1 pulse wave = On
+oscillators osc pulsewidth = 55 %
+oscillators osc 2 saw wave = On
+mixer osc 2 volume = @0.6
+oscillators osc 2 pitch = 12 semitones
+oscillators osc 2 detune = 6 cents
+global polyphony = 1 Voices
+global glide = 22 %
+filter filter 4-pole mode = On
+filter filter cutoff = 2.5 kHz
+filter filter resonance = 12 %
+filter filter env amount = 25 %
+filter envelope filter env attack = 20 ms
+filter envelope filter env decay = 500 ms
+filter envelope filter env sustain = 60 %
+filter envelope filter env release = 250 ms
+amplifier envelope amp env attack = 15 ms
+amplifier envelope amp env decay = 400 ms
+amplifier envelope amp env sustain = 85 %
+amplifier envelope amp env release = 300 ms
+master volume = 63 %

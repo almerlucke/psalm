@@ -1,0 +1,18 @@
+# name: OB-Xf Pulse Pluck
+# A pulse wave with the width moved off the middle, the filter closing fast: a plucked, hollow sound.
+oscillators osc 1 saw wave = Off
+oscillators osc 1 pulse wave = On
+oscillators osc pulsewidth = 62 %
+filter filter 4-pole mode = On
+filter filter cutoff = 450 Hz
+filter filter resonance = 20 %
+filter filter env amount = 70 %
+filter envelope filter env attack = 2 ms
+filter envelope filter env decay = 250 ms
+filter envelope filter env sustain = 0 %
+filter envelope filter env release = 200 ms
+amplifier envelope amp env attack = 2 ms
+amplifier envelope amp env decay = 450 ms
+amplifier envelope amp env sustain = 0 %
+amplifier envelope amp env release = 250 ms
+master volume = 100 %

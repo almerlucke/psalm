@@ -1,0 +1,19 @@
+# name: OB-Xf Brass Stab
+# Two detuned saws and a filter that opens and settles: the brass of an old polysynth.
+oscillators osc 1 saw wave = On
+oscillators osc 2 saw wave = On
+mixer osc 2 volume = @1
+oscillators osc 2 detune = 10 cents
+filter filter 4-pole mode = On
+filter filter cutoff = 700 Hz
+filter filter resonance = 10 %
+filter filter env amount = 55 %
+filter envelope filter env attack = 40 ms
+filter envelope filter env decay = 300 ms
+filter envelope filter env sustain = 30 %
+filter envelope filter env release = 200 ms
+amplifier envelope amp env attack = 20 ms
+amplifier envelope amp env decay = 400 ms
+amplifier envelope amp env sustain = 90 %
+amplifier envelope amp env release = 200 ms
+master volume = 57 %
