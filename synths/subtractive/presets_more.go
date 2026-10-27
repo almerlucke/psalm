@@ -69,6 +69,7 @@ func GrowlBassPreset() Config {
 	cfg.Osc2Level = 0.5
 	cfg.FMAmount = 1.5
 	cfg.Drive = 3
+	cfg.FilterOversample = 2 // a hard drive: four times a sample keeps what it makes from folding back
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
 	cfg.FilterDrive = 2
@@ -115,6 +116,7 @@ func AcidSquarePreset() Config {
 	cfg.Osc1Level = 0.4
 	cfg.Osc2Level = 0
 	cfg.Drive = 2.5
+	cfg.FilterOversample = 2 // a hard drive: four times a sample keeps what it makes from folding back
 	cfg.Glide = 60
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24
@@ -872,6 +874,7 @@ func RockOrganPreset() Config {
 	cfg.Osc2Level = 0.2
 	cfg.SubLevel = 0.2
 	cfg.Drive = 3
+	cfg.FilterOversample = 2 // a hard drive: four times a sample keeps what it makes from folding back
 	cfg.Cutoff = 3500
 	cfg.Resonance = 0.1
 	cfg.FilterEnvAmount = 0

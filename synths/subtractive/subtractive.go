@@ -12,6 +12,7 @@ import (
 	"github.com/almerlucke/psalm/blocks/filters/svf"
 	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
+	"github.com/almerlucke/psalm/blocks/oversample"
 	"github.com/almerlucke/psalm/modules/poly"
 )
 
@@ -208,7 +209,11 @@ type Voice struct {
 	ladder     *ladder.Ladder
 	formant    *formant.Formant
 	ladderDrv  float64
-	ladderOver int // how many times a sample the ladder runs (set in the ladder)
+	ladderOver int                     // how many times a sample the ladder runs (set in the ladder)
+	drvOver    *oversample.Oversampler // the saturation of the oscillators (Drive) runs this many times a sample, with the ladder (FilterOversample); nil for once
+	drvD       float64                 // the drive of the sample in the oversampled run, and the gain that brings it back
+	drvComp    float64
+	drvShape   func(float64) float64
 	formShift  float64
 	formCount  int // counts samples until the next filter coefficient update
 	filterEnv  *adsr.ADSR
@@ -260,6 +265,7 @@ func New(cfg Config) *Voice {
 	v.ladder = ladder.New(cfg.Cutoff, cfg.Resonance, sr)
 	v.ladder.SetStageLevel(ladderStageLevel)
 	v.ladderOver = 1
+	v.drvShape = func(x float64) float64 { return math.Tanh(x*v.drvD) * v.drvComp }
 	v.formant = formant.New(cfg.Vowel, formantQ(cfg.Resonance), sr)
 	v.filterEnv = adsr.New(&v.cfg.FilterEnv, adsr.NoteOff, sr)
 	v.ampEnv = adsr.New(&v.cfg.AmpEnv, adsr.NoteOff, sr)
@@ -414,7 +420,11 @@ func (v *Voice) Note(duration float64, amplitude float64, message psalm.Message,
 }
 
 func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
+	wasActive := v.IsActive()
 	v.ReceiveMessage(message)
+	if !wasActive && v.drvOver != nil {
+		v.drvOver.Reset() // what is left in the filter of the note before
+	}
 
 	v.waitSamps = tick.SampleOffset
 	v.velocity = amplitude
@@ -444,12 +454,26 @@ func (v *Voice) Clear() {
 	v.svf2.Clear()
 	v.ladder.Clear()
 	v.formant.Clear()
+	if v.drvOver != nil {
+		v.drvOver.Reset()
+	}
 	v.formCount = 0
 	v.Output(0).Clear()
 }
 
 func (v *Voice) IsActive() bool {
 	return !v.ampEnv.Done()
+}
+
+// syncDriveOversample makes the sampler of the saturation of the oscillators to go with the oversampling of the ladder, FilterOversample
+func (v *Voice) syncDriveOversample() {
+	factor := 1 << max(0, min(v.cfg.FilterOversample, 2))
+	switch {
+	case factor == 1:
+		v.drvOver = nil
+	case v.drvOver == nil || v.drvOver.Factor != factor:
+		v.drvOver = oversample.New(factor, oversample.TapsPerPhase)
+	}
 }
 
 func (v *Voice) Synthesize() {
@@ -465,6 +489,7 @@ func (v *Voice) Synthesize() {
 	sr := v.Config().SampleRate
 	outChannels := outSocket.Channels
 	bufferSize := v.Config().BufferSize
+	v.syncDriveOversample()
 	keyTrackMult := math.Pow(v.glideFreq/middleC, cfg.KeyTrack)
 	// cutoff, resonance and vowel glide over the buffer, so changing them (for example from an LFO
 	// on the value inputs) doesn't step and click
@@ -607,10 +632,18 @@ func (v *Voice) Synthesize() {
 			s += v.noise.tick(cfg.NoiseType) * noiseLevel
 		}
 
-		// Saturation
+		// Saturation, played twice or four times a sample with the ladder when the drive is more than a touch
 		if driveModded {
 			d := drive * math.Exp2(mods.Mod(dDrive))
-			s = math.Tanh(s*d) / math.Tanh(d)
+			if v.drvOver != nil {
+				v.drvD, v.drvComp = d, 1/math.Tanh(d)
+				s = v.drvOver.Process(s, v.drvShape)
+			} else {
+				s = math.Tanh(s*d) / math.Tanh(d)
+			}
+		} else if v.drvOver != nil && drive > 1.05 {
+			v.drvD, v.drvComp = drive, driveComp
+			s = v.drvOver.Process(s, v.drvShape)
 		} else {
 			s = math.Tanh(s*drive) * driveComp
 		}

@@ -196,7 +196,7 @@ reaches `unisonDetune` too.
 | `FilterMode` | `LowPass` | SVF output: `LowPass`, `BandPass`, `HighPass`, `Notch`, `Peak`, `AllPass` |
 | `LadderMode` | `ladder.LowPass24` | Ladder output: `LowPass24`, `LowPass12`, `BandPass24`, `BandPass12`, `HighPass24`, `HighPass12` |
 | `FilterDrive` | 1 | Ladder input saturation |
-| `FilterOversample` | 1 | The ladder runs once (0), twice (1) or four times (2) a sample, so the harmonics of its saturation do not fold back: the ladder presets have 6 to 20 dB less alias at twice a sample, and four times adds little |
+| `FilterOversample` | 1 | The ladder and the saturation of the oscillators (`Drive`) run once (0), twice (1) or four times (2) a sample, so the harmonics of their saturation do not fold back: the ladder presets have 6 to 20 dB less alias at twice a sample, and a hard drive (`rockOrgan`, `acidBass`, `acidSquare`, `growlBass`, set to four times) 20 to 60 dB less |
 | `Cutoff` | 800 | Cutoff in Hz |
 | `Resonance` | 0.3 | 0-1 (the ladder self-oscillates near 1), for the formant filter the sharpness of the formants |
 | `FilterEnvAmount` | 3 | Octaves the filter envelope adds to the cutoff (vowel steps for the formant filter, can be negative) |

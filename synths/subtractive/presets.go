@@ -131,6 +131,7 @@ func AcidBassPreset() Config {
 	cfg.Osc1Level = 0.4
 	cfg.Osc2Level = 0.0
 	cfg.Drive = 2.5
+	cfg.FilterOversample = 2 // a hard drive: four times a sample keeps what it makes from folding back
 	cfg.Cutoff = 220.0
 	cfg.Resonance = 0.75 // the ladder resonates stronger than the svf
 	cfg.FilterEnvAmount = 4.5
