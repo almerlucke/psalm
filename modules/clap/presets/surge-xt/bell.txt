@@ -11,4 +11,4 @@ a amp eg decay = 3 s
 a amp eg sustain = @0
 a amp eg release = 3 s
 a common a width = 100 %
-a common a volume = -12 dB
+a common a volume = -9.5 dB

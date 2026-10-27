@@ -587,3 +587,60 @@ int pi_load_preset(pc_inst *inst, uint32_t kind, const char *location, const cha
 	}
 	return pl->from_location(inst->plugin, kind, location && location[0] ? location : NULL, loadkey && loadkey[0] ? loadkey : NULL) ? 1 : 0;
 }
+
+// --- the state of a plugin ---
+
+typedef struct {
+	uint8_t *data;
+	size_t len, cap, pos;
+} membuf;
+
+static int64_t os_write(const clap_ostream_t *s, const void *buf, uint64_t size) {
+	membuf *m = s->ctx;
+	if (m->len + size > m->cap) {
+		m->cap = (m->len + size) * 2;
+		m->data = realloc(m->data, m->cap);
+	}
+	memcpy(m->data + m->len, buf, size);
+	m->len += size;
+	return (int64_t)size;
+}
+
+static int64_t is_read(const clap_istream_t *s, void *buf, uint64_t size) {
+	membuf *m = s->ctx;
+	uint64_t n = m->len - m->pos;
+	if (n > size) {
+		n = size;
+	}
+	memcpy(buf, m->data + m->pos, n);
+	m->pos += n;
+	return (int64_t)n;
+}
+
+int pi_state_save(pc_inst *inst, uint8_t **out, size_t *len) {
+	const clap_plugin_state_t *st = inst->plugin->get_extension(inst->plugin, CLAP_EXT_STATE);
+	if (!st) {
+		return 0;
+	}
+	membuf m = {0};
+	clap_ostream_t os = {.ctx = &m, .write = os_write};
+	if (!st->save(inst->plugin, &os)) {
+		free(m.data);
+		return 0;
+	}
+	*out = m.data;
+	*len = m.len;
+	return 1;
+}
+
+int pi_state_load(pc_inst *inst, const uint8_t *data, size_t len) {
+	const clap_plugin_state_t *st = inst->plugin->get_extension(inst->plugin, CLAP_EXT_STATE);
+	if (!st) {
+		return 0;
+	}
+	membuf m = {.data = (uint8_t *)data, .len = len};
+	clap_istream_t is = {.ctx = &m, .read = is_read};
+	return st->load(inst->plugin, &is) ? 1 : 0;
+}
+
+void pc_free(void *p) { free(p); }

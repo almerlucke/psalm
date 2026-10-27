@@ -1,8 +1,11 @@
 # name: Surge Plucked String
-# The oscillator that models a plucked string: a long ring, no sustain. Tropical when played in sixths.
+# The oscillator that models a plucked string, softened by a low pass: a long ring, no sustain. Tropical when played in sixths.
 a osc 1 type = String
+a filter 1 type = LP 12 dB
+a filter 1 cutoff = 4 kHz
 a amp eg attack = 0 ms
 a amp eg decay = 2 s
 a amp eg sustain = @0
 a amp eg release = 1.4 s
-a common a volume = 9 dB
+a common a volume = 0 dB
+a mixer a pre-filter gain = 8.5 dB

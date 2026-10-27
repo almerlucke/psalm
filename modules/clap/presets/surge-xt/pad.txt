@@ -1,15 +1,20 @@
 # name: Surge Warm Pad
-# A soft wavetable with five unison voices and a sine an octave below: a slow bloom and a long fade.
-a osc 1 type = Wavetable
+# Sawtooth voices, five unison voices on the first and an octave below on the second, through a soft 12 dB low pass: a slow bloom and a long fade.
+a osc 1 type = Classic
 a osc 1 unison voices = 5 voices
 a osc 1 unison detune = 12 cents
-a osc 2 type = Sine
+a osc 2 type = Classic
 a osc 2 octave = -1
+a osc 2 unison voices = 3 voices
+a osc 2 unison detune = 8 cents
 a mixer a osc 2 mute = Off
-a mixer a osc 2 volume = -6 dB
+a mixer a osc 2 volume = -4 dB
+a filter 1 type = LP 12 dB
+a filter 1 cutoff = 1200 Hz
+a filter 1 resonance = 8 %
 a amp eg attack = 1.4 s
 a amp eg decay = 1.4 s
 a amp eg sustain = @0.7
 a amp eg release = 1.8 s
 a common a width = 100 %
-a common a volume = -7 dB
+a common a volume = -3 dB

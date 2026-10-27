@@ -37,11 +37,11 @@ go run ./cmd/clap -plugin "Surge XT" -preset modules/clap/presets/surge-xt/pluck
 go run ./cmd/clap -plugin "Surge XT" -explore "a osc 1 type;a amp eg attack"     what a parameter shows over its range
 ```
 
-Surge XT: Soft Pluck, Kalimba, Plucked String, Glass Bell, Warm Pad, Sub Bass, Hawaiian Lead. Surge XT Effects is one effect at a time, its type chosen by the `fx type` setting (Delay, Reverb 1 and 2, Spring Reverb, Phaser, Flanger, Chorus, Ensemble, Rotary Speaker, Distortion, Tape, EQ and more than twenty others); a preset sets the type and the mix, and the knobs that follow it are named as for the delay whatever the type is (the host does not follow the plugin renaming them).
+Surge XT: Soft Pluck, Island Pluck, Kalimba, Plucked String, Glass Bell, Warm Pad, Sub Bass, Hawaiian Lead, set to about the same loudness (-18 dB). Surge XT Effects is one effect at a time, its type chosen by the `fx type` setting (Delay, Reverb 1 and 2, Spring Reverb, Phaser, Flanger, Chorus, Ensemble, Rotary Speaker, Distortion, Tape, EQ and more than twenty others); a preset sets the type and the mix, and the knobs that follow it are named as for the delay whatever the type is (the host does not follow the plugin renaming them).
 
 ## Limits
 
-- **Surge XT's filters and waveshaper do not respond** when played from here (the settings are accepted and read back, but the sound does not change; its oscillators, unison, envelopes, volume and mixer do respond, and the effects plugin responds to everything). I read Surge's source for the path of a parameter event and could not find why: the presets are made of what works.
+- A plugin is given its own state back (`SaveState`, `LoadState`) right after it is made: Surge XT does not filter until it has loaded something, and this makes it. Plugin state can be kept and given back in the same way; keeping it with the patch is not done yet.
 
 - No plugin windows: the parameters are the interface; the knobs do not follow a preset the plugin loaded. State and presets of the plugin are not saved with the patch yet.
 - A plugin runs on the audio thread, so a plugin that crashes takes the program with it, and one that is slow drops out the sound.

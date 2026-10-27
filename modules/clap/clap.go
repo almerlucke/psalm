@@ -235,6 +235,11 @@ func New(d Descriptor) (*Plugin, error) {
 	p := &Plugin{desc: d, inst: inst, inCh: int(in), held: map[string]note{}, keys: map[string]int{}, frames: cfg.BufferSize, presets: PresetsOf(d)}
 	p.Module = psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo})
 	p.SetSelf(p)
+	// a plugin that has not loaded anything does not always work on all it can (Surge XT's filters do nothing until it has loaded a patch): giving it its own state back
+	// makes it load
+	if st, err := p.SaveState(); err == nil {
+		_ = p.LoadState(st)
+	}
 	p.readParams()
 	return p, nil
 }
@@ -404,6 +409,36 @@ func (p *Plugin) LoadPreset(i int) error {
 
 // Loaded is the number of the preset loaded last, -1 when none was
 func (p *Plugin) Loaded() int { return int(p.preset.Load()) - 1 }
+
+// SaveState is what the plugin keeps of its sound, to give back with LoadState (its own format: the settings, and what is not a setting, the routing of its modulation)
+func (p *Plugin) SaveState() ([]byte, error) {
+	if p.inst == nil {
+		return nil, errors.New("the plugin is gone")
+	}
+	var data *C.uint8_t
+	var n C.size_t
+	if C.pi_state_save(p.inst, &data, &n) == 0 {
+		return nil, fmt.Errorf("%s keeps no state", p.desc.Name)
+	}
+	defer C.pc_free(unsafe.Pointer(data))
+	return C.GoBytes(unsafe.Pointer(data), C.int(n)), nil
+}
+
+// LoadState gives the plugin a state back. It is quick when the plugin is quick: call it off the audio thread
+func (p *Plugin) LoadState(state []byte) error {
+	p.loadMu.Lock()
+	defer p.loadMu.Unlock()
+	if p.inst == nil || p.closed.Load() {
+		return errors.New("the plugin is gone")
+	}
+	if len(state) == 0 {
+		return errors.New("no state")
+	}
+	if C.pi_state_load(p.inst, (*C.uint8_t)(unsafe.Pointer(&state[0])), C.size_t(len(state))) == 0 {
+		return fmt.Errorf("%s would not take the state", p.desc.Name)
+	}
+	return nil
+}
 
 // Keys are the keys of the messages that move the parameters
 func (p *Plugin) Keys() []string {

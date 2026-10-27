@@ -71,11 +71,6 @@ func main() {
 		log.Fatal(err)
 	}
 	defer pl.Free()
-	if *showParams {
-		for _, p := range pl.Describe().Params {
-			fmt.Printf("%-40q %g .. %g  (%g)\n", p.Key, p.Min, p.Max, p.Value)
-		}
-	}
 	if *showPresets {
 		for i, p := range pl.Presets() {
 			fmt.Printf("%4d  %-16s %-36s %s\n", i, p.Category, p.Name, p.Creator)
@@ -99,6 +94,11 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Println("loaded", pl.Presets()[found].Name)
+	}
+	if *showParams {
+		for _, p := range pl.Describe().Params {
+			fmt.Printf("%-40q %g .. %g  (%g)\n", p.Key, p.Min, p.Max, p.Value)
+		}
 	}
 	if *explore != "" { // what a parameter shows over its range
 		for _, k := range strings.Split(*explore, ";") {

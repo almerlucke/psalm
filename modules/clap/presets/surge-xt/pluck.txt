@@ -1,10 +1,14 @@
 # name: Surge Soft Pluck
-# A soft wavetable voice plucked: no attack, a short decay, nothing sustained, two voices a few cents apart. Marimba-like.
+# A wavetable voice through a 24 dB low pass, plucked: no attack, a short decay, nothing sustained, two voices a few cents apart. Marimba-like.
 a osc 1 type = Wavetable
 a osc 1 unison voices = 2 voices
 a osc 1 unison detune = 6 cents
+a filter 1 type = LP 24 dB
+a filter 1 cutoff = 1100 Hz
+a filter 1 resonance = 10 %
 a amp eg attack = 2 ms
 a amp eg decay = 450 ms
 a amp eg sustain = @0
 a amp eg release = 250 ms
-a common a volume = -2 dB
+a common a volume = 0 dB
+a mixer a pre-filter gain = 17 dB

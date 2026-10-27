@@ -3,6 +3,7 @@
 #ifndef PSALM_CLAP_GLUE_H
 #define PSALM_CLAP_GLUE_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct pc_lib pc_lib;
@@ -51,5 +52,10 @@ int pc_scan_presets(pc_lib *lib);
 int pc_preset_get(pc_lib *lib, int i, pc_preset *out);
 // loads one into the instance; 0 when the plugin has no preset loading or says it failed
 int pi_load_preset(pc_inst *inst, uint32_t kind, const char *location, const char *loadkey);
+
+// the state of an instance (what the plugin keeps of its sound), to keep and to give back; the data is made with malloc: free it with pc_free
+int pi_state_save(pc_inst *inst, uint8_t **out, size_t *len);
+int pi_state_load(pc_inst *inst, const uint8_t *data, size_t len);
+void pc_free(void *p);
 
 #endif

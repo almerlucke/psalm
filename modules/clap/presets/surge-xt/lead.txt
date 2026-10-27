@@ -1,12 +1,16 @@
 # name: Surge Hawaiian Lead
-# A single voice that slides between the notes, the way a steel guitar plays: a soft FM voice, two voices a little detuned, a gentle attack.
-a osc 1 type = FM2
+# A single voice that slides between the notes, the way a steel guitar plays: a sawtooth with a little detune through a soft low pass, a gentle attack.
+a osc 1 type = Classic
 a osc 1 unison voices = 2 voices
 a osc 1 unison detune = 4 cents
 a common a play mode = Mono (Fingered Portamento)
 a common a portamento = 90 ms
+a filter 1 type = LP 12 dB
+a filter 1 cutoff = 3 kHz
+a filter 1 resonance = 10 %
 a amp eg attack = 25 ms
 a amp eg decay = 400 ms
 a amp eg sustain = @0.8
 a amp eg release = 300 ms
-a common a volume = -5 dB
+a common a volume = 0 dB
+a mixer a pre-filter gain = 2 dB

@@ -1,10 +1,14 @@
 # name: Surge Sub Bass
-# A sine an octave down, one note at a time.
+# A sine an octave down with a little soft clipping for the harmonics and a 24 dB low pass, one note at a time.
 a osc 1 type = Sine
 a osc 1 octave = -1
 a common a play mode = Mono
+a common a waveshaper type = Soft
+a common a waveshaper drive = 6 dB
+a filter 1 type = LP 24 dB
+a filter 1 cutoff = 500 Hz
 a amp eg attack = 0 ms
 a amp eg decay = 200 ms
 a amp eg sustain = @0.8
 a amp eg release = 120 ms
-a common a volume = -4 dB
+a common a volume = -5.5 dB
