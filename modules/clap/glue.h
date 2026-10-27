@@ -31,8 +31,19 @@ int pi_param_text(pc_inst *inst, uint32_t id, double value, char *out, int cap);
 void pi_note(pc_inst *inst, int on, uint32_t time, int key, double velocity, int32_t noteID, double tuning);
 void pi_param(pc_inst *inst, uint32_t id, double value, uint32_t time);
 
-// processes a block: the input channels (NULL for an instrument), the output channels (the second is filled from the first when the plugin has one channel)
-int pi_process(pc_inst *inst, float *in0, float *in1, float *out0, float *out1, uint32_t frames);
+// the audio ports: how many of each, the channels and the name of one
+void pi_port_counts(pc_inst *inst, int *in, int *out);
+int pi_port_info(pc_inst *inst, int is_input, int i, int *channels, char *name, int cap);
+
+// where the host is: the tempo, the position in beats, whether it plays (for the next blocks, until it is set again)
+void pi_transport(pc_inst *inst, double tempo, double beats, int playing);
+// the latency the plugin says it has, in samples
+uint32_t pi_latency(pc_inst *inst);
+
+// processes a block: the main input (NULL for an instrument) and the side chain (the plugin's second input; NULL when there is none), two channels each. The sound of
+// every output port is kept in the instance: pi_out gives a channel of it (valid until the next block); a port of one channel is also the second
+int pi_process(pc_inst *inst, float *in0, float *in1, float *sc0, float *sc1, uint32_t frames);
+float *pi_out(pc_inst *inst, int port, int channel);
 
 // the presets of a library, found by its preset discovery (the plugins' own: files it declares places for, and presets that are in the plugin itself)
 typedef struct {

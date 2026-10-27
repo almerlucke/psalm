@@ -60,8 +60,18 @@ func TestClapKinds(t *testing.T) {
 	if m.Output(0).Channels[0][10] != 0 {
 		t.Error("sounds after it is let go")
 	}
-	if _, err := fx.Make("Psalm Test Gain"); err != nil {
-		t.Error(err)
+	if len(made.Outs) != 3 || made.Outs[0].Name != "out" {
+		t.Errorf("an instrument with three audio outputs has the ports %v", made.Outs)
+	}
+	if made.Status() != "" {
+		t.Errorf("status %q of a plugin with no latency", made.Status())
+	}
+	madeFx, err := fx.Make("Psalm Test Gain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(madeFx.Ins) != 2 || madeFx.Ins[1].Name != "sidechain" && madeFx.Ins[1].Name != "main" || !strings.Contains(madeFx.Status(), "latency 64") {
+		t.Errorf("the effect has the ports %v and says %q", madeFx.Ins, madeFx.Status())
 	}
 	if _, err := synth.Make("nothing"); err == nil {
 		t.Error("a plugin that is not there")

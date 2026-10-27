@@ -206,6 +206,10 @@ type Plugin struct {
 	desc    Descriptor
 	inst    *C.pc_inst
 	inCh    int
+	nIn     int           // audio input ports: the first is played, the second (when there is one) is the side chain
+	nOut    int           // audio output ports, each an output of the module
+	tempo   atomic.Uint64 // where the patch is (float64 bits)
+	beats   atomic.Uint64
 	params  []param
 	keys    map[string]int // the key of a message to the index of the parameter
 	held    map[string]note
@@ -236,7 +240,18 @@ func New(d Descriptor) (*Plugin, error) {
 	var in, out C.int
 	C.pi_ports(inst, &in, &out)
 	p := &Plugin{desc: d, inst: inst, inCh: int(in), held: map[string]note{}, keys: map[string]int{}, frames: cfg.BufferSize, presets: PresetsOf(d)}
-	p.Module = psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo})
+	var nin, nout C.int
+	C.pi_port_counts(inst, &nin, &nout)
+	p.nIn, p.nOut = int(nin), min(max(int(nout), 1), 16)
+	ins := []int{psalm.Stereo}
+	if p.nIn > 1 {
+		ins = append(ins, psalm.Stereo) // the side chain
+	}
+	outs := make([]int, p.nOut)
+	for i := range outs {
+		outs[i] = psalm.Stereo
+	}
+	p.Module = psalm.NewModule(ins, outs)
 	p.SetSelf(p)
 	// a plugin that has not loaded anything does not always work on all it can (Surge XT's filters do nothing until it has loaded a patch): giving it its own state back
 	// makes it load
@@ -583,11 +598,48 @@ func (p *Plugin) AllNotesOff() {
 	p.timed = p.timed[:0]
 }
 
+// PortNames are the names the plugin gives its audio ports: the inputs (the first is played; a second is the side chain) and the outputs
+func (p *Plugin) PortNames() (ins, outs []string) {
+	if p.inst == nil {
+		return nil, nil
+	}
+	var ch C.int
+	var name [256]C.char
+	for i := 0; i < p.nIn && i < 2; i++ {
+		if C.pi_port_info(p.inst, 1, C.int(i), &ch, &name[0], 256) != 0 {
+			ins = append(ins, C.GoString(&name[0]))
+		}
+	}
+	for i := 0; i < p.nOut; i++ {
+		if C.pi_port_info(p.inst, 0, C.int(i), &ch, &name[0], 256) != 0 {
+			outs = append(outs, C.GoString(&name[0]))
+		}
+	}
+	return ins, outs
+}
+
+// Latency is how many samples the plugin says it delays the sound (its look ahead, say)
+func (p *Plugin) Latency() int {
+	if p.inst == nil {
+		return 0
+	}
+	return int(C.pi_latency(p.inst))
+}
+
+// CtrlTick tells the plugin where the patch is: the tempo and the position in beats
+func (p *Plugin) CtrlTick(tick psalm.CtrlTick) {
+	p.tempo.Store(math.Float64bits(tick.BPM))
+	if tick.PPQ > 0 {
+		p.beats.Store(math.Float64bits(float64(tick.TickTimestamp) / float64(tick.PPQ)))
+	}
+}
+
 // Synthesize runs the plugin over a block
 func (p *Plugin) Synthesize() {
-	out := p.Output(0).Channels
-	n := len(out[0])
-	out.Clear()
+	n := len(p.Output(0).Channels[0])
+	for o := 0; o < p.nOut; o++ {
+		p.Output(o).Channels.Clear()
+	}
 	if p.closed.Load() {
 		p.Free()
 	}
@@ -605,7 +657,10 @@ func (p *Plugin) Synthesize() {
 		p.timed[i].samples -= n
 		i++
 	}
-	var in0, in1 *C.float
+	if tempo := math.Float64frombits(p.tempo.Load()); tempo > 0 {
+		C.pi_transport(p.inst, C.double(tempo), C.double(math.Float64frombits(p.beats.Load())), 1)
+	}
+	var in0, in1, sc0, sc1 *C.float
 	if p.inCh > 0 {
 		in := p.Input(0).Channels
 		in0 = (*C.float)(unsafe.Pointer(&in[0][0]))
@@ -614,7 +669,19 @@ func (p *Plugin) Synthesize() {
 			in1 = (*C.float)(unsafe.Pointer(&in[1][0]))
 		}
 	}
-	C.pi_process(p.inst, in0, in1, (*C.float)(unsafe.Pointer(&out[0][0])), (*C.float)(unsafe.Pointer(&out[1][0])), C.uint32_t(n))
+	if p.nIn > 1 && p.NumInputs() > 1 {
+		sc := p.Input(1).Channels
+		sc0, sc1 = (*C.float)(unsafe.Pointer(&sc[0][0])), (*C.float)(unsafe.Pointer(&sc[1][0]))
+	}
+	C.pi_process(p.inst, in0, in1, sc0, sc1, C.uint32_t(n))
+	for o := 0; o < p.nOut; o++ {
+		out := p.Output(o).Channels
+		for ch := 0; ch < 2 && ch < len(out); ch++ {
+			if src := C.pi_out(p.inst, C.int(o), C.int(ch)); src != nil {
+				copy(out[ch], unsafe.Slice((*float32)(unsafe.Pointer(src)), n))
+			}
+		}
+	}
 }
 
 var _ psalm.Modular = (*Plugin)(nil)

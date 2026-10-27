@@ -49,6 +49,9 @@ struct pc_inst {
 	int in_ch, out_ch;
 	int n_in, n_out;        // how many audio ports the plugin has (the first of each is the one that is used; the others get buffers that are thrown away)
 	int in_chs[64], out_chs[64];
+	float *outbuf;          // the sound of every output port (up to 16): two channels of max_frames each
+	clap_event_transport_t transport;
+	int has_transport;
 	float *scratch;         // for the ports that are not used: two channels each, and silence for the inputs
 	uint32_t max_frames;
 	clap_input_events_t in_events;
@@ -181,6 +184,7 @@ pc_inst *pi_new(pc_lib *lib, const char *id, double sampleRate, uint32_t maxFram
 	inst->max_frames = maxFrames;
 	// a plugin with more ports than the one we play (a sampler with an output for every part) has to be given buffers for them: they are thrown away
 	inst->scratch = calloc((size_t)(inst->n_in + inst->n_out + 1) * 2 * maxFrames * 2, sizeof(float));
+	inst->outbuf = calloc((size_t)16 * 2 * maxFrames, sizeof(float));
 	if (inst->in_ch > 2 || inst->out_ch > 2 || inst->out_ch == 0) {
 		seterr(err, errcap, "the plugin has no stereo or mono output");
 		inst->plugin->destroy(inst->plugin);
@@ -217,6 +221,7 @@ void pi_free(pc_inst *inst) {
 	}
 	inst->plugin->destroy(inst->plugin);
 	free(inst->scratch);
+	free(inst->outbuf);
 	free(inst);
 }
 
@@ -336,9 +341,49 @@ static void sort_events(pc_inst *inst) {
 	}
 }
 
-int pi_process(pc_inst *inst, float *in0, float *in1, float *out0, float *out1, uint32_t frames) {
-	float *inch[2] = {in0, in1};
-	float *outch[2] = {out0, out1};
+void pi_port_counts(pc_inst *inst, int *in, int *out) {
+	*in = inst->n_in;
+	*out = inst->n_out;
+}
+
+int pi_port_info(pc_inst *inst, int is_input, int i, int *channels, char *name, int cap) {
+	const clap_plugin_audio_ports_t *ports = inst->plugin->get_extension(inst->plugin, CLAP_EXT_AUDIO_PORTS);
+	clap_audio_port_info_t info;
+	if (!ports || i < 0 || i >= (int)ports->count(inst->plugin, is_input) || !ports->get(inst->plugin, i, is_input, &info)) {
+		return 0;
+	}
+	*channels = (int)info.channel_count;
+	snprintf(name, cap, "%s", info.name);
+	return 1;
+}
+
+void pi_transport(pc_inst *inst, double tempo, double beats, int playing) {
+	clap_event_transport_t *t = &inst->transport;
+	memset(t, 0, sizeof *t);
+	t->header.size = sizeof *t;
+	t->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+	t->header.type = CLAP_EVENT_TRANSPORT;
+	t->flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_HAS_TIME_SIGNATURE | (playing ? CLAP_TRANSPORT_IS_PLAYING : 0);
+	t->tempo = tempo;
+	t->song_pos_beats = (clap_beattime)(beats * CLAP_BEATTIME_FACTOR);
+	t->tsig_num = 4;
+	t->tsig_denom = 4;
+	inst->has_transport = 1;
+}
+
+uint32_t pi_latency(pc_inst *inst) {
+	const clap_plugin_latency_t *l = inst->plugin->get_extension(inst->plugin, CLAP_EXT_LATENCY);
+	return l ? l->get(inst->plugin) : 0;
+}
+
+float *pi_out(pc_inst *inst, int port, int channel) {
+	if (port < 0 || port >= inst->n_out || port >= 16 || channel < 0 || channel > 1) {
+		return NULL;
+	}
+	return inst->outbuf + ((size_t)port * 2 + (size_t)channel) * inst->max_frames;
+}
+
+int pi_process(pc_inst *inst, float *in0, float *in1, float *sc0, float *sc1, uint32_t frames) {
 	clap_audio_buffer_t ins[64], outs[64];
 	float *inptr[64][2], *outptr[64][2];
 	float *silence = inst->scratch; // a port of the plugin that we do not play: silence in, and its sound thrown away
@@ -348,19 +393,28 @@ int pi_process(pc_inst *inst, float *in0, float *in1, float *out0, float *out1, 
 		ins[p] = (clap_audio_buffer_t){.data32 = inptr[p], .channel_count = (uint32_t)inst->in_chs[p]};
 	}
 	if (inst->n_in > 0 && in0) {
-		inptr[0][0] = inch[0];
-		inptr[0][1] = inch[1];
+		inptr[0][0] = in0;
+		inptr[0][1] = in1;
+	}
+	if (inst->n_in > 1 && sc0) {
+		inptr[1][0] = sc0;
+		inptr[1][1] = sc1;
 	}
 	for (int p = 0; p < inst->n_out; p++) {
-		outptr[p][0] = junk;
-		outptr[p][1] = junk + inst->max_frames;
+		if (p < 16) {
+			outptr[p][0] = pi_out(inst, p, 0);
+			outptr[p][1] = pi_out(inst, p, 1);
+		} else {
+			outptr[p][0] = junk;
+			outptr[p][1] = junk + inst->max_frames;
+		}
+		memset(outptr[p][0], 0, frames * sizeof(float));
+		memset(outptr[p][1], 0, frames * sizeof(float));
 		outs[p] = (clap_audio_buffer_t){.data32 = outptr[p], .channel_count = (uint32_t)inst->out_chs[p]};
 	}
-	outptr[0][0] = outch[0];
-	outptr[0][1] = outch[1];
 	clap_process_t pr = {.steady_time = -1,
 	                     .frames_count = frames,
-	                     .transport = NULL,
+	                     .transport = inst->has_transport ? &inst->transport : NULL,
 	                     .audio_inputs = inst->n_in > 0 ? ins : NULL,
 	                     .audio_outputs = outs,
 	                     .audio_inputs_count = (uint32_t)inst->n_in,
@@ -374,8 +428,10 @@ int pi_process(pc_inst *inst, float *in0, float *in1, float *out0, float *out1, 
 		inst->callback = 0;
 		inst->plugin->on_main_thread(inst->plugin);
 	}
-	if (inst->out_ch == 1) {
-		memcpy(out1, out0, frames * sizeof(float));
+	for (int p = 0; p < inst->n_out && p < 16; p++) {
+		if (inst->out_chs[p] == 1) { // a mono port is both channels
+			memcpy(outptr[p][1], outptr[p][0], frames * sizeof(float));
+		}
 	}
 	return st != CLAP_PROCESS_ERROR;
 }

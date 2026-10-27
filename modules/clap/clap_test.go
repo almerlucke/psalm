@@ -251,3 +251,62 @@ func TestPresets(t *testing.T) {
 		t.Error("a preset that is not there")
 	}
 }
+
+// the ports: an instrument with three outputs gives all three (the second at half level), an effect has a side chain, the tempo reaches it, it says its latency
+func TestPorts(t *testing.T) {
+	dir := testPlugins(t)
+	p, err := New(find(t, dir, "psalm.test.sine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Free()
+	if p.NumOutputs() != 3 {
+		t.Fatalf("%d outputs, want 3", p.NumOutputs())
+	}
+	p.ReceiveMessage(trigger(map[string]any{"noteOn": "a", "amplitude": 1.0, "message": psalm.Message{"pitch": 69.0}, "tick": psalm.CtrlTick{}}))
+	var peak0, peak1, peak2 float64
+	for range 6 {
+		p.ResetRun()
+		p.Synthesize()
+		for i := range p.Output(0).Channels[1] {
+			peak0 = math.Max(peak0, math.Abs(float64(p.Output(0).Channels[1][i])))
+			peak1 = math.Max(peak1, math.Abs(float64(p.Output(1).Channels[0][i])))
+			peak2 = math.Max(peak2, math.Abs(float64(p.Output(2).Channels[0][i])))
+		}
+	}
+	if peak0 < 0.4 || math.Abs(peak1-peak0/2) > 0.02 || peak2 != 0 {
+		t.Errorf("the outputs peak at %v %v %v", peak0, peak1, peak2)
+	}
+	if _, outs := p.PortNames(); len(outs) != 3 || outs[0] != "main" {
+		t.Errorf("port names %v", outs)
+	}
+
+	fx, err := New(find(t, dir, "psalm.test.gain"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fx.Free()
+	if fx.NumInputs() != 2 {
+		t.Fatalf("an effect with a side chain has %d inputs, want 2", fx.NumInputs())
+	}
+	if fx.Latency() != 64 {
+		t.Errorf("latency %d, want 64", fx.Latency())
+	}
+	for c := range fx.Input(0).Channels {
+		for i := range fx.Input(0).Channels[c] {
+			fx.Input(0).Channels[c][i] = 0.5
+			fx.Input(1).Channels[c][i] = 0.4
+		}
+	}
+	fx.ResetRun()
+	fx.Synthesize()
+	if got := fx.Output(0).Channels[0][10]; math.Abs(float64(got)-0.6) > 1e-6 { // the input, and a quarter of the side chain
+		t.Errorf("side chain: %v, want 0.6", got)
+	}
+	fx.CtrlTick(psalm.CtrlTick{BPM: 120, PPQ: 240, TickTimestamp: 480})
+	fx.ResetRun()
+	fx.Synthesize()
+	if got := fx.Output(0).Channels[0][10]; math.Abs(float64(got)-0.612) > 1e-5 { // and the tempo, a ten thousandth of it
+		t.Errorf("tempo: %v, want 0.612", got)
+	}
+}

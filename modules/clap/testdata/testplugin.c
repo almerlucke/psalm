@@ -111,9 +111,20 @@ static clap_process_status t_process(const clap_plugin_t *p, const clap_process_
 				}
 			}
 			o0[i] = o1[i] = s;
+			if (pr->audio_outputs_count > 1) { // the second port has the sound at half level
+				pr->audio_outputs[1].data32[0][i] = pr->audio_outputs[1].data32[1][i] = s * 0.5f;
+			}
 		} else {
-			o0[i] = pr->audio_inputs[0].data32[0][i] * (float)t->gain;
-			o1[i] = pr->audio_inputs[0].data32[1][i] * (float)t->gain;
+			float side0 = 0, side1 = 0, tempo = 0;
+			if (pr->audio_inputs_count > 1) {
+				side0 = pr->audio_inputs[1].data32[0][i] * 0.25f;
+				side1 = pr->audio_inputs[1].data32[1][i] * 0.25f;
+			}
+			if (pr->transport && (pr->transport->flags & CLAP_TRANSPORT_HAS_TEMPO)) {
+				tempo = (float)pr->transport->tempo * 0.0001f;
+			}
+			o0[i] = pr->audio_inputs[0].data32[0][i] * (float)t->gain + side0 + tempo;
+			o1[i] = pr->audio_inputs[0].data32[1][i] * (float)t->gain + side1 + tempo;
 		}
 	}
 	for (; e < n; e++) {
@@ -125,7 +136,7 @@ static clap_process_status t_process(const clap_plugin_t *p, const clap_process_
 static uint32_t ap_count(const clap_plugin_t *p, bool is_input) {
 	test *t = p->plugin_data;
 	if (!t->instrument) {
-		return 1;
+		return is_input ? 2 : 1; // an effect has a side chain
 	}
 	return is_input ? 0 : 3; // an instrument with outputs for its parts, as a sampler has: the first is the one that is played
 }
@@ -270,7 +281,13 @@ static bool st_load(const clap_plugin_t *p, const clap_istream_t *s) {
 }
 static const clap_plugin_state_t state_ext = {st_save, st_load};
 
+static uint32_t lat_get(const clap_plugin_t *p) { return ((test *)p->plugin_data)->instrument ? 0 : 64; }
+static const clap_plugin_latency_t latency_ext = {lat_get};
+
 static const void *t_extension(const clap_plugin_t *p, const char *id) {
+	if (!strcmp(id, CLAP_EXT_LATENCY)) {
+		return &latency_ext;
+	}
 	if (!strcmp(id, CLAP_EXT_AUDIO_PORTS)) {
 		return &audio_ports;
 	}

@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/clap"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/params"
@@ -59,7 +60,7 @@ func clapKinds(dirs ...string) []patcher.Kind {
 				if err != nil {
 					return nil, err
 				}
-				return &patcher.Made{Module: pl, Describe: func(string) params.Set { return pl.Describe() }, Close: pl.Close,
+				made := &patcher.Made{Module: pl, Describe: func(string) params.Set { return pl.Describe() }, Close: pl.Close,
 					State: func() (string, error) {
 						st, err := pl.SaveState()
 						return base64.StdEncoding.EncodeToString(st), err
@@ -71,7 +72,27 @@ func clapKinds(dirs ...string) []patcher.Kind {
 						}
 						return pl.LoadState(st)
 					},
-					Bind: pl.Bind}, nil
+					Bind: pl.Bind,
+					Status: func() string {
+						if l := pl.Latency(); l > 0 {
+							return fmt.Sprintf("latency %d samples (%.1f ms)", l, float64(l)/psalm.CurrentEnv().Config().SampleRate*1000)
+						}
+						return ""
+					}}
+				// a plugin with more audio ports than one has them as ports of the module: its outputs (a sampler with one for every part) and a side chain
+				insN, outsN := pl.PortNames()
+				if len(outsN) > 1 {
+					for i, name := range outsN {
+						if i == 0 {
+							name = "out"
+						}
+						made.Outs = append(made.Outs, patcher.Port{Name: name, Type: patcher.Audio})
+					}
+				}
+				if pl.NumInputs() > 1 && len(insN) > 1 && k.wants(d) && d.Effect() {
+					made.Ins = []patcher.Port{{Name: "in", Type: patcher.Audio}, {Name: insN[1], Type: patcher.Audio}}
+				}
+				return made, nil
 			}})
 	}
 	return kinds
