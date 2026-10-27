@@ -222,8 +222,12 @@ type Plugin struct {
 	nameFn     atomic.Pointer[func(map[string]string)]  // and what they are called
 	preset     atomic.Int64                             // the one loaded last, and one: 0 is none
 	loadMu     sync.Mutex
-	metaMu     sync.RWMutex // the labels and ranges of the parameters, which Relabel changes
-	relabeling atomic.Bool  // the names are being asked for again
+	metaMu     sync.RWMutex   // the labels and ranges of the parameters, which Relabel changes
+	byID       map[uint32]int // the parameter of an id
+	changeMu   sync.Mutex
+	changes    map[string]float64 // what the plugin moved itself, not yet told to the editor
+	flushing   bool
+	relabeling atomic.Bool // the names are being asked for again
 }
 
 // New makes the plugin: active, at the sample rate and buffer size of the patch
@@ -286,6 +290,10 @@ func (p *Plugin) readParams() {
 		if _, dup := p.keys[key]; dup {
 			key = fmt.Sprintf("%s %d", key, id)
 		}
+		if p.byID == nil {
+			p.byID = map[uint32]int{}
+		}
+		p.byID[uint32(id)] = len(p.params)
 		p.keys[key] = len(p.params)
 		p.params = append(p.params, param{id: uint32(id), key: key, label: label, group: group, min: float64(mn), max: float64(mx), def: float64(df), stepped: flags&stepped != 0})
 	}
@@ -332,6 +340,7 @@ func (p *Plugin) pickMain() {
 	p.params = append(main, rest...)
 	for i, q := range p.params {
 		p.keys[q.key] = i
+		p.byID[q.id] = i
 	}
 }
 
@@ -581,6 +590,42 @@ func (p *Plugin) hideWindowMain() {
 // WindowOpen is whether the window is showing
 func (p *Plugin) WindowOpen() bool { return p.inst != nil && C.pi_gui_visible(p.inst) != 0 }
 
+// collectChanges notes what the plugin did to its own parameters in the block (the audio thread) and has the editor told a moment later (a knob turned in the plugin's
+// window moves its knob in the editor)
+func (p *Plugin) collectChanges() {
+	var ids [64]C.uint32_t
+	var values [64]C.double
+	n := int(C.pi_take_changes(p.inst, &ids[0], &values[0], 64))
+	if n == 0 || p.syncFn.Load() == nil {
+		return
+	}
+	p.changeMu.Lock()
+	if p.changes == nil {
+		p.changes = map[string]float64{}
+	}
+	for i := 0; i < n; i++ {
+		if j, ok := p.byID[uint32(ids[i])]; ok {
+			p.changes[p.params[j].key] = float64(values[i])
+		}
+	}
+	start := !p.flushing && len(p.changes) > 0
+	if start {
+		p.flushing = true
+	}
+	p.changeMu.Unlock()
+	if start {
+		time.AfterFunc(60*time.Millisecond, func() {
+			p.changeMu.Lock()
+			pending := p.changes
+			p.changes, p.flushing = nil, false
+			p.changeMu.Unlock()
+			if fn := p.syncFn.Load(); fn != nil && len(pending) > 0 {
+				(*fn)(pending)
+			}
+		})
+	}
+}
+
 // Keys are the keys of the messages that move the parameters
 func (p *Plugin) Keys() []string {
 	out := make([]string, len(p.params))
@@ -767,6 +812,7 @@ func (p *Plugin) Synthesize() {
 		sc0, sc1 = (*C.float)(unsafe.Pointer(&sc[0][0])), (*C.float)(unsafe.Pointer(&sc[1][0]))
 	}
 	C.pi_process(p.inst, in0, in1, sc0, sc1, C.uint32_t(n))
+	p.collectChanges()
 	if C.pi_take_rescan(p.inst) != 0 && p.relabeling.CompareAndSwap(false, true) {
 		go func() { // off the audio thread: it asks for every name
 			defer p.relabeling.Store(false)

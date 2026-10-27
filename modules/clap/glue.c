@@ -65,6 +65,9 @@ struct pc_inst {
 	int n;
 	pc_event ev[MAX_EVENTS];
 	int started, activated;
+	uint32_t change_ids[512]; // what the plugin did to its own parameters in the last block
+	double change_values[512];
+	int n_changes;
 	uint32_t *cookie_ids;
 	void **cookies;
 	int n_cookies;
@@ -270,7 +273,15 @@ static const clap_event_header_t *in_get(const clap_input_events_t *list, uint32
 	pc_inst *inst = list->ctx;
 	return i < (uint32_t)inst->n ? &inst->ev[i].h : NULL;
 }
-static bool out_push(const clap_output_events_t *list, const clap_event_header_t *event) { return true; }
+static bool out_push(const clap_output_events_t *list, const clap_event_header_t *event) {
+	pc_inst *inst = list->ctx;
+	if (event->space_id == CLAP_CORE_EVENT_SPACE_ID && event->type == CLAP_EVENT_PARAM_VALUE && inst->n_changes < 512) { // the plugin moved a parameter itself (its own window)
+		const clap_event_param_value_t *pv = (const clap_event_param_value_t *)event;
+		inst->change_ids[inst->n_changes] = pv->param_id;
+		inst->change_values[inst->n_changes++] = pv->value;
+	}
+	return true;
+}
 
 pc_lib *pc_open(const char *path, char *err, int errcap) {
 	void *h = dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -1191,4 +1202,12 @@ void pc_pump(int timeout_ms) {
 			}
 		}
 	}
+}
+
+// what the plugin did to its own parameters in the last block (a knob turned in its window); returns how many, up to max
+int pi_take_changes(pc_inst *inst, uint32_t *ids, double *values, int max) {
+	int n = inst->n_changes < max ? inst->n_changes : max;
+	memcpy(ids, inst->change_ids, n * sizeof *ids);
+	memcpy(values, inst->change_values, n * sizeof *values);
+	return n;
 }

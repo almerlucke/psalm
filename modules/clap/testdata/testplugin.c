@@ -29,6 +29,7 @@ static const clap_plugin_descriptor_t descs[2] = {
     {CLAP_VERSION_INIT, "psalm.test.gain", "Psalm Test Gain", "psalm", "", "", "", "1", "a gain", fx_features},
 };
 
+static const clap_output_events_t *g_out; // the output events of the block (for handle)
 static void handle(test *t, const clap_event_header_t *h) {
 	if (h->space_id != CLAP_CORE_EVENT_SPACE_ID) {
 		return;
@@ -36,6 +37,12 @@ static void handle(test *t, const clap_event_header_t *h) {
 	switch (h->type) {
 	case CLAP_EVENT_NOTE_ON: {
 		const clap_event_note_t *n = (const clap_event_note_t *)h;
+		if (n->key == 127 && t->instrument && g_out) { // a knob turned in the plugin's own window: it tells the host
+			t->gain = 0.123;
+			clap_event_param_value_t pv = {{sizeof pv, 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0}, 0, NULL, -1, -1, -1, -1, 0.123};
+			g_out->try_push(g_out, &pv.header);
+			break;
+		}
 		for (int i = 0; i < VOICES; i++) {
 			if (!t->v[i].on) {
 				t->v[i] = (voice){1, n->note_id, 440.0 * pow(2.0, (n->key - 69) / 12.0), 0};
@@ -99,6 +106,7 @@ static clap_process_status t_process(const clap_plugin_t *p, const clap_process_
 	if (t->instrument && pr->audio_outputs_count != 3) {
 		return CLAP_PROCESS_ERROR; // the host has to give a buffer for every port it was told of
 	}
+	g_out = pr->out_events;
 	uint32_t n = pr->in_events->size(pr->in_events), e = 0;
 	float *o0 = pr->audio_outputs[0].data32[0], *o1 = pr->audio_outputs[0].data32[1];
 	for (uint32_t port = 1; port < pr->audio_outputs_count; port++) { // every port has to have buffers

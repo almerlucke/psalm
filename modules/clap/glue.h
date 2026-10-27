@@ -88,4 +88,7 @@ void pc_pump(int timeout_ms);
 // asks the plugin for the cookies of its parameters again (on the main thread)
 void pi_cache_cookies(pc_inst *inst);
 
+// what the plugin did to its own parameters in the last block (a knob turned in its window): the ids and the values, up to max of them; returns how many
+int pi_take_changes(pc_inst *inst, uint32_t *ids, double *values, int max);
+
 #endif

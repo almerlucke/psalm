@@ -176,6 +176,9 @@ func TestClapStateInPatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := pt.Connect(patcher.Cable{Type: patcher.Audio, From: id, To: "out"}); err != nil { // so that the plugin is run
+		t.Fatal(err)
+	}
 	node := func(pt *patcher.Patcher, id string) patcher.Settings {
 		s := pt.SettingsOf(id)
 		if s == nil {
@@ -193,6 +196,13 @@ func TestClapStateInPatch(t *testing.T) {
 	if l := label(); l != "Loudness" { // at 1 after the preset
 		until(p1, "the knob is not renamed after the preset: "+label(), func() bool { return label() == "Loudness" })
 	}
+	// a knob turned in the plugin's own window (here: a note of the key 127): the knob of the editor follows
+	pl := pt.Module(id).(*clap.Plugin)
+	pl.ReceiveMessage(psalm.Message{"command": "trigger", "noteOn": "gui", "amplitude": 1.0, "message": psalm.Message{"pitch": 127.0}, "tick": psalm.CtrlTick{}})
+	until(p1, "the knob does not follow what the plugin did itself", func() bool { return math.Abs(node(pt, id).Values()["output gain"]-0.123) < 1e-6 })
+	pl.ReceiveMessage(psalm.Message{"command": "trigger", "noteOff": "gui", "tick": psalm.CtrlTick{}})
+	pt.SettingsOf(id).Apply(map[string]float64{"output gain": 1})
+	until(p1, "the knob does not go back to 1", func() bool { return node(pt, id).Values()["output gain"] == 1 })
 	if err := pt.Save("with state"); err != nil {
 		t.Fatal(err)
 	}
