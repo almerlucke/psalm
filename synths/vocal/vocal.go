@@ -1152,7 +1152,7 @@ func (v *Voice) Synthesize() {
 		}
 		v.artGain += (v.artTarget - v.artGain) * 0.003
 		if v.tuneGain < v.tuneNow {
-			v.tuneNow = v.tuneGain // a tract that swells is held down at once
+			v.tuneNow += (v.tuneGain - v.tuneNow) * 0.05 // a tract that swells is held down at once (in a millisecond: a step would click)
 		} else {
 			v.tuneNow += (v.tuneGain - v.tuneNow) * 0.001
 		}
