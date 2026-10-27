@@ -75,14 +75,15 @@ type Config struct {
 	FilterEnvToPitch float64 // semitones of pitch sweep driven by the filter envelope
 
 	// Filter
-	FilterType      FilterType
-	FilterMode      FilterMode  // SVF output
-	LadderMode      ladder.Mode // ladder output
-	FilterDrive     float64     // ladder input saturation (0 is treated as 1)
-	Cutoff          float64     // Hz
-	Resonance       float64     // 0-1, for the formant filter it sets the sharpness of the formants
-	FilterEnvAmount float64     // octaves added to cutoff at full envelope (vowel steps for the formant filter)
-	KeyTrack        float64     // 0-1, 1 means cutoff follows pitch fully (relative to middle C)
+	FilterType       FilterType
+	FilterMode       FilterMode  // SVF output
+	LadderMode       ladder.Mode // ladder output
+	FilterDrive      float64     // ladder input saturation (0 is treated as 1)
+	FilterOversample int         // the ladder runs once (0), twice (1) or four times (2) a sample, so the harmonics of its saturation do not fold back
+	Cutoff           float64     // Hz
+	Resonance        float64     // 0-1, for the formant filter it sets the sharpness of the formants
+	FilterEnvAmount  float64     // octaves added to cutoff at full envelope (vowel steps for the formant filter)
+	KeyTrack         float64     // 0-1, 1 means cutoff follows pitch fully (relative to middle C)
 
 	// A second filter, a state variable one after the first (serial) or beside it (parallel): the
 	// two bands of a split, a low pass with a high pass for a band, a notch for a hole
@@ -112,21 +113,22 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{
-		NumChannels:     psalm.Stereo,
-		Osc1Waveform:    blosc.Sawtooth,
-		Osc2Waveform:    blosc.Sawtooth,
-		Osc1Level:       0.5,
-		Osc2Level:       0.5,
-		Osc2Detune:      0.07,
-		PulseWidth:      0.5,
-		Drive:           1.0,
-		FilterMode:      LowPass,
-		Cutoff:          800.0,
-		Resonance:       0.3,
-		FilterEnvAmount: 3.0,
-		KeyTrack:        0.5,
-		FilterEnv:       *adsr.NewSetting(1.0, 5.0, 0.3, 300.0, 1.0, 400.0),
-		AmpEnv:          *adsr.NewSetting(1.0, 5.0, 0.7, 200.0, 1.0, 300.0),
+		NumChannels:      psalm.Stereo,
+		FilterOversample: 1, // the ladder twice a sample: its saturation does not fold back
+		Osc1Waveform:     blosc.Sawtooth,
+		Osc2Waveform:     blosc.Sawtooth,
+		Osc1Level:        0.5,
+		Osc2Level:        0.5,
+		Osc2Detune:       0.07,
+		PulseWidth:       0.5,
+		Drive:            1.0,
+		FilterMode:       LowPass,
+		Cutoff:           800.0,
+		Resonance:        0.3,
+		FilterEnvAmount:  3.0,
+		KeyTrack:         0.5,
+		FilterEnv:        *adsr.NewSetting(1.0, 5.0, 0.3, 300.0, 1.0, 400.0),
+		AmpEnv:           *adsr.NewSetting(1.0, 5.0, 0.7, 200.0, 1.0, 300.0),
 	}
 }
 
@@ -194,37 +196,38 @@ const ladderStageLevel = 1.25
 
 type Voice struct {
 	*psalm.Module
-	cfg       Config
-	osc1      *blosc.Blosc
-	osc2      *blosc.Blosc
-	sub       *blosc.Blosc
-	noise     noise
-	lfo1      lfo
-	lfo2      lfo
-	svf       *svf.SVF
-	svf2      *svf.SVF
-	ladder    *ladder.Ladder
-	formant   *formant.Formant
-	ladderDrv float64
-	formShift float64
-	formCount int // counts samples until the next filter coefficient update
-	filterEnv *adsr.ADSR
-	ampEnv    *adsr.ADSR
-	frequency float64 // target frequency
-	glideFreq float64 // current frequency, glides towards frequency
-	cutoff    float64 // smoothed cutoff, ramps towards cfg.Cutoff over a buffer
-	res       float64 // smoothed resonance, ramps towards cfg.Resonance over a buffer
-	vowel     float64 // smoothed vowel, ramps towards cfg.Vowel over a buffer
-	waitSamps int
-	expr      expression.Expression // the pitch bend; the mod wheel opens the filter
-	mods      *modmatrix.Matrix
-	uni1      [maxUnison - 1]*blosc.Blosc // the extra oscillators of unison
-	uni2      [maxUnison - 1]*blosc.Blosc
-	drift     float64 // -1 to 1, wanders
-	driftTo   float64
-	driftLeft int
-	velocity  float64 // the amplitude of the note
-	random    float64 // a random value for the note, -1 to 1
+	cfg        Config
+	osc1       *blosc.Blosc
+	osc2       *blosc.Blosc
+	sub        *blosc.Blosc
+	noise      noise
+	lfo1       lfo
+	lfo2       lfo
+	svf        *svf.SVF
+	svf2       *svf.SVF
+	ladder     *ladder.Ladder
+	formant    *formant.Formant
+	ladderDrv  float64
+	ladderOver int // how many times a sample the ladder runs (set in the ladder)
+	formShift  float64
+	formCount  int // counts samples until the next filter coefficient update
+	filterEnv  *adsr.ADSR
+	ampEnv     *adsr.ADSR
+	frequency  float64 // target frequency
+	glideFreq  float64 // current frequency, glides towards frequency
+	cutoff     float64 // smoothed cutoff, ramps towards cfg.Cutoff over a buffer
+	res        float64 // smoothed resonance, ramps towards cfg.Resonance over a buffer
+	vowel      float64 // smoothed vowel, ramps towards cfg.Vowel over a buffer
+	waitSamps  int
+	expr       expression.Expression // the pitch bend; the mod wheel opens the filter
+	mods       *modmatrix.Matrix
+	uni1       [maxUnison - 1]*blosc.Blosc // the extra oscillators of unison
+	uni2       [maxUnison - 1]*blosc.Blosc
+	drift      float64 // -1 to 1, wanders
+	driftTo    float64
+	driftLeft  int
+	velocity   float64 // the amplitude of the note
+	random     float64 // a random value for the note, -1 to 1
 }
 
 func New(cfg Config) *Voice {
@@ -256,6 +259,7 @@ func New(cfg Config) *Voice {
 	v.svf2 = svf.New(max(20, cfg.Filter2Cutoff), cfg.Filter2Resonance, sr)
 	v.ladder = ladder.New(cfg.Cutoff, cfg.Resonance, sr)
 	v.ladder.SetStageLevel(ladderStageLevel)
+	v.ladderOver = 1
 	v.formant = formant.New(cfg.Vowel, formantQ(cfg.Resonance), sr)
 	v.filterEnv = adsr.New(&v.cfg.FilterEnv, adsr.NoteOff, sr)
 	v.ampEnv = adsr.New(&v.cfg.AmpEnv, adsr.NoteOff, sr)
@@ -348,6 +352,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("filterMode", func(m int) { v.cfg.FilterMode = FilterMode(m) })
 	msg.IfIntVal("ladderMode", func(m int) { v.cfg.LadderMode = ladder.Mode(m) })
 	msg.IfFltVal("filterDrive", func(f float64) { v.cfg.FilterDrive = f })
+	msg.IfIntVal("filterOversample", func(n int) { v.cfg.FilterOversample = max(0, min(n, 2)) })
 	msg.IfFltVal("vowel", func(f float64) { v.cfg.Vowel = f })
 	msg.IfFltVal("formantShift", func(f float64) { v.cfg.FormantShift = f })
 	msg.IfFltVal("cutoff", func(f float64) { v.cfg.Cutoff = f })
@@ -704,6 +709,10 @@ func (v *Voice) setFilter(cutoff, mod, res, vowel float64) {
 		if drive != v.ladderDrv {
 			v.ladderDrv = drive
 			v.ladder.SetDrive(drive)
+		}
+		if over := 1 << max(0, min(cfg.FilterOversample, 2)); over != v.ladderOver {
+			v.ladderOver = over
+			v.ladder.SetOversample(over)
 		}
 		v.ladder.Set(cutoff, res)
 

@@ -1,6 +1,10 @@
 package ladder
 
-import "math"
+import (
+	"math"
+
+	"github.com/almerlucke/psalm/blocks/oversample"
+)
 
 // Mode selects the output of the ladder, the band and high pass modes are mixed from the stage
 // outputs (as in multimode ladder synths)
@@ -29,12 +33,34 @@ type Ladder struct {
 	compGain float64
 	stageAt  float64 // the level the clip of the stages carries up to at a drive of 1 (StageLevel)
 	stage    float64 // and now
+	factor   int     // the ladder runs this many times a sample (SetOversample), 1 for once
+	over     *oversample.Oversampler
+	mode     Mode // the mode of the sample in the oversampled run
+	run      func(float64) float64
 }
 
 func New(fc float64, res float64, sr float64) *Ladder {
-	l := &Ladder{sr: sr, fc: fc, res: res, drive: 1.0, stageAt: stageLevel}
+	l := &Ladder{sr: sr, fc: fc, res: res, drive: 1.0, stageAt: stageLevel, factor: 1}
 	l.update()
 	return l
+}
+
+// SetOversample runs the ladder two or four times a sample (factor 2 or 4; 1 or less for once), with the input brought up and the output down through a lowpass
+// (blocks/oversample): the saturation of the drive and of the stages makes harmonics, and the ones over the Nyquist frequency fold back without it. The
+// lowpass delays the sound by about a millisecond, so this is for a ladder that is driven hard
+func (l *Ladder) SetOversample(factor int) {
+	factor = max(1, factor)
+	if factor == l.factor {
+		return
+	}
+	l.factor = factor
+	l.over = nil
+	if factor >= 2 {
+		l.over = oversample.New(factor, oversample.TapsPerPhase)
+		l.run = func(x float64) float64 { return l.process(x, l.mode) }
+	}
+	l.Clear()
+	l.update()
 }
 
 func (l *Ladder) Set(fc float64, res float64) {
@@ -57,8 +83,9 @@ func (l *Ladder) SetDrive(drive float64) {
 }
 
 func (l *Ladder) update() {
+	sr := l.sr * float64(l.factor)
 	fc := math.Max(1.0, math.Min(l.fc, l.sr*0.45))
-	g := math.Tan(math.Pi * fc / l.sr)
+	g := math.Tan(math.Pi * fc / sr)
 
 	l.g = g / (1.0 + g)
 	// the feedback of 4 is where the ladder would oscillate, but the saturation takes a little of the loop's gain away: the last part of the range goes over 4, so that
@@ -73,6 +100,9 @@ func (l *Ladder) update() {
 
 func (l *Ladder) Clear() {
 	l.s = [4]float64{}
+	if l.over != nil {
+		l.over.Reset()
+	}
 }
 
 // stageLevel is the level the clip of the stages carries up to at a drive of 1: a signal that is hot (a loud one into a high resonance, a drive) reaches it, a
@@ -95,6 +125,15 @@ func stageClip(x float64, level float64) float64 {
 
 // Process filters a single sample and returns the output for the given mode
 func (l *Ladder) Process(x float64, mode Mode) float64 {
+	if l.over != nil {
+		l.mode = mode
+		return l.over.Process(x, l.run)
+	}
+
+	return l.process(x, mode)
+}
+
+func (l *Ladder) process(x float64, mode Mode) float64 {
 	G := l.g
 	oneMinusG := 1.0 - G
 

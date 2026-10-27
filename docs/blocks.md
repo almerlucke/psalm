@@ -43,6 +43,8 @@ with a resolved feedback loop, input saturation and multimode outputs.
 |---|---|
 | `ladder.New(cutoff, resonance, sampleRate)` | Resonance 0-1 (feedback 0-4) |
 | `Set(cutoff, resonance)`, `SetDrive(drive)` | Update settings |
+| `SetStageLevel(level)` | Where the soft clip of the stages carries up to (4 by default, about 1 clips a normal signal) |
+| `SetOversample(factor)` | Runs the ladder 2 or 4 times a sample (`blocks/oversample`), so what the saturation makes above the Nyquist frequency does not fold back: 6 to 20 dB less alias on a driven ladder; the lowpass delays the sound by about a millisecond |
 | `Process(x, mode)` | `LowPass24`, `LowPass12`, `BandPass24`, `BandPass12`, `HighPass24`, `HighPass12` |
 
 ### biquad

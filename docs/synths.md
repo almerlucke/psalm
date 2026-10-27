@@ -196,6 +196,7 @@ reaches `unisonDetune` too.
 | `FilterMode` | `LowPass` | SVF output: `LowPass`, `BandPass`, `HighPass`, `Notch`, `Peak`, `AllPass` |
 | `LadderMode` | `ladder.LowPass24` | Ladder output: `LowPass24`, `LowPass12`, `BandPass24`, `BandPass12`, `HighPass24`, `HighPass12` |
 | `FilterDrive` | 1 | Ladder input saturation |
+| `FilterOversample` | 1 | The ladder runs once (0), twice (1) or four times (2) a sample, so the harmonics of its saturation do not fold back: the ladder presets have 6 to 20 dB less alias at twice a sample, and four times adds little |
 | `Cutoff` | 800 | Cutoff in Hz |
 | `Resonance` | 0.3 | 0-1 (the ladder self-oscillates near 1), for the formant filter the sharpness of the formants |
 | `FilterEnvAmount` | 3 | Octaves the filter envelope adds to the cutoff (vowel steps for the formant filter, can be negative) |
@@ -281,7 +282,7 @@ module on input 5 with a slot `Ext1` to `cutoff` is a vibrato of the filter that
 |---|---|
 | Pitch | `pitch` (MIDI), `frequency` (Hz), `glide`, `filterEnvToPitch` |
 | Oscillators | `osc1Waveform`, `osc2Waveform`, `osc1Level`, `osc2Level`, `osc2Detune`, `osc2Octave`, `pulseWidth`, `subLevel`, `noiseLevel`, `noiseType`, `ringModLevel`, `sync`, `fmAmount`, `drive` |
-| Filter | `filterType`, `filterMode`, `ladderMode`, `filterDrive`, `cutoff`, `resonance`, `filterEnvAmount`, `keyTrack`, `vowel`, `formantShift` |
+| Filter | `filterType`, `filterMode`, `ladderMode`, `filterDrive`, `filterOversample`, `cutoff`, `resonance`, `filterEnvAmount`, `keyTrack`, `vowel`, `formantShift` |
 | LFOs | `lfo1Waveform`, `lfo1Rate`, `lfo1Delay`, `lfo1KeySync`, `lfo1Pitch`, `lfo1Cutoff`, `lfo1PulseWidth`, `lfo1Amp`, and the same with `lfo2` |
 | Matrix | `mod1Src`, `mod1Dest`, `mod1Amount` (to `mod8`), `ext1` to `ext4` |
 

@@ -201,3 +201,94 @@ func TestStageLevelSetsTheClip(t *testing.T) {
 		t.Errorf("a stage level of 1.25 gives a peak of %v, 4 gives %v: the lower should clip more", hard, soft)
 	}
 }
+
+// harmonicsAndAlias plays a sine through a ladder that is driven hard and returns the energy that is not at a harmonic of the sine, as dB of the energy that is
+func harmonicsAndAlias(l *Ladder, freq float64) float64 {
+	const n = 1 << 14
+	// a frequency that fits the window, so that every harmonic is one bin
+	bins := math.Round(freq * n / sr)
+	freq = bins * sr / n
+	sig := make([]float64, n)
+	for i := range 2 * n {
+		y := l.Process(0.7*math.Sin(2*math.Pi*freq*float64(i)/sr), LowPass24)
+		if i >= n {
+			sig[i-n] = y
+		}
+	}
+	var harmonic, alias float64
+	spectrum := dft(sig)
+	for k := 1; k < n/2; k++ {
+		p := spectrum[k]
+		if math.Mod(float64(k), bins) == 0 {
+			harmonic += p
+		} else {
+			alias += p
+		}
+	}
+	return 10 * math.Log10(alias/harmonic)
+}
+
+// dft returns the power of the bins of a real signal (a radix 2 FFT)
+func dft(x []float64) []float64 {
+	n := len(x)
+	re, im := append([]float64(nil), x...), make([]float64, n)
+	for i, j := 1, 0; i < n; i++ {
+		bit := n >> 1
+		for ; j&bit != 0; bit >>= 1 {
+			j ^= bit
+		}
+		j ^= bit
+		if i < j {
+			re[i], re[j] = re[j], re[i]
+		}
+	}
+	for size := 2; size <= n; size <<= 1 {
+		ang := -2 * math.Pi / float64(size)
+		for start := 0; start < n; start += size {
+			for k := range size / 2 {
+				wr, wi := math.Cos(ang*float64(k)), math.Sin(ang*float64(k))
+				a, b := start+k, start+k+size/2
+				tr, ti := re[b]*wr-im[b]*wi, re[b]*wi+im[b]*wr
+				re[b], im[b] = re[a]-tr, im[a]-ti
+				re[a], im[a] = re[a]+tr, im[a]+ti
+			}
+		}
+	}
+	p := make([]float64, n/2)
+	for k := range p {
+		p[k] = re[k]*re[k] + im[k]*im[k]
+	}
+	return p
+}
+
+// run twice and four times a sample, the ladder folds back less of what its saturation makes, and the sound in the passband stays as loud
+func TestOversamplingLowersTheAlias(t *testing.T) {
+	var alias [3]float64
+	for o, factor := range []int{1, 2, 4} {
+		l := New(9000, 0.3, sr)
+		l.SetDrive(6)
+		l.SetStageLevel(0.5)
+		l.SetOversample(factor)
+		alias[o] = harmonicsAndAlias(l, 2300)
+	}
+	t.Logf("alias %.1f dB, %.1f dB, %.1f dB", alias[0], alias[1], alias[2])
+	if alias[1] > alias[0]-6 {
+		t.Errorf("twice a sample: %.1f dB of alias, want 6 dB under the %.1f dB of once", alias[1], alias[0])
+	}
+	if alias[2] > alias[1]+1 {
+		t.Errorf("four times a sample: %.1f dB of alias against %.1f dB for twice", alias[2], alias[1])
+	}
+
+	for _, factor := range []int{2, 4} {
+		l := New(500, 0, sr)
+		l.SetOversample(factor)
+		if pass := gainDB(l, LowPass24, 50); math.Abs(pass) > 1 {
+			t.Errorf("oversampled %d times: the passband is %.1f dB", factor, pass)
+		}
+		// the cutoff is where it is (-3 dB at 24 dB/oct is about -12 dB at the cutoff of the stages)
+		once := New(500, 0, sr)
+		if a, b := gainDB(once, LowPass24, 1000), gainDB(l, LowPass24, 1000); math.Abs(a-b) > 1 {
+			t.Errorf("oversampled %d times: %.1f dB an octave over the cutoff, %.1f dB for once", factor, b, a)
+		}
+	}
+}

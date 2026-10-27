@@ -1139,7 +1139,7 @@ func OBStabPreset() Config {
 	cfg.FilterEnv = adsrEnv(1, 220, 0.1, 150)
 	cfg.AmpEnv = adsrEnv(1, 300, 0.25, 140)
 	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Velocity, Dest: "cutoff", Amount: 0.3}
-	cfg.Level = 1.187 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	cfg.Level = 1.3 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
 

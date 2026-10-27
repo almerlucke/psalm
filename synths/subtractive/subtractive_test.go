@@ -510,3 +510,28 @@ func TestSecondFilter(t *testing.T) {
 		t.Errorf("settings %+v", c)
 	}
 }
+
+// the ladder of a voice runs twice a sample by default, and the message and the setting change that
+func TestFilterOversample(t *testing.T) {
+	if DefaultConfig().FilterOversample != 1 {
+		t.Errorf("a ladder runs %d (0 once, 1 twice) by default, want twice", DefaultConfig().FilterOversample)
+	}
+	cfg := DefaultConfig()
+	cfg.FilterType = FilterLadder
+	v := New(cfg)
+	v.Note(0.2, 1, psalm.Message{"pitch": 60.0, "velocity": 0.8}, psalm.CtrlTick{}, v.Config())
+	v.Synthesize()
+	if v.ladderOver != 2 {
+		t.Errorf("the ladder runs %d times a sample, want 2", v.ladderOver)
+	}
+	v.ReceiveMessage(psalm.Message{"filterOversample": 2})
+	v.Synthesize()
+	if v.ladderOver != 4 {
+		t.Errorf("after the message the ladder runs %d times a sample, want 4", v.ladderOver)
+	}
+	v.ReceiveMessage(psalm.Message{"filterOversample": 0})
+	v.Synthesize()
+	if v.ladderOver != 1 {
+		t.Errorf("after the message the ladder runs %d times a sample, want 1", v.ladderOver)
+	}
+}
