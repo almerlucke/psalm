@@ -5,6 +5,7 @@
 //	go run ./cmd/examples/presets                          all of them
 //	go run ./cmd/examples/presets -synth vocal             one synth (subtractive has all of its presets)
 //	go run ./cmd/examples/presets -synth subtractive -preset acidBass   one preset
+//	go run ./cmd/examples/presets -synth dx -oversample 2              the dx presets, the operators played four times a sample
 //	go run ./cmd/examples/presets -render presets.wav      render it
 package main
 
@@ -61,6 +62,7 @@ type entry struct {
 
 func main() {
 	only := flag.String("synth", "", "the synth whose presets to play (empty: all)")
+	over := flag.Int("oversample", 0, "dx: play the operators once (0), twice (1) or four times (2) a sample")
 	only2 := flag.String("preset", "", "with -synth: only this preset")
 	renderTo := flag.String("render", "", "render to this WAV file instead of playing")
 	flag.Parse()
@@ -195,6 +197,7 @@ func main() {
 		{"drumsynth", "industrial", beat, 0, kit(drumsynth.KitIndustrial)},
 	}
 	tour = append(tour, subtractiveTour()...)
+	tour = append(tour, dxTour(*over)...)
 	var chosen []entry
 	for _, e := range tour {
 		if (*only == "" || strings.EqualFold(e.synth, *only)) && (*only2 == "" || strings.EqualFold(e.preset, *only2)) {
