@@ -410,6 +410,9 @@ func (r *Roll) scaleFor(gp GenParams, l *Link) (harmony.Scale, error) {
 	return harmony.NewScale("C", "major")
 }
 
+// SetView chooses the clip the editor shows (a section's; "" the loop that plays where a section has no clip)
+func (r *Roll) SetView(section string) { r.view.Store(&section) }
+
 // Preview plays notes once, as they are (a melody to hear before it is used): beats from the start, from the next control tick
 func (r *Roll) Preview(notes []Note, length float64) {
 	r.preview.Store(&sequence{Notes: slices.Clone(notes), Length: length})

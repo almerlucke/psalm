@@ -12,7 +12,7 @@
 //   - the drums are clocks with patterns that are made, not written: a euclidean kick `E(4,16)`, a snare with a fill that is only played in the last bar of a section
 //     (`x%fill`), hats that are a Markov chain on an example `M(...)` with a groove (mpc 58) and a drift, an open hat of `E(5,16,2)` on `%2/4`, a clap of the cellular automaton rule 30
 //   - the lead is in the piano roll: a clip for every section (the melody made with a grammar, `S -> A A' B A~`, over the chords of the section), and a second roll with a
-//     counter-line under it (no parallel fifths or octaves, against the melody). Open the roll's Melody panel to make others: Generate, Variations, Every section, a
+//     counter-line under it (no parallel fifths or octaves, against the melody). The rolls have a clip for the Verse and the Chorus (choose the section above the roll; the loop has none). Open the roll's Melody panel to make others: Generate, Variations, Every section, a
 //     grammar or an L-system, Counter-line, Invert, Reverse, Groove
 package main
 
@@ -225,6 +225,8 @@ func writeMelody(pt *patcher.Patcher, harm, roll, counter string) error {
 		c := melody.Counter(m, melody.CounterParams{Scale: scale, Chords: chords, Low: 45, High: 69, Every: 2})
 		lead.SetClip(s.name, toNotes(m), beats)
 		under.SetClip(s.name, toNotes(c), beats)
+		lead.SetView(s.name) // the editors open on a clip with notes in it (the loop has none: the notes are in the clips of the sections)
+		under.SetView(s.name)
 	}
 	return nil
 }
