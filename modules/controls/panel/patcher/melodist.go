@@ -53,7 +53,7 @@ type MelodistConfig struct {
 	Key, Scale                  int // Scale 0: the scale of the harmony; else one of Scales (Scale-1), in Key
 	Seed                        int
 	Mutate                      float64
-	Freeze, Counter             bool
+	Freeze, Counter, Just       bool // Just: the notes in just intonation (pure ratios from the tonic, the key of the scale) instead of equal temperament
 	Velocity                    float64
 	Length                      float64 // beats a pass without a song
 }
@@ -66,6 +66,9 @@ var (
 	MelodyPhrases  = []float64{2, 4, 8, 16}
 )
 
+// justCents are the twelve notes above the tonic in just intonation, in cents from the equal temperament: 16/15, 9/8, 6/5, 5/4, 4/3, 45/32, 3/2, 8/5, 5/3, 9/5, 15/8
+var justCents = [12]float64{0, 11.73, 3.91, 15.64, -13.69, -1.96, -9.78, 1.96, 13.69, -15.64, 17.6, -11.73}
+
 // melodyPass is a pass made: the section and the number it is for, and its notes (beats from the start of the pass)
 type melodyPass struct {
 	n       int64
@@ -73,6 +76,8 @@ type melodyPass struct {
 	beats   float64
 	notes   []melody.Note
 	counter []melody.Note
+	tonic   int // the pitch class of the tonic (for just intonation)
+	just    bool
 }
 
 // melodyReq is a pass to make; clear sends the memory of the sections away (a new take)
@@ -135,6 +140,7 @@ func (m *Melodist) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("length", func(v float64) { c.Length = math.Max(2, math.Min(v, 128)) })
 	msg.IfBoolVal("freeze", func(b bool) { c.Freeze = b })
 	msg.IfBoolVal("counter", func(b bool) { c.Counter = b })
+	msg.IfBoolVal("just", func(b bool) { c.Just = b })
 }
 
 func (m *Melodist) Receive(v any, _ int) {
@@ -168,6 +174,7 @@ func (m *Melodist) Describe() params.Set {
 		params.K("Live", "seed", 0, 9999, float64(c.Seed), params.Step(1)),
 		params.S("Live", "freeze", c.Freeze),
 		params.S("Live", "counter", c.Counter, params.Label("second voice")),
+		params.S("Range", "just", c.Just, params.Label("just intonation")),
 		params.K("Live", "length", 2, 128, c.Length, params.Step(1), params.Label("beats a pass (no song)")),
 		params.K("Live", "velocity", 0.05, 1, c.Velocity),
 	}}
@@ -261,7 +268,13 @@ func (m *Melodist) makePass(c MelodistConfig, grammar string, r melodyReq, befor
 		p.Seed = base + uint64(r.n)
 		notes = melody.Generate(p)
 	}
-	out := &melodyPass{n: r.n, section: r.section, beats: r.beats, notes: notes}
+	tonic := 0
+	if c.Scale > 0 {
+		tonic, _ = harmony.PitchClass(Keys[c.Key])
+	} else if hm := HarmonyOf(m.Env()); hm != nil {
+		tonic, _ = harmony.PitchClass(Keys[hm.Key])
+	}
+	out := &melodyPass{n: r.n, section: r.section, beats: r.beats, notes: notes, tonic: tonic, just: c.Just}
 	if c.Counter && len(notes) > 0 {
 		lo, hi := 127, 0
 		for _, n := range notes {
@@ -341,8 +354,12 @@ func (m *Melodist) CtrlTick(tick psalm.CtrlTick) {
 			if start < from || start > t {
 				continue
 			}
+			pitch := float64(n.Key)
+			if pass.just {
+				pitch += justCents[((n.Key-pass.tonic)%12+12)%12] / 100
+			}
 			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.005, n.Length*second), "amplitude": n.Velocity,
-				"message": psalm.Message{"pitch": float64(n.Key), "velocity": n.Velocity}}
+				"message": psalm.Message{"pitch": pitch, "velocity": n.Velocity}}
 			for _, target := range m.targets {
 				target.ReceiveMessage(msg)
 			}

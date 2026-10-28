@@ -26,24 +26,17 @@ shared.sec = name => {
   return s
 }
 
-// --- the harmony: a progression for every section, each chord for a number of bars. One loop of four bars (D Bm7 Gmaj7 A) is what the tune is written over, so the voices of
-// the canon, a phrase or four bars apart, always sing over the same chords; the Shadow is the same loop a minor third lower, the Wonder a hymn
-const rep = (list, n) => Array.from({ length: n }).flatMap(() => list)
-const LOOP = [["D", 1], ["Bm7", 1], ["Gmaj7", 1], ["A", 1]]
-const PROGS = {
-  Thread: [["Dsus2", 4], ["D", 2], ["Dsus2", 2]],
-  Knit: rep(LOOP, 4),
-  Wonder: rep([["G", 1], ["D/F#", 1], ["Em7", 1], ["A", 1], ["Bm", 1], ["G", 1], ["A", 1], ["D", 1]], 2),
-  Shadow: rep([["Bm", 1], ["G", 1], ["Em7", 1], ["A", 1]], 3),
-  Light: rep(LOOP, 3),
-  Sand: rep(LOOP, 4),
-  Awake: [["Dsus2", 4], ["D", 8]],
-}
+// --- the harmony: the chords of every section are written in the program (shared.progs: a cycle of "chord*bars" that goes round for the bars of the section, as the harmony module
+// of the patch has them). One loop of four bars (D Bm7 Gmaj7 A) is what the tune is written over, so the voices of the canon, a phrase or four bars apart, always sing over the same
+// chords; the Shadow is the same loop a minor third lower, the Wonder a hymn
 const perBar = {}
 for (const s of shared.sections) {
-  const bars = (PROGS[s.name] || []).flatMap(([symbol, n]) => Array(n).fill(symbol))
-  if (bars.length !== s.bars) throw new Error(s.name + ": " + bars.length + " chords for " + s.bars + " bars")
-  perBar[s.name] = bars.map(chord)
+  const cycle = (shared.progs[s.name] || "").split(/\s+/).filter(Boolean).flatMap(t => {
+    const [symbol, n] = t.split("*")
+    return Array(n ? Number(n) : 1).fill(symbol)
+  })
+  if (cycle.length === 0 || s.bars % cycle.length !== 0) throw new Error(s.name + ": " + cycle.length + " chords for " + s.bars + " bars")
+  perBar[s.name] = Array.from({ length: s.bars }, (_, i) => chord(cycle[i % cycle.length]))
 }
 shared.chordFor = (section, bar) => perBar[section][bar]
 

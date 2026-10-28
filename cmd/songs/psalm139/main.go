@@ -22,6 +22,10 @@ package main
 // sections begin. The instruments are the recordings of the Virtual Playing Orchestra where it is in assets (a harp, a celesta, solo flute, alto flute, violin and cello,
 // violas, a female choir, plucked strings), models of them where it is not; the piano, the heart and the percussion are the same either way.
 //
+// Under the written parts there are parts that are made while it plays (addLive in patch.go): a harmony module with the chords, a melodist that thinks aloud on the glass in the Wonder,
+// the Light and the Sand (a question and its answer over the chord of the bar, a little different each time through a section, in just intonation), hand drum ghosts of three hits in
+// twelve that turn a step every pass, and in the Sand eggs of a cellular automaton (rule 30, a new row every pass): the grains more in number than the sand.
+//
 //	go run ./cmd/songs/psalm139                                      play it (the page is at http://localhost:8087)
 //	go run ./cmd/songs/psalm139 -tuning equal                        in equal temperament instead
 //	go run ./cmd/songs/psalm139 -orchestra=false                     the models of the instruments instead of the recordings

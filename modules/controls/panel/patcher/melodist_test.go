@@ -152,3 +152,22 @@ func TestMelodistKeepsInARoll(t *testing.T) {
 		t.Error("a button that is not there")
 	}
 }
+
+// just intonation: the notes a few cents off the equal temperament, from the tonic of the harmony
+func TestMelodistJust(t *testing.T) {
+	_, _, rec := melodistRun(t, 4, func(m *patcher.Melodist) {
+		m.ReceiveMessage(psalm.Message{"just": true, "density": 0.6})
+	})
+	if len(rec.pitches) < 4 {
+		t.Fatalf("%d notes", len(rec.pitches))
+	}
+	off := 0
+	for _, p := range rec.pitches {
+		if math.Abs(p-math.Round(p)) > 0.005 {
+			off++
+		}
+	}
+	if off == 0 {
+		t.Errorf("no note off the equal temperament: %v", rec.pitches)
+	}
+}

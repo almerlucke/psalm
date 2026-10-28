@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
+	"github.com/almerlucke/psalm/tools/rhythm"
 )
 
 //go:embed scripts/*.js
@@ -50,6 +52,27 @@ var sections = []section{
 	{"Light", 12, 0.95, "Yea, the darkness hideth not from thee; but the night shineth as the day: the darkness and the light are both alike to thee. (Psalm 139:12)"},
 	{"Sand", 16, 0.8, "How precious also are thy thoughts unto me, O God! how great is the sum of them! If I should count them, they are more in number than the sand. (Psalm 139:17, 18)"},
 	{"Awake", 12, 0.7, "When I awake, I am still with thee. Search me, O God, and know my heart: try me, and know my thoughts: and lead me in the way everlasting. (Psalm 139:18, 23, 24)"},
+}
+
+// progressions are the chords of every section: a cycle ("chord*bars", a bar each without) that goes round for the bars of the section. The harmony module of the patch has them
+// (what the melodist plays over), and the score reads them from here (shared.progs) for the parts that play the chords
+var progressions = map[string]string{
+	"Thread": "Dsus2*4 D*2 Dsus2*2",
+	"Knit":   "D Bm7 Gmaj7 A",
+	"Wonder": "G D/F# Em7 A Bm G A D",
+	"Shadow": "Bm G Em7 A",
+	"Light":  "D Bm7 Gmaj7 A",
+	"Sand":   "D Bm7 Gmaj7 A",
+	"Awake":  "Dsus2*4 D*8",
+}
+
+// harmonyText is the chords for the harmony module: a line for every section
+func harmonyText() string {
+	lines := make([]string, len(sections))
+	for i, s := range sections {
+		lines[i] = s.name + ": " + progressions[s.name]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // sectionsText is the sections of the song for the song module
@@ -186,8 +209,10 @@ func (s strip) real() strip {
 
 // patchIDs are the modules of the patch to look at: the scripts, and the synths by their part
 type patchIDs struct {
-	scripts []string
-	synths  map[string]string
+	scripts  []string
+	synths   map[string]string
+	live     []string // the modules of the live parts (see live)
+	melodist string
 }
 
 type sectionJS struct {
@@ -209,8 +234,8 @@ func preludeJS(opt options) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("shared.beats = %d\nshared.just = %v\nshared.a4 = %v\nshared.seed = %d\nshared.human = %v\nshared.sections = %s\nshared.kits = %s\n",
-		beats, opt.just, opt.a4, opt.seed, opt.human, js(ss), js(kitKeys())) + cutPieces, nil
+	return fmt.Sprintf("shared.beats = %d\nshared.just = %v\nshared.a4 = %v\nshared.seed = %d\nshared.human = %v\nshared.sections = %s\nshared.kits = %s\nshared.progs = %s\n",
+		beats, opt.just, opt.a4, opt.seed, opt.human, js(ss), js(kitKeys()), js(progressions)) + cutPieces, nil
 }
 
 // buildPatch makes the patch: the song of the psalm, a script that holds the score (the first, so the others find it in `shared`), a script and an instrument for
@@ -315,6 +340,9 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		connect(patcher.Cable{From: fx, To: mixer, In: channels + i})
 	}
 	connect(patcher.Cable{From: mixer, Out: 0, To: "out"})
+	if err == nil {
+		err = addLive(pt, &ids, opt, add, connect, text, apply)
+	}
 	if err != nil {
 		return patchIDs{}, err
 	}
@@ -339,4 +367,85 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		return patchIDs{}, err
 	}
 	return ids, nil
+}
+
+func b2f(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// handKeys are the keys of the pieces cut from the recording of the hands (the ones loud enough to use), as the script of the hands has them
+func handKeys() []int {
+	c, ok := cutByName("hands")
+	if !ok {
+		return nil
+	}
+	ps, err := c.pieces()
+	if err != nil {
+		return nil
+	}
+	var keys []int
+	for _, p := range ps {
+		if p.DB > c.lowest {
+			keys = append(keys, p.Key)
+		}
+	}
+	return keys
+}
+
+// addLive adds the parts that are made while the song plays, under the written ones (their scripts are not touched), into the instruments the parts have:
+//   - a harmony with the chords of the song, and a melodist that thinks aloud on the glass: a short phrase now and then over the chord of the bar, a question and its answer, a
+//     little different every time through a section (the thought of the Wonder comes again in the Light, changed), in the Wonder, the Light and the Sand
+//   - ghosts of the hands: a hand drum of three hits in twelve turning a step every pass (so the pattern weaves itself round the bar), softer and later than the written hands, with
+//     a lane of five velocities against the twelve (the accents never fall in the same place twice), a laid back groove and a drift, in the Wonder, the Light and the Sand
+//   - the sand: in the Sand the eggs of a cellular automaton, a new row every pass (rule 30): the grains that are more in number than the sand
+func addLive(pt *patcher.Patcher, ids *patchIDs, opt options, add func(kind, preset string, x, y float64) string, connect func(patcher.Cable), text func(id, key, value string),
+	apply func(id string, v map[string]float64)) error {
+	glass, hands, shaker := ids.synths["glass"], ids.synths["hands"], ids.synths["shaker"]
+	if glass == "" || hands == "" || shaker == "" {
+		return fmt.Errorf("the live parts need the glass, the hands and the eggs")
+	}
+	major := float64(slices.Index(patcher.Scales, "major"))
+	harmony := add("harmony", "", 1500, 20)
+	melodist := add("melodist", "", 1500, 140)
+	gate := add("gate", "", 1740, 140)
+	text(harmony, "chords", harmonyText())
+	apply(harmony, map[string]float64{"key": 2, "scale": major}) // D major
+	text(gate, "name", "thoughts")
+	text(gate, "sections", "Wonder, Light, Sand")
+	apply(melodist, map[string]float64{"form": 4, "contour": 4, "phrase": 1, "density": 0.1, "rest": 0.75, "steps": 0.8, "chord": 0.8, "low": 74, "high": 92,
+		"mutate": 0.35, "seed": 11, "velocity": 0.3, "just": b2f(opt.just)})
+	connect(patcher.Cable{From: melodist, To: gate, In: 1})
+	connect(patcher.Cable{From: gate, Out: 1, To: glass})
+
+	ghost := func(y float64, synth, pattern, lanes string, keys []int, settings map[string]float64, velocity float64) {
+		clock := add("clock", "", 1500, y)
+		seq := add("sequence", "", 1740, y)
+		notes := add("notes", "", 1980, y)
+		text(clock, "pattern", pattern)
+		text(clock, "lanes", lanes)
+		vals := make([]string, len(keys))
+		for i, k := range keys {
+			vals[i] = fmt.Sprint(k)
+		}
+		text(seq, "values", strings.Join(vals, " "))
+		apply(clock, settings)
+		apply(seq, map[string]float64{"order": 1}) // shuffled: every piece in turn, not the same twice in a row
+		apply(notes, map[string]float64{"velocity": velocity, "length": 1.5})
+		connect(patcher.Cable{From: clock, To: seq})
+		connect(patcher.Cable{From: clock, To: notes})
+		connect(patcher.Cable{From: seq, To: notes, In: 1})
+		connect(patcher.Cable{From: notes, To: synth})
+		ids.live = append(ids.live, clock, seq, notes)
+	}
+	laidBack := float64(slices.Index(rhythm.GrooveNames(), "laid back"))
+	ghost(300, hands, "Wonder: E(2,12,+1)\nLight: E(2,12,1+1)\nSand: E(3,12,2+1)", "vel: 100 55 80 50 70\nprob: 100 100 85", handKeys(),
+		map[string]float64{"division": 3, "groove": laidBack, "drift": 0.04, "mutate": 0.12, "seed": 4}, 0.3)
+	ghost(420, shaker, "Sand: CA(30,16,+)", "vel: 100 50 70\nshift: 0 6 -4 3 0", kitKeys()["shaker"]["egg"],
+		map[string]float64{"division": 3, "groove": laidBack, "drift": 0.03}, 0.2)
+	ids.live = append(ids.live, harmony, melodist, gate)
+	ids.melodist = melodist
+	return nil
 }

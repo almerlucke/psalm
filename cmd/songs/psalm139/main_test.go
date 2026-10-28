@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"strings"
@@ -43,6 +44,13 @@ func TestPieceSounds(t *testing.T) {
 			t.Fatal(err)
 		}
 		p.Out(pt.Out())
+		for _, id := range ids.live {
+			for _, tx := range pt.Texts(id) {
+				if e := pt.TextError(id, tx.Key); e != "" {
+					t.Errorf("live part %s %s: %s", id, tx.Key, e)
+				}
+			}
+		}
 		bar := int(4 * 60 / tempo * 44100 / 256) // buffers in a bar
 		for _, s := range sections {
 			var peak, energy float64
@@ -63,6 +71,9 @@ func TestPieceSounds(t *testing.T) {
 				}
 			}
 		}
+		if m := pt.Module(ids.melodist).(*patcher.Melodist); m.Passes() < 3 {
+			t.Errorf("the melodist made %d passes", m.Passes())
+		}
 		psalm.PopConfig()
 		p.Close()
 	}
@@ -80,5 +91,33 @@ func TestSectionsAreTheLengthOfTheirChords(t *testing.T) {
 	}
 	if sectionsText() != "Thread 8, Knit 16, Wonder 16, Shadow 12, Light 12, Sand 16, Awake 12" {
 		t.Errorf("sections: %q", sectionsText())
+	}
+}
+
+// the chords of the harmony module are the chords of the score: every section has a cycle of chords that fits its bars, and the harmony reads them
+func TestProgressionsFitTheSections(t *testing.T) {
+	for _, s := range sections {
+		text, ok := progressions[s.name]
+		if !ok {
+			t.Fatalf("no chords for %s", s.name)
+		}
+		n := 0
+		for _, tok := range strings.Fields(text) {
+			if _, bars, found := strings.Cut(tok, "*"); found {
+				var b int
+				if _, err := fmt.Sscan(bars, &b); err != nil {
+					t.Fatalf("%s: %q", s.name, tok)
+				}
+				n += b
+			} else {
+				n++
+			}
+		}
+		if n == 0 || s.bars%n != 0 {
+			t.Errorf("%s: a cycle of %d bars does not fit %d", s.name, n, s.bars)
+		}
+	}
+	if got := harmonyText(); !strings.HasPrefix(got, "Thread: Dsus2*4 D*2 Dsus2*2\nKnit: D Bm7 Gmaj7 A") {
+		t.Errorf("harmony text %q", got)
 	}
 }
