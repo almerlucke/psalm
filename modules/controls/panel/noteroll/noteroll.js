@@ -38,7 +38,7 @@ psalm.register("noteroll", (p, api) => {
 	let cursor = null; // where paste goes (beats)
 	let region = null; // [a, b] in beats
 	let viewName = "", sections = [], have = [""], playing = "", chords = [], waitView = false; // the clip edited, the sections of the song, the clips there are, the clip playing, the chords over it
-	let scaleInfo = null, scaleLock = false, genId = 0, genPending = null, genSeed = Math.floor(Math.random() * 100000); // the scale of the harmony; keys held to it; the melodies asked for
+	let grooves = [], scaleInfo = null, scaleLock = false, genId = 0, genPending = null, genSeed = Math.floor(Math.random() * 100000); // the scale of the harmony; keys held to it; the melodies asked for
 	let first = true, showKeys = null; // the key to have in the middle of the roll, until it has a size
 	let hold = 0; // until when the page's own notes stay (the server's come back after a send)
 	let drag = null, band = null;
@@ -113,6 +113,39 @@ psalm.register("noteroll", (p, api) => {
 		api.message(p.name, {genall: {seed: genSeed, params: {...gp, grid: snap > 0 ? snap : 0.25, velocity: lastVel}}});
 		genSeed++;
 	});
+	let counterEvery = 0;
+	const everySel = mk("select", {title: "how often the counter-line plays a note"}, ...[[0, "a note under each"], [1, "a note a beat"], [2, "every 2 beats"], [4, "a note a bar"]].map(([v, t]) => mk("option", {value: v, textContent: t})));
+	everySel.addEventListener("change", () => { counterEvery = Number(everySel.value); });
+	const counterB = mk("button", {textContent: "Counter-line", title: "add a second voice under the notes selected (or the region, or the whole clip): consonant with them, moving against them, with no parallel fifths or octaves"});
+	counterB.addEventListener("click", () => {
+		const ts = targets(); if (!ts.length) return;
+		const from = Math.min(...ts.map(n => n.s)), to = Math.min(length, Math.max(...ts.map(n => n.s + n.l)));
+		genId++; genPending = {id: genId, apply: "add", from, to};
+		api.message(p.name, {counter: {id: genId, from, to, notes: ts.map(n => [n.s, n.l, n.k, n.v]), every: counterEvery, motion: 0.6, params: {...gp, velocity: lastVel}}});
+	});
+	// grooves: the feel of the sixteenths of a bar (some later, some softer), applied to the notes on the grid, or taken from the notes selected
+	const grooveSel = mk("select", {title: "a groove: the feel of the sixteenths"});
+	const fillGrooves = () => { const cur = grooveSel.value; grooveSel.replaceChildren(...grooves.map((g, i) => mk("option", {value: i, textContent: g.name}))); if (cur) grooveSel.value = cur; };
+	const grooveB = mk("button", {textContent: "Groove", title: "put the groove on the notes selected (or the region, or all): the sixteenths a little late and soft as it says"});
+	grooveB.addEventListener("click", () => {
+		const g = grooves[Number(grooveSel.value)]; const ts = targets(); if (!g || !ts.length || !g.shift.length) return;
+		for (const n of ts) {
+			const k = Math.round(n.s * 4); if (Math.abs(n.s * 4 - k) > 0.2) continue; // only notes on the grid
+			const i = ((k % g.shift.length) + g.shift.length) % g.shift.length;
+			n.s = Math.max(0, k / 4 + g.shift[i] / 4); n.v = Math.max(0.05, Math.min(1, n.v * g.vel[i]));
+		}
+		for (const n of notes) clipLen(n);
+		commit();
+	});
+	const takeB = mk("button", {textContent: "Take groove", title: "take the feel of the notes selected (how late and how loud each sixteenth of a bar is) as a groove of your own, to put on other notes"});
+	takeB.addEventListener("click", () => {
+		const ts = targets(); if (ts.length < 4) return;
+		const sh = Array(16).fill(0), vl = Array(16).fill(0), cnt = Array(16).fill(0);
+		const mean = ts.reduce((a, n) => a + n.v, 0) / ts.length || 1;
+		for (const n of ts) { const k = Math.round(n.s * 4), i = ((k % 16) + 16) % 16; sh[i] += n.s * 4 - k; vl[i] += n.v / mean; cnt[i]++; }
+		const g = {name: "mine " + (grooves.filter(x => x.name.startsWith("mine")).length + 1), shift: sh.map((v, i) => cnt[i] ? Math.max(-0.5, Math.min(0.5, v / cnt[i])) : 0), vel: vl.map((v, i) => cnt[i] ? v / cnt[i] : 1)};
+		grooves.push(g); fillGrooves(); grooveSel.value = grooves.length - 1;
+	});
 	const mutate = (label, title, f) => { const b = mk("button", {textContent: label, title}); b.addEventListener("click", f); return b; };
 	const candEl = mk("div", {className: "nr-cands"});
 	const lockBox = mk("input", {type: "checkbox", title: "the notes you put and move keep to the scale"});
@@ -124,10 +157,10 @@ psalm.register("noteroll", (p, api) => {
 			pick("Phrase", "phrase", [[2, "2 beats"], [4, "4 beats"], [8, "8 beats"], [16, "16 beats"]], "how long a phrase is")),
 		mk("div", {className: "nr-bar"}, slide("Busy", "density", "how many notes"), slide("Rests", "rest", "how often it rests"), slide("Smooth", "steps", "steps against leaps"), slide("Chord tones", "chord", "how much the notes on the beat keep to the chord")),
 		mk("div", {className: "nr-bar"}, mk("label", {}, "Scale ", rootSel, modeSel), mk("label", {}, "From ", rangeIn("low")), mk("label", {}, "to ", rangeIn("high")), mk("label", {}, lockBox, " keep to the scale")),
-		mk("div", {className: "nr-bar"}, genB, varB, allB,
+		mk("div", {className: "nr-bar"}, genB, varB, allB, counterB, everySel,
 			mutate("Invert", "turn the notes selected upside down (in the scale)", () => mutateNotes("invert")), mutate("Reverse", "play the notes selected backwards", () => mutateNotes("reverse")),
 			mutate("Step up", "move the notes selected a step up the scale", () => mutateNotes("up")), mutate("Step down", "move them a step down", () => mutateNotes("down")),
-			mutate("Humanize", "a little off the grid and the loudness", () => mutateNotes("humanize")), mutate("Thin out", "take some of the short notes away", () => mutateNotes("thin"))),
+			grooveSel, grooveB, takeB, mutate("Humanize", "a little off the grid and the loudness", () => mutateNotes("humanize")), mutate("Thin out", "take some of the short notes away", () => mutateNotes("thin"))),
 		candEl);
 	const gramBox = mk("textarea", {className: "nr-gram", rows: 4, spellcheck: false, value: gp.grammar, title: "rules that write the form of the melody: S -> A A' B A, with ' ~ < ^ v ? after a phrase; or axiom: A, iterate: 3 and A -> A B A' for an L-system"});
 	const gramErr = mk("div", {className: "nr-gram-err"});
@@ -684,6 +717,7 @@ psalm.register("noteroll", (p, api) => {
 			pos = st.pos; bps = st.bps; at = performance.now();
 			if (st.view !== viewName) return; // the answer to a clip we have left
 			sections = st.sections || []; have = st.clips || [""]; playing = st.playing; chords = st.chords || []; scaleInfo = st.scale || null;
+			if (st.grooves && st.grooves.length > grooves.filter(x => !x.name.startsWith("mine")).length) { grooves = [...st.grooves, ...grooves.filter(x => x.name.startsWith("mine"))]; fillGrooves(); }
 			showOptions();
 			if (first) { // the keys shown are where the notes are (once the roll has its size: the first draw)
 				first = false;
@@ -699,7 +733,8 @@ psalm.register("noteroll", (p, api) => {
 				const ask1 = genPending; genPending = null;
 				gramErr.textContent = st.gen.err || "";
 				if (st.gen.err) return;
-				if (ask1.apply) { if (st.gen.notes[0] && st.gen.notes[0].length) replaceRegion(ask1.from, ask1.to, st.gen.notes[0]); }
+				if (ask1.apply === "add") { const made = (st.gen.notes[0] || []).map(m => ({s: m[0], l: m[1], k: m[2], v: m[3]})); notes.push(...made); sel.clear(); for (const n of made) sel.add(n); commit(); }
+				else if (ask1.apply) { if (st.gen.notes[0] && st.gen.notes[0].length) replaceRegion(ask1.from, ask1.to, st.gen.notes[0]); }
 				else showCandidates(st.gen.notes, ask1.from, ask1.to);
 				return;
 			}

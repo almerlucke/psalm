@@ -280,3 +280,24 @@ func TestRollGenerateGrammar(t *testing.T) {
 		t.Fatalf("a bad grammar: %+v", g)
 	}
 }
+
+// a counter-line under a melody: a note under each, consonant, in the scale
+func TestRollCounter(t *testing.T) {
+	r, _, _ := rig(t)
+	r.Link(Link{Scale: func() (int, string, bool) { return 0, "major", true },
+		Chords: func(string, float64) []ChordSpan { return []ChordSpan{{At: 0, Len: 8, Name: "C", Pcs: []int{0, 4, 7}}} }})
+	melodyNotes := [][4]float64{{0, 1, 72, 0.8}, {1, 1, 74, 0.8}, {2, 1, 76, 0.8}, {3, 1, 77, 0.8}, {4, 2, 79, 0.8}}
+	r.Counter(4, 0, 6, melodyNotes, 0, 0.6, GenParams{})
+	g := r.gen.Load()
+	if g == nil || g.ID != 4 || len(g.Notes) != 1 || len(g.Notes[0]) != 5 {
+		t.Fatalf("%+v", g)
+	}
+	for i, n := range g.Notes[0] {
+		if n[2] >= melodyNotes[i][2] || n[0] != melodyNotes[i][0] {
+			t.Errorf("note %d: %v under %v", i, n, melodyNotes[i])
+		}
+		if pc := int(n[2]) % 12; pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10 {
+			t.Errorf("note %d: %v is out of C major", i, n)
+		}
+	}
+}

@@ -62,6 +62,7 @@ Sends a trigger on the steps of the patch's tempo.
 | chance | 0 to 1 | 1 | the chance of every hit, multiplied with the chance of the hit in the pattern |
 | groove | straight, mpc 54, mpc 58, mpc 62, shuffle, laid back, push, dilla, backbeat | straight | the feel of the steps of a bar: some later, some softer (`tools/rhythm`) |
 | pattern | text | `x` | a hit on every step |
+| drift | 0 to 0.3 | 0 | how far the timing wanders, in steps, along a smooth curve (not jitter), the same every time |
 | lanes | text | | a value a step, see below |
 
 The pattern loops. In it:
@@ -77,12 +78,17 @@ The pattern loops. In it:
 | `%2/4` after a hit or group | a condition: only the second time through the pattern in every four (`%!2/4`: the other three); `%fill` only in the last bar of a section, `%first` only the first time through (`%!fill`, `%!first`) |
 | `E(5,16)` | a euclidean rhythm: 5 hits spread as evenly as they can be over 16 steps (`E(5,16,2)` turned 2 steps to the right) |
 | `A(3+3+2)` | an additive rhythm: a hit on the first step of every group |
+| `M(x . x x . x . .;16;3)` | a rhythm like the example: a Markov chain on its steps (the last two decide the next), the steps to make, a seed |
 | `CA(30,16)` | a row of an elementary cellular automaton: the rule (0 to 255; 30 and 90 make nice ones), the cells, the generation (default half the cells), a seed |
 
 Spaces, `|` and new lines are left out, so `x . x . | x . x x` is a bar of 8 steps.
 `1` and `0` are single steps (`1010` is four steps, never a roll).
 
 **Lanes** give every step a value of its own, a lane a line: `prob: 100 50 . 80` (the chance the step plays, percent), `vel:` (its velocity, percent), `shift:` (how late, percent of a step; negative: early), `len:` (how long, percent) and `pitch:` (semitones added; for a part). A `.` is the default there. A lane goes round on **its own length**: a `prob` lane of 3 steps under a pattern of 4 drifts, which is polymeter. The velocity reaches the notes module and the parts (a clock's trigger carries it); the groove and the lanes work together.
+
+In a module's window the lanes are bars to drag under their text: a row a lane, a bar a step (a drag sets its value, Alt-click or a right click makes it a gap, + and − change the length of the lane). Typing and dragging change each other.
+
+For phasing (Reich), two clocks with patterns of 12 and 13 steps drift against each other; so do lanes of different lengths on one clock.
 
 A clock follows the patch's clock: a restart, a jump back, a new division or pattern, or a new section
 starts it over from where it is. After a jump in tempo it plays no burst of old hits.
@@ -157,7 +163,7 @@ These follow the form of a song. One song a patch (the last made).
 | lane | a curve a line: `Intro: 0 → 1`, `Chorus: 0.2 → 0.8 smooth` (`lin`, `exp`, `smooth`); default `0 → 1` | a value per section, moving through it as it plays; mod output (0-1) to any setting, or a value output |
 | automation | a line a lane: `Cutoff: 0 0.2, 6 0.8 smooth, 12 0.5 step` (a position in bars from the start, a value 0-1, then `lin`, `smooth`, `step` or `exp`); `bars` for the round without a song | lanes of points over the bars of the song, drawn on the page (the Lanes button) or typed, or recorded from a knob moved while the song plays (the ● of a lane); a mod output (0-1) for every lane (the preset says how many) |
 | gate | the sections it plays in: `Verse, Chorus`, `not Intro`, `all` | sound, notes and triggers pass in those sections only, and when it is on. Its name is a tile in the song's window. A note let go always goes through |
-| part | notes a step each (the `^3` after a note ratchets it into 3 hits, and `%` conditions as in a pattern; lanes as in a clock, `pitch:` too): `C3 Eb3 G3 - Bb3 . G3 Eb3` (default) | `.` a rest, `-` the note before held a step longer, `C3+Eb3+G3` a chord, `[C3 D3 Eb3]` a group in a step, `*2`, `?25` as in a clock's pattern. **Chord notes** follow a harmony module: `@1` the root, `@2` the next tone of the chord (the third), `@3` the fifth, `@4` the seventh (a triad: the root an octave up), `@-1` the tone below the root, `@b` the bass, `@c` the whole chord, `'` after one an octave up and `,` down, `C3+@3` together; a figure written once follows the chords (`@1 @3 @5 @3`). The root of `@1` is the first one at or above the part's `register` (48), the bass above `bass` (36); without a harmony (or a chord) they rest. Division, swing, chance, velocity, length (of its step), transpose; per section too |
+| part | notes a step each (the `^3` after a note ratchets it into 3 hits, and `%` conditions as in a pattern; lanes as in a clock, `pitch:` too; chord notes follow the harmony, `@v` the chord voice led from the one before): `C3 Eb3 G3 - Bb3 . G3 Eb3` (default) | `.` a rest, `-` the note before held a step longer, `C3+Eb3+G3` a chord, `[C3 D3 Eb3]` a group in a step, `*2`, `?25` as in a clock's pattern. **Chord notes** follow a harmony module: `@1` the root, `@2` the next tone of the chord (the third), `@3` the fifth, `@4` the seventh (a triad: the root an octave up), `@-1` the tone below the root, `@b` the bass, `@c` the whole chord, `'` after one an octave up and `,` down, `C3+@3` together; a figure written once follows the chords (`@1 @3 @5 @3`). The root of `@1` is the first one at or above the part's `register` (48), the bass above `bass` (36); without a harmony (or a chord) they rest. Division, swing, chance, velocity, length (of its step), transpose; per section too |
 | harmony | chords a bar each: `Dm7 G7*2 Cmaj7` (symbols, or roman numerals in its key and scale: `i VI V7`), `*0.5` half a bar, `-` the chord held a bar longer, `.` none; per section: a line `Chorus: F Am Dm Bb` each | the chord track of the patch (one a patch, like the song): the chords loop over the bars of a section. Outputs: the chord (a value: an array of pitches in root position from its lowest note), its bass, and a trigger when the chord changes. A part with chord notes and a script (`harmony()`) ask it for the chord at the moment they play |
 
 ## script

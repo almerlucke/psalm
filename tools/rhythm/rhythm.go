@@ -88,6 +88,62 @@ func Cellular(rule, width, gen int, seed uint64) []bool {
 	return row
 }
 
+// Markov learns a rhythm from examples and makes another like it: the chance of a hit or a rest after the last two steps of the examples (steps written x and ., other characters
+// left out), for n steps from a seed. The examples are what it has seen; with fewer than three steps it has nothing to learn from
+func Markov(example string, n int, seed uint64) ([]bool, error) {
+	var ex []bool
+	for _, r := range example {
+		switch r {
+		case 'x', 'X', 'o', 'O', '1':
+			ex = append(ex, true)
+		case '.', '-', '_', '0':
+			ex = append(ex, false)
+		}
+	}
+	if len(ex) < 3 || n < 1 || n > 128 {
+		return nil, fmt.Errorf("M(x . x x . x . .;16;1): at least 3 steps to learn from, 1 to 128 to make")
+	}
+	// counts[a][b][next]: after the steps a, b (the example goes round)
+	var counts [2][2][2]float64
+	for i := range ex {
+		a, b, c := ex[i], ex[(i+1)%len(ex)], ex[(i+2)%len(ex)]
+		counts[b2i(a)][b2i(b)][b2i(c)]++
+	}
+	state := seed*2654435761 + 12345
+	next := func() float64 { // a splitmix step
+		state += 0x9e3779b97f4a7c15
+		z := state
+		z = (z ^ z>>30) * 0xbf58476d1ce4e5b9
+		z = (z ^ z>>27) * 0x94d049bb133111eb
+		return float64((z^z>>31)>>11) / (1 << 53)
+	}
+	a, b := ex[0], ex[1]
+	out := make([]bool, 0, n)
+	out = append(out, a)
+	if n > 1 {
+		out = append(out, b)
+	}
+	for len(out) < n {
+		c := counts[b2i(a)][b2i(b)]
+		on := false
+		if t := c[0] + c[1]; t > 0 {
+			on = next() < c[1]/t
+		} else {
+			on = next() < 0.5
+		}
+		out = append(out, on)
+		a, b = b, on
+	}
+	return out[:n], nil
+}
+
+func b2i(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // Steps writes a rhythm as the steps of a pattern ("x . . x .")
 func Steps(r []bool) string {
 	var b strings.Builder
@@ -105,12 +161,12 @@ func Steps(r []bool) string {
 }
 
 // Expand replaces the rhythm functions in the text of a pattern by their steps: E(5,16) E(5,16,2) a euclidean rhythm (turned 2), A(3+3+2) an additive rhythm, CA(30,16) CA(30,16,4)
-// CA(30,16,4,11) a cellular automaton (rule, cells, the generation, a seed). Text without them is as it was
+// CA(30,16,4,11) a cellular automaton (rule, cells, the generation, a seed), M(x . x x . x . .;16;3) a rhythm like the example (a Markov chain on its steps; the steps to make, a seed). Text without them is as it was
 func Expand(text string) (string, error) {
 	var out strings.Builder
 	for i := 0; i < len(text); {
 		name := ""
-		for _, n := range []string{"CA(", "E(", "A("} {
+		for _, n := range []string{"CA(", "E(", "A(", "M("} {
 			if strings.HasPrefix(text[i:], n) && (i == 0 || !isLetter(text[i-1])) {
 				name = n
 				break
@@ -154,6 +210,24 @@ func call(name string, args []string) ([]bool, error) {
 		return out, nil
 	}
 	switch name {
+	case "M": // the arguments are split by commas above: M(x . x x;16;1) has semicolons, so it is one argument
+		parts := strings.Split(strings.Join(args, ","), ";")
+		n, seed := 16, 1
+		if len(parts) > 1 {
+			v, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+			if err != nil {
+				return nil, fmt.Errorf("M(): %q is not a number of steps", parts[1])
+			}
+			n = v
+		}
+		if len(parts) > 2 {
+			v, err := strconv.Atoi(strings.TrimSpace(parts[2]))
+			if err != nil {
+				return nil, fmt.Errorf("M(): %q is not a seed", parts[2])
+			}
+			seed = v
+		}
+		return Markov(parts[0], n, uint64(seed))
 	case "A":
 		return Additive(strings.Join(args, ","))
 	case "E":
@@ -284,9 +358,9 @@ func (l Lane) At(step int64) (float64, bool) {
 
 // Groove is the feel of the steps of a bar: how much each is late (in steps, -0.5 to 0.5) and how loud (a factor), going round on its length
 type Groove struct {
-	Name  string
-	Shift []float64
-	Vel   []float64
+	Name  string    `json:"name"`
+	Shift []float64 `json:"shift"`
+	Vel   []float64 `json:"vel"`
 }
 
 // At is the groove at a step

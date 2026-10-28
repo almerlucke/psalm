@@ -39,7 +39,8 @@ type Clock struct {
 	Division int
 	Swing    float64
 	Chance   float64
-	Groove   int // an index of rhythm.Grooves
+	Groove   int     // an index of rhythm.Grooves
+	Drift    float64 // how far the timing wanders, in steps (0 to 0.3): a smooth curve, not jitter
 	pattern  atomic.Pointer[patterns]
 	lanes    atomic.Pointer[StepLanes]
 	song     *Song
@@ -278,6 +279,7 @@ func (c *Clock) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("swing", func(f float64) { c.Swing = math.Max(0.5, math.Min(f, 0.75)) })
 	msg.IfFltVal("chance", func(f float64) { c.Chance = math.Max(0, math.Min(f, 1)) })
 	msg.IfIntVal("groove", func(g int) { c.Groove = max(0, min(g, len(rhythm.Grooves)-1)) })
+	msg.IfFltVal("drift", func(f float64) { c.Drift = math.Max(0, math.Min(f, 0.3)) })
 }
 
 func (c *Clock) Receive(v any, _ int) {
@@ -361,6 +363,10 @@ func (c *Clock) feel(p *Pattern, hi int, cycle int64) (shift, vel, prob, length,
 	step := cycle*int64(math.Round(p.Steps)) + int64(math.Floor(p.Hits[hi].At+1e-9))
 	if c.Groove > 0 && c.Groove < len(rhythm.Grooves) {
 		shift, vel = rhythm.Grooves[c.Groove].At(step)
+	}
+	if c.Drift > 0 {
+		x := float64(step)
+		shift += c.Drift * (math.Sin(x*0.61) + math.Sin(x*0.173+2) + math.Sin(x*0.047+5)) / 3
 	}
 	if l := c.lanes.Load(); l != nil {
 		if v, ok := l.Prob.At(step); ok {
@@ -517,6 +523,7 @@ func (c *Clock) Describe() params.Set {
 		params.K("Clock", "swing", 0.5, 0.75, c.Swing),
 		params.K("Clock", "chance", 0, 1, c.Chance),
 		params.C("Clock", "groove", rhythm.GrooveNames(), c.Groove),
+		params.K("Clock", "drift", 0, 0.3, c.Drift),
 	}}
 }
 
@@ -878,7 +885,7 @@ const PatternHelp = "`x` (or `X`, `o`) is a hit, `.` (or `-`, `_`) a rest: a ste
 	"`*2` after a step or a group: it lasts 2 steps (`x*2`, `.*4`, `[x x x]*2` a triplet over two steps); a note of a step lasts as long\n" +
 	"`?` after a hit or a group: by chance, half the time (`x?25`: a quarter); the chance below is for every hit\n" +
 	"`%2/4` after a hit: only the second time through in every four (`%!2/4` the other three), `%fill` in the last bar of a section, `%first` the first time (`%!fill`, `%!first`)\n" +
-	"`E(5,16)` five hits spread evenly over 16 steps (`E(5,16,2)` turned 2 steps), `A(3+3+2)` groups of 3, 3 and 2, `CA(30,16)` a row of a cellular automaton (rule, cells, generation, seed)\n" +
+	"`E(5,16)` five hits spread evenly over 16 steps (`E(5,16,2)` turned 2 steps), `A(3+3+2)` groups of 3, 3 and 2, `CA(30,16)` a row of a cellular automaton (rule, cells, generation, seed), `M(x . x x . x . .;16;3)` a rhythm like the example (a Markov chain; the steps to make, a seed)\n" +
 	"the pattern loops; swing and groove (below) make steps later and softer, what is in them too; lanes (below) a value a step\n" +
 	"with a song: a pattern per section, a line `Chorus: x x x x` each (the others, the lines without one); it counts from the section's start\n" +
 	"Ctrl+Enter (or Run) takes it; one that can't be read is shown in red, the clock keeps the one before"

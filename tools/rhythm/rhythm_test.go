@@ -160,3 +160,26 @@ func TestLaneAndGroove(t *testing.T) {
 		t.Error("mpc 62 does not push the offbeat late")
 	}
 }
+
+func TestMarkovRhythm(t *testing.T) {
+	// learning a strict pattern makes it again
+	r, err := Markov("x . . x . . x . . x . .", 12, 1)
+	if err != nil || Steps(r) != "x . . x . . x . . x . ." {
+		t.Fatalf("%v %v", Steps(r), err)
+	}
+	// repeatable, and another seed another rhythm from a loose example
+	a, _ := Markov("x . x x . x . x x . . x . x x .", 32, 1)
+	b, _ := Markov("x . x x . x . x x . . x . x x .", 32, 1)
+	c, _ := Markov("x . x x . x . x x . . x . x x .", 32, 2)
+	if !slices.Equal(a, b) || slices.Equal(a, c) {
+		t.Error("seeds")
+	}
+	if got, err := Expand("M(x . x x . x . x;8;3)"); err != nil || strings.Count(got, " ")+1 != 8 {
+		t.Errorf("%q %v", got, err)
+	}
+	for _, bad := range []string{"M(x x;8;1)", "M(x . x . x;0;1)", "M(x . x . x;q;1)"} {
+		if _, err := Expand(bad); err == nil {
+			t.Errorf("%q was taken", bad)
+		}
+	}
+}

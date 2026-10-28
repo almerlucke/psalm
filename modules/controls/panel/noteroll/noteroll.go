@@ -23,6 +23,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/tools/harmony"
 	"github.com/almerlucke/psalm/tools/melody"
+	"github.com/almerlucke/psalm/tools/rhythm"
 )
 
 //go:embed noteroll.js
@@ -345,6 +346,49 @@ func (r *Roll) melodies(section string, length, from, to float64, count int, see
 	return out
 }
 
+// Counter makes a second voice for the notes of a stretch (the melody: start, length, key, velocity, in beats from the start of the clip), with the chords of the harmony under
+// it, and in the scale; what the editor gets next (Candidates, one melody) is the voice, under the melody. every is a note every so many beats (0: one under every note of the
+// melody) and motion how much it moves against the melody (0 to 1)
+func (r *Roll) Counter(id int, from, to float64, melodyNotes [][4]float64, every, motion float64, gp GenParams) {
+	view := *r.view.Load()
+	l := r.link.Load()
+	c, ok := r.Clip(view)
+	if !ok {
+		c.Length = r.Length()
+	}
+	scale, err := r.scaleFor(gp, l)
+	if err != nil || len(melodyNotes) == 0 {
+		return
+	}
+	lo, hi := 127, 0
+	var m []melody.Note
+	for _, n := range melodyNotes {
+		k := int(math.Round(n[2]))
+		lo, hi = min(lo, k), max(hi, k)
+		m = append(m, melody.Note{Start: n[0] - from, Length: n[1], Key: k, Velocity: n[3]})
+	}
+	slices.SortStableFunc(m, func(a, b melody.Note) int { return int(math.Copysign(1, a.Start-b.Start)) })
+	cp := melody.CounterParams{Scale: scale, Low: max(24, lo-17), High: hi - 3, Every: every, Motion: motion, Velocity: gp.Velocity * 0.85}
+	cp.High = max(cp.High, cp.Low+7)
+	if l != nil && l.Chords != nil {
+		for _, sp := range l.Chords(view, c.Length) {
+			at, end := math.Max(sp.At, from), math.Min(sp.At+sp.Len, to)
+			if end-at > 1e-9 {
+				root := 0
+				if len(sp.Pcs) > 0 {
+					root = sp.Pcs[0]
+				}
+				cp.Chords = append(cp.Chords, melody.Span{At: at - from, Len: end - at, Pcs: sp.Pcs, Root: root})
+			}
+		}
+	}
+	var notes [][4]float64
+	for _, n := range melody.Counter(m, cp) {
+		notes = append(notes, [4]float64{n.Start + from, n.Length, float64(n.Key), math.Round(n.Velocity*100) / 100})
+	}
+	r.gen.Store(&Candidates{ID: id, Notes: [][][4]float64{notes}})
+}
+
 // grammarOf is the grammar a melody is asked for: the text when the form is a grammar
 func grammarOf(gp GenParams) string {
 	if gp.Form == "grammar" {
@@ -481,17 +525,18 @@ func mod(a, b int64) int64 { return ((a % b) + b) % b }
 
 // state is what the page gets as the roll plays: the notes of the clip it shows as [start, length, key, velocity], and where it plays
 type state struct {
-	Notes    [][4]float64 `json:"notes"`
-	Length   float64      `json:"length"`
-	Pos      float64      `json:"pos"` // where the clip shown plays, -1 when another plays
-	BPS      float64      `json:"bps"` // beats a second
-	View     string       `json:"view"`
-	Playing  string       `json:"playing"`
-	Clips    []string     `json:"clips"`
-	Sections []Section    `json:"sections"`
-	Chords   []ChordSpan  `json:"chords"`
-	Scale    *ScaleInfo   `json:"scale"`
-	Gen      *Candidates  `json:"gen"`
+	Notes    [][4]float64    `json:"notes"`
+	Length   float64         `json:"length"`
+	Pos      float64         `json:"pos"` // where the clip shown plays, -1 when another plays
+	BPS      float64         `json:"bps"` // beats a second
+	View     string          `json:"view"`
+	Playing  string          `json:"playing"`
+	Clips    []string        `json:"clips"`
+	Sections []Section       `json:"sections"`
+	Chords   []ChordSpan     `json:"chords"`
+	Scale    *ScaleInfo      `json:"scale"`
+	Gen      *Candidates     `json:"gen"`
+	Grooves  []rhythm.Groove `json:"grooves"`
 }
 
 // ScaleInfo is the key and scale of the harmony, for the editor to light the keys of the scale
@@ -504,7 +549,7 @@ type ScaleInfo struct {
 func (r *Roll) state() state {
 	view := *r.view.Load()
 	l := r.link.Load()
-	st := state{Notes: [][4]float64{}, BPS: r.Env().BPM() / 60, View: view, Playing: r.Playing(), Clips: r.Clips(), Sections: []Section{}, Chords: []ChordSpan{}}
+	st := state{Notes: [][4]float64{}, BPS: r.Env().BPM() / 60, View: view, Playing: r.Playing(), Clips: r.Clips(), Sections: []Section{}, Chords: []ChordSpan{}, Grooves: rhythm.Grooves}
 	if l != nil && l.Sections != nil {
 		st.Sections = l.Sections()
 	}
@@ -616,6 +661,15 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 					Seed   uint64    `json:"seed"`
 					Params GenParams `json:"params"`
 				} `json:"gen"`
+				Counter *struct {
+					ID     int          `json:"id"`
+					From   float64      `json:"from"`
+					To     float64      `json:"to"`
+					Notes  [][4]float64 `json:"notes"`
+					Every  float64      `json:"every"`
+					Motion float64      `json:"motion"`
+					Params GenParams    `json:"params"`
+				} `json:"counter"`
 				GenAll *struct {
 					Seed   uint64    `json:"seed"`
 					Params GenParams `json:"params"`
@@ -639,6 +693,8 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 				roll.Audition(m.Play.Key, m.Play.Vel, 0.5)
 			case m.Gen != nil:
 				roll.Generate(m.Gen.ID, m.Gen.From, m.Gen.To, m.Gen.Count, m.Gen.Seed, m.Gen.Params)
+			case m.Counter != nil:
+				roll.Counter(m.Counter.ID, m.Counter.From, m.Counter.To, m.Counter.Notes, m.Counter.Every, m.Counter.Motion, m.Counter.Params)
 			case m.GenAll != nil:
 				roll.GenerateSections(m.GenAll.Seed, m.GenAll.Params)
 			case m.Preview != nil:

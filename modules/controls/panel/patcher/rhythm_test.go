@@ -106,3 +106,68 @@ func TestPartRatchetsAndPitchLane(t *testing.T) {
 		t.Error("a ratchet of one was taken")
 	}
 }
+
+// @v: the chord voice led from the one before, not in root position every time
+func TestPartVoiceLedChords(t *testing.T) {
+	r := newHarmonyRig(t, "A 2", "C Am F G")
+	part := r.add("part")
+	pp := r.pt.Module(part).(*patcher.Part)
+	pp.Division, pp.Length = 0, 1
+	if err := r.pt.SetText(part, "notes", "@v . . ."); err != nil || r.pt.TextError(part, "notes") != "" {
+		t.Fatal(err, r.pt.TextError(part, "notes"))
+	}
+	r.connect(patcher.Cable{From: part, To: r.add("rec")})
+	r.run(7.9) // a chord a bar of two seconds, four beats of quarters: one @v a bar
+	p := r.rec.pitches
+	if len(p) < 12 {
+		t.Fatalf("pitches %v", p)
+	}
+	moved := func(a, b []float64) float64 {
+		sum := 0.0
+		for i := range a {
+			sum += math.Abs(a[i] - b[i])
+		}
+		return sum
+	}
+	chords := [][]float64{p[0:3], p[3:6], p[6:9], p[9:12]}
+	for i := 1; i < len(chords); i++ {
+		if d := moved(slices.Clone(chords[i-1]), chords[i]); d > 6 {
+			t.Errorf("chord %d moved %v semitones in all from %v to %v", i, d, chords[i-1], chords[i])
+		}
+	}
+	if err := r.pt.SetText(part, "notes", "@v'"); err != nil || r.pt.TextError(part, "notes") != "" {
+		t.Errorf("an octave on @v: %v %v", err, r.pt.TextError(part, "notes"))
+	}
+}
+
+// drift moves the timing along a smooth curve: off the grid, but never far, and the same every time
+func TestClockDrift(t *testing.T) {
+	psalm0 := func() *triggers {
+		return clockLanes(t, "x", "", 0, 0.5, 6.1)
+	}
+	straight := psalm0()
+	for i, at := range straight.at {
+		if math.Abs(float64(at)-float64(i)*22050) > 92 {
+			t.Fatalf("straight: %v", straight.at)
+		}
+	}
+	// the setting is a message away: a clock with drift
+	psalmDrift := func() *triggers { return clockDrift(t, 0.25, 6.1) }
+	a, b := psalmDrift(), psalmDrift()
+	off := 0
+	for i := range a.at {
+		d := math.Abs(float64(a.at[i]) - float64(i)*22050)
+		if d > 0.26*22050+92 {
+			t.Fatalf("step %d is %v samples off", i, d)
+		}
+		if d > 400 {
+			off++
+		}
+		if a.at[i] != b.at[i] {
+			t.Fatal("drift is not repeatable")
+		}
+	}
+	if off < 2 {
+		t.Errorf("only %d steps drifted: %v", off, a.at)
+	}
+}

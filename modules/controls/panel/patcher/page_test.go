@@ -1109,4 +1109,23 @@ func TestPageNoteRollMelody(t *testing.T) {
 		now := roll.Notes()
 		return len(now) == len(first) && fmt.Sprint(now) != fmt.Sprint(first)
 	})
+	// a groove puts the sixteenths a little late: some note off the grid; one taken from them is a groove of its own
+	tb.WaitFor(`[...S().querySelectorAll(".nr-gen select option")].some(o => o.textContent === "mpc 62")`, "the grooves")
+	tb.Eval(`(() => { const s = [...S().querySelectorAll(".nr-gen select")].find(s => [...s.options].some(o => o.textContent === "mpc 62")); s.value = [...s.options].find(o => o.textContent === "mpc 62").value; })()`)
+	tb.Eval(btn("put the groove") + `.click()`)
+	paneltest.Eventually(t, "notes off the grid", func() bool {
+		for _, n := range roll.Notes() {
+			if math.Abs(n.Start*4-math.Round(n.Start*4)) > 0.05 {
+				return true
+			}
+		}
+		return false
+	})
+	tb.Eval(btn("take the feel") + `.click()`)
+	tb.WaitFor(`[...S().querySelectorAll(".nr-gen select option")].some(o => o.textContent === "mine 1")`, "a groove taken from the notes")
+	// a counter-line adds a voice
+	n0 := len(roll.Notes())
+	tb.Eval(btn("add a second voice") + `.click()`)
+	paneltest.Eventually(t, "a second voice", func() bool { return len(roll.Notes()) > n0 })
+
 }

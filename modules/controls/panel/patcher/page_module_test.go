@@ -131,3 +131,50 @@ func TestPageNativeWindow(t *testing.T) {
 	}
 	_ = strings.TrimSpace
 }
+
+// the lanes of a clock as bars in its window: a lane started with +, a bar dragged to a value, a bar made a gap, the lane shortened; the text follows, and the bars follow the text
+func TestPageStepLanes(t *testing.T) {
+	b, pt, base := newPage(t)
+	clk, err := pt.Add("clock", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb := b.Open(t, base, `document.querySelectorAll(".pt-node").length === 2`)
+	tb.Size(1300, 900)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, clk))
+	tb.WaitFor(`W().querySelectorAll(".mw-lane").length === 5`, "a row for each of the five lanes")
+	lane := func(name string) string { return `W().querySelector(".mw-lane[data-lane='` + name + `']")` }
+	lanesText := func() string {
+		for _, x := range pt.Texts(clk) {
+			if x.Key == "lanes" {
+				return x.Value
+			}
+		}
+		return ""
+	}
+	// + twice: a lane of two steps at the default
+	tb.Eval(lane("prob") + `.querySelectorAll("button")[1].click()`)
+	tb.Eval(lane("prob") + `.querySelectorAll("button")[1].click()`)
+	paneltest.Eventually(t, "a lane of two steps", func() bool { return lanesText() == "prob: 100 100" })
+	tb.WaitFor(lane("prob")+`.querySelectorAll(".mw-lane-bar").length === 2`, "two bars")
+	// the second bar dragged to the middle of its height: about 50
+	pos := func(step int, frac float64) (float64, float64) {
+		r := tb.Eval(fmt.Sprintf(`(() => { const f = document.querySelector(".pt-win-frame").getBoundingClientRect(), b = %s.querySelectorAll(".mw-lane-bar")[%d].getBoundingClientRect(); return [f.left + b.left + b.width / 2, f.top + b.top, b.height]; })()`, lane("prob"), step)).([]any)
+		return r[0].(float64), r[1].(float64) + r[2].(float64)*frac
+	}
+	x, y := pos(1, 0.5)
+	tb.Mouse("mousePressed", x, y, nil)
+	tb.Mouse("mouseReleased", x, y, nil)
+	paneltest.Eventually(t, "the bar dragged to half", func() bool { return lanesText() == "prob: 100 50" })
+	// a gap with Alt
+	x, y = pos(0, 0.5)
+	tb.Mouse("mousePressed", x, y, map[string]any{"modifiers": 1})
+	tb.Mouse("mouseReleased", x, y, map[string]any{"modifiers": 1})
+	paneltest.Eventually(t, "a gap", func() bool { return lanesText() == "prob: . 50" })
+	// typed: the bars follow
+	tb.Eval(`(() => { const i = W().querySelectorAll(".mw-text")[1]; i.value = "vel: 100 60 80\nprob: 50"; i.dispatchEvent(new Event("input", {bubbles: true})); })()`)
+	tb.WaitFor(lane("vel")+`.querySelectorAll(".mw-lane-bar").length === 3 && `+lane("prob")+`.querySelectorAll(".mw-lane-bar").length === 1`, "the bars of the lanes typed")
+	// shortened to nothing takes the lane away
+	tb.Eval(lane("prob") + `.querySelectorAll("button")[0].click()`)
+	paneltest.Eventually(t, "the lane taken away", func() bool { return lanesText() == "vel: 100 60 80" })
+}

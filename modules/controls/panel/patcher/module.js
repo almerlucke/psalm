@@ -32,6 +32,76 @@
 		}
 		return list;
 	}
+	// the lanes of a clock or a part as bars to drag, under their text: a row a lane, a bar a step; the length of a lane is its own (+ and -), a click on the label takes a gap (the
+	// default) in or out. What is dragged is written into the text, and sent
+	const LANES = {prob: [0, 100, 100, "chance %"], vel: [0, 150, 100, "velocity %"], shift: [-50, 50, 0, "timing %"], len: [10, 300, 100, "length %"], pitch: [-12, 12, 0, "pitch st"]};
+	function lanesEditor(ta, key) {
+		const root = el("div", "mw-lanes");
+		const read = () => {
+			const out = {};
+			for (const line of ta.value.split("\n")) {
+				const [name, vals] = line.split(":");
+				const n = (name || "").trim().toLowerCase();
+				const canon = {chance: "prob", velocity: "vel", timing: "shift", length: "len"}[n] || n;
+				if (!LANES[canon] || vals === undefined) continue;
+				out[canon] = vals.trim().split(/\s+/).filter(Boolean).map(v => v === "." ? null : Number(v)).map(v => (v !== null && isNaN(v)) ? null : v);
+			}
+			return out;
+		};
+		let model = read();
+		const write = () => {
+			ta.value = Object.keys(LANES).filter(n => model[n] && model[n].length).map(n => n + ": " + model[n].map(v => v === null ? "." : String(Math.round(v * 100) / 100)).join(" ")).join("\n");
+			commitText(key, ta.value);
+			draw();
+		};
+		function draw() {
+			root.innerHTML = "";
+			for (const [name, [lo, hi, def, label]] of Object.entries(LANES)) {
+				const row = el("div", "mw-lane"); row.dataset.lane = name;
+				const vals = model[name];
+				const head = el("span", "mw-lane-label", label); head.title = label + ": the value of each step, going round on its own length";
+				const less = el("button", "mw-lane-btn", "\u2212"), more = el("button", "mw-lane-btn", "+");
+				less.title = "a step less"; more.title = "a step more (or start the lane)";
+				less.addEventListener("click", () => { if (vals && vals.length > 1) { vals.pop(); write(); } else if (vals) { delete model[name]; write(); } });
+				more.addEventListener("click", () => { if (!model[name]) model[name] = [def]; else if (model[name].length < 64) model[name].push(def); write(); });
+				const bars = el("div", "mw-lane-bars");
+				(vals || []).forEach((v, i) => {
+					const b = el("div", "mw-lane-bar"); b.dataset.step = String(i);
+					const f = el("div", "mw-lane-fill");
+					if (v === null) b.classList.add("gap");
+					else {
+						const zero = lo < 0 ? 0.5 : 0, at = (v - lo) / (hi - lo);
+						f.style.bottom = (Math.min(at, zero) * 100) + "%"; f.style.height = (Math.abs(at - zero) * 100) + "%";
+						b.title = String(v);
+					}
+					b.append(f);
+					const set = e => {
+						const r = b.getBoundingClientRect();
+						let v2 = lo + (1 - Math.max(0, Math.min(1, (e.clientY - r.top) / r.height))) * (hi - lo);
+						v2 = (hi - lo) > 40 ? Math.round(v2 / 5) * 5 : Math.round(v2 * 2) / 2;
+						if (hi - lo <= 24) v2 = Math.round(v2);
+						model[name][i] = Math.max(lo, Math.min(hi, v2));
+					};
+					b.addEventListener("pointerdown", e => {
+						if (e.button === 2 || e.altKey) { e.preventDefault(); model[name][i] = model[name][i] === null ? def : null; write(); return; }
+						b.setPointerCapture(e.pointerId);
+						set(e); b.dataset.drag = "1";
+						const move = ev => { if (b.dataset.drag) { const under = bars.children[Math.max(0, Math.min(bars.children.length - 1, Math.floor((ev.clientX - bars.getBoundingClientRect().left) / b.getBoundingClientRect().width)))]; const j = Number(under.dataset.step); const r = under.getBoundingClientRect(); let v3 = lo + (1 - Math.max(0, Math.min(1, (ev.clientY - r.top) / r.height))) * (hi - lo); v3 = (hi - lo) > 40 ? Math.round(v3 / 5) * 5 : (hi - lo <= 24 ? Math.round(v3) : Math.round(v3 * 2) / 2); model[name][j] = Math.max(lo, Math.min(hi, v3)); } };
+						const up = () => { delete b.dataset.drag; b.removeEventListener("pointermove", move); b.removeEventListener("pointerup", up); write(); };
+						b.addEventListener("pointermove", move); b.addEventListener("pointerup", up);
+					});
+					b.addEventListener("contextmenu", e => e.preventDefault());
+					bars.append(b);
+				});
+				row.append(head, less, more, bars);
+				root.append(row);
+			}
+		}
+		ta.addEventListener("input", () => { model = read(); draw(); });
+		draw();
+		return {root, refresh: () => { model = read(); draw(); }};
+	}
+
 	// the boxes are made when the module has other texts than they were made for
 	function build(n) {
 		const key = JSON.stringify([n.kind, n.preset, (n.texts || []).map(t => [t.key, t.label, t.lines])]) + (n.log !== undefined && n.log !== null) + !!n.page;
@@ -53,6 +123,7 @@
 				else if (e.key === "Escape") { e.preventDefault(); commit(true); window.parent.postMessage({psalm: "module-close"}, "*"); }
 			});
 			wrap.append(ta);
+			if (t.key === "lanes") { const ed = lanesEditor(ta, t.key); wrap.append(ed.root); wrap.classList.add("mw-has-lanes"); ta.rows = 3; }
 			holder.append(wrap);
 			boxes[t.key] = ta;
 		}

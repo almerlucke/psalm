@@ -23,6 +23,8 @@ type Part struct {
 	Velocity, Length, Transpose float64
 	Register, Bass              float64 // the lowest note of the root of the chord notes (@1), and of the bass note (@b)
 	pending                     []queued
+	voiced                      []float64 // on the audio thread: the voicing of the chord last played by @v, and the chord
+	voicedChord                 string
 	targets                     []psalm.Receiver
 }
 
@@ -77,9 +79,30 @@ func (p *Part) pitchesOf(h Hit, tick psalm.CtrlTick) []float64 {
 	if hm := HarmonyOf(p.Env()); hm != nil {
 		if c, ok := hm.ChordAt(tick); ok {
 			for _, r := range h.Rel {
+				if r.Kind == 'v' {
+					out = append(out, p.voiceLed(c, r.Octave)...)
+					continue
+				}
 				out = append(out, r.resolve(c, p.Register, p.Bass)...)
 			}
 		}
+	}
+	return out
+}
+
+// voiceLed is the chord voiced as close as it can to the chord @v played before (the first time close from the register); it stays as it is while the chord does
+func (p *Part) voiceLed(c harmony.Chord, octave int) []float64 {
+	if c.Name != p.voicedChord || len(p.voiced) == 0 {
+		if len(p.voiced) == 0 {
+			p.voiced = c.Close(p.Register)
+		} else {
+			p.voiced = harmony.VoiceLead(p.voiced, c)
+		}
+		p.voicedChord = c.Name
+	}
+	out := make([]float64, len(p.voiced))
+	for i, v := range p.voiced {
+		out[i] = v + float64(12*octave)
 	}
 	return out
 }
@@ -312,10 +335,12 @@ func parseRel(tok string) (Rel, error) {
 		r.Kind = 'b'
 	case "c":
 		r.Kind = 'c'
+	case "v":
+		r.Kind = 'v'
 	default:
 		n, err := strconv.Atoi(body)
 		if err != nil || n == 0 || n < -24 || n > 24 {
-			return Rel{}, fmt.Errorf("%q: @1 the root, @3 the fifth, @b the bass, @c the chord (' an octave up, , down)", tok)
+			return Rel{}, fmt.Errorf("%q: @1 the root, @3 the fifth, @b the bass, @c the chord, @v the chord voice led (' an octave up, , down)", tok)
 		}
 		r.N = n // @-1 is the tone before the root: the last of the chord, an octave down
 	}
@@ -418,7 +443,7 @@ func assemble(els []partElement) ([]Hit, float64) {
 const PartHelp = "notes a step each: `C3 Eb3 G3 Bb3` (C3 is 48; F#4, Bb2, 60 too), `.` a rest, `-` the note before held a step longer\n" +
 	"`C3+Eb3+G3` a chord; `[C3 D3 Eb3]` a group filling a step (a triplet); `*2` after a note or a group: it lasts 2 steps; `?` by chance (`?25`); `^3` a ratchet: 3 hits in the note; `%2/4` only the second time through in every four, `%fill` in the last bar of a section, `%first`, `!` for the other way (`%!fill`)\n" +
 	"with a harmony module: chord notes, found in the chord at the moment they play: `@1` the root, `@2` the next tone of the chord (the third), `@3` the fifth, `@4` the seventh (a triad: the\n" +
-	"root an octave up), `@-1` the tone below the root, `@b` the bass, `@c` the whole chord; `'` after one an octave up, `,` down; `@1 @3 @5 @3`, `@c*4`; `C3+@3` together\n" +
+	"root an octave up), `@-1` the tone below the root, `@b` the bass, `@c` the whole chord, `@v` the chord voice led from the one before (each note moves as little as it can, the same shape of chord in a smooth line); `'` after one an octave up, `,` down; `@1 @3 @5 @3`, `@c*4`; `C3+@3` together\n" +
 	"the division, swing and chance below, as a clock's; velocity, length (of a step: staccato to legato), transpose\n" +
 	"with a song: notes per section, a line `Chorus: F3 Ab3 C4 -` each (the others, the lines without one); from the section's start\n" +
 	"its notes cable to a synth; Ctrl+Enter (or Run) takes them"

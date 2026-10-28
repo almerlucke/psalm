@@ -51,8 +51,14 @@ The Melody panel (above the roll) makes melodies with `tools/melody`, for the **
 
 For the notes selected (or the region, or all): **Invert** (in the scale, around the first note), **Reverse**, **Step up / down** (a step through the scale), **Humanize** (a little off the grid and the loudness) and **Thin out** (some of the short notes off the beat).
 
+## Counter-line, groove
+
+**Counter-line** (next to Every section) adds a second voice under the notes selected (or the region, or the clip): a note under each one, or every beat, 2 beats or bar. It is made by dynamic programming over the notes: thirds and sixths under the melody best, a perfect fifth or octave allowed but never in parallel, tones of the chord on the strong beats, steps preferred, moving against the melody where it can, never crossing above it.
+
+**Groove** puts the feel of a groove (straight, mpc 54 / 58 / 62, shuffle, laid back, push, dilla, backbeat) on the notes that sit on the sixteenths: some a little late, some softer. **Take groove** takes the feel of the notes selected (at least four) as a groove of your own (`mine 1`...), to put on other notes. Grooves are those of `tools/rhythm`, the same the clock and the part use.
+
 ## Messages and Go
 
-`Roll` (`noteroll.New`): `Notes()`, `Length()`, `Clip(section)`, `Clips()`, `SetClip`, `CopyClip`, `DropClip`; `Link` gives it the song position, the sections, the chords (`Link.Chords`) and the scale (`Link.Scale`); in a patcher this is wired by `rollLink`. The page sends messages `gen` (a melody request: from, to, count, seed, parameters) and `preview` (notes to hear); `Generate` and `Preview` do the same in Go.
+`Roll.Counter` makes the counter-line (`melody.Counter`); `Roll` (`noteroll.New`): `Notes()`, `Length()`, `Clip(section)`, `Clips()`, `SetClip`, `CopyClip`, `DropClip`; `Link` gives it the song position, the sections, the chords (`Link.Chords`) and the scale (`Link.Scale`); in a patcher this is wired by `rollLink`. The page sends messages `gen` (a melody request: from, to, count, seed, parameters) and `preview` (notes to hear); `Generate` and `Preview` do the same in Go.
 
 Tests: `TestPageNoteRoll`, `TestPageNoteRollEditing`, `TestPageNoteRollClips`, `TestPageNoteRollMelody` in `patcher/page_test.go`; `noteroll_test.go`; `tools/melody/melody_test.go`.

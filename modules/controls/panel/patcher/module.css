@@ -43,3 +43,12 @@ button { font: inherit; border: 1px solid var(--line); background: var(--card); 
 .mw-gone { color: var(--muted); padding: 20px 0; text-align: center; }
 .mw-title { display: none; } /* the title is the one of the window */
 .mw-head { justify-content: flex-end; }
+.mw-has-lanes .mw-text { flex: 0 0 auto; height: 4.6em; }
+.mw-lanes { display: flex; flex-direction: column; gap: 3px; flex: none; margin-top: 4px; }
+.mw-lane { display: flex; align-items: stretch; gap: 4px; min-height: 30px; }
+.mw-lane-label { flex: 0 0 5.6em; font-size: 11px; color: var(--muted); align-self: center; }
+.mw-lane-btn { flex: 0 0 22px; min-height: 22px; align-self: center; padding: 0; font-size: 13px; line-height: 1; }
+.mw-lane-bars { flex: 1; min-width: 0; display: flex; gap: 2px; height: 30px; }
+.mw-lane-bar { position: relative; flex: 1 1 0; min-width: 4px; max-width: 28px; background: var(--track); border-radius: 2px; cursor: ns-resize; touch-action: none; }
+.mw-lane-bar.gap { background: repeating-linear-gradient(45deg, var(--track), var(--track) 3px, var(--card) 3px, var(--card) 6px); }
+.mw-lane-fill { position: absolute; left: 0; right: 0; background: var(--accent); border-radius: 2px; }
