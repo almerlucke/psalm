@@ -378,7 +378,7 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		// its own (the same room as the music's, a little of it)
 		duck := add("duck", "", 1320, 440)
 		church2 := add("hall", "", 1060, 580)
-		apply(duck, map[string]float64{"threshold": -34, "ratio": 8, "knee": 10, "attack": 30, "release": 700, "sideCut": 150})
+		apply(duck, map[string]float64{"threshold": -29, "ratio": 8, "knee": 10, "attack": 30, "release": 700, "sideCut": 150})
 		apply(church2, map[string]float64{"mix": voiceWet, "gain": 2.2})
 		connect(patcher.Cable{From: mixer, Out: 0, To: duck})
 		connect(patcher.Cable{From: voice, To: duck, In: 1})
