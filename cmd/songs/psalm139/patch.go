@@ -211,8 +211,8 @@ func parts() []strip {
 // recorded it plays (dB)
 const (
 	voicePath = "assets/sounds/psalm139_voice.wav"
-	voiceGain = 12.0
-	voiceWet  = 0.3 // how much of the voice goes through the church
+	voiceGain = 7.0
+	voiceWet  = 0.19 // how much of the voice goes through the church
 )
 
 // real is the strip played by a recording of the orchestra: a sampler with the sfz of the part, in place of its model
@@ -378,7 +378,7 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		// its own (the same room as the music's, a little of it)
 		duck := add("duck", "", 1320, 440)
 		church2 := add("hall", "", 1060, 580)
-		apply(duck, map[string]float64{"threshold": -30, "ratio": 2.6, "knee": 10, "attack": 30, "release": 700, "sideCut": 150})
+		apply(duck, map[string]float64{"threshold": -30, "ratio": 3.4, "knee": 10, "attack": 30, "release": 700, "sideCut": 150})
 		apply(church2, map[string]float64{"mix": voiceWet, "gain": 2.2})
 		connect(patcher.Cable{From: mixer, Out: 0, To: duck})
 		connect(patcher.Cable{From: voice, To: duck, In: 1})
