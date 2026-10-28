@@ -43,6 +43,9 @@ func TestEverythingSounds(t *testing.T) {
 	if len(ids.drums) != 5 {
 		t.Errorf("%d drum clocks", len(ids.drums))
 	}
+	if m, ok := pt.Module(ids.melodist).(*patcher.Melodist); !ok || m == nil {
+		t.Error("no melodist")
+	}
 	bar := int(4.0 * 60 / tempo * 44100 / 256)
 	for _, s := range sections {
 		var peak float64
@@ -56,5 +59,8 @@ func TestEverythingSounds(t *testing.T) {
 		if peak < 0.01 || peak > 2 || math.IsNaN(peak) {
 			t.Errorf("section %s: peak %v", s.name, peak)
 		}
+	}
+	if m := pt.Module(ids.melodist).(*patcher.Melodist); m.Passes() < 3 {
+		t.Errorf("the melodist made %d passes in four sections", m.Passes())
 	}
 }

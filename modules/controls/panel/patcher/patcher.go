@@ -106,6 +106,19 @@ type Kind struct {
 	Make func(preset string) (*Made, error)
 }
 
+// Action is a button of a module's window: Key names it, Title is what it does when the pointer rests on it
+type Action struct {
+	Key, Label, Title string
+	Do                func() error `json:"-"`
+}
+
+// ActionInfo is an action as the page gets it
+type ActionInfo struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Title string `json:"title"`
+}
+
 // Made is a module made: what the patch adds, and what the patcher asks of it
 type Made struct {
 	Module psalm.Modular   // its audio ports are the module's inputs and outputs
@@ -162,6 +175,8 @@ type Made struct {
 	// Attach is called once, when the module is made, with the log of the patch and the name of the module (its kind and
 	// id), for a module that writes to the log (a script's log)
 	Attach func(j *Journal, name string)
+	// Actions are buttons in the module's window (below its texts): what a click does (off the audio thread); an error is shown on the page
+	Actions []Action
 	// Status is a line shown on the module (a script's error or what it logged; "" nothing), asked
 	// when the page is updated
 	Status func() string
@@ -375,6 +390,9 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		Text   *struct {
 			ID, Key, Value string
 		} `json:"text"`
+		Action *struct {
+			ID, Key string
+		} `json:"action"`
 		Lanes *struct {
 			ID    string     `json:"id"`
 			Lanes []LaneData `json:"lanes"`
@@ -429,6 +447,8 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		return pt.SetRange(m.Range.ID, m.Range.Key, m.Range.Lo, m.Range.Hi)
 	case m.Text != nil:
 		return pt.SetText(m.Text.ID, m.Text.Key, m.Text.Value)
+	case m.Action != nil:
+		return pt.Act(m.Action.ID, m.Action.Key)
 	case m.Lanes != nil:
 		return pt.SetLanes(m.Lanes.ID, m.Lanes.Lanes)
 	case m.ArmLane != nil:
@@ -897,6 +917,22 @@ func (pt *Patcher) SetRange(id, key string, lo, hi float64) error {
 
 // SetText changes a setting of text of a module (a pattern, a list of values); what can't be read
 // is kept to show on the module, the module going on with the one before
+// Act does what a button of a module's window does
+func (pt *Patcher) Act(id, key string) error {
+	pt.mu.Lock()
+	n := pt.node(id)
+	pt.mu.Unlock()
+	if n == nil {
+		return errors.New("no such module")
+	}
+	for _, a := range n.made.Actions {
+		if a.Key == key && a.Do != nil {
+			return a.Do()
+		}
+	}
+	return errors.New("no such button")
+}
+
 func (pt *Patcher) SetText(id, key, value string) error {
 	pt.mu.Lock()
 	n := pt.node(id)
@@ -1016,8 +1052,9 @@ type nodeState struct {
 	Outs     []Port            `json:"outs"`
 	Settings []string          `json:"settings,omitempty"` // what a mod cable can move: key, label
 	Labels   []string          `json:"labels,omitempty"`
-	Texts    []Text            `json:"texts,omitempty"`  // its settings of text, as they are
-	Errors   map[string]string `json:"errors,omitempty"` // what was wrong with one typed
+	Texts    []Text            `json:"texts,omitempty"`   // its settings of text, as they are
+	Actions  []ActionInfo      `json:"actions,omitempty"` // its buttons
+	Errors   map[string]string `json:"errors,omitempty"`  // what was wrong with one typed
 	Status   string            `json:"status,omitempty"`
 	Log      *string           `json:"log,omitempty"`    // a log for the side panel (nil: it has none)
 	Page     bool              `json:"page,omitempty"`   // it has settings to show (its editor)
@@ -1060,6 +1097,9 @@ func (pt *Patcher) state() any {
 		}
 		for _, t := range n.made.Texts {
 			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key], Lines: t.Lines, Help: t.Help})
+		}
+		for _, a := range n.made.Actions {
+			ns.Actions = append(ns.Actions, ActionInfo{Key: a.Key, Label: a.Label, Title: a.Title})
 		}
 		if len(n.textErr) > 0 {
 			ns.Errors = maps.Clone(n.textErr)

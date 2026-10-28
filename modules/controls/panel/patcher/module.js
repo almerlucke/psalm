@@ -112,7 +112,7 @@
 
 	// the boxes are made when the module has other texts than they were made for
 	function build(n) {
-		const key = JSON.stringify([n.kind, n.preset, (n.texts || []).map(t => [t.key, t.label, t.lines])]) + (n.log !== undefined && n.log !== null) + !!n.page;
+		const key = JSON.stringify([n.kind, n.preset, (n.texts || []).map(t => [t.key, t.label, t.lines]), (n.actions || []).map(a => [a.key, a.label])]) + (n.log !== undefined && n.log !== null) + !!n.page;
 		if (key === built) return;
 		built = key;
 		boxes = {}; log = null;
@@ -136,6 +136,15 @@
 			holder.append(wrap);
 			boxes[t.key] = ta;
 		}
+		if ((n.actions || []).length) { // the buttons of the module
+			const row = el("div", "mw-actions");
+			for (const a of n.actions) {
+				const b = el("button", "", a.label); b.title = a.title || "";
+				b.addEventListener("click", () => { commit(true); send({action: {id, key: a.key}}); });
+				row.append(b);
+			}
+			holder.append(row);
+		}
 		if (n.log !== undefined && n.log !== null) {
 			for (const w of holder.children) w.style.flex = "0 0 auto";
 			const wrap = el("label", "mw-box");
@@ -143,7 +152,7 @@
 			wrap.append(ta); holder.append(wrap);
 			log = ta;
 		}
-		$("code").hidden = $("run").hidden = !texts.length;
+		$("code").hidden = $("run").hidden = !texts.length && !(n.actions || []).length;
 		$("settings").hidden = !n.page;
 		const script = texts.some(t => t.lines > 1);
 		root.classList.toggle("both", !!texts.length && !!n.page && script);

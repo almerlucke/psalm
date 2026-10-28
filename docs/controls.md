@@ -923,6 +923,7 @@ are `patcher.Generators()`, built on genny:
 | [part](modules/part.md) | | notes | notes written per step (`C3 Eb3 . G3 -`), per section too; **chord notes** (`@1 @3 @b @c`) follow a harmony module |
 | [harmony](modules/harmony.md) | | chord (value), bass (value), change (trigger) | the chord track of the patch: chords as symbols or roman numerals, bars each, per section of the song |
 | [chordmodel](modules/chordmodel.md) | | notes | a Markov model of chord progressions with a matrix to drag, cards to lock, and a button that writes the progression to the harmony |
+| [melodist](modules/melodist.md) | | notes | a melody made while the song plays, over the chords, each pass from the one before changed a little (mutate), a second voice, buttons to draw again and keep in the roll |
 | [noteroll](modules/noteroll.md) | | notes | the note editor: a piano roll with clips per section, the chords of the harmony, and a melody generator |
 
 A notes module plays the triggers of a control tick at its end, after every other module had its

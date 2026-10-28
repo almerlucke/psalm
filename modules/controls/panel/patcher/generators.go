@@ -1052,7 +1052,7 @@ func Generators() []Kind {
 				return &Made{Module: n, Describe: func(string) params.Set { return n.Describe() },
 					Notes: n.SetTargets, Late: n.late}, nil
 			}},
-		SongKind(), laneKind(), automationKind(), gateKind(), partKind(), harmonyKind(), ChordModelKind(), LogKind(), NoteRollKind(), ArpKind(), LooperKind(),
+		SongKind(), laneKind(), automationKind(), gateKind(), partKind(), harmonyKind(), ChordModelKind(), melodistKind(), LogKind(), NoteRollKind(), ArpKind(), LooperKind(),
 		{Name: "quantize", Group: "Generators", Ins: []Port{{Name: "in", Type: Value}}, Outs: []Port{{Name: "out", Type: Value}},
 			Make: func(string) (*Made, error) {
 				q := NewQuantize()

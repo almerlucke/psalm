@@ -10,7 +10,7 @@ play it live through an audio engine or render it to a sound file.
 |---|---|
 | [Core concepts](core-concepts.md) | Psalm, config, modules, audio and value connections, messages, control ticks, rendering, audio engines |
 | [Controls](controls.md) | Sequencing and control modules: `timer`, `steps`, `templ`, `score` (notes in beats, notation, sequencer), `arrange` (song form, parts, automation, events), `keyboard` (MIDI, see [MIDI](midi.md)), `panel` (faders, knobs, buttons, step grids and meters on a web page), `stepseq` (a step sequencer: rolls, chances, conditions, swing, patterns), `gen`, `dispatch`, `logger` |
-| [Patcher modules](modules/) | one page each for the larger patcher modules: [noteroll](modules/noteroll.md) (piano roll, clips, melody generator), [harmony](modules/harmony.md), [chordmodel](modules/chordmodel.md), [part](modules/part.md) |
+| [Patcher modules](modules/) | one page each for the larger patcher modules: [noteroll](modules/noteroll.md) (piano roll, clips, melody generator), [harmony](modules/harmony.md), [chordmodel](modules/chordmodel.md), [melodist](modules/melodist.md), [part](modules/part.md) |
 | [Scripting](scripting.md) | The patcher's generators and scripts: the clock's pattern language, sequence orders, notes, quantize, arp, song/lane/gate/part, and the JavaScript `script` module (how it runs, its API, every `genny.*` generator with its options and defaults, limits) |
 | [Sources](sources.md) | Sound sources: `player`, `blosc` oscillator, `lfo`, `granular` |
 | [Presets](presets.md) | one page a family in `docs/presets/`: the presets of every synth (about 545 more than the first ones in the synths page) |

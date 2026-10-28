@@ -13,6 +13,8 @@
 //     (`x%fill`), hats that are a Markov chain on an example `M(...)` with a groove (mpc 58), a drift and a little mutation, an open hat of `E(5,16,2+1)` (turning a step every
 //     pass) on `%2/4`, a clap of the cellular automaton rule 30 (a generation more every pass: `CA(30,16,+)`)
 //   - it is live: the chord model draws new chords for the chorus every time the song leaves it, and writes them to the harmony
+//   - a melodist plays a melody that is made while the song plays: over the chords of each section, from the pass before changed a little (so the second chorus is the first,
+//     varied), with a second voice; its window has Draw again and Keep in the roll (writes what plays into a clip)
 //   - the lead is in the piano roll: a clip for every section (the melody made with a grammar, `S -> A A' B A~`, over the chords of the section), and a second roll with a
 //     counter-line under it (no parallel fifths or octaves, against the melody). The rolls have a clip for the Verse and the Chorus (choose the section above the roll; the loop has none). Open the roll's Melody panel to make others: Generate, Variations, Every section, a
 //     grammar or an L-system, Counter-line, Invert, Reverse, Groove
@@ -50,8 +52,8 @@ const beatsPerBar = 4
 
 // ids are the modules of the patch that tests look at
 type ids struct {
-	harmony, roll, counter string
-	drums                  []string
+	harmony, roll, counter, melodist string
+	drums                            []string
 }
 
 func main() {
@@ -182,6 +184,12 @@ func buildPatch(pt *patcher.Patcher) (ids, error) {
 		firstErr = err
 	}
 
+	// a melodist: a melody made while the song plays, over the chords of each section, from the pass before changed a little (mutate); a second voice goes with it
+	melodist := must(pt.Add("melodist", "", 260, 1040))
+	melodistSynth := must(pt.Add("wavetable", "pluck", 520, 1040))
+	pt.SettingsOf(melodist).Apply(map[string]float64{"form": 3, "phrase": 2, "density": 0.4, "mutate": 0.3, "counter": 1, "low": 66, "high": 88, "velocity": 0.6})
+	out.melodist = melodist
+
 	// the mix: a mixer with a reverb on send A
 	m8 := must(pt.Add("mixer", "8 channels", 800, 300))
 	rev := must(pt.Add("reverb", "", 1060, 300))
@@ -189,14 +197,14 @@ func buildPatch(pt *patcher.Patcher) (ids, error) {
 		{From: bass, To: bassSynth}, {From: pad, To: padSynth}, {From: arp, To: arpSynth}, {From: roll, To: leadSynth}, {From: counter, To: counterSynth},
 		{From: model, To: padSynth}, // hear the chord model through the pad
 		{From: bassSynth, To: m8, In: 0}, {From: padSynth, To: m8, In: 1}, {From: arpSynth, To: m8, In: 2}, {From: leadSynth, To: m8, In: 3},
-		{From: drumSynth, To: m8, In: 4}, {From: counterSynth, To: m8, In: 5},
+		{From: drumSynth, To: m8, In: 4}, {From: counterSynth, To: m8, In: 5}, {From: melodist, To: melodistSynth}, {From: melodistSynth, To: m8, In: 6},
 		{From: m8, Out: 1, To: rev}, {From: rev, To: m8, In: 8}, {From: m8, Out: 0, To: "out"},
 	} {
 		if _, err := pt.Connect(c); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
-	pt.SettingsOf(m8).Apply(map[string]float64{"level1": 0.7, "level2": 0.4, "level3": 0.45, "level4": 0.6, "level5": 0.6, "level6": 0.3,
+	pt.SettingsOf(m8).Apply(map[string]float64{"level1": 0.7, "level2": 0.4, "level3": 0.45, "level4": 0.6, "level5": 0.6, "level6": 0.3, "level7": 0.35, "sendA7": 0.5, "pan7": 0.35,
 		"sendA2": 0.4, "sendA3": 0.35, "sendA4": 0.4, "sendA6": 0.4, "pan3": -0.2, "pan4": 0.2, "pan6": -0.3, "returnA": 1})
 	pt.SettingsOf(rev).Apply(map[string]float64{"mix": 1, "decay": 3})
 	return out, firstErr

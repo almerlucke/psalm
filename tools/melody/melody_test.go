@@ -265,3 +265,43 @@ func TestShort(t *testing.T) {
 		t.Errorf("a melody in a range with no scale notes: %v", got)
 	}
 }
+
+func TestMutate(t *testing.T) {
+	scale, _ := harmony.NewScale("C", "major")
+	chords := []Span{{At: 0, Len: 4, Pcs: []int{0, 4, 7}, Root: 0}, {At: 4, Len: 4, Pcs: []int{5, 9, 0}, Root: 5}, {At: 8, Len: 4, Pcs: []int{7, 11, 2}, Root: 7}, {At: 12, Len: 4, Pcs: []int{0, 4, 7}, Root: 0}}
+	p := Params{Scale: scale, Beats: 16, Low: 60, High: 84, Chords: chords, Form: "AA'", Phrase: 8, Seed: 4}
+	m := Generate(p)
+	if got := Mutate(m, p, 0, 1); !slices.Equal(got, m) {
+		t.Error("a mutation of nothing changed the melody")
+	}
+	a, b := Mutate(m, p, 0.3, 5), Mutate(m, p, 0.3, 5)
+	if !slices.Equal(a, b) {
+		t.Error("not repeatable")
+	}
+	if slices.Equal(a, m) || slices.Equal(Mutate(m, p, 0.3, 6), a) {
+		t.Error("a mutation changes nothing, or the same every seed")
+	}
+	// most of it stays: the same pitch at the same place for most of the notes
+	same := 0
+	for _, n := range a {
+		for _, o := range m {
+			if o.Start == n.Start && o.Key == n.Key {
+				same++
+				break
+			}
+		}
+	}
+	if float64(same)/float64(len(m)) < 0.45 {
+		t.Errorf("only %d of %d notes are as they were", same, len(m))
+	}
+	// in the scale, in the range, on the roots at the end; the notes on a beat are tones of the chord
+	inScale := map[int]bool{0: true, 2: true, 4: true, 5: true, 7: true, 9: true, 11: true}
+	for _, n := range a {
+		if !inScale[n.Key%12] || n.Key < 60 || n.Key > 84 || n.Start >= 16 {
+			t.Fatalf("note %+v out of scale or range", n)
+		}
+	}
+	if last := a[len(a)-1]; last.Key%12 != 0 {
+		t.Errorf("the last note %d is not the root", last.Key)
+	}
+}
