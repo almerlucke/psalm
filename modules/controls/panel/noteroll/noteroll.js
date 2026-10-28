@@ -107,6 +107,12 @@ psalm.register("noteroll", (p, api) => {
 	rootSel.disabled = true;
 	const genB = mk("button", {textContent: "Generate", title: "make a melody for the region of the ruler, the notes selected, or the whole clip (undo takes it away)"});
 	const varB = mk("button", {textContent: "Variations", title: "make six melodies to hear and choose from"});
+	const allB = mk("button", {textContent: "Every section", title: "make a melody for the clip of every section of the song, over the chords of each (clips that are there are replaced)"});
+	allB.addEventListener("click", () => {
+		if (have.length > 1 && !confirm("Replace the clips of the sections?")) return;
+		api.message(p.name, {genall: {seed: genSeed, params: {...gp, grid: snap > 0 ? snap : 0.25, velocity: lastVel}}});
+		genSeed++;
+	});
 	const mutate = (label, title, f) => { const b = mk("button", {textContent: label, title}); b.addEventListener("click", f); return b; };
 	const candEl = mk("div", {className: "nr-cands"});
 	const lockBox = mk("input", {type: "checkbox", title: "the notes you put and move keep to the scale"});
@@ -118,7 +124,7 @@ psalm.register("noteroll", (p, api) => {
 			pick("Phrase", "phrase", [[2, "2 beats"], [4, "4 beats"], [8, "8 beats"], [16, "16 beats"]], "how long a phrase is")),
 		mk("div", {className: "nr-bar"}, slide("Busy", "density", "how many notes"), slide("Rests", "rest", "how often it rests"), slide("Smooth", "steps", "steps against leaps"), slide("Chord tones", "chord", "how much the notes on the beat keep to the chord")),
 		mk("div", {className: "nr-bar"}, mk("label", {}, "Scale ", rootSel, modeSel), mk("label", {}, "From ", rangeIn("low")), mk("label", {}, "to ", rangeIn("high")), mk("label", {}, lockBox, " keep to the scale")),
-		mk("div", {className: "nr-bar"}, genB, varB,
+		mk("div", {className: "nr-bar"}, genB, varB, allB,
 			mutate("Invert", "turn the notes selected upside down (in the scale)", () => mutateNotes("invert")), mutate("Reverse", "play the notes selected backwards", () => mutateNotes("reverse")),
 			mutate("Step up", "move the notes selected a step up the scale", () => mutateNotes("up")), mutate("Step down", "move them a step down", () => mutateNotes("down")),
 			mutate("Humanize", "a little off the grid and the loudness", () => mutateNotes("humanize")), mutate("Thin out", "take some of the short notes away", () => mutateNotes("thin"))),

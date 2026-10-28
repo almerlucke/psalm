@@ -22,7 +22,7 @@ A progression is drawn from the model, a card a chord. On a card: lock it, choos
 |---|---|
 | new progression | draws all the chords |
 | draw the others again | draws only the chords not locked, each fitting the chords on both sides |
-| hear | plays it through the synths its notes output goes to |
+| hear | plays it through the synths its notes output goes to: the chords voice led (each note moves as little as it can) with a bass note under them |
 | write to the harmony | puts it in the [harmony](harmony.md) of the patch: the line of a section, as chords or numerals |
 
 ## Go

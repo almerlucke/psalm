@@ -80,6 +80,7 @@ type Module struct {
 	started bool
 	origin  int64
 	last    int
+	prev    []float64 // the voicing of the chord before, for the voice leading
 }
 
 // New returns a module with the model of the pop preset in C major and a progression of eight bars
@@ -238,7 +239,7 @@ func (m *Module) CtrlTick(tick psalm.CtrlTick) {
 	}
 	ppq := float64(m.Config().PPQ)
 	if !m.started {
-		m.started, m.origin, m.last = true, tick.TickTimestamp, -1
+		m.started, m.origin, m.last, m.prev = true, tick.TickTimestamp, -1, nil
 	}
 	const beatsPerBar = 4.0
 	bars := float64(tick.TickTimestamp-m.origin) / ppq / beatsPerBar
@@ -259,9 +260,19 @@ func (m *Module) CtrlTick(tick psalm.CtrlTick) {
 		return
 	}
 	left := (at + st.Strip[i].Bars - x) * beatsPerBar // beats of the chord still to go
-	for _, p := range c.Close(48) {
-		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.05, left*m.Env().TickDuration()*ppq*0.95), "amplitude": 0.6,
-			"message": psalm.Message{"pitch": p, "velocity": 0.6}}
+	voicing := c.Close(55)
+	if m.prev != nil {
+		voicing = harmony.VoiceLead(m.prev, c)
+	}
+	m.prev = voicing
+	pitches := append([]float64{c.BassPitch(36)}, voicing...)
+	for j, p := range pitches {
+		vel := 0.6
+		if j == 0 {
+			vel = 0.7
+		}
+		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.05, left*m.Env().TickDuration()*ppq*0.95), "amplitude": vel,
+			"message": psalm.Message{"pitch": p, "velocity": vel}}
 		for _, t := range m.targets {
 			t.ReceiveMessage(msg)
 		}

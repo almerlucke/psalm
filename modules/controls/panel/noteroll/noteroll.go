@@ -266,23 +266,55 @@ type GenParams struct {
 // editor gets next (Candidates)
 func (r *Roll) Generate(id int, from, to float64, count int, seed uint64, gp GenParams) {
 	view := *r.view.Load()
-	l := r.link.Load()
 	c, ok := r.Clip(view)
 	if !ok {
 		c.Length = r.Length()
 	}
-	from, to = math.Max(0, from), math.Min(to, c.Length)
-	if to-from < 0.25 {
+	notes := r.melodies(view, c.Length, from, to, count, seed, gp)
+	if notes == nil {
 		return
+	}
+	r.gen.Store(&Candidates{ID: id, Notes: notes})
+}
+
+// GenerateSections makes a melody for the clip of every section of the song (a clip the section has is replaced), from the same seed: the sections share the way the melody is made
+// and follow the chords of their own; it returns how many clips it made
+func (r *Roll) GenerateSections(seed uint64, gp GenParams) int {
+	l := r.link.Load()
+	if l == nil || l.Sections == nil {
+		return 0
+	}
+	n := 0
+	for _, s := range l.Sections() {
+		out := r.melodies(s.Name, s.Beats, 0, s.Beats, 1, seed, gp)
+		if len(out) == 0 {
+			continue
+		}
+		notes := make([]Note, 0, len(out[0]))
+		for _, m := range out[0] {
+			notes = append(notes, Note{Start: m[0], Length: m[1], Key: int(m[2]), Velocity: m[3]})
+		}
+		r.SetClip(s.Name, notes, s.Beats)
+		n++
+	}
+	return n
+}
+
+// melodies makes count melodies for a stretch of a clip of a section (nil when it can't)
+func (r *Roll) melodies(section string, length, from, to float64, count int, seed uint64, gp GenParams) [][][4]float64 {
+	l := r.link.Load()
+	from, to = math.Max(0, from), math.Min(to, length)
+	if to-from < 0.25 {
+		return nil
 	}
 	scale, err := r.scaleFor(gp, l)
 	if err != nil {
-		return
+		return nil
 	}
 	mp := melody.Params{Scale: scale, Beats: to - from, Low: gp.Low, High: gp.High, Density: gp.Density, Rest: gp.Rest, Steps: gp.Steps, Chord: gp.Chord,
 		Rhythm: gp.Rhythm, Contour: gp.Contour, Form: gp.Form, Phrase: gp.Phrase, Grid: gp.Grid, Velocity: gp.Velocity}
 	if l != nil && l.Chords != nil {
-		for _, sp := range l.Chords(view, c.Length) {
+		for _, sp := range l.Chords(section, length) {
 			at, end := math.Max(sp.At, from), math.Min(sp.At+sp.Len, to)
 			if end-at > 1e-9 {
 				root := 0
@@ -293,16 +325,16 @@ func (r *Roll) Generate(id int, from, to float64, count int, seed uint64, gp Gen
 			}
 		}
 	}
-	out := &Candidates{ID: id}
+	var out [][][4]float64
 	for i := range max(1, min(count, 12)) {
 		mp.Seed = seed + uint64(i)
 		var notes [][4]float64
 		for _, n := range melody.Generate(mp) {
 			notes = append(notes, [4]float64{n.Start + from, n.Length, float64(n.Key), math.Round(n.Velocity*100) / 100})
 		}
-		out.Notes = append(out.Notes, notes)
+		out = append(out, notes)
 	}
-	r.gen.Store(out)
+	return out
 }
 
 // scaleFor is the scale a melody is in: the one asked for, or the harmony's
@@ -568,6 +600,10 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 					Seed   uint64    `json:"seed"`
 					Params GenParams `json:"params"`
 				} `json:"gen"`
+				GenAll *struct {
+					Seed   uint64    `json:"seed"`
+					Params GenParams `json:"params"`
+				} `json:"genall"`
 				Preview *struct {
 					Notes  [][4]float64 `json:"notes"`
 					Length float64      `json:"length"`
@@ -587,6 +623,8 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 				roll.Audition(m.Play.Key, m.Play.Vel, 0.5)
 			case m.Gen != nil:
 				roll.Generate(m.Gen.ID, m.Gen.From, m.Gen.To, m.Gen.Count, m.Gen.Seed, m.Gen.Params)
+			case m.GenAll != nil:
+				roll.GenerateSections(m.GenAll.Seed, m.GenAll.Params)
 			case m.Preview != nil:
 				notes := make([]Note, 0, len(m.Preview.Notes))
 				for _, n := range m.Preview.Notes {

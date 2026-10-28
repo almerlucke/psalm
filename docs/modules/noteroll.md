@@ -46,7 +46,7 @@ The Melody panel (above the roll) makes melodies with `tools/melody`, for the **
 | From, to | the lowest and highest key |
 | Keep to the scale | the notes you put and move snap to the scale |
 
-**Generate** puts a melody in (undo takes it away); **Variations** makes six to hear (Hear) and choose from (Use). The melody ends on a cadence (the root when closed). The seed changes at every press, so the same settings give a new melody each time.
+**Generate** puts a melody in (undo takes it away); **Variations** makes six to hear (Hear) and choose from (Use); **Every section** makes a clip for every section of the song (asking first when there are clips), each over the chords of its own section and from the same seed, so they are made the same way (`GenerateSections` in Go; replaces the clips there are). The melody ends on a cadence (the root when closed). The seed changes at every press, so the same settings give a new melody each time.
 
 For the notes selected (or the region, or all): **Invert** (in the scale, around the first note), **Reverse**, **Step up / down** (a step through the scale), **Humanize** (a little off the grid and the loudness) and **Thin out** (some of the short notes off the beat).
 

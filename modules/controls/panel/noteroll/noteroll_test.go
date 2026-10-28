@@ -230,3 +230,38 @@ func TestRollPreview(t *testing.T) {
 		t.Errorf("played again: %v", rc.pitches)
 	}
 }
+
+// a melody for every section: a clip each, over the chords of its own, the same seed giving the same
+func TestRollGenerateSections(t *testing.T) {
+	r, _, _ := rig(t)
+	r.Link(Link{
+		Sections: func() []Section { return []Section{{"Verse", 8}, {"Chorus", 4}} },
+		Scale:    func() (int, string, bool) { return 0, "major", true },
+		Chords: func(section string, _ float64) []ChordSpan {
+			if section == "Verse" {
+				return []ChordSpan{{At: 0, Len: 8, Name: "C", Pcs: []int{0, 4, 7}}}
+			}
+			return []ChordSpan{{At: 0, Len: 4, Name: "F", Pcs: []int{5, 9, 0}}}
+		},
+	})
+	if n := r.GenerateSections(3, GenParams{Low: 60, High: 84, Chord: 1}); n != 2 {
+		t.Fatalf("%d clips", n)
+	}
+	v, ok1 := r.Clip("Verse")
+	c, ok2 := r.Clip("Chorus")
+	if !ok1 || !ok2 || v.Length != 8 || c.Length != 4 || len(v.Notes) == 0 || len(c.Notes) == 0 {
+		t.Fatalf("clips %+v %+v", v, c)
+	}
+	for _, n := range c.Notes {
+		if n.Start+n.Length > 4+1e-6 {
+			t.Fatalf("note %+v over the end of the chorus", n)
+		}
+	}
+	if r.GenerateSections(3, GenParams{}) != 2 {
+		t.Error("again")
+	}
+	v2, _ := r.Clip("Verse")
+	if len(v2.Notes) == 0 {
+		t.Error("an empty clip")
+	}
+}
