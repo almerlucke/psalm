@@ -11,6 +11,9 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
+	"github.com/almerlucke/psalm/modules/controls/panel/patcher/catalog"
+	"github.com/almerlucke/psalm/modules/effects/compressor"
+	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/tools/rhythm"
 )
 
@@ -176,6 +179,7 @@ type strip struct {
 	echo         float64
 	insert       string             // an effect between the instrument and the mixer (a compressor for the voice)
 	insertSet    map[string]float64 // its settings
+	direct       bool               // not on the mixer: the voice goes round it, and ducks the music (see duckKind)
 }
 
 func parts() []strip {
@@ -197,8 +201,8 @@ func parts() []strip {
 		{name: "cymbal", script: "cymbal", kind: "sampler", kit: "cymbal", level: 0.8, hall: 0.4, heavens: 0.3},
 	}
 	if _, err := os.Stat(voicePath); err == nil { // the recording of the psalm, when it is there: played from the start of the Knit
-		ps = append(ps, strip{name: "voice", script: "voice", kind: "streamer", sounds: fmt.Sprintf("36 %s vol=%g name=voice", voicePath, voiceGain), level: 0.8, hall: 0.15, church: 0.2,
-			insert: "compressor", insertSet: map[string]float64{"threshold": -22, "ratio": 5, "knee": 8, "attack": 5, "release": 220, "makeup": 1}})
+		ps = append(ps, strip{name: "voice", script: "voice", kind: "streamer", sounds: fmt.Sprintf("36 %s vol=%g name=voice", voicePath, voiceGain), level: 0.8, direct: true,
+			insert: "compressor", insertSet: map[string]float64{"threshold": -22, "ratio": 5, "knee": 8, "attack": 5, "release": 220, "makeup": 5}})
 	}
 	return ps
 }
@@ -208,6 +212,7 @@ func parts() []strip {
 const (
 	voicePath = "assets/sounds/psalm139_voice.wav"
 	voiceGain = 12.0
+	voiceWet  = 0.3 // how much of the voice goes through the church
 )
 
 // real is the strip played by a recording of the orchestra: a sampler with the sfz of the part, in place of its model
@@ -330,6 +335,7 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 	text(score, "code", prelude+script("score"))
 	ids = patchIDs{scripts: []string{score}, synths: map[string]string{}}
 	channels := len(all)
+	voice := "" // the voice, when the recording is there: it goes round the mixer
 	for i := range ps {
 		pl := &ps[i]
 		text(pl.script, "code", script(pl.strip.script))
@@ -348,7 +354,11 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 			fx := add(pl.insert, "", 660, 20+float64(i)*90)
 			apply(fx, pl.insertSet)
 			connect(patcher.Cable{From: pl.synth, To: fx})
-			connect(patcher.Cable{From: fx, To: mixer, In: i})
+			if pl.direct {
+				voice = fx
+			} else {
+				connect(patcher.Cable{From: fx, To: mixer, In: i})
+			}
 			ids.synths[pl.name+" "+pl.insert] = fx
 		} else {
 			connect(patcher.Cable{From: pl.synth, To: mixer, In: i})
@@ -361,7 +371,22 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		connect(patcher.Cable{From: mixer, Out: 1 + i, To: fx})
 		connect(patcher.Cable{From: fx, To: mixer, In: channels + i})
 	}
-	connect(patcher.Cable{From: mixer, Out: 0, To: "out"})
+	if voice == "" {
+		connect(patcher.Cable{From: mixer, Out: 0, To: "out"})
+	} else {
+		// the music goes through a duck that the voice drives: while the voice speaks the music is a few decibels lower, so the voice is always on top of it. The voice has a church of
+		// its own (the same room as the music's, a little of it)
+		duck := add("duck", "", 1320, 440)
+		church2 := add("hall", "", 1060, 580)
+		apply(duck, map[string]float64{"threshold": -30, "ratio": 2.6, "knee": 10, "attack": 30, "release": 700, "sideCut": 150})
+		apply(church2, map[string]float64{"mix": voiceWet, "gain": 2.2})
+		connect(patcher.Cable{From: mixer, Out: 0, To: duck})
+		connect(patcher.Cable{From: voice, To: duck, In: 1})
+		connect(patcher.Cable{From: voice, To: church2})
+		connect(patcher.Cable{From: church2, To: "out"})
+		connect(patcher.Cable{From: duck, To: "out"})
+		ids.synths["music"], ids.synths["duck"], ids.synths["voice church"] = mixer, duck, church2
+	}
 	if err == nil {
 		err = addLive(pt, &ids, opt, add, connect, text, apply)
 	}
@@ -471,3 +496,18 @@ func addLive(pt *patcher.Patcher, ids *patchIDs, opt options, add func(kind, pre
 	ids.melodist = melodist
 	return nil
 }
+
+// duckKind is a compressor of which the sidechain drives the compression (the voice turns the music down), as a kind of the patcher: the sound on its first input, the one that
+// turns it down on the second
+func duckKind() patcher.Kind {
+	return patcher.Kind{Name: "duck", Group: "Effects",
+		Ins:  []patcher.Port{{Name: "in", Type: patcher.Audio, Index: 0}, {Name: "sidechain", Type: patcher.Audio, Index: 1}},
+		Outs: []patcher.Port{{Name: "out", Type: patcher.Audio}},
+		Make: func(string) (*patcher.Made, error) {
+			m := compressor.New(compressor.DefaultConfig())
+			return &patcher.Made{Module: m, Describe: func(string) params.Set { return compressor.Describe(m.Settings()) }}, nil
+		}}
+}
+
+// kinds are the kinds of the patcher of the song: those of the catalog and the duck
+func kinds(cfg catalog.Config) []patcher.Kind { return append(catalog.Kinds(cfg), duckKind()) }

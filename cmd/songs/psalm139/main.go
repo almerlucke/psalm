@@ -26,6 +26,9 @@ package main
 // the Light and the Sand (a question and its answer over the chord of the bar, a little different each time through a section, in just intonation), hand drum ghosts of three hits in
 // twelve that turn a step every pass, and in the Sand eggs of a cellular automaton (rule 30, a new row every pass): the grains more in number than the sand.
 //
+// The voice (assets/sounds/psalm139_voice.wav, when it is there) is read from the disk by a streamer and begins with the Knit. It goes through a compressor and a church of its own, round the
+// mixer, and turns the music down a few decibels while it speaks (a compressor of which the sidechain is the voice: the duck of the patch), so it is always on top.
+//
 //	go run ./cmd/songs/psalm139                                      play it (the page is at http://localhost:8087)
 //	go run ./cmd/songs/psalm139 -tuning equal                        in equal temperament instead
 //	go run ./cmd/songs/psalm139 -orchestra=false                     the models of the instruments instead of the recordings
@@ -94,7 +97,7 @@ func main() {
 	ctl := panel.New(p, "Woven")
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
-	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: church, Audio: p.PatchInput(0)}), patcher.Theme(t))
+	pt := patcher.New(p, ctl, "Patch", kinds(catalog.Config{Input: midi.NewQueue(), IR: church, Audio: p.PatchInput(0)}), patcher.Theme(t))
 	ids, err := buildPatch(pt, options{just: *tuning == "just", a4: *a4, seed: feelSeed, human: *human, real: *orch && hasOrchestra(), once: *renderTo != "" || *profile})
 	if err != nil {
 		log.Fatal(err)

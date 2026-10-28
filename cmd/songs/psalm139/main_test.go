@@ -38,7 +38,7 @@ func TestPieceSounds(t *testing.T) {
 		psalm.Seed(3)
 		p := psalm.New(nil)
 		church := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/St Nicolaes Church.wav"))
-		pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: church}))
+		pt := patcher.New(p, panel.New(p, "Test"), "Patch", kinds(catalog.Config{Input: midi.NewQueue(), IR: church}))
 		ids, err := buildPatch(pt, options{just: true, a4: 440, seed: 3, human: true, real: real, once: true})
 		if err != nil {
 			t.Fatal(err)
