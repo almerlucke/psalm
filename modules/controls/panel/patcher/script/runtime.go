@@ -71,7 +71,7 @@ func NewRuntime() *Runtime {
 // header and footer wrap a script in a function of its own: its scope, the api handed in; the
 // header is on the script's first line, so the lines of errors are the script's
 const (
-	header = `(function(api, shared, genny) { const {note, set, send, fire, clock, mod, log, input, pitch, scale, chord, bpm, song} = api; const console = {log: log}; `
+	header = `(function(api, shared, genny) { const {note, set, send, fire, clock, mod, log, input, pitch, scale, chord, harmony, bpm, song} = api; const console = {log: log}; `
 	footer = "\n;return {trigger: typeof trigger === \"function\" ? trigger : undefined, value: typeof value === \"function\" ? value : undefined, section: typeof section === \"function\" ? section : undefined};\n})"
 )
 
@@ -168,6 +168,11 @@ func (r *Runtime) chordObject(symbol string) (*goja.Object, error) {
 	if err != nil {
 		return nil, err
 	}
+	return r.chordObjectOf(c), nil
+}
+
+// chordObjectOf is chordObject for a chord
+func (r *Runtime) chordObjectOf(c harmony.Chord) *goja.Object {
 	o := r.vm.NewObject()
 	_ = o.Set("name", c.Name)
 	_ = o.Set("root", c.Root)
@@ -184,5 +189,5 @@ func (r *Runtime) chordObject(symbol string) (*goja.Object, error) {
 		return out
 	})
 	_ = o.Set("voiceLead", func(prev []float64) []float64 { return harmony.VoiceLead(prev, c) })
-	return o, nil
+	return o
 }

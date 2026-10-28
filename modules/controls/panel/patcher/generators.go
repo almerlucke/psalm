@@ -72,6 +72,7 @@ type Pattern struct {
 type Hit struct {
 	At, Len, Chance float64
 	Pitches         []float64 // what it plays (a part's: a note, a chord)
+	Rel             []Rel     // chord notes of a part: found in the chord of the harmony when they play
 }
 
 // ParsePattern reads a step pattern: x (or X, o, 1) a hit, . (or -, _, 0) a rest, a step each; x3
@@ -808,7 +809,7 @@ func Generators() []Kind {
 				return &Made{Module: n, Describe: func(string) params.Set { return n.Describe() },
 					Notes: n.SetTargets, Late: n.late}, nil
 			}},
-		SongKind(), laneKind(), automationKind(), gateKind(), partKind(), LogKind(), NoteRollKind(), ArpKind(), LooperKind(),
+		SongKind(), laneKind(), automationKind(), gateKind(), partKind(), harmonyKind(), LogKind(), NoteRollKind(), ArpKind(), LooperKind(),
 		{Name: "quantize", Group: "Generators", Ins: []Port{{Name: "in", Type: Value}}, Outs: []Port{{Name: "out", Type: Value}},
 			Make: func(string) (*Made, error) {
 				q := NewQuantize()

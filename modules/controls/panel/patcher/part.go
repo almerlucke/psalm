@@ -9,6 +9,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/params"
+	"github.com/almerlucke/psalm/tools/harmony"
 )
 
 // Part plays written notes on the steps of the patch's tempo, as a clock plays its pattern (a
@@ -19,8 +20,18 @@ import (
 type Part struct {
 	*Clock
 	Velocity, Length, Transpose float64
+	Register, Bass              float64 // the lowest note of the root of the chord notes (@1), and of the bass note (@b)
 	pending                     []queued
 	targets                     []psalm.Receiver
+}
+
+// Rel is a note written relative to the chord of the harmony at the moment it plays: @1 the root, @2 the next tone of the chord (the third), @3 the fifth... the tones in the
+// order of the chord's symbol (a Dm9: root, third, fifth, seventh, ninth) and the same an octave up after them; @-1 the tone before the root (an octave down); @b the bass
+// note; @c the whole chord; ' after it an octave up, , an octave down
+type Rel struct {
+	Kind   byte // 'n' a tone of the chord by its number, 'b' the bass, 'c' the whole chord
+	N      int  // the number of the tone, from 1
+	Octave int
 }
 
 // queued is a note to play at the end of a tick
@@ -30,12 +41,52 @@ type queued struct {
 	seconds float64
 }
 
+// resolve gives the pitches of a chord note for a chord
+func (r Rel) resolve(c harmony.Chord, register, bass float64) []float64 {
+	up := float64(12 * r.Octave)
+	switch r.Kind {
+	case 'b':
+		return []float64{c.BassPitch(bass) + up}
+	case 'c':
+		out := c.Close(register)
+		for i := range out {
+			out[i] += up
+		}
+		return out
+	}
+	root := math.Floor(register)
+	root += float64(((c.Root-int(root))%12 + 12) % 12)
+	n := len(c.Intervals)
+	i := r.N - 1
+	if r.N < 0 {
+		i = r.N
+	}
+	oct := int(math.Floor(float64(i) / float64(n)))
+	return []float64{root + float64(c.Intervals[i-oct*n]) + float64(12*oct) + up}
+}
+
+// pitchesOf is what a hit plays at a tick: its notes, and its chord notes in the chord of the harmony then (none of them when there is no chord)
+func (p *Part) pitchesOf(h Hit, tick psalm.CtrlTick) []float64 {
+	if len(h.Rel) == 0 {
+		return h.Pitches
+	}
+	out := append([]float64(nil), h.Pitches...)
+	if hm := HarmonyOf(p.Env()); hm != nil {
+		if c, ok := hm.ChordAt(tick); ok {
+			for _, r := range h.Rel {
+				out = append(out, r.resolve(c, p.Register, p.Bass)...)
+			}
+		}
+	}
+	return out
+}
+
 // DefaultPart are the notes of a new part
 const DefaultPart = "C3 Eb3 G3 - Bb3 . G3 Eb3"
 
 // NewPart returns a part of sixteenths
 func NewPart() *Part {
-	p := &Part{Clock: NewClock(), Velocity: 0.8, Length: 0.9}
+	p := &Part{Clock: NewClock(), Velocity: 0.8, Length: 0.9, Register: 48, Bass: 36}
 	p.SetSelf(p)
 	_ = p.SetNotes(DefaultPart)
 	return p
@@ -55,6 +106,8 @@ func (p *Part) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("velocity", func(f float64) { p.Velocity = math.Max(0, math.Min(f, 1)) })
 	msg.IfFltVal("length", func(f float64) { p.Length = math.Max(0.05, math.Min(f, 1)) })
 	msg.IfFltVal("transpose", func(f float64) { p.Transpose = f })
+	msg.IfFltVal("register", func(f float64) { p.Register = math.Max(0, math.Min(f, 96)) })
+	msg.IfFltVal("bass", func(f float64) { p.Bass = math.Max(0, math.Min(f, 96)) })
 }
 
 func (p *Part) Receive(v any, _ int) {
@@ -69,7 +122,9 @@ func (p *Part) SetTargets(targets []psalm.Receiver) { p.targets = targets }
 // CtrlTick finds the notes of the tick (played at its end, Late)
 func (p *Part) CtrlTick(tick psalm.CtrlTick) {
 	p.play(tick, func(h Hit, _ int64, seconds float64) {
-		p.pending = append(p.pending, queued{tick: tick, pitches: h.Pitches, seconds: math.Max(0.005, seconds*p.Length)})
+		if pitches := p.pitchesOf(h, tick); len(pitches) > 0 {
+			p.pending = append(p.pending, queued{tick: tick, pitches: pitches, seconds: math.Max(0.005, seconds*p.Length)})
+		}
 	})
 }
 
@@ -94,7 +149,9 @@ func (p *Part) Describe() params.Set {
 	set.Params = append(set.Params,
 		params.K("Notes", "velocity", 0, 1, p.Velocity),
 		params.K("Notes", "length", 0.05, 1, p.Length, params.Label("length (of its step)")),
-		params.K("Notes", "transpose", -36, 36, p.Transpose, params.Step(1), params.Unit("st")))
+		params.K("Notes", "transpose", -36, 36, p.Transpose, params.Step(1), params.Unit("st")),
+		params.K("Chord notes", "register", 24, 84, p.Register, params.Step(1), params.Label("root (@1) from")),
+		params.K("Chord notes", "bass", 12, 60, p.Bass, params.Step(1), params.Label("bass (@b) from")))
 	return set
 }
 
@@ -201,14 +258,23 @@ func partSequence(toks []string, i *int, inGroup bool) ([]partElement, error) {
 				e = partElement{len: 1, tie: true}
 			default:
 				var pitches []float64
+				var rels []Rel
 				for _, name := range strings.Split(base, "+") {
+					if strings.HasPrefix(name, "@") {
+						r, err := parseRel(name)
+						if err != nil {
+							return nil, err
+						}
+						rels = append(rels, r)
+						continue
+					}
 					p, err := score.Pitch(name)
 					if err != nil {
-						return nil, fmt.Errorf("%q: a note (C3, F#4, Bb2, 60), . a rest, - held longer", name)
+						return nil, fmt.Errorf("%q: a note (C3, F#4, Bb2, 60), @3 a note of the chord, . a rest, - held longer", name)
 					}
 					pitches = append(pitches, p)
 				}
-				e = partElement{len: 1, hits: []Hit{{At: 0, Len: 1, Chance: 1, Pitches: pitches}}}
+				e = partElement{len: 1, hits: []Hit{{At: 0, Len: 1, Chance: 1, Pitches: pitches, Rel: rels}}}
 			}
 		}
 		if err := partModifiers(&e, mods); err != nil {
@@ -220,6 +286,33 @@ func partSequence(toks []string, i *int, inGroup bool) ([]partElement, error) {
 		return nil, fmt.Errorf("a group without its ]")
 	}
 	return els, nil
+}
+
+// parseRel reads a chord note: @1 (a tone of the chord by its number, @-1 the one below the root), @b the bass, @c the chord, then ' for each octave up and , for each down
+func parseRel(tok string) (Rel, error) {
+	body := strings.TrimPrefix(tok, "@")
+	r := Rel{Kind: 'n'}
+	for strings.HasSuffix(body, "'") || strings.HasSuffix(body, ",") {
+		if body[len(body)-1] == '\'' {
+			r.Octave++
+		} else {
+			r.Octave--
+		}
+		body = body[:len(body)-1]
+	}
+	switch body {
+	case "b":
+		r.Kind = 'b'
+	case "c":
+		r.Kind = 'c'
+	default:
+		n, err := strconv.Atoi(body)
+		if err != nil || n == 0 || n < -24 || n > 24 {
+			return Rel{}, fmt.Errorf("%q: @1 the root, @3 the fifth, @b the bass, @c the chord (' an octave up, , down)", tok)
+		}
+		r.N = n // @-1 is the tone before the root: the last of the chord, an octave down
+	}
+	return r, nil
 }
 
 // partModifiers reads what comes after a note or a group: *2 (how many steps), ?25 (the chance)
@@ -289,6 +382,8 @@ func assemble(els []partElement) ([]Hit, float64) {
 // PartHelp is what to know to write a part
 const PartHelp = "notes a step each: `C3 Eb3 G3 Bb3` (C3 is 48; F#4, Bb2, 60 too), `.` a rest, `-` the note before held a step longer\n" +
 	"`C3+Eb3+G3` a chord; `[C3 D3 Eb3]` a group filling a step (a triplet); `*2` after a note or a group: it lasts 2 steps; `?` by chance (`?25`)\n" +
+	"with a harmony module: chord notes, found in the chord at the moment they play: `@1` the root, `@2` the next tone of the chord (the third), `@3` the fifth, `@4` the seventh (a triad: the\n" +
+	"root an octave up), `@-1` the tone below the root, `@b` the bass, `@c` the whole chord; `'` after one an octave up, `,` down; `@1 @3 @5 @3`, `@c*4`; `C3+@3` together\n" +
 	"the division, swing and chance below, as a clock's; velocity, length (of a step: staccato to legato), transpose\n" +
 	"with a song: notes per section, a line `Chorus: F3 Ab3 C4 -` each (the others, the lines without one); from the section's start\n" +
 	"its notes cable to a synth; Ctrl+Enter (or Run) takes them"

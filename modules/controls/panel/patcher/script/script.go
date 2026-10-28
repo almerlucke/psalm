@@ -26,6 +26,7 @@ import (
 //	log(...)                                // a line in the log of the patch (the bar at the top), with the time and the name of this module
 //	input(port)                             // the last value on "a" or "b"
 //	chord("Dm7")                           // close(lowest), bass(lowest), tones(lo, hi), contains(p), voiceLead(prev)
+//	harmony()                              // the chord of the harmony module now, as chord() gives one (null: none)
 //	pitch("C3"), scale("C minor"), bpm()    // scale: snap(p), pitch(degree, octave), notes(lo, hi), contains(p), step(p, n)
 //	genny.*, shared                         // generators (see Gen), what every script of the patch sees
 //	song.section, song.bar, song.progress  // where the song of the patch is (a song module); section(name, index) when one starts
@@ -493,6 +494,15 @@ func (s *Script) newAPI() *goja.Object {
 			panic(vm.NewGoError(err))
 		}
 		return o
+	})
+	// harmony(): the chord the harmony module has at this moment, as chord("Dm7") is (null: no harmony, or no chord)
+	set("harmony", func(goja.FunctionCall) goja.Value {
+		if h := patcher.HarmonyOf(s.Env()); h != nil {
+			if c, ok := h.ChordAt(s.tick); ok {
+				return s.rt.chordObjectOf(c)
+			}
+		}
+		return goja.Null()
 	})
 	set("bpm", func(goja.FunctionCall) goja.Value { return vm.ToValue(s.BPM()) })
 	s.songObj = vm.NewObject()
