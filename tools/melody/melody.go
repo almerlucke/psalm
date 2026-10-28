@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"strings"
 
 	"github.com/almerlucke/psalm/tools/harmony"
 )
@@ -43,6 +44,7 @@ type Params struct {
 	Chord    float64 // 0 to 1: how much the strong beats and the long notes keep to the tones of the chord (0.7)
 	Contour  string  // "free" (the default), "arch", "rise", "fall", "wave": the shape of the line over a phrase
 	Form     string  // "free" (the default: one phrase), "AA'" (a period), "ABAB", "AABA", "call" (a question and its answer)
+	Grammar  string  // rules that write the form (see Expand): when there are some they are the form and Form is not used
 	Phrase   float64 // how long a phrase is in beats (4)
 	Velocity float64 // the loudness of a note, accents on top (0.8)
 	Seed     uint64
@@ -111,10 +113,24 @@ func Generate(p Params) []Note {
 		return nil
 	}
 	phrase := math.Min(p.Phrase, p.Beats)
-	kinds := g.plan(p.Form, int(math.Ceil(p.Beats/phrase-1e-9)))
-	if p.Form == "" || p.Form == "free" {
-		phrase = p.Beats
+	count := int(math.Ceil(p.Beats/phrase - 1e-9))
+	var toks []Token
+	if strings.TrimSpace(p.Grammar) != "" {
+		toks, _ = Expand(p.Grammar, g.rng, count)
 	}
+	if len(toks) == 0 {
+		for _, k := range g.plan(p.Form, count) {
+			t := Token{Letter: k &^ 0x20}
+			if k >= 'a' {
+				t.Ops = "'"
+			}
+			toks = append(toks, t)
+		}
+		if p.Form == "" || p.Form == "free" {
+			phrase = p.Beats
+		}
+	}
+	kinds := toks
 	var out []Note
 	var last *phraseNotes // the phrase A and B to repeat or vary
 	byKind := map[byte]*phraseNotes{}
@@ -126,16 +142,27 @@ func Generate(p Params) []Note {
 			break
 		}
 		var ph *phraseNotes
-		src := byKind[kind&^0x20] // A and a (the variation of A) come from A
+		src := byKind[kind.Letter] // A and A' (its variation) come from A
+		end := g.endFor(p.Form, i, len(kinds))
+		if strings.TrimSpace(p.Grammar) != "" {
+			end = ""
+			if i == len(kinds)-1 {
+				end = "closed"
+			} else if strings.Contains(kind.Ops, "?") {
+				end = "open"
+			}
+		}
+		final := i == len(kinds)-1
 		switch {
 		case src == nil: // a phrase of its own
-			ph = g.phrase(off, length, prevEnd, i == len(kinds)-1, g.endFor(p.Form, i, len(kinds)))
-			byKind[kind&^0x20] = ph
-		case kind >= 'a': // the variation of A
-			ph = g.vary(src, off, length, i == len(kinds)-1, g.endFor(p.Form, i, len(kinds)))
+			ph = g.phrase(off, length, prevEnd, final, end)
+			byKind[kind.Letter] = ph
+		case strings.Contains(kind.Ops, "'"): // the variation of A
+			ph = g.vary(src, off, length, final, end)
 		default: // A again
-			ph = g.repeat(src, off, length, i == len(kinds)-1)
+			ph = g.repeat(src, off, length, final)
 		}
+		g.operate(ph, kind.Ops, final)
 		last = ph
 		if n := len(ph.notes); n > 0 {
 			prevEnd = ph.notes[n-1].Key
@@ -517,6 +544,43 @@ func (g *gen) vary(src *phraseNotes, off, length float64, final bool, end string
 		}
 	}
 	return ph
+}
+
+// operate turns a phrase by the operators after its letter: ~ upside down (around its first note, in the scale), < backwards (the pitches over the same rhythm), ^ and v a step
+// of the scale higher or lower each
+func (g *gen) operate(ph *phraseNotes, ops string, final bool) {
+	if len(ph.notes) == 0 {
+		return
+	}
+	did := false
+	for _, op := range ops {
+		switch op {
+		case '~':
+			pivot := g.nearest(ph.notes[0].Key)
+			for i := range ph.notes {
+				j := max(0, min(2*pivot-g.nearest(ph.notes[i].Key), len(g.pool)-1))
+				ph.notes[i].Key = g.pool[j]
+			}
+		case '<':
+			for i, j := 0, len(ph.notes)-1; i < j; i, j = i+1, j-1 {
+				ph.notes[i].Key, ph.notes[j].Key = ph.notes[j].Key, ph.notes[i].Key
+			}
+		case '^', 'v':
+			d := 1
+			if op == 'v' {
+				d = -1
+			}
+			for i := range ph.notes {
+				ph.notes[i].Key = g.pool[max(0, min(g.nearest(ph.notes[i].Key)+d, len(g.pool)-1))]
+			}
+		default:
+			continue
+		}
+		did = true
+	}
+	if did {
+		g.fit(ph, final)
+	}
 }
 
 // fit moves the notes of a phrase that matter (on a beat, or long) and are no tone of the chord at their time to the nearest tone of it (a phrase repeated over another chord);

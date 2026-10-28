@@ -87,7 +87,7 @@ psalm.register("noteroll", (p, api) => {
 	const MODES = {major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], dorian: [0, 2, 3, 5, 7, 9, 10], mixolydian: [0, 2, 4, 5, 7, 9, 10], lydian: [0, 2, 4, 6, 7, 9, 11],
 		phrygian: [0, 1, 3, 5, 7, 8, 10], "harmonic minor": [0, 2, 3, 5, 7, 8, 11], "major pentatonic": [0, 2, 4, 7, 9], "minor pentatonic": [0, 3, 5, 7, 10], blues: [0, 3, 5, 6, 7, 10]};
 	const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-	const gp = {form: "free", contour: "free", rhythm: "mixed", phrase: 4, density: 0.5, rest: 0.15, steps: 0.7, chord: 0.7, low: 55, high: 79, root: 0, mode: ""};
+	const gp = {grammar: "S -> A A' B A~\n# A B C D are phrases; ' a variation, ~ upside down, < backwards, ^ v a step up or down, ? ends open\n# an L-system: axiom: A, iterate: 3, A -> A B A', B -> A", form: "free", contour: "free", rhythm: "mixed", phrase: 4, density: 0.5, rest: 0.15, steps: 0.7, chord: 0.7, low: 55, high: 79, root: 0, mode: ""};
 	const pick = (label, key, options, title) => {
 		const sel = mk("select", {title});
 		for (const [v, t] of options) sel.append(mk("option", {value: v, textContent: t, selected: String(gp[key]) === String(v)}));
@@ -118,7 +118,7 @@ psalm.register("noteroll", (p, api) => {
 	const lockBox = mk("input", {type: "checkbox", title: "the notes you put and move keep to the scale"});
 	lockBox.addEventListener("change", () => { scaleLock = lockBox.checked; });
 	const panelEl = mk("details", {className: "nr-gen"}, mk("summary", {textContent: "Melody"}),
-		mk("div", {className: "nr-bar"}, pick("Form", "form", [["free", "free"], ["AA'", "a period (A A')"], ["ABAB", "A B A B"], ["AABA", "A A' B A"], ["call", "question and answer"]], "how the phrases repeat and vary"),
+		mk("div", {className: "nr-bar"}, pick("Form", "form", [["free", "free"], ["AA'", "a period (A A')"], ["ABAB", "A B A B"], ["AABA", "A A' B A"], ["call", "question and answer"], ["grammar", "a grammar or L-system…"]], "how the phrases repeat and vary"),
 			pick("Contour", "contour", [["free", "free"], ["arch", "arch"], ["rise", "rise"], ["fall", "fall"], ["wave", "wave"]], "the shape of the line over a phrase"),
 			pick("Rhythm", "rhythm", [["mixed", "mixed"], ["even", "even"], ["syncopated", "syncopated"], ["dotted", "dotted"], ["triplet", "triplets"]], "the rhythm of the notes"),
 			pick("Phrase", "phrase", [[2, "2 beats"], [4, "4 beats"], [8, "8 beats"], [16, "16 beats"]], "how long a phrase is")),
@@ -129,6 +129,14 @@ psalm.register("noteroll", (p, api) => {
 			mutate("Step up", "move the notes selected a step up the scale", () => mutateNotes("up")), mutate("Step down", "move them a step down", () => mutateNotes("down")),
 			mutate("Humanize", "a little off the grid and the loudness", () => mutateNotes("humanize")), mutate("Thin out", "take some of the short notes away", () => mutateNotes("thin"))),
 		candEl);
+	const gramBox = mk("textarea", {className: "nr-gram", rows: 4, spellcheck: false, value: gp.grammar, title: "rules that write the form of the melody: S -> A A' B A, with ' ~ < ^ v ? after a phrase; or axiom: A, iterate: 3 and A -> A B A' for an L-system"});
+	const gramErr = mk("div", {className: "nr-gram-err"});
+	gramBox.addEventListener("input", () => { gp.grammar = gramBox.value; });
+	const gramRow = mk("div", {className: "nr-bar nr-gram-row"}, gramBox, gramErr);
+	const showGram = () => { gramRow.style.display = gp.form === "grammar" ? "" : "none"; };
+	panelEl.querySelector("select").addEventListener("change", showGram);
+	panelEl.querySelector(".nr-bar").after(gramRow);
+	showGram();
 	bar2.after(panelEl);
 
 	// the scale the melody and the keys lit are in: its own, or the harmony's
@@ -689,6 +697,8 @@ psalm.register("noteroll", (p, api) => {
 			if (drag || performance.now() < hold) return; // our own notes until the server has them
 			if (genPending && st.gen && st.gen.id === genPending.id) { // the melodies asked for are there
 				const ask1 = genPending; genPending = null;
+				gramErr.textContent = st.gen.err || "";
+				if (st.gen.err) return;
 				if (ask1.apply) { if (st.gen.notes[0] && st.gen.notes[0].length) replaceRegion(ask1.from, ask1.to, st.gen.notes[0]); }
 				else showCandidates(st.gen.notes, ask1.from, ask1.to);
 				return;

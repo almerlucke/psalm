@@ -22,3 +22,5 @@
 .noteroll .nr-cand-cv { background: var(--track); border-radius: 4px; }
 .noteroll .nr-cand-row { display: flex; gap: 4px; }
 .noteroll .nr-cand-row button { flex: 1; min-height: 24px; }
+.noteroll .nr-gram { flex: 1; min-width: 260px; font-family: ui-monospace, monospace; font-size: 12px; background: var(--track); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; resize: vertical; }
+.noteroll .nr-gram-err { color: var(--danger, #d44); font-size: 12px; }

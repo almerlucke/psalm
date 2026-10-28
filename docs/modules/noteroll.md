@@ -35,6 +35,7 @@ The Melody panel (above the roll) makes melodies with `tools/melody`, for the **
 | Control | Meaning |
 |---|---|
 | Form | `free`; `AA'` (a period); `ABAB`; `AABA`; question and answer. A phrase is made once and repeated, varied or fitted to the chord |
+| Form: grammar | rules that write the form: `S -> A A' B A~`. The phrases are the letters A to D; after one: `'` a variation, `~` upside down in the scale, `<` backwards, `^` / `v` a step up / down (`^^` two), `?` ends open. Other words are rules, with choices (`Open -> A A' *3 \| A B`, a weight after `*`). An L-system rewrites in parallel: `axiom: A`, `iterate: 3`, `A -> A B A'`, `B -> A`. A mistake is shown under the box |
 | Contour | `free`, `arch`, `rise`, `fall`, `wave` over a phrase |
 | Rhythm | `mixed`, `even`, `syncopated`, `dotted`, `triplet` |
 | Phrase | 2, 4, 8 or 16 beats |

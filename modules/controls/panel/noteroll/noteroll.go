@@ -242,6 +242,7 @@ type sequence struct {
 type Candidates struct {
 	ID    int            `json:"id"`
 	Notes [][][4]float64 `json:"notes"`
+	Err   string         `json:"err,omitempty"` // what is wrong with the grammar
 }
 
 // GenParams are what the editor asks a melody to be (tools/melody): zero is the default; Mode "" is the scale of the harmony of the patch, when it has one
@@ -257,6 +258,7 @@ type GenParams struct {
 	Rhythm   string  `json:"rhythm"`
 	Contour  string  `json:"contour"`
 	Form     string  `json:"form"`
+	Grammar  string  `json:"grammar"` // rules that write the form (tools/melody Expand); used when Form is "grammar"
 	Phrase   float64 `json:"phrase"`
 	Grid     float64 `json:"grid"`
 	Velocity float64 `json:"velocity"`
@@ -269,6 +271,12 @@ func (r *Roll) Generate(id int, from, to float64, count int, seed uint64, gp Gen
 	c, ok := r.Clip(view)
 	if !ok {
 		c.Length = r.Length()
+	}
+	if gp.Form == "grammar" {
+		if err := melody.ParseForm(gp.Grammar); err != nil {
+			r.gen.Store(&Candidates{ID: id, Err: err.Error()})
+			return
+		}
 	}
 	notes := r.melodies(view, c.Length, from, to, count, seed, gp)
 	if notes == nil {
@@ -312,7 +320,7 @@ func (r *Roll) melodies(section string, length, from, to float64, count int, see
 		return nil
 	}
 	mp := melody.Params{Scale: scale, Beats: to - from, Low: gp.Low, High: gp.High, Density: gp.Density, Rest: gp.Rest, Steps: gp.Steps, Chord: gp.Chord,
-		Rhythm: gp.Rhythm, Contour: gp.Contour, Form: gp.Form, Phrase: gp.Phrase, Grid: gp.Grid, Velocity: gp.Velocity}
+		Rhythm: gp.Rhythm, Contour: gp.Contour, Form: gp.Form, Grammar: grammarOf(gp), Phrase: gp.Phrase, Grid: gp.Grid, Velocity: gp.Velocity}
 	if l != nil && l.Chords != nil {
 		for _, sp := range l.Chords(section, length) {
 			at, end := math.Max(sp.At, from), math.Min(sp.At+sp.Len, to)
@@ -335,6 +343,14 @@ func (r *Roll) melodies(section string, length, from, to float64, count int, see
 		out = append(out, notes)
 	}
 	return out
+}
+
+// grammarOf is the grammar a melody is asked for: the text when the form is a grammar
+func grammarOf(gp GenParams) string {
+	if gp.Form == "grammar" {
+		return gp.Grammar
+	}
+	return ""
 }
 
 // scaleFor is the scale a melody is in: the one asked for, or the harmony's

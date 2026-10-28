@@ -265,3 +265,18 @@ func TestRollGenerateSections(t *testing.T) {
 		t.Error("an empty clip")
 	}
 }
+
+// a grammar writes the form of the melody; one with a mistake is told back
+func TestRollGenerateGrammar(t *testing.T) {
+	r, _, _ := rig(t)
+	r.Link(Link{Scale: func() (int, string, bool) { return 0, "major", true }})
+	r.Generate(1, 0, 16, 1, 5, GenParams{Form: "grammar", Grammar: "S -> A A' B A", Phrase: 4})
+	g := r.gen.Load()
+	if g == nil || g.ID != 1 || g.Err != "" || len(g.Notes) != 1 || len(g.Notes[0]) < 8 {
+		t.Fatalf("%+v", g)
+	}
+	r.Generate(2, 0, 16, 1, 5, GenParams{Form: "grammar", Grammar: "S -> A X"})
+	if g := r.gen.Load(); g.ID != 2 || g.Err == "" || len(g.Notes) != 0 {
+		t.Fatalf("a bad grammar: %+v", g)
+	}
+}
