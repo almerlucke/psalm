@@ -454,7 +454,7 @@ func partKind() Kind {
 		Make: func(string) (*Made, error) {
 			p := NewPart()
 			return &Made{Module: p, Describe: func(string) params.Set { return p.Describe() },
-				Texts: []Text{{Key: "notes", Label: "notes", Value: DefaultPart, Help: PartHelp}, {Key: "lanes", Label: "lanes", Lines: 5, Value: "", Help: LanesHelp}},
+				Texts: []Text{{Key: "notes", Label: "notes", Value: DefaultPart, Help: PartHelp}, {Key: "lanes", Label: "lanes", Value: "", Help: LanesHelp}},
 				SetText: func(k, v string) error {
 					if k == "lanes" {
 						return p.SetLanes(v)

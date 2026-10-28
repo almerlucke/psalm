@@ -23,7 +23,15 @@
 			if (!changed || !t || ta.value !== t.value) commitText(key, ta.value);
 		}
 	}
-	function help(text) {
+	function help(text) { // what to know to type it: folded away when it is long, so it does not push the box down
+		const lines = text.split("\n");
+		const list = helpList(text);
+		if (lines.length < 3) return list;
+		const d = el("details", "mw-helpbox");
+		d.append(el("summary", "", "How to write it"), list);
+		return d;
+	}
+	function helpList(text) {
 		const list = el("ul", "mw-help");
 		for (const line of text.split("\n")) {
 			const li = el("li");
@@ -123,7 +131,8 @@
 				else if (e.key === "Escape") { e.preventDefault(); commit(true); window.parent.postMessage({psalm: "module-close"}, "*"); }
 			});
 			wrap.append(ta);
-			if (t.key === "lanes") { const ed = lanesEditor(ta, t.key); wrap.append(ed.root); wrap.classList.add("mw-has-lanes"); ta.rows = 3; }
+			if (t.key === "lanes") { const ed = lanesEditor(ta, t.key); wrap.append(ed.root); wrap.classList.add("mw-has-lanes"); }
+			if (!(t.lines > 1)) wrap.classList.add("mw-natural"); // a box of its own height; the box of a script takes what is left
 			holder.append(wrap);
 			boxes[t.key] = ta;
 		}

@@ -43,7 +43,16 @@ button { font: inherit; border: 1px solid var(--line); background: var(--card); 
 .mw-gone { color: var(--muted); padding: 20px 0; text-align: center; }
 .mw-title { display: none; } /* the title is the one of the window */
 .mw-head { justify-content: flex-end; }
-.mw-has-lanes .mw-text { flex: 0 0 auto; height: 4.6em; }
+.mw-natural { flex: 0 0 auto; }
+.mw-natural .mw-text { flex: 0 0 auto; height: 5.5em; }
+.mw-has-lanes .mw-text { height: 4.6em; }
+.mw-boxes { overflow-y: auto; }
+.mw.short { overflow-y: auto; }
+.mw.short .mw-code { flex: 0 0 auto; height: auto; max-height: none; }
+.mw.short .mw-boxes { flex: 0 0 auto; overflow: visible; }
+.mw.short .mw-settings { flex: 0 0 auto; overflow: visible; }
+.mw-helpbox { flex: none; margin-bottom: 4px; font-size: 12px; color: var(--muted); }
+.mw-helpbox summary { cursor: pointer; }
 .mw-lanes { display: flex; flex-direction: column; gap: 3px; flex: none; margin-top: 4px; }
 .mw-lane { display: flex; align-items: stretch; gap: 4px; min-height: 30px; }
 .mw-lane-label { flex: 0 0 5.6em; font-size: 11px; color: var(--muted); align-self: center; }

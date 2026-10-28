@@ -926,7 +926,7 @@ func Generators() []Kind {
 		{Name: "clock", Group: "Generators", Outs: []Port{trig}, Make: func(string) (*Made, error) {
 			c := NewClock()
 			return &Made{Module: c, Describe: func(string) params.Set { return c.Describe() },
-				Texts: []Text{{Key: "pattern", Label: "pattern", Value: "x", Help: PatternHelp}, {Key: "lanes", Label: "lanes", Lines: 5, Value: "", Help: LanesHelp}},
+				Texts: []Text{{Key: "pattern", Label: "pattern", Value: "x", Help: PatternHelp}, {Key: "lanes", Label: "lanes", Value: "", Help: LanesHelp}},
 				SetText: func(k, v string) error {
 					if k == "lanes" {
 						return c.SetLanes(v)
