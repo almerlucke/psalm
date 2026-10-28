@@ -202,7 +202,7 @@ func parts() []strip {
 	}
 	if _, err := os.Stat(voicePath); err == nil { // the recording of the psalm, when it is there: played from the start of the Knit
 		ps = append(ps, strip{name: "voice", script: "voice", kind: "streamer", sounds: fmt.Sprintf("36 %s vol=%g name=voice", voicePath, voiceGain), level: 0.8, direct: true,
-			insert: "compressor", insertSet: map[string]float64{"threshold": -22, "ratio": 5, "knee": 8, "attack": 5, "release": 220, "makeup": 5}})
+			insert: "compressor", insertSet: map[string]float64{"threshold": -26, "ratio": 8, "knee": 6, "attack": 2, "release": 180, "makeup": 11}})
 	}
 	return ps
 }
@@ -212,7 +212,7 @@ func parts() []strip {
 const (
 	voicePath = "assets/sounds/psalm139_voice.wav"
 	voiceGain = 7.0
-	voiceWet  = 0.19 // how much of the voice goes through the church
+	voiceWet  = 0.06 // how much of the voice goes through the church
 )
 
 // real is the strip played by a recording of the orchestra: a sampler with the sfz of the part, in place of its model
@@ -378,7 +378,7 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		// its own (the same room as the music's, a little of it)
 		duck := add("duck", "", 1320, 440)
 		church2 := add("hall", "", 1060, 580)
-		apply(duck, map[string]float64{"threshold": -30, "ratio": 3.4, "knee": 10, "attack": 30, "release": 700, "sideCut": 150})
+		apply(duck, map[string]float64{"threshold": -34, "ratio": 8, "knee": 10, "attack": 30, "release": 700, "sideCut": 150})
 		apply(church2, map[string]float64{"mix": voiceWet, "gain": 2.2})
 		connect(patcher.Cable{From: mixer, Out: 0, To: duck})
 		connect(patcher.Cable{From: voice, To: duck, In: 1})

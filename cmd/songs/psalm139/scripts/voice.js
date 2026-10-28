@@ -2,7 +2,7 @@
 // plays. The note is one of the sound, which plays to its end whatever the length of the note; it is played at the first step of the Knit
 clock("1/16")
 let armed = false
-function section(name) { armed = name === "Knit" }
+function section(name) { armed = name === "Wonder" }
 function trigger() {
   if (!armed) return
   armed = false
