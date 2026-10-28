@@ -62,3 +62,6 @@ assets/Virtual-Playing-Orchestra3/
 
 # Recordings made in the patcher (the recorder module)
 recordings/
+
+# binaries built inside a command's folder
+/cmd/songs/psalm139/psalm139

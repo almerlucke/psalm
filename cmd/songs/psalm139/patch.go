@@ -174,10 +174,12 @@ type strip struct {
 	hall, church float64
 	heavens      float64
 	echo         float64
+	insert       string             // an effect between the instrument and the mixer (a compressor for the voice)
+	insertSet    map[string]float64 // its settings
 }
 
 func parts() []strip {
-	return []strip{
+	ps := []strip{
 		{name: "heart", script: "heart", kind: "dx", preset: "timpani", level: 0.07, hall: 0.25, church: 0.25},
 		{name: "harp", script: "harp", kind: "waveguide", preset: "celticHarp", sfz: "Strings/harp-sustain.sfz", gain: 1.8, model: 0.53, level: 0.42, pan: -0.3, hall: 0.3, church: 0.25, echo: 0.12},
 		{name: "celesta", script: "celesta", kind: "dx", preset: "celesta", sfz: "Keys/celesta.sfz", gain: 1.3, model: 0.074, level: 0.86, pan: 0.35, heavens: 0.45, echo: 0.3},
@@ -194,7 +196,19 @@ func parts() []strip {
 		{name: "hands", script: "hands", kind: "sampler", kit: "hands", level: 0.15, pan: -0.2, hall: 0.3, church: 0.15},
 		{name: "cymbal", script: "cymbal", kind: "sampler", kit: "cymbal", level: 0.8, hall: 0.4, heavens: 0.3},
 	}
+	if _, err := os.Stat(voicePath); err == nil { // the recording of the psalm, when it is there: played from the start of the Knit
+		ps = append(ps, strip{name: "voice", script: "voice", kind: "streamer", sounds: fmt.Sprintf("36 %s vol=%g name=voice", voicePath, voiceGain), level: 0.8, hall: 0.15, church: 0.2,
+			insert: "compressor", insertSet: map[string]float64{"threshold": -22, "ratio": 5, "knee": 8, "attack": 5, "release": 220, "makeup": 1}})
+	}
+	return ps
 }
+
+// voicePath is the recording of the psalm that is played once from the start of the Knit (a streamer reads it from the disk: it is long); voiceGain is how much louder than it was
+// recorded it plays (dB)
+const (
+	voicePath = "assets/sounds/psalm139_voice.wav"
+	voiceGain = 12.0
+)
 
 // real is the strip played by a recording of the orchestra: a sampler with the sfz of the part, in place of its model
 func (s strip) real() strip {
@@ -330,7 +344,15 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		}
 		apply(pl.synth, pl.settings)
 		connect(patcher.Cable{From: pl.script, To: pl.synth})
-		connect(patcher.Cable{From: pl.synth, To: mixer, In: i})
+		if pl.insert != "" { // the instrument through an effect on its way to the mixer
+			fx := add(pl.insert, "", 660, 20+float64(i)*90)
+			apply(fx, pl.insertSet)
+			connect(patcher.Cable{From: pl.synth, To: fx})
+			connect(patcher.Cable{From: fx, To: mixer, In: i})
+			ids.synths[pl.name+" "+pl.insert] = fx
+		} else {
+			connect(patcher.Cable{From: pl.synth, To: mixer, In: i})
+		}
 		ids.scripts = append(ids.scripts, pl.script)
 		ids.synths[pl.name] = pl.synth
 	}
