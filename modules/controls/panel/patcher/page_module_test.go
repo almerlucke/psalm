@@ -81,7 +81,7 @@ func TestPageModuleWindow(t *testing.T) {
 
 	// what is typed is taken (Ctrl+Enter), a bad pattern is told in the window (and in a toast, which is over the corner of the page: after the moving above)
 	tb.Eval(`(() => { const i = W().querySelector(".mw-text"); i.focus(); i.value = "x . x x"; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
-	paneltest.Eventually(t, "the pattern typed in the window taken", func() bool { tx := pt.Texts(clk); return len(tx) == 1 && tx[0].Value == "x . x x" })
+	paneltest.Eventually(t, "the pattern typed in the window taken", func() bool { tx := pt.Texts(clk); return len(tx) >= 1 && tx[0].Value == "x . x x" })
 	tb.Eval(`(() => { const i = W().querySelector(".mw-text"); i.value = "x ?"; i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, bubbles: true})); })()`)
 	tb.WaitFor(`W().querySelector(".mw-text").classList.contains("bad") && W().getElementById("status").textContent.startsWith("error")`, "a bad pattern shown in the window")
 

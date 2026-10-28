@@ -164,7 +164,7 @@ func TestPagePatcher(t *testing.T) {
 		t.Error("the box of a text runs past the side panel")
 	}
 	enter("x . x x\nx x . .")
-	paneltest.Eventually(t, "the pattern taken", func() bool { tx := pt.Texts(clk); return len(tx) == 1 && tx[0].Value == "x . x x\nx x . ." })
+	paneltest.Eventually(t, "the pattern taken", func() bool { tx := pt.Texts(clk); return len(tx) >= 1 && tx[0].Value == "x . x x\nx x . ." })
 	if e := pt.TextError(clk, "pattern"); e != "" {
 		t.Errorf("a pattern over two lines: %s", e)
 	}

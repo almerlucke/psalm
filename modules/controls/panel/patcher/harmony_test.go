@@ -283,11 +283,12 @@ func TestChordModelPreview(t *testing.T) {
 	r.connect(patcher.Cable{From: id, To: r.add("rec"), Type: patcher.Notes})
 	m.Preview(true)
 	r.run(4.4) // 2 s a bar: C for a bar, G and Am for half a bar each, then round again
-	want := []float64{48, 52, 55, 55, 59, 62, 57, 60, 64, 48, 52, 55}
+	// each chord: its bass, then the chord voice led from the one before
+	want := []float64{36, 60, 64, 67, 43, 59, 62, 67, 45, 60, 64, 69, 36, 60, 64, 67}
 	if len(r.rec.pitches) < len(want) || !slices.Equal(r.rec.pitches[:len(want)], want) {
 		t.Fatalf("pitches %v, want %v (C, G, Am in C major, then C again)", r.rec.pitches, want)
 	}
-	if d := r.rec.at[3] - r.rec.at[0]; math.Abs(float64(d)-88200) > 400 {
+	if d := r.rec.at[4] - r.rec.at[0]; math.Abs(float64(d)-88200) > 400 {
 		t.Errorf("the second chord %d samples after the first, want a bar (88200)", d)
 	}
 	m.Preview(false)

@@ -224,17 +224,25 @@ type triggers struct {
 	*psalm.Module
 	at      []int64
 	seconds []float64
+	vel     []float64
 }
 
 func (tr *triggers) Receive(v any, _ int) {
 	if ev, ok := v.(patcher.Event); ok {
 		tr.at = append(tr.at, ev.Tick.SampleTimestamp)
 		tr.seconds = append(tr.seconds, ev.Seconds)
+		tr.vel = append(tr.vel, ev.Vel)
 	}
 }
 
 // a clock of quarters at 120 bpm (a step: 22050 samples) playing a pattern: where its triggers fall
 func clockPlays(t *testing.T, pattern string, swing, seconds float64) *triggers {
+	t.Helper()
+	return clockLanes(t, pattern, "", 0, swing, seconds)
+}
+
+// the same with lanes and a groove (an index of rhythm.Grooves)
+func clockLanes(t *testing.T, pattern, lanes string, groove int, swing, seconds float64) *triggers {
 	t.Helper()
 	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
 	defer psalm.PopConfig()
@@ -247,7 +255,10 @@ func clockPlays(t *testing.T, pattern string, swing, seconds float64) *triggers 
 	clock, _ := pt.Add("clock", "", 0, 0)
 	h, _ := pt.Add("triggers", "", 0, 0)
 	c := pt.Module(clock).(*patcher.Clock) // before it plays: its settings would come with its first tick
-	c.Division, c.Swing = 0, swing
+	c.Division, c.Swing, c.Groove = 0, swing, groove
+	if err := pt.SetText(clock, "lanes", lanes); err != nil || pt.TextError(clock, "lanes") != "" {
+		t.Fatal(err, pt.TextError(clock, "lanes"))
+	}
 	if err := pt.SetText(clock, "pattern", pattern); err != nil || pt.TextError(clock, "pattern") != "" {
 		t.Fatal(err, pt.TextError(clock, "pattern"))
 	}

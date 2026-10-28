@@ -16,6 +16,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/tools/harmony"
+	"github.com/almerlucke/psalm/tools/rhythm"
 )
 
 // --- Clock ---
@@ -38,7 +39,9 @@ type Clock struct {
 	Division int
 	Swing    float64
 	Chance   float64
+	Groove   int // an index of rhythm.Grooves
 	pattern  atomic.Pointer[patterns]
+	lanes    atomic.Pointer[StepLanes]
 	song     *Song
 
 	// on the audio thread: the pattern playing, where it starts, the next hit
@@ -73,6 +76,8 @@ type Hit struct {
 	At, Len, Chance float64
 	Pitches         []float64 // what it plays (a part's: a note, a chord)
 	Rel             []Rel     // chord notes of a part: found in the chord of the harmony when they play
+	Cond            rhythm.Cond
+	Vel, Pitch      float64 // what the lanes and the groove made of this hit (when it is played): a factor on the velocity (0: none), semitones
 }
 
 // ParsePattern reads a step pattern: x (or X, o, 1) a hit, . (or -, _, 0) a rest, a step each; x3
@@ -80,6 +85,10 @@ type Hit struct {
 // 2 steps (*1.5 too); ? after a hit or a group: its hits by chance, 50% (?25: 25%). Spaces, bar
 // lines (|) and new lines are left out
 func ParsePattern(text string) (Pattern, error) {
+	text, err := rhythm.Expand(text)
+	if err != nil {
+		return Pattern{}, err
+	}
 	pr := &patternReader{rs: []rune(text)}
 	els, err := pr.sequence(false)
 	if err != nil {
@@ -91,7 +100,7 @@ func ParsePattern(text string) (Pattern, error) {
 	var p Pattern
 	for _, e := range els {
 		for _, h := range e.hits {
-			p.Hits = append(p.Hits, Hit{At: p.Steps + h.At*e.len, Len: h.Len * e.len, Chance: h.Chance})
+			p.Hits = append(p.Hits, Hit{At: p.Steps + h.At*e.len, Len: h.Len * e.len, Chance: h.Chance, Cond: h.Cond})
 		}
 		p.Steps += e.len
 	}
@@ -190,12 +199,12 @@ func (pr *patternReader) element() (element, error) {
 		at := 0.0
 		for _, in := range inner {
 			for _, h := range in.hits {
-				e.hits = append(e.hits, Hit{At: (at + h.At*in.len) / total, Len: h.Len * in.len / total, Chance: h.Chance})
+				e.hits = append(e.hits, Hit{At: (at + h.At*in.len) / total, Len: h.Len * in.len / total, Chance: h.Chance, Cond: h.Cond})
 			}
 			at += in.len
 		}
 	default:
-		return e, fmt.Errorf("%q in a pattern: x is a hit, . a rest, x3 a roll, [x x x] a group, *2 longer, ? by chance", r)
+		return e, fmt.Errorf("%q in a pattern: x is a hit, . a rest, x3 a roll, [x x x] a group, *2 longer, ? by chance, %%2/4 on the second of every four, E(5,16) a euclidean rhythm", r)
 	}
 	for pr.i < len(pr.rs) { // what comes after it
 		switch pr.rs[pr.i] {
@@ -219,6 +228,19 @@ func (pr *patternReader) element() (element, error) {
 			}
 			for k := range e.hits {
 				e.hits[k].Chance *= chance
+			}
+		case '%':
+			pr.i++
+			j := pr.i
+			for pr.i < len(pr.rs) && !strings.ContainsRune(" \t\n\r|*?%]", pr.rs[pr.i]) {
+				pr.i++
+			}
+			cond, err := rhythm.ParseCond(string(pr.rs[j:pr.i]))
+			if err != nil {
+				return e, err
+			}
+			for k := range e.hits {
+				e.hits[k].Cond = cond
 			}
 		default:
 			return e, nil
@@ -255,6 +277,7 @@ func (c *Clock) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("division", func(d int) { c.Division = max(0, min(d, len(Divisions)-1)) })
 	msg.IfFltVal("swing", func(f float64) { c.Swing = math.Max(0.5, math.Min(f, 0.75)) })
 	msg.IfFltVal("chance", func(f float64) { c.Chance = math.Max(0, math.Min(f, 1)) })
+	msg.IfIntVal("groove", func(g int) { c.Groove = max(0, min(g, len(rhythm.Grooves)-1)) })
 }
 
 func (c *Clock) Receive(v any, _ int) {
@@ -283,10 +306,97 @@ func (c *Clock) tickAt(steps float64) float64 {
 	return c.origin + t
 }
 
+// StepLanes are a value a step, each on a length of its own: the chance a step plays (percent), its velocity (percent), how late it is (percent of a step, negative: early), how long
+// it lasts (percent) and a pitch added to it (semitones). A lane goes round, so lanes of different lengths drift against the pattern and each other
+type StepLanes struct {
+	Prob, Vel, Shift, Len, Pitch rhythm.Lane
+}
+
+// ParseStepLanes reads lanes: a line each, `prob: 100 50 . 80`, `vel:`, `shift:`, `len:`, `pitch:`; a `.` is the default there
+func ParseStepLanes(text string) (*StepLanes, error) {
+	var l StepLanes
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		name, vals, ok := strings.Cut(line, ":")
+		var dst *rhythm.Lane
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "prob", "chance":
+			dst = &l.Prob
+		case "vel", "velocity":
+			dst = &l.Vel
+		case "shift", "timing":
+			dst = &l.Shift
+		case "len", "length":
+			dst = &l.Len
+		case "pitch":
+			dst = &l.Pitch
+		}
+		if !ok || dst == nil {
+			return nil, fmt.Errorf("%q: a lane is prob:, vel:, shift:, len: or pitch: and its values", line)
+		}
+		lane, err := rhythm.ParseLane(vals)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", strings.TrimSpace(name), err)
+		}
+		*dst = lane
+	}
+	return &l, nil
+}
+
+// SetLanes sets the lanes typed (from any goroutine)
+func (c *Clock) SetLanes(text string) error {
+	l, err := ParseStepLanes(text)
+	if err == nil {
+		c.lanes.Store(l)
+	}
+	return err
+}
+
+// feel is what the lanes and the groove make of a hit in a pass of the pattern: how late (in steps), the factor on its velocity, its chance, the factor on its length, the pitch added
+func (c *Clock) feel(p *Pattern, hi int, cycle int64) (shift, vel, prob, length, pitch float64) {
+	shift, vel, prob, length = 0, 1, 1, 1
+	step := cycle*int64(math.Round(p.Steps)) + int64(math.Floor(p.Hits[hi].At+1e-9))
+	if c.Groove > 0 && c.Groove < len(rhythm.Grooves) {
+		shift, vel = rhythm.Grooves[c.Groove].At(step)
+	}
+	if l := c.lanes.Load(); l != nil {
+		if v, ok := l.Prob.At(step); ok {
+			prob = math.Max(0, math.Min(v/100, 1))
+		}
+		if v, ok := l.Vel.At(step); ok {
+			vel *= math.Max(0, v/100)
+		}
+		if v, ok := l.Shift.At(step); ok {
+			shift += math.Max(-100, math.Min(v, 100)) / 100
+		}
+		if v, ok := l.Len.At(step); ok {
+			length = math.Max(0.05, v/100)
+		}
+		if v, ok := l.Pitch.At(step); ok {
+			pitch = v
+		}
+	}
+	return
+}
+
 // hitTick is the tick of the next hit
 func (c *Clock) hitTick() float64 {
 	p := c.playing
-	return c.tickAt(float64(c.cycle)*p.Steps + p.Hits[c.hit].At)
+	shift, _, _, _, _ := c.feel(p, c.hit, c.cycle)
+	return c.tickAt(math.Max(0, float64(c.cycle)*p.Steps+p.Hits[c.hit].At+shift))
+}
+
+// inFill says the tick is in the last bar of its section of the song
+func (c *Clock) inFill(tick psalm.CtrlTick) bool {
+	pos, ok := c.song.At(tick, c.Config().PPQ)
+	if !ok || pos.Ended {
+		return false
+	}
+	bpb := c.song.Transport().Form().BeatsPerBar
+	return pos.Beat >= float64(pos.Section.StartBar+pos.Section.Bars-1)*bpb
 }
 
 // advance moves on to the hit after the next
@@ -333,7 +443,9 @@ func (c *Clock) now(tick psalm.CtrlTick) (*Pattern, float64) {
 
 // Play gives the hits of the clock falling on this tick, as the events it would send (for a script that keeps its own clock)
 func (c *Clock) Play(tick psalm.CtrlTick, f func(Event)) {
-	c.play(tick, func(_ Hit, step int64, seconds float64) { f(Event{Tick: tick, Step: step, Seconds: seconds}) })
+	c.play(tick, func(h Hit, step int64, seconds float64) {
+		f(Event{Tick: tick, Step: step, Seconds: seconds, Vel: h.Vel})
+	})
 }
 
 // Set sets the division (one of Divisions, by name) and the swing (0.5 to 0.75), for a script that keeps its own clock; an error for a division
@@ -350,8 +462,8 @@ func (c *Clock) Set(division string, swing float64) error {
 
 // CtrlTick sends the hits falling on this tick
 func (c *Clock) CtrlTick(tick psalm.CtrlTick) {
-	c.play(tick, func(_ Hit, step int64, seconds float64) {
-		c.Send(Event{Tick: tick, Step: step, Seconds: seconds}, 0)
+	c.play(tick, func(h Hit, step int64, seconds float64) {
+		c.Send(Event{Tick: tick, Step: step, Seconds: seconds, Vel: h.Vel}, 0)
 	})
 }
 
@@ -376,17 +488,27 @@ func (c *Clock) play(tick psalm.CtrlTick, hit func(h Hit, step int64, seconds fl
 	l := c.stepTicks()
 	stepSeconds := l * 60 / (c.BPM() * float64(c.Config().PPQ))
 	for at := c.hitTick(); at <= t+1e-9; at = c.hitTick() {
-		h := p.Hits[c.hit]
+		h, cycle := p.Hits[c.hit], c.cycle
+		_, vel, prob, length, pitch := c.feel(p, c.hit, cycle)
 		c.advance()
 		if at < t-1 { // missed (the tempo jumped): no burst of old hits
 			continue
 		}
-		if chance := h.Chance * c.Chance; chance < 1 && c.Rand().Float64() >= chance {
+		if chance := h.Chance * c.Chance * prob; chance < 1 && c.Rand().Float64() >= chance {
 			continue
 		}
-		hit(h, int64(math.Floor(at/l+1e-6)), h.Len*stepSeconds)
+		if !h.Cond.Zero() && !h.Cond.Holds(cycle, h.Cond.Fill != 0 && c.inFill(tick)) {
+			continue
+		}
+		h.Vel, h.Pitch = vel, pitch
+		hit(h, int64(math.Floor(at/l+1e-6)), h.Len*length*stepSeconds)
 	}
 }
+
+// LanesHelp is what to know to write lanes
+const LanesHelp = "a lane a line, a value a step, going round on its own length (lanes of 5 and 3 steps against a pattern of 16 drift: polymeter); `.` the default\n" +
+	"`prob: 100 50 . 80` the chance a step plays (percent); `vel: 100 60 80` its velocity (percent); `shift: 0 10 0 -5` how late (percent of a step, negative early)\n" +
+	"`len: 100 50` how long it lasts (percent); `pitch: 0 0 7 0` a pitch added (semitones, for a part)"
 
 // Describe describes the clock's settings
 func (c *Clock) Describe() params.Set {
@@ -394,6 +516,7 @@ func (c *Clock) Describe() params.Set {
 		params.C("Clock", "division", Divisions, c.Division),
 		params.K("Clock", "swing", 0.5, 0.75, c.Swing),
 		params.K("Clock", "chance", 0, 1, c.Chance),
+		params.C("Clock", "groove", rhythm.GrooveNames(), c.Groove),
 	}}
 }
 
@@ -640,6 +763,9 @@ func (n *Note) late(psalm.CtrlTick) {
 		if n.hasVel {
 			vel = n.velocity
 		}
+		if ev.Vel > 0 {
+			vel = math.Min(1, vel*ev.Vel)
+		}
 		steps := n.Length
 		if n.hasLen {
 			steps = n.length
@@ -751,7 +877,9 @@ const PatternHelp = "`x` (or `X`, `o`) is a hit, `.` (or `-`, `_`) a rest: a ste
 	"`x3` a roll: 3 hits in the step; `[x x x]` a group filling one step (a triplet), `[x . x x]` with rests\n" +
 	"`*2` after a step or a group: it lasts 2 steps (`x*2`, `.*4`, `[x x x]*2` a triplet over two steps); a note of a step lasts as long\n" +
 	"`?` after a hit or a group: by chance, half the time (`x?25`: a quarter); the chance below is for every hit\n" +
-	"the pattern loops; swing (below) makes every second step later, what is in it too\n" +
+	"`%2/4` after a hit: only the second time through in every four (`%!2/4` the other three), `%fill` in the last bar of a section, `%first` the first time (`%!fill`, `%!first`)\n" +
+	"`E(5,16)` five hits spread evenly over 16 steps (`E(5,16,2)` turned 2 steps), `A(3+3+2)` groups of 3, 3 and 2, `CA(30,16)` a row of a cellular automaton (rule, cells, generation, seed)\n" +
+	"the pattern loops; swing and groove (below) make steps later and softer, what is in them too; lanes (below) a value a step\n" +
 	"with a song: a pattern per section, a line `Chorus: x x x x` each (the others, the lines without one); it counts from the section's start\n" +
 	"Ctrl+Enter (or Run) takes it; one that can't be read is shown in red, the clock keeps the one before"
 
@@ -791,7 +919,13 @@ func Generators() []Kind {
 		{Name: "clock", Group: "Generators", Outs: []Port{trig}, Make: func(string) (*Made, error) {
 			c := NewClock()
 			return &Made{Module: c, Describe: func(string) params.Set { return c.Describe() },
-				Texts: []Text{{Key: "pattern", Label: "pattern", Value: "x", Help: PatternHelp}}, SetText: func(_, v string) error { return c.SetPattern(v) }}, nil
+				Texts: []Text{{Key: "pattern", Label: "pattern", Value: "x", Help: PatternHelp}, {Key: "lanes", Label: "lanes", Lines: 5, Value: "", Help: LanesHelp}},
+				SetText: func(k, v string) error {
+					if k == "lanes" {
+						return c.SetLanes(v)
+					}
+					return c.SetPattern(v)
+				}}, nil
 		}},
 		{Name: "sequence", Group: "Generators",
 			Ins:  []Port{trig, {Name: "reset", Type: Trigger, Index: 1}},

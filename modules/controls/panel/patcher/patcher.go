@@ -74,6 +74,7 @@ type Event struct {
 	Tick    psalm.CtrlTick
 	Step    int64
 	Seconds float64
+	Vel     float64 // a factor on the velocity a lane or a groove gave this hit (0: none)
 }
 
 // Text is a setting of text, typed on the module itself (a pattern, a list of values)

@@ -10,6 +10,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/tools/harmony"
+	"github.com/almerlucke/psalm/tools/rhythm"
 )
 
 // Part plays written notes on the steps of the patch's tempo, as a clock plays its pattern (a
@@ -39,6 +40,8 @@ type queued struct {
 	tick    psalm.CtrlTick
 	pitches []float64
 	seconds float64
+	vel     float64 // a factor from the lanes and the groove (0: none)
+	pitch   float64
 }
 
 // resolve gives the pitches of a chord note for a chord
@@ -123,7 +126,7 @@ func (p *Part) SetTargets(targets []psalm.Receiver) { p.targets = targets }
 func (p *Part) CtrlTick(tick psalm.CtrlTick) {
 	p.play(tick, func(h Hit, _ int64, seconds float64) {
 		if pitches := p.pitchesOf(h, tick); len(pitches) > 0 {
-			p.pending = append(p.pending, queued{tick: tick, pitches: pitches, seconds: math.Max(0.005, seconds*p.Length)})
+			p.pending = append(p.pending, queued{tick: tick, pitches: pitches, seconds: math.Max(0.005, seconds*p.Length), vel: h.Vel, pitch: h.Pitch})
 		}
 	})
 }
@@ -131,9 +134,13 @@ func (p *Part) CtrlTick(tick psalm.CtrlTick) {
 // late plays the notes of the tick
 func (p *Part) late(psalm.CtrlTick) {
 	for _, n := range p.pending {
+		vel := p.Velocity
+		if n.vel > 0 {
+			vel = math.Min(1, vel*n.vel)
+		}
 		for _, pitch := range n.pitches {
-			msg := psalm.Message{"command": "trigger", "tick": n.tick, "duration": n.seconds, "amplitude": p.Velocity,
-				"message": psalm.Message{"pitch": pitch + p.Transpose, "velocity": p.Velocity}}
+			msg := psalm.Message{"command": "trigger", "tick": n.tick, "duration": n.seconds, "amplitude": vel,
+				"message": psalm.Message{"pitch": pitch + p.Transpose + n.pitch, "velocity": vel}}
 			for _, t := range p.targets {
 				t.ReceiveMessage(msg)
 			}
@@ -248,7 +255,7 @@ func partSequence(toks []string, i *int, inGroup bool) ([]partElement, error) {
 			}
 		default:
 			base := tok
-			if k := strings.IndexAny(tok, "*?"); k >= 0 {
+			if k := strings.IndexAny(tok, "*?^%"); k >= 0 {
 				base, mods = tok[:k], tok[k:]
 			}
 			switch base {
@@ -321,8 +328,14 @@ func partModifiers(e *partElement, mods string) error {
 		op := mods[0]
 		mods = mods[1:]
 		j := 0
-		for j < len(mods) && (mods[j] >= '0' && mods[j] <= '9' || mods[j] == '.') {
-			j++
+		if op == '%' { // a condition: up to the next modifier
+			for j < len(mods) && !strings.ContainsRune("*?^%", rune(mods[j])) {
+				j++
+			}
+		} else {
+			for j < len(mods) && (mods[j] >= '0' && mods[j] <= '9' || mods[j] == '.') {
+				j++
+			}
 		}
 		num := mods[:j]
 		mods = mods[j:]
@@ -345,8 +358,30 @@ func partModifiers(e *partElement, mods string) error {
 			for k := range e.hits {
 				e.hits[k].Chance *= chance
 			}
+		case '%':
+			cond, err := rhythm.ParseCond(num)
+			if err != nil {
+				return err
+			}
+			for k := range e.hits {
+				e.hits[k].Cond = cond
+			}
+		case '^':
+			v, err := strconv.Atoi(num)
+			if err != nil || v < 2 || v > 16 {
+				return fmt.Errorf("^%s: a ratchet of 2 to 16 hits in the note", num)
+			}
+			var hits []Hit
+			for _, h := range e.hits {
+				for k := range v {
+					r := h
+					r.At, r.Len = h.At+float64(k)*h.Len/float64(v), h.Len/float64(v)
+					hits = append(hits, r)
+				}
+			}
+			e.hits = hits
 		default:
-			return fmt.Errorf("%q after a note: *2 longer, ? by chance", string(op))
+			return fmt.Errorf("%q after a note: *2 longer, ? by chance, ^3 a ratchet, %%2/4 on the second of every four", string(op))
 		}
 	}
 	return nil
@@ -381,7 +416,7 @@ func assemble(els []partElement) ([]Hit, float64) {
 
 // PartHelp is what to know to write a part
 const PartHelp = "notes a step each: `C3 Eb3 G3 Bb3` (C3 is 48; F#4, Bb2, 60 too), `.` a rest, `-` the note before held a step longer\n" +
-	"`C3+Eb3+G3` a chord; `[C3 D3 Eb3]` a group filling a step (a triplet); `*2` after a note or a group: it lasts 2 steps; `?` by chance (`?25`)\n" +
+	"`C3+Eb3+G3` a chord; `[C3 D3 Eb3]` a group filling a step (a triplet); `*2` after a note or a group: it lasts 2 steps; `?` by chance (`?25`); `^3` a ratchet: 3 hits in the note; `%2/4` only the second time through in every four, `%fill` in the last bar of a section, `%first`, `!` for the other way (`%!fill`)\n" +
 	"with a harmony module: chord notes, found in the chord at the moment they play: `@1` the root, `@2` the next tone of the chord (the third), `@3` the fifth, `@4` the seventh (a triad: the\n" +
 	"root an octave up), `@-1` the tone below the root, `@b` the bass, `@c` the whole chord; `'` after one an octave up, `,` down; `@1 @3 @5 @3`, `@c*4`; `C3+@3` together\n" +
 	"the division, swing and chance below, as a clock's; velocity, length (of a step: staccato to legato), transpose\n" +
@@ -394,8 +429,13 @@ func partKind() Kind {
 		Make: func(string) (*Made, error) {
 			p := NewPart()
 			return &Made{Module: p, Describe: func(string) params.Set { return p.Describe() },
-				Texts:   []Text{{Key: "notes", Label: "notes", Value: DefaultPart, Help: PartHelp}},
-				SetText: func(_, v string) error { return p.SetNotes(v) },
-				Notes:   p.SetTargets, Late: p.late}, nil
+				Texts: []Text{{Key: "notes", Label: "notes", Value: DefaultPart, Help: PartHelp}, {Key: "lanes", Label: "lanes", Lines: 5, Value: "", Help: LanesHelp}},
+				SetText: func(k, v string) error {
+					if k == "lanes" {
+						return p.SetLanes(v)
+					}
+					return p.SetNotes(v)
+				},
+				Notes: p.SetTargets, Late: p.late}, nil
 		}}
 }
