@@ -1,0 +1,342 @@
+package main
+
+import (
+	"embed"
+	"encoding/json"
+	"fmt"
+	"math"
+	"os"
+	"strings"
+
+	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
+)
+
+//go:embed scripts/*.js
+var scripts embed.FS
+
+func script(name string) string {
+	b, err := scripts.ReadFile("scripts/" + name + ".js")
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+const (
+	bpm       = 68 // a resting heart
+	beats     = 4  // to the bar
+	endBPM    = 54 // the last bars of the last section slow down to it
+	slowBars  = 4
+	heartRate = 72
+)
+
+// tempo is the beats a minute the song starts at (the test plays it faster)
+var tempo = float64(bpm)
+
+// section is a part of the psalm: its bars, how loud it plays (the dynamics of the whole), and the verse printed as it begins
+type section struct {
+	name  string
+	bars  int
+	dyn   float64
+	verse string
+}
+
+var sections = []section{
+	{"Thread", 8, 0.75, "O LORD, thou hast searched me, and known me. Thou knowest my downsitting and mine uprising, thou understandest my thought afar off. (Psalm 139:1, 2)"},
+	{"Knit", 16, 0.8, "For thou hast possessed my reins: thou hast covered me in my mother's womb. My substance was not hid from thee, when I was made in secret, and curiously wrought in the lowest parts of the earth. (Psalm 139:13, 15)"},
+	{"Wonder", 16, 1.0, "I will praise thee; for I am fearfully and wonderfully made: marvellous are thy works; and that my soul knoweth right well. (Psalm 139:14)"},
+	{"Shadow", 12, 0.7, "Whither shall I go from thy spirit? or whither shall I flee from thy presence? If I say, Surely the darkness shall cover me; even the night shall be light about me. (Psalm 139:7, 11)"},
+	{"Light", 12, 0.95, "Yea, the darkness hideth not from thee; but the night shineth as the day: the darkness and the light are both alike to thee. (Psalm 139:12)"},
+	{"Sand", 16, 0.8, "How precious also are thy thoughts unto me, O God! how great is the sum of them! If I should count them, they are more in number than the sand. (Psalm 139:17, 18)"},
+	{"Awake", 12, 0.7, "When I awake, I am still with thee. Search me, O God, and know my heart: try me, and know my thoughts: and lead me in the way everlasting. (Psalm 139:18, 23, 24)"},
+}
+
+// sectionsText is the sections of the song for the song module
+func sectionsText() string {
+	parts := make([]string, len(sections))
+	for i, s := range sections {
+		parts[i] = fmt.Sprintf("%s %d", s.name, s.bars)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// tempoAt is the tempo in a section, at a bar of it: the last bars of the last section slow down
+func tempoAt(index int, bar float64) float64 {
+	if index != len(sections)-1 {
+		return bpm
+	}
+	from := float64(sections[index].bars - slowBars)
+	p := math.Max(0, math.Min((bar-from)/slowBars, 1))
+	return bpm + (endBPM-bpm)*(0.5-0.5*math.Cos(math.Pi*p))
+}
+
+// tourSeconds is how long the piece lasts, following the tempo
+func tourSeconds() float64 {
+	seconds := 0.0
+	const step = 1.0 / 64 // of a beat
+	for i, s := range sections {
+		for b := 0.0; b < float64(s.bars*beats); b += step {
+			seconds += step * 60 / tempoAt(i, b/beats)
+		}
+	}
+	return seconds
+}
+
+// schedule says when every section begins
+func schedule() string {
+	var b strings.Builder
+	seconds := 0.0
+	const step = 1.0 / 64
+	for i, s := range sections {
+		fmt.Fprintf(&b, "%6.1fs  %-8s %2d bars\n", seconds, s.name, s.bars)
+		for beat := 0.0; beat < float64(s.bars*beats); beat += step {
+			seconds += step * 60 / tempoAt(i, beat/beats)
+		}
+	}
+	fmt.Fprintf(&b, "%6.1fs  end\n", seconds)
+	return b.String()
+}
+
+// tempoLane sets the tempo of the patch as the song goes: the last bars of the piece slow down, like a breath let go
+type tempoLane struct {
+	*psalm.Module
+	song *patcher.Song
+}
+
+func (t *tempoLane) init() *tempoLane { t.SetSelf(t); return t }
+
+func (t *tempoLane) CtrlTick(tick psalm.CtrlTick) {
+	pos, ok := t.song.At(tick, t.Config().PPQ)
+	if !ok || pos.Ended {
+		return
+	}
+	want := tempoAt(pos.Section.Index, pos.Progress*float64(pos.Section.Bars))
+	if math.Abs(want-t.Env().BPM()) >= 0.01 {
+		t.Env().SetBPM(want)
+	}
+}
+
+// orchestra is where the Virtual Playing Orchestra is (it is not in the repository: without it models of the instruments play)
+const orchestra = "assets/Virtual-Playing-Orchestra3"
+
+func hasOrchestra() bool {
+	_, err := os.Stat(orchestra + "/Vocals/choir-FEMALE-sustain.sfz")
+	return err == nil
+}
+
+type options struct {
+	just  bool
+	a4    float64
+	seed  uint64 // the seed of the feel of the parts
+	human bool   // the parts play off the grid, like players
+	real  bool   // the instruments the orchestra has recorded play its recordings instead of the models
+	once  bool   // the song ends with its last section, it doesn't loop
+}
+
+// strip is a part of the piece: its script, the instrument that plays it (a recording of the orchestra, or a model: a synth of the kind and the preset) and its place
+// on the mixer. The sends are the hall, the church (a convolved room), the heavens (a shimmer) and the echo
+type strip struct {
+	name, script string
+	kind, preset string  // the model
+	sfz          string  // the recording (in the orchestra); "" for a part that only has a model or its sounds
+	gain         float64 // what the level is multiplied by when the recording plays (they are not as loud as the models)
+	model        float64 // what the level is multiplied by when the model plays (0: not at all; found by rendering both and comparing the parts)
+	sounds       string  // the sounds of a sampler or a grains synth
+	kit          string  // the percussion of a sampler: its recordings, see kits.go
+	glass        string  // the folder of recordings named by their note, a sampler with one for each pitch
+	settings     map[string]float64
+	level        float64
+	pan          float64
+	hall, church float64
+	heavens      float64
+	echo         float64
+}
+
+func parts() []strip {
+	return []strip{
+		{name: "heart", script: "heart", kind: "dx", preset: "timpani", level: 0.07, hall: 0.25, church: 0.25},
+		{name: "harp", script: "harp", kind: "waveguide", preset: "celticHarp", sfz: "Strings/harp-sustain.sfz", gain: 1.8, model: 0.53, level: 0.42, pan: -0.3, hall: 0.3, church: 0.25, echo: 0.12},
+		{name: "celesta", script: "celesta", kind: "dx", preset: "celesta", sfz: "Keys/celesta.sfz", gain: 1.3, model: 0.074, level: 0.86, pan: 0.35, heavens: 0.45, echo: 0.3},
+		{name: "flute", script: "flute", kind: "waveguide", preset: "flute", sfz: "Woodwinds/flute-SOLO-sustain.sfz", gain: 1.2, model: 0.2, level: 0.5, pan: -0.15, hall: 0.25, church: 0.35},
+		{name: "alto flute", script: "altoflute", kind: "waveguide", preset: "altoFlute", sfz: "Woodwinds/alto-flute-SOLO-sustain.sfz", gain: 1.2, model: 0.133, level: 0.5, pan: 0.2, hall: 0.25, church: 0.35},
+		{name: "violin", script: "violin", kind: "waveguide", preset: "legatoViolin", sfz: "Strings/1st-violin-SOLO-sustain.sfz", gain: 1.4, model: 0.85, level: 0.5, pan: 0.3, hall: 0.25, church: 0.4},
+		{name: "cello", script: "cello", kind: "waveguide", preset: "cello", sfz: "Strings/cello-SOLO-sustain.sfz", gain: 1.3, model: 0.45, level: 0.5, pan: -0.3, hall: 0.25, church: 0.35},
+		{name: "strings", script: "strings", kind: "waveguide", preset: "slowStrings", sfz: "Strings/viola-SEC-sustain.sfz", gain: 1.3, model: 0.11, level: 0.56, hall: 0.3, church: 0.45},
+		{name: "choir", script: "choir", kind: "vocal", preset: "hummingChoir", sfz: "Vocals/choir-FEMALE-sustain.sfz", gain: 1.3, model: 0.17, level: 0.56, hall: 0.1, church: 0.7, heavens: 0.2},
+		{name: "piano", script: "piano", kind: "piano", preset: "satie", level: 0.8, pan: 0.1, hall: 0.3, church: 0.15},
+		{name: "pizzicato", script: "pizzicato", kind: "dx", preset: "pizzicato", sfz: "Strings/all-strings-SEC-pizzicato.sfz", gain: 1.7, model: 0.1, level: 0.8, pan: -0.2, hall: 0.3, echo: 0.3},
+		{name: "shaker", script: "shaker", kind: "sampler", kit: "shaker", level: 0.9, pan: -0.45, hall: 0.25},
+		{name: "glass", script: "glass", kind: "sampler", glass: "assets/sounds/glass", level: 0.9, pan: 0.35, hall: 0.35, church: 0.2, echo: 0.2},
+		{name: "hands", script: "hands", kind: "sampler", kit: "hands", level: 0.15, pan: -0.2, hall: 0.3, church: 0.15},
+		{name: "cymbal", script: "cymbal", kind: "sampler", kit: "cymbal", level: 0.8, hall: 0.4, heavens: 0.3},
+	}
+}
+
+// real is the strip played by a recording of the orchestra: a sampler with the sfz of the part, in place of its model
+func (s strip) real() strip {
+	if s.sfz == "" {
+		return s
+	}
+	s.kind, s.preset, s.settings = "sampler", "", nil
+	s.sounds = "0 " + orchestra + "/" + s.sfz + " sfz"
+	s.level *= s.gain
+	return s
+}
+
+// patchIDs are the modules of the patch to look at: the scripts, and the synths by their part
+type patchIDs struct {
+	scripts []string
+	synths  map[string]string
+}
+
+type sectionJS struct {
+	Name  string  `json:"name"`
+	Bars  int     `json:"bars"`
+	Dyn   float64 `json:"dyn"`
+	Verse string  `json:"verse"`
+}
+
+// preludeJS is what the first script gets before its own text: the sections, the tuning, the seed of the random timing, the keys of the kits and the pieces of the cut
+// recordings
+func preludeJS(opt options) (string, error) {
+	var ss []sectionJS
+	for _, s := range sections {
+		ss = append(ss, sectionJS{s.name, s.bars, s.dyn, s.verse})
+	}
+	js := func(v any) string { b, _ := json.Marshal(v); return string(b) }
+	cutPieces, err := piecesJS()
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("shared.beats = %d\nshared.just = %v\nshared.a4 = %v\nshared.seed = %d\nshared.human = %v\nshared.sections = %s\nshared.kits = %s\n",
+		beats, opt.just, opt.a4, opt.seed, opt.human, js(ss), js(kitKeys())) + cutPieces, nil
+}
+
+// buildPatch makes the patch: the song of the psalm, a script that holds the score (the first, so the others find it in `shared`), a script and an instrument for
+// every part, on a mixer with four buses: a hall, a church, the heavens (a shimmer) and an echo. It returns the scripts and the instruments, to look at what they say
+func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
+	add := func(kind, preset string, x, y float64) string {
+		if err != nil {
+			return ""
+		}
+		var id string
+		id, err = pt.Add(kind, preset, x, y)
+		return id
+	}
+	connect := func(c patcher.Cable) {
+		if err == nil {
+			_, err = pt.Connect(c)
+		}
+	}
+	text := func(id, key, value string) {
+		if err == nil {
+			err = pt.SetText(id, key, value)
+			if err == nil {
+				if e := pt.TextError(id, key); e != "" {
+					err = fmt.Errorf("%s of %s: %s", key, id, e)
+				}
+			}
+		}
+	}
+	apply := func(id string, v map[string]float64) {
+		if err != nil || len(v) == 0 {
+			return
+		}
+		have := pt.SettingsOf(id).Values()
+		for k := range v {
+			if _, ok := have[k]; !ok {
+				err = fmt.Errorf("%s has no setting %q", id, k)
+				return
+			}
+		}
+		pt.SettingsOf(id).Apply(v)
+	}
+	prelude, err := preludeJS(opt)
+	if err != nil {
+		return patchIDs{}, err
+	}
+	pt.Tempo().Set(tempo)
+	song := add("song", "", 20, 20)
+	score := add("script", "", 20, 140) // first, so it has put the harmony in `shared` before the others ask
+	all := parts()
+	for i := range all {
+		if opt.real {
+			all[i] = all[i].real()
+		} else if all[i].model > 0 {
+			all[i].level *= all[i].model
+		}
+	}
+	type placed struct {
+		strip
+		script, synth string
+	}
+	var ps []placed
+	for i, s := range all {
+		y := 20 + float64(i)*90
+		pl := placed{strip: s}
+		pl.script = add("script", "", 260, y)
+		pl.synth = add(s.kind, s.preset, 520, y)
+		ps = append(ps, pl)
+	}
+	mixer := add("mixer", fmt.Sprintf("%d channels", len(all)), 800, 300)
+	hall := add("reverb", "", 1060, 20)
+	church := add("hall", "", 1060, 160)
+	heavens := add("shimmer", "", 1060, 300)
+	echo := add("pingpong", "", 1060, 440)
+	if err != nil {
+		return patchIDs{}, err
+	}
+	text(song, "sections", sectionsText())
+	text(score, "code", prelude+script("score"))
+	ids = patchIDs{scripts: []string{score}, synths: map[string]string{}}
+	channels := len(all)
+	for i := range ps {
+		pl := &ps[i]
+		text(pl.script, "code", script(pl.strip.script))
+		if pl.kit != "" && err == nil {
+			pl.sounds, err = kitLines(pl.kit)
+		}
+		if pl.glass != "" && err == nil {
+			pl.sounds, err = pitched(pl.glass, "glass")
+		}
+		if pl.sounds != "" {
+			text(pl.synth, "sounds", pl.sounds)
+		}
+		apply(pl.synth, pl.settings)
+		connect(patcher.Cable{From: pl.script, To: pl.synth})
+		connect(patcher.Cable{From: pl.synth, To: mixer, In: i})
+		ids.scripts = append(ids.scripts, pl.script)
+		ids.synths[pl.name] = pl.synth
+	}
+	// send A to the hall, B to the church, C to the heavens, D to the echo; each comes back on its return
+	for i, fx := range []string{hall, church, heavens, echo} {
+		connect(patcher.Cable{From: mixer, Out: 1 + i, To: fx})
+		connect(patcher.Cable{From: fx, To: mixer, In: channels + i})
+	}
+	connect(patcher.Cable{From: mixer, Out: 0, To: "out"})
+	if err != nil {
+		return patchIDs{}, err
+	}
+	m := map[string]float64{"returnA": 1, "returnB": 1, "returnC": 0.8, "returnD": 0.8}
+	for i, pl := range ps {
+		n := fmt.Sprint(i + 1)
+		m["level"+n] = pl.level
+		m["pan"+n] = pl.pan
+		m["sendA"+n], m["sendB"+n], m["sendC"+n], m["sendD"+n] = pl.hall, pl.church, pl.heavens, pl.echo
+	}
+	m["level"] = 1.5
+	apply(mixer, m)
+	apply(hall, map[string]float64{"mix": 1, "decay": 3.4, "size": 0.8, "damping": 0.55})
+	apply(church, map[string]float64{"mix": 1, "gain": 2.2})
+	apply(heavens, map[string]float64{"shimmer": 0.35, "mix": 1, "decay": 7})
+	apply(echo, map[string]float64{"time": 0.75, "feedback": 0.4, "stereo": 1, "highCut": 4500, "lowCut": 200, "mix": 1})
+	if opt.once {
+		apply(song, map[string]float64{"loop": 0})
+	}
+	pt.Move("out", 1320, 300)
+	if err != nil {
+		return patchIDs{}, err
+	}
+	return ids, nil
+}
