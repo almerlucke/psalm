@@ -16,6 +16,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"sync"
 	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
@@ -89,6 +90,10 @@ type Roll struct {
 	targets  []psalm.Receiver       // audio thread
 	last     int64                  // the last tick played
 	lastClip string                 // the clip it played then
+
+	heard   sync.Mutex // notes the editor asks to hear while it works, played at the next tick
+	waiting []Note
+	hearing atomic.Int32
 }
 
 // New creates a roll of 8 beats (two bars) without notes; add it to a patch as a control module
@@ -218,9 +223,39 @@ func (r *Roll) Position() float64 { return math.Float64frombits(r.pos.Load()) }
 // Playing returns the clip that plays: the section it belongs to, "" for the loop
 func (r *Roll) Playing() string { return *r.playing.Load() }
 
+// Audition plays a note at once, for the editor to let you hear what you put in or move (from any goroutine): at the next control tick, for a length in beats
+func (r *Roll) Audition(key int, velocity, beats float64) {
+	r.heard.Lock()
+	if len(r.waiting) < 16 {
+		r.waiting = append(r.waiting, Note{Key: max(0, min(key, 127)), Velocity: math.Max(0, math.Min(velocity, 1)), Length: math.Max(0.05, math.Min(beats, 8))})
+		r.hearing.Store(int32(len(r.waiting)))
+	}
+	r.heard.Unlock()
+}
+
+// hear plays the notes the editor asked to hear
+func (r *Roll) hear(tick psalm.CtrlTick) {
+	r.heard.Lock()
+	ns := r.waiting
+	r.waiting = nil
+	r.hearing.Store(0)
+	r.heard.Unlock()
+	second := r.Env().TickDuration() * float64(r.Config().PPQ)
+	for _, n := range ns {
+		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.05, n.Length*second), "amplitude": n.Velocity,
+			"message": psalm.Message{"pitch": float64(n.Key), "velocity": n.Velocity}}
+		for _, target := range r.targets {
+			target.ReceiveMessage(msg)
+		}
+	}
+}
+
 // CtrlTick plays the notes that start on the tick: the clip of the section the song is in (from the start of the section), else the loop, which comes round every Length beats of the
 // patch, wherever the tempo is
 func (r *Roll) CtrlTick(tick psalm.CtrlTick) {
+	if r.hearing.Load() > 0 {
+		r.hear(tick)
+	}
 	ppq := float64(r.Config().PPQ)
 	clips := *r.clips.Load()
 	clip, name, base := clips[""], "", int64(0)
@@ -371,6 +406,10 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 					To   []string `json:"to"`
 				} `json:"copy"`
 				Drop *string `json:"drop"`
+				Play *struct {
+					Key int     `json:"key"`
+					Vel float64 `json:"vel"`
+				} `json:"play"`
 			}
 			if json.Unmarshal(raw, &m) != nil {
 				return
@@ -382,6 +421,8 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 				roll.CopyClip(m.Copy.From, m.Copy.To...)
 			case m.Drop != nil:
 				roll.DropClip(*m.Drop)
+			case m.Play != nil:
+				roll.Audition(m.Play.Key, m.Play.Vel, 0.5)
 			case m.Set != nil:
 				notes := make([]Note, 0, len(m.Set.Notes))
 				for _, n := range m.Set.Notes {

@@ -83,6 +83,8 @@ psalm.register("noteroll", (p, api) => {
 	const fromArrays = a => a.map(n => ({s: n[0], l: n[1], k: n[2], v: n[3]}));
 	const key = () => JSON.stringify([length, notes.map(n => [+n.s.toFixed(4), +n.l.toFixed(4), n.k, +n.v.toFixed(3)]).sort((a, b) => a[0] - b[0] || a[2] - b[2])]);
 	base = key();
+	let heard = -1; // the key last played (a note moved over keys plays each once)
+	const hear = (k, v) => { if (k === heard) return; heard = k; api.message(p.name, {play: {key: k, vel: v === undefined ? lastVel : v}}); };
 	const send = () => {
 		hold = performance.now() + 700;
 		api.message(p.name, {set: {clip: viewName, length, notes: toArrays()}});
@@ -376,6 +378,7 @@ psalm.register("noteroll", (p, api) => {
 		const mins = Math.min(...ts.map(n => n.s)), maxe = Math.max(...ts.map(n => n.s + n.l)), mink = Math.min(...ts.map(n => n.k)), maxk = Math.max(...ts.map(n => n.k));
 		db = Math.max(-mins, Math.min(db, length - maxe)); dk = Math.max(-mink, Math.min(dk, 127 - maxk));
 		for (const n of ts) { n.s += db; n.k += dk; }
+		if (dk !== 0) { heard = -1; hear(Math.max(...ts.map(n => n.k))); }
 		commit();
 	};
 
@@ -399,13 +402,13 @@ psalm.register("noteroll", (p, api) => {
 		if (zone(g, y) !== "notes" || x < gutter || noteAt(g, x, y)) return;
 		const s = Math.max(0, Math.min(snapDown(bOf(g, x)), length - minLen()));
 		const n = {s, l: Math.min(lastLen, length - s), k: keyAt(g, y), v: lastVel};
-		notes.push(n); sel.clear(); sel.add(n); commit();
+		notes.push(n); sel.clear(); sel.add(n); heard = -1; hear(n.k); commit();
 	});
 	canvas.addEventListener("pointerdown", e => {
 		if (e.button !== 0) return;
 		canvas.focus();
 		const g = geom(), [x, y] = where(e), z = zone(g, y);
-		if (x < gutter) return;
+		if (x < gutter) { if (z === "notes") { heard = -1; hear(keyAt(g, y), 0.8); } return; } // a key of the keyboard: hear it
 		const b = bOf(g, x);
 		if (z === "ruler") {
 			const s = Math.max(0, Math.min(snapTo(b), length));
@@ -422,7 +425,7 @@ psalm.register("noteroll", (p, api) => {
 		if (!n && tool === "draw") { // a new note: dragging makes it longer
 			const s = Math.max(0, Math.min(snapDown(b), length - minLen()));
 			n = {s, l: Math.min(lastLen, length - s), k: keyAt(g, y), v: lastVel};
-			notes.push(n); sel.clear(); sel.add(n); cursor = s;
+			notes.push(n); sel.clear(); sel.add(n); cursor = s; heard = -1; hear(n.k);
 			drag = {mode: "resize", fresh: true, moved: false, grab: n, b0: b, orig: [{n, s: n.s, l: n.l}]};
 			canvas.setPointerCapture(e.pointerId); return;
 		}
@@ -435,7 +438,7 @@ psalm.register("noteroll", (p, api) => {
 		}
 		if (e.shiftKey) { if (sel.has(n)) { sel.delete(n); return; } sel.add(n); }
 		else if (!sel.has(n)) { sel.clear(); sel.add(n); }
-		lastVel = n.v;
+		lastVel = n.v; heard = -1; hear(n.k, n.v);
 		if (e.altKey && !onEdge(g, n, x)) { // a copy is dragged, the notes stay
 			const origs = [...sel], copies = origs.map(m => ({...m})), at0 = origs.indexOf(n);
 			notes.push(...copies); sel.clear(); for (const m of copies) sel.add(m); n = copies[Math.max(0, at0)];
@@ -492,6 +495,7 @@ psalm.register("noteroll", (p, api) => {
 			const mins = Math.min(...drag.orig.map(r => r.s)), maxe = Math.max(...drag.orig.map(r => r.s + r.l)), mink = Math.min(...drag.orig.map(r => r.k)), maxk = Math.max(...drag.orig.map(r => r.k));
 			db = Math.max(-mins, Math.min(db, length - maxe)); dk = Math.max(-mink, Math.min(dk, 127 - maxk));
 			for (const r of drag.orig) { r.n.s = r.s + db; r.n.k = r.k + dk; }
+			if (dk !== 0) hear(drag.grab.k);
 			drag.moved = true;
 			break;
 		}
