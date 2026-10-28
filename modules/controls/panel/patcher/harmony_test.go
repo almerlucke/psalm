@@ -7,9 +7,11 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/panel/chordmodel"
 	"github.com/almerlucke/psalm/modules/controls/panel/noteroll"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
+	chordtools "github.com/almerlucke/psalm/tools/chordmodel"
 )
 
 // chordsHeard keeps the chords a harmony sends, the sample of each, and the bass notes
@@ -269,4 +271,105 @@ func TestNoteRollClipsKept(t *testing.T) {
 			}
 		}
 	}
+}
+
+// the chord model plays its progression when asked, a chord for its bars, looping, through the synths its notes go to
+func TestChordModelPreview(t *testing.T) {
+	r := newSongRig(t, "A 4")
+	id := r.add("chordmodel")
+	m := r.pt.Module(id).(*chordmodel.Module)
+	model, _ := chordtools.Preset("pop")
+	m.SetStrip([]chordtools.Slot{{State: model.Index("I"), Bars: 1}, {State: model.Index("V"), Bars: 0.5}, {State: model.Index("vi"), Bars: 0.5}})
+	r.connect(patcher.Cable{From: id, To: r.add("rec"), Type: patcher.Notes})
+	m.Preview(true)
+	r.run(4.4) // 2 s a bar: C for a bar, G and Am for half a bar each, then round again
+	want := []float64{48, 52, 55, 55, 59, 62, 57, 60, 64, 48, 52, 55}
+	if len(r.rec.pitches) < len(want) || !slices.Equal(r.rec.pitches[:len(want)], want) {
+		t.Fatalf("pitches %v, want %v (C, G, Am in C major, then C again)", r.rec.pitches, want)
+	}
+	if d := r.rec.at[3] - r.rec.at[0]; math.Abs(float64(d)-88200) > 400 {
+		t.Errorf("the second chord %d samples after the first, want a bar (88200)", d)
+	}
+	m.Preview(false)
+	n := len(r.rec.pitches)
+	r.run(2)
+	if len(r.rec.pitches) != n {
+		t.Errorf("played after it was stopped")
+	}
+}
+
+// the chord model writes its progression into the harmony: the line of a section, the others kept
+func TestChordModelBake(t *testing.T) {
+	r := newSongRig(t, "Verse 4, Chorus 4")
+	harm := r.add("harmony")
+	if err := r.pt.SetText(harm, "chords", "Verse: Am F\nChorus: C G"); err != nil {
+		t.Fatal(err)
+	}
+	id := r.add("chordmodel")
+	m := r.pt.Module(id).(*chordmodel.Module)
+	model, _ := chordtools.Preset("pop")
+	m.SetStrip([]chordtools.Slot{{State: model.Index("I"), Bars: 2}, {State: model.Index("V"), Bars: 2}})
+	text := func() string {
+		for _, tx := range r.pt.Texts(harm) {
+			if tx.Key == "chords" {
+				return tx.Value
+			}
+		}
+		return ""
+	}
+	m.Bake() // no section: for the lines that are no section's: the text had none, the progression is put first
+	if got := text(); got != "C*2 G*2\nVerse: Am F\nChorus: C G" {
+		t.Errorf("a progression for no section: %q", got)
+	}
+	// into the line of the chorus
+	if err := r.pt.SetText(harm, "chords", "Verse: Am F\nChorus: C G"); err != nil {
+		t.Fatal(err)
+	}
+	m.SetTarget("Chorus")
+	m.Bake()
+	if got := text(); got != "Verse: Am F\nChorus: C*2 G*2" {
+		t.Errorf("a progression for the chorus: %q", got)
+	}
+	// into a section that has no line yet
+	_ = r.pt.SetText(harm, "chords", "Verse: Am F")
+	m.Bake()
+	if got := text(); got != "Verse: Am F\nChorus: C*2 G*2" {
+		t.Errorf("a line added: %q", got)
+	}
+	if e := r.pt.TextError(harm, "chords"); e != "" {
+		t.Errorf("the harmony would not take it: %s", e)
+	}
+}
+
+// the chord model is kept with the patch: its chords, what it learned, the progression with its locks
+func TestChordModelKept(t *testing.T) {
+	p := psalm.New(nil)
+	dir := t.TempDir()
+	pt := patcher.New(p, panel.New(p, "Test"), "Patch", patcher.Generators(), patcher.Keep(dir))
+	id, _ := pt.Add("chordmodel", "", 0, 0)
+	m := pt.Module(id).(*chordmodel.Module)
+	m.Preset("jazz")
+	m.Learn("Imaj7 bVII7 IVmaj7")
+	strip := m.State().Strip
+	strip[0].Lock = true
+	m.SetStrip(strip)
+	want := m.State()
+	if err := pt.Save("chords"); err != nil {
+		t.Fatal(err)
+	}
+	pt.Clear()
+	if err := pt.Load("chords"); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range pt.Nodes() {
+		if n.Kind != "chordmodel" {
+			continue
+		}
+		got := pt.Module(n.ID).(*chordmodel.Module).State()
+		if !slices.Equal(got.Model.States, want.Model.States) || !slices.Equal(got.Strip, want.Strip) || !got.Strip[0].Lock || got.Model.W[0][1] != want.Model.W[0][1] {
+			t.Errorf("the model after a load: %v %v", got.Model.States, got.Strip)
+		}
+		return
+	}
+	t.Error("the chord model is gone")
 }

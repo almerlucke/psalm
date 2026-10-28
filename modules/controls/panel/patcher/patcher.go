@@ -286,6 +286,7 @@ func New(p *psalm.Psalm, ctl *panel.Panel, name string, kinds []Kind, opts ...Op
 		o(pt)
 	}
 	pt.out.AddTo(p)
+	patchers.Store(p.Env(), pt)
 	empty := []*modConn{}
 	pt.mods.Store(&empty)
 	(&engine{Module: psalm.NewControl(), pt: pt}).init().AddTo(p)

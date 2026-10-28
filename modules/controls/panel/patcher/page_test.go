@@ -13,6 +13,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/midi"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/panel/chordmodel"
 	"github.com/almerlucke/psalm/modules/controls/panel/noteroll"
 	"github.com/almerlucke/psalm/modules/controls/panel/paneltest"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
@@ -750,6 +751,70 @@ func TestPageNoteRollClips(t *testing.T) {
 	tb.WaitFor(`!S().querySelector("button[title^='take the clip']").disabled`, "the button that takes the clip away")
 	tb.Eval(`S().querySelector("button[title^='take the clip']").click()`)
 	paneltest.Eventually(t, "the clip of the chorus taken away", func() bool { _, ok := roll.Clip("Chorus"); return !ok })
+}
+
+// the chord model: the matrix and the progression on the page, a chord locked, another chosen, a new progression drawn, the progression written into the harmony of the song
+func TestPageChordModel(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	song, _ := pt.Add("song", "", 60, 200)
+	if err := pt.SetText(song, "sections", "Verse 4, Chorus 8"); err != nil {
+		t.Fatal(err)
+	}
+	harm, _ := pt.Add("harmony", "", 60, 300)
+	id, err := pt.Add("chordmodel", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := pt.Module(id).(*chordmodel.Module)
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 1100)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	tb.WaitFor(`!!S() && S().querySelectorAll(".cm-card").length > 2 && S().querySelectorAll(".cm-cell").length >= 56`, "the progression and the matrix")
+	want := len(m.State().Strip)
+	if n := tb.Eval(`S().querySelectorAll(".cm-card").length`).(float64); int(n) != want {
+		t.Errorf("%v cards for %d chords", n, want)
+	}
+	// lock the first chord
+	tb.Eval(`S().querySelector(".cm-lock").click()`)
+	paneltest.Eventually(t, "the first chord locked", func() bool { return m.State().Strip[0].Lock })
+	first := m.State().Strip[0].State
+	tb.Eval(`[...S().querySelectorAll("button")].find(b => b.textContent.startsWith("Draw the others")).click()`)
+	paneltest.Eventually(t, "the others drawn again, the locked chord kept", func() bool { s := m.State(); return s.Seed > 2 && s.Strip[0].State == first && s.Strip[0].Lock })
+	// another chord chosen from the list of a card: it is locked
+	tb.Eval(`(() => { const s = S().querySelectorAll(".cm-card-chord")[2]; s.value = "3"; s.dispatchEvent(new (S().defaultView.Event)("change")); })()`)
+	paneltest.Eventually(t, "a chord chosen", func() bool { s := m.State().Strip[2]; return s.State == 3 && s.Lock })
+	// a cell of the matrix dragged up: the chord after I is likelier to be ii (the cells: a corner and 7 heads, then the start row, then a head and the cells of I)
+	before := m.State().Model.W[0][1]
+	cell := `S().querySelectorAll(".cm-cell")[7 + 1]`
+	tb.Eval(cell + `.scrollIntoView({block: "center"})`)
+	pos := tb.Eval(fmt.Sprintf(`(() => { const g = document.querySelector(".pt-win-frame").getBoundingClientRect(), f0 = W().getElementById("frame").getBoundingClientRect(), c = %s.getBoundingClientRect();
+		return [g.left + f0.left + c.left + c.width / 2, g.top + f0.top + c.top + c.height / 2]; })()`, cell)).([]any)
+	x, y := pos[0].(float64), pos[1].(float64)
+	tb.Mouse("mousePressed", x, y, nil)
+	tb.Mouse("mouseMoved", x, y-30, nil)
+	tb.Mouse("mouseReleased", x, y-30, nil)
+	paneltest.Eventually(t, "a cell of the matrix dragged up", func() bool { return m.State().Model.W[0][1] > before+3 })
+	// the progression written to the harmony, into the line of the chorus
+	tb.Eval(`(() => { const s = [...S().querySelectorAll("select")].find(s => [...s.options].some(o => o.value === "Chorus")); s.value = "Chorus"; s.dispatchEvent(new (S().defaultView.Event)("change")); })()`)
+	paneltest.Eventually(t, "the chorus chosen", func() bool { return m.State().Target == "Chorus" })
+	tb.Eval(`[...S().querySelectorAll("button")].find(b => b.textContent.startsWith("Write to")).click()`)
+	paneltest.Eventually(t, "the chords in the harmony", func() bool {
+		for _, tx := range pt.Texts(harm) {
+			if tx.Key == "chords" {
+				st := m.State()
+				return strings.HasPrefix(tx.Value, "Dm7 G7 Cmaj7 Fmaj7") && strings.Contains(tx.Value, "Chorus: "+st.Text())
+			}
+		}
+		return false
+	})
 }
 
 // the arpeggiator is on the page: a module with its notes in, clock in and notes out, and its settings in the side panel

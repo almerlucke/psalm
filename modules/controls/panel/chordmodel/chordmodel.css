@@ -1,0 +1,34 @@
+.chordmodel { align-items: stretch; gap: 8px; }
+.chordmodel .cm { display: flex; flex-direction: column; gap: 8px; font-size: 13px; min-width: 0; }
+.chordmodel .cm h4 { margin: 8px 0 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.chordmodel .cm-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chordmodel .cm-bar label { display: flex; gap: 4px; align-items: center; }
+.chordmodel .cm button, .chordmodel .cm select { min-height: 30px; padding: 2px 10px; font-size: 13px; }
+.chordmodel .cm input[type=number] { width: 4.5em; min-height: 30px; padding: 2px 6px; font-size: 13px; }
+.chordmodel .cm-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }
+.chordmodel .cm-card { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: calc(var(--radius) * 2 / 3); background: var(--track); border: 1px solid var(--line); min-width: 96px; }
+.chordmodel .cm-card.now { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.chordmodel .cm-roman { font-size: 11px; color: var(--muted); text-align: center; }
+.chordmodel .cm-card-chord { font-weight: 600; width: 100%; }
+.chordmodel .cm-card-row { display: flex; gap: 4px; }
+.chordmodel .cm-card-row button { flex: 1; min-width: 0; min-height: 24px; padding: 0 4px; font-size: 11px; }
+.chordmodel .cm-card .cm-del { position: absolute; top: 3px; right: 3px; min-height: 18px; width: 18px; padding: 0; font-size: 12px; line-height: 1; border: 0; background: none; color: var(--muted); }
+.chordmodel .cm-lock.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.chordmodel .cm-add { min-width: 36px; }
+.chordmodel .cm-text { display: block; padding: 6px 8px; border-radius: calc(var(--radius) * 2 / 3); background: var(--track); color: var(--ink); overflow-wrap: anywhere; font-size: 12px; }
+.chordmodel .cm-status { min-height: 1em; color: var(--muted); font-size: 12px; }
+.chordmodel .cm-status.bad { color: #e5484d; }
+.chordmodel .cm-matrix { display: grid; gap: 2px; touch-action: none; user-select: none; }
+.chordmodel .cm-head { display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 600; font-size: 12px; position: relative; min-height: 30px; }
+.chordmodel .cm-head small { font-weight: 400; color: var(--muted); font-size: 10px; }
+.chordmodel .cm-head .cm-x { position: absolute; top: -2px; right: -2px; min-height: 14px; width: 14px; padding: 0; font-size: 10px; line-height: 1; opacity: 0; }
+.chordmodel .cm-head:hover .cm-x { opacity: 0.8; }
+.chordmodel .cm-corner { font-size: 10px; color: var(--muted); display: flex; align-items: center; }
+.chordmodel .cm-start { color: var(--muted); font-weight: 400; }
+.chordmodel .cm-cell { min-height: 30px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-variant-numeric: tabular-nums; cursor: ns-resize; color: var(--ink); }
+.chordmodel .cm-cell.zero { background: var(--track) !important; }
+.chordmodel .cm-lengths { display: flex; gap: 10px; align-items: flex-end; color: var(--muted); font-size: 12px; }
+.chordmodel .cm-len { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: ns-resize; touch-action: none; }
+.chordmodel .cm-len-col { width: 22px; height: 28px; display: flex; align-items: flex-end; background: var(--track); border-radius: 3px; }
+.chordmodel .cm-len-bar { width: 100%; background: var(--accent); border-radius: 3px; }
+.chordmodel .cm-learn textarea { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 12px; }
