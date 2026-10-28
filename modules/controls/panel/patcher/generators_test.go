@@ -247,6 +247,12 @@ func clockDrift(t *testing.T, drift, seconds float64) *triggers {
 	return clockRun(t, "x", "", 0, drift, 0.5, seconds)
 }
 
+// the same with mutations (how much, the seed, frozen from the start)
+func clockMutate(t *testing.T, pattern string, mutate float64, seed int, freeze bool, seconds float64) *triggers {
+	t.Helper()
+	return clockRun2(t, pattern, "", 0, 0, 0.5, seconds, func(c *patcher.Clock) { c.Mutate, c.Seed, c.Freeze = mutate, seed, freeze })
+}
+
 // the same with lanes and a groove (an index of rhythm.Grooves)
 func clockLanes(t *testing.T, pattern, lanes string, groove int, swing, seconds float64) *triggers {
 	t.Helper()
@@ -254,6 +260,11 @@ func clockLanes(t *testing.T, pattern, lanes string, groove int, swing, seconds 
 }
 
 func clockRun(t *testing.T, pattern, lanes string, groove int, drift, swing, seconds float64) *triggers {
+	t.Helper()
+	return clockRun2(t, pattern, lanes, groove, drift, swing, seconds, nil)
+}
+
+func clockRun2(t *testing.T, pattern, lanes string, groove int, drift, swing, seconds float64, setup func(*patcher.Clock)) *triggers {
 	t.Helper()
 	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
 	defer psalm.PopConfig()
@@ -267,6 +278,9 @@ func clockRun(t *testing.T, pattern, lanes string, groove int, drift, swing, sec
 	h, _ := pt.Add("triggers", "", 0, 0)
 	c := pt.Module(clock).(*patcher.Clock) // before it plays: its settings would come with its first tick
 	c.Division, c.Swing, c.Groove, c.Drift = 0, swing, groove, drift
+	if setup != nil {
+		setup(c)
+	}
 	if err := pt.SetText(clock, "lanes", lanes); err != nil || pt.TextError(clock, "lanes") != "" {
 		t.Fatal(err, pt.TextError(clock, "lanes"))
 	}

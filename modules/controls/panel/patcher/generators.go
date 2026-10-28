@@ -3,6 +3,7 @@ package patcher
 import (
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"slices"
 	"strconv"
 	"strings"
@@ -41,18 +42,28 @@ type Clock struct {
 	Chance   float64
 	Groove   int     // an index of rhythm.Grooves
 	Drift    float64 // how far the timing wanders, in steps (0 to 0.3): a smooth curve, not jitter
+	Mutate   float64 // 0 to 1: how much the pattern changes from pass to pass (hits dropped, rests that become hits; a hit with ! after it stays)
+	Seed     int     // the seed of the changes: the same seed, the same changes
+	Freeze   bool    // keep the pattern of the pass it is on
 	pattern  atomic.Pointer[patterns]
 	lanes    atomic.Pointer[StepLanes]
 	song     *Song
 
 	// on the audio thread: the pattern playing, where it starts, the next hit
-	playing *Pattern
-	origin  float64 // the tick its first step starts on
-	cycle   int64   // the loop of the pattern the next hit is in
-	hit     int     // the next hit in it
-	div     int     // the division it counts in
-	last    int64   // the tick timestamp of the last control tick
-	started bool
+	playing  *Pattern
+	origin   float64  // the tick its first step starts on
+	cycle    int64    // the loop of the pattern the next hit is in
+	hit      int      // the next hit in it
+	div      int      // the division it counts in
+	cur      *Pattern // the pattern of the pass it is on (changed by mutate, or made by functions that go on with the passes), and what it was made from
+	curFrom  *Pattern
+	curPass  int64
+	curMut   float64
+	curSeed  int
+	frozen   bool
+	frozenAt int64
+	last     int64 // the tick timestamp of the last control tick
+	started  bool
 }
 
 // NewClock returns a clock of sixteenths, straight, every step a hit
@@ -69,6 +80,7 @@ func NewClock() *Clock {
 type Pattern struct {
 	Hits  []Hit
 	Steps float64
+	src   string // the text, when it has functions that change with every pass through the pattern (E(5,16,+1)): the pattern of a pass is made from it
 }
 
 // Hit is a hit of a pattern: where it starts and how long it lasts, in steps from the start of the
@@ -78,6 +90,7 @@ type Hit struct {
 	Pitches         []float64 // what it plays (a part's: a note, a chord)
 	Rel             []Rel     // chord notes of a part: found in the chord of the harmony when they play
 	Cond            rhythm.Cond
+	Lock            bool    // mutate leaves it
 	Vel, Pitch      float64 // what the lanes and the groove made of this hit (when it is played): a factor on the velocity (0: none), semitones
 }
 
@@ -86,7 +99,16 @@ type Hit struct {
 // 2 steps (*1.5 too); ? after a hit or a group: its hits by chance, 50% (?25: 25%). Spaces, bar
 // lines (|) and new lines are left out
 func ParsePattern(text string) (Pattern, error) {
-	text, err := rhythm.Expand(text)
+	p, err := parsePatternPass(text, 0)
+	if err == nil && rhythm.IsLive(text) {
+		p.src = text
+	}
+	return p, err
+}
+
+// parsePatternPass reads a pattern as it is on a pass through it: the rhythm functions that go on with the passes are expanded for that pass
+func parsePatternPass(text string, pass int64) (Pattern, error) {
+	text, err := rhythm.ExpandPass(text, pass)
 	if err != nil {
 		return Pattern{}, err
 	}
@@ -101,7 +123,7 @@ func ParsePattern(text string) (Pattern, error) {
 	var p Pattern
 	for _, e := range els {
 		for _, h := range e.hits {
-			p.Hits = append(p.Hits, Hit{At: p.Steps + h.At*e.len, Len: h.Len * e.len, Chance: h.Chance, Cond: h.Cond})
+			p.Hits = append(p.Hits, Hit{At: p.Steps + h.At*e.len, Len: h.Len * e.len, Chance: h.Chance, Cond: h.Cond, Lock: h.Lock})
 		}
 		p.Steps += e.len
 	}
@@ -200,7 +222,7 @@ func (pr *patternReader) element() (element, error) {
 		at := 0.0
 		for _, in := range inner {
 			for _, h := range in.hits {
-				e.hits = append(e.hits, Hit{At: (at + h.At*in.len) / total, Len: h.Len * in.len / total, Chance: h.Chance, Cond: h.Cond})
+				e.hits = append(e.hits, Hit{At: (at + h.At*in.len) / total, Len: h.Len * in.len / total, Chance: h.Chance, Cond: h.Cond, Lock: h.Lock})
 			}
 			at += in.len
 		}
@@ -229,6 +251,11 @@ func (pr *patternReader) element() (element, error) {
 			}
 			for k := range e.hits {
 				e.hits[k].Chance *= chance
+			}
+		case '!':
+			pr.i++
+			for k := range e.hits {
+				e.hits[k].Lock = true
 			}
 		case '%':
 			pr.i++
@@ -280,6 +307,9 @@ func (c *Clock) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("chance", func(f float64) { c.Chance = math.Max(0, math.Min(f, 1)) })
 	msg.IfIntVal("groove", func(g int) { c.Groove = max(0, min(g, len(rhythm.Grooves)-1)) })
 	msg.IfFltVal("drift", func(f float64) { c.Drift = math.Max(0, math.Min(f, 0.3)) })
+	msg.IfFltVal("mutate", func(f float64) { c.Mutate = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("seed", func(f float64) { c.Seed = int(math.Max(0, math.Min(f, 999))) })
+	msg.IfBoolVal("freeze", func(b bool) { c.Freeze = b })
 }
 
 func (c *Clock) Receive(v any, _ int) {
@@ -388,9 +418,77 @@ func (c *Clock) feel(p *Pattern, hi int, cycle int64) (shift, vel, prob, length,
 	return
 }
 
+// pat is the pattern of the pass it is on: the one playing, or what its functions and the mutations make of it for this pass (the same pass the same pattern; frozen: the pass
+// it was on when it was frozen)
+func (c *Clock) pat() *Pattern {
+	p := c.playing
+	pass := c.cycle
+	if c.Freeze {
+		if !c.frozen {
+			c.frozen, c.frozenAt = true, pass
+		}
+		pass = c.frozenAt
+	} else {
+		c.frozen = false
+	}
+	if p.src == "" && c.Mutate <= 0 {
+		return p
+	}
+	if c.cur != nil && c.curFrom == p && c.curPass == pass && c.curMut == c.Mutate && c.curSeed == c.Seed {
+		return c.cur
+	}
+	np := p
+	if p.src != "" {
+		if x, err := parsePatternPass(p.src, pass); err == nil && len(x.Hits) > 0 {
+			np = &x
+		}
+	}
+	if c.Mutate > 0 {
+		np = mutatePattern(np, c.Mutate, c.Seed, pass)
+	}
+	c.cur, c.curFrom, c.curPass, c.curMut, c.curSeed = np, p, pass, c.Mutate, c.Seed
+	return np
+}
+
+// mutatePattern changes a pattern for a pass: every step may lose its hits, and a rest may become a hit (not in a part: it has no note to put there); the same seed and pass make the
+// same changes. A hit with a ! after it stays. At least one hit is left
+func mutatePattern(p *Pattern, amount float64, seed int, pass int64) *Pattern {
+	n := int(math.Floor(p.Steps + 1e-9))
+	if n < 1 || len(p.Hits) == 0 {
+		return p
+	}
+	rng := rand.New(rand.NewPCG(uint64(seed)*7919+uint64(pass)*104729+1, 17))
+	prob := math.Min(1, amount) * 0.25
+	canAdd := p.Hits[0].Pitches == nil && len(p.Hits[0].Rel) == 0
+	by := make([][]Hit, n)
+	for _, h := range p.Hits {
+		by[min(n-1, int(math.Floor(h.At+1e-9)))] = append(by[min(n-1, int(math.Floor(h.At+1e-9)))], h)
+	}
+	out := &Pattern{Steps: p.Steps}
+	for s := range n {
+		hs := by[s]
+		switch {
+		case len(hs) > 0:
+			locked := false
+			for _, h := range hs {
+				locked = locked || h.Lock
+			}
+			if locked || rng.Float64() >= prob {
+				out.Hits = append(out.Hits, hs...)
+			}
+		case canAdd && rng.Float64() < prob*0.6:
+			out.Hits = append(out.Hits, Hit{At: float64(s), Len: 1, Chance: 1})
+		}
+	}
+	if len(out.Hits) == 0 {
+		out.Hits = []Hit{p.Hits[0]}
+	}
+	return out
+}
+
 // hitTick is the tick of the next hit
 func (c *Clock) hitTick() float64 {
-	p := c.playing
+	p := c.pat()
 	shift, _, _, _, _ := c.feel(p, c.hit, c.cycle)
 	return c.tickAt(math.Max(0, float64(c.cycle)*p.Steps+p.Hits[c.hit].At+shift))
 }
@@ -407,7 +505,7 @@ func (c *Clock) inFill(tick psalm.CtrlTick) bool {
 
 // advance moves on to the hit after the next
 func (c *Clock) advance() {
-	if c.hit++; c.hit >= len(c.playing.Hits) {
+	if c.hit++; c.hit >= len(c.pat().Hits) {
 		c.hit, c.cycle = 0, c.cycle+1
 	}
 }
@@ -494,8 +592,9 @@ func (c *Clock) play(tick psalm.CtrlTick, hit func(h Hit, step int64, seconds fl
 	l := c.stepTicks()
 	stepSeconds := l * 60 / (c.BPM() * float64(c.Config().PPQ))
 	for at := c.hitTick(); at <= t+1e-9; at = c.hitTick() {
-		h, cycle := p.Hits[c.hit], c.cycle
-		_, vel, prob, length, pitch := c.feel(p, c.hit, cycle)
+		pt := c.pat()
+		h, cycle := pt.Hits[c.hit], c.cycle
+		_, vel, prob, length, pitch := c.feel(pt, c.hit, cycle)
 		c.advance()
 		if at < t-1 { // missed (the tempo jumped): no burst of old hits
 			continue
@@ -524,6 +623,9 @@ func (c *Clock) Describe() params.Set {
 		params.K("Clock", "chance", 0, 1, c.Chance),
 		params.C("Clock", "groove", rhythm.GrooveNames(), c.Groove),
 		params.K("Clock", "drift", 0, 0.3, c.Drift),
+		params.K("Clock", "mutate", 0, 1, c.Mutate),
+		params.K("Clock", "seed", 0, 999, float64(c.Seed), params.Step(1)),
+		params.S("Clock", "freeze", c.Freeze),
 	}}
 }
 

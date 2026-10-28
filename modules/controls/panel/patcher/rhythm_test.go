@@ -171,3 +171,54 @@ func TestClockDrift(t *testing.T) {
 		t.Errorf("only %d steps drifted: %v", off, a.at)
 	}
 }
+
+// patterns that evolve: a rotation that goes on with the passes, mutations that leave what is locked, a frozen pattern
+func TestClockEvolves(t *testing.T) {
+	// E(3,8,+1) over 4 passes of 8 quarter steps: each pass the hits are a step later
+	tr := clockPlays(t, "E(3,8,+1)", 0.5, 8*4*0.5-0.1)
+	var passes [4][]int
+	for _, at := range tr.at {
+		step := int(math.Round(float64(at) / 22050))
+		passes[step/8] = append(passes[step/8], step%8)
+	}
+	for i := range 4 {
+		var want []int
+		for s, on := range rhythm.Euclid(3, 8, i) {
+			if on {
+				want = append(want, s)
+			}
+		}
+		if !slices.Equal(passes[i], want) {
+			t.Errorf("pass %d: hits on %v, want %v", i, passes[i], want)
+		}
+	}
+	// mutate: a locked hit never goes; the others change from pass to pass, the same every run
+	run := func() []int64 { return clockMutate(t, "x! x x x x x x x", 1, 7, false, 8*8*0.5-0.1).at }
+	a, b := run(), run()
+	if !slices.Equal(a, b) {
+		t.Error("mutations are not repeatable")
+	}
+	hitsOn := map[int]int{}
+	for _, at := range a {
+		step := int(math.Round(float64(at) / 22050))
+		hitsOn[step%8]++
+	}
+	if hitsOn[0] != 8 {
+		t.Errorf("the locked hit played %d of 8 passes", hitsOn[0])
+	}
+	if len(a) >= 8*8 || len(a) < 8 {
+		t.Errorf("%d hits in 8 passes of 8: some should be dropped", len(a))
+	}
+	// frozen: every pass the same
+	f := clockMutate(t, "x x x x x x x x", 1, 3, true, 8*4*0.5-0.1)
+	per := map[int][]int{}
+	for _, at := range f.at {
+		step := int(math.Round(float64(at) / 22050))
+		per[step/8] = append(per[step/8], step%8)
+	}
+	for i := 1; i < 4; i++ {
+		if !slices.Equal(per[i], per[0]) {
+			t.Errorf("frozen: pass %d %v is not pass 0 %v", i, per[i], per[0])
+		}
+	}
+}

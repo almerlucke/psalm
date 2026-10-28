@@ -10,7 +10,9 @@
 //     and a condition (`%2/4`: only the second time through in every four); its lanes (open its window: bars for the chance, velocity, timing, length and pitch of each step)
 //     are of 3, 4 and 5 steps against a pattern of 16, so the figure never repeats the same way twice (polymeter)
 //   - the drums are clocks with patterns that are made, not written: a euclidean kick `E(4,16)`, a snare with a fill that is only played in the last bar of a section
-//     (`x%fill`), hats that are a Markov chain on an example `M(...)` with a groove (mpc 58) and a drift, an open hat of `E(5,16,2)` on `%2/4`, a clap of the cellular automaton rule 30
+//     (`x%fill`), hats that are a Markov chain on an example `M(...)` with a groove (mpc 58), a drift and a little mutation, an open hat of `E(5,16,2+1)` (turning a step every
+//     pass) on `%2/4`, a clap of the cellular automaton rule 30 (a generation more every pass: `CA(30,16,+)`)
+//   - it is live: the chord model draws new chords for the chorus every time the song leaves it, and writes them to the harmony
 //   - the lead is in the piano roll: a clip for every section (the melody made with a grammar, `S -> A A' B A~`, over the chords of the section), and a second roll with a
 //     counter-line under it (no parallel fifths or octaves, against the melody). The rolls have a clip for the Verse and the Chorus (choose the section above the roll; the loop has none). Open the roll's Melody panel to make others: Generate, Variations, Every section, a
 //     grammar or an L-system, Counter-line, Invert, Reverse, Groove
@@ -117,6 +119,8 @@ func buildPatch(pt *patcher.Patcher) (ids, error) {
 	if m, ok := pt.Module(model).(*chordmodel.Module); ok {
 		m.SetKey(2, 1) // D minor
 		m.Preset("minor")
+		m.SetTarget("Chorus")
+		m.SetLive(true, 0) // live: every time the song leaves the chorus the chords of the chorus are drawn again, so the next time through has others
 	}
 	out.harmony = harm
 
@@ -162,9 +166,11 @@ func buildPatch(pt *patcher.Patcher) (ids, error) {
 	// the hats: a Markov chain on an example, a groove and a smooth drift; a lane of 5 steps for the chance and one of 3 for the velocity
 	drum("hat", 42, 570, "M(x . x x . x . x x . x . x x . x;16;7)", "prob: 100 70 100 60 90\nvel: 100 55 80", map[string]float64{"division": 3, "groove": mpc58, "drift": 0.06})
 	// the open hat: 5 over 16, turned 2 steps, on the second time through in every four
-	drum("open", 46, 620, "Intro: .\nVerse: .\nE(5,16,2)%2/4", "", map[string]float64{"division": 3})
+	drum("open", 46, 620, "Intro: .\nVerse: .\nE(5,16,2+1)%2/4", "", map[string]float64{"division": 3})
 	// a clap of the cellular automaton (rule 30), the chorus only
-	drum("clap", 39, 670, "Intro: .\nVerse: .\nOutro: .\nCA(30,16,5)", "", map[string]float64{"division": 3, "chance": 0.8})
+	drum("clap", 39, 670, "Intro: .\nVerse: .\nOutro: .\nCA(30,16,+)", "", map[string]float64{"division": 3, "chance": 0.8})
+	// and the hats mutate a little: hits drop and come back, differently every pass, the same every run for a seed
+	pt.SettingsOf(out.drums[2]).Apply(map[string]float64{"mutate": 0.35, "seed": 5})
 
 	// the lead: a clip for every section, made with a grammar over the chords of the section; a counter-line under it in a second roll
 	roll := must(pt.Add("noteroll", "", 260, 720))

@@ -32,6 +32,13 @@ func ChordModelKind() Kind {
 					return out
 				},
 				Bake: func(section, chords string) error { return bakeChords(m.Env(), section, chords) },
+				Where: func(tick psalm.CtrlTick) (string, bool) {
+					pos, ok := SongOf(m.Env()).At(tick, m.Config().PPQ)
+					if !ok || pos.Ended {
+						return "", false
+					}
+					return pos.Section.Name, true
+				},
 			})
 			return &Made{Module: m,
 				State:    func() (string, error) { return m.StateText(), nil },

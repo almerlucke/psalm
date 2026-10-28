@@ -162,7 +162,25 @@ func Steps(r []bool) string {
 
 // Expand replaces the rhythm functions in the text of a pattern by their steps: E(5,16) E(5,16,2) a euclidean rhythm (turned 2), A(3+3+2) an additive rhythm, CA(30,16) CA(30,16,4)
 // CA(30,16,4,11) a cellular automaton (rule, cells, the generation, a seed), M(x . x x . x . .;16;3) a rhythm like the example (a Markov chain on its steps; the steps to make, a seed). Text without them is as it was
-func Expand(text string) (string, error) {
+func Expand(text string) (string, error) { return ExpandPass(text, 0) }
+
+// IsLive says the text has a function that changes from one pass through the pattern to the next: an argument `+1` (a rotation or a generation that goes on by that much every
+// pass: E(5,16,+1), CA(30,16,+1)) or `/4` on the seed of a Markov rhythm (a new one every 4 passes: M(x . x x;16;3/4))
+func IsLive(text string) bool {
+	for i := 0; i < len(text); i++ {
+		for _, n := range []string{"CA(", "E(", "M("} {
+			if strings.HasPrefix(text[i:], n) && (i == 0 || !isLetter(text[i-1])) {
+				if end := strings.IndexByte(text[i:], ')'); end > 0 && strings.ContainsAny(text[i:i+end], "+/") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// ExpandPass is Expand for a pass through the pattern (counting from 0): the functions that go on every pass give another rhythm each time
+func ExpandPass(text string, pass int64) (string, error) {
 	var out strings.Builder
 	for i := 0; i < len(text); {
 		name := ""
@@ -182,7 +200,7 @@ func Expand(text string) (string, error) {
 			return "", fmt.Errorf("%s without its )", name)
 		}
 		args := strings.Split(text[i+len(name):i+end], ",")
-		r, err := call(strings.TrimSuffix(name, "("), args)
+		r, err := call(strings.TrimSuffix(name, "("), args, pass)
 		if err != nil {
 			return "", err
 		}
@@ -192,18 +210,48 @@ func Expand(text string) (string, error) {
 	return out.String(), nil
 }
 
+// intArg reads a whole number that may go on with the passes: 3, +1 (one more every pass, from 0), 2+1 (from 2), 3/4 (3, one more every 4 passes)
+func intArg(s string, pass int64) (int, error) {
+	s = strings.TrimSpace(s)
+	if i := strings.Index(s, "+"); i >= 0 {
+		a, b := s[:i], s[i+1:]
+		base, step := 0, 1
+		var err error
+		if a != "" {
+			if base, err = strconv.Atoi(a); err != nil {
+				return 0, err
+			}
+		}
+		if b != "" {
+			if step, err = strconv.Atoi(b); err != nil {
+				return 0, err
+			}
+		}
+		return base + step*int(pass), nil
+	}
+	if a, b, ok := strings.Cut(s, "/"); ok {
+		base, err := strconv.Atoi(a)
+		every, err2 := strconv.Atoi(b)
+		if err != nil || err2 != nil || every < 1 {
+			return 0, fmt.Errorf("not a number")
+		}
+		return base + int(pass)/every, nil
+	}
+	return strconv.Atoi(s)
+}
+
 func isLetter(b byte) bool { return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' }
 
-func call(name string, args []string) ([]bool, error) {
+func call(name string, args []string, pass int64) ([]bool, error) {
 	nums := func(min, max int) ([]int, error) {
 		if len(args) < min || len(args) > max {
 			return nil, fmt.Errorf("%s(): %d to %d numbers", name, min, max)
 		}
 		out := make([]int, len(args))
 		for i, a := range args {
-			n, err := strconv.Atoi(strings.TrimSpace(a))
+			n, err := intArg(a, pass)
 			if err != nil {
-				return nil, fmt.Errorf("%s(%s): %q is not a whole number", name, strings.Join(args, ","), a)
+				return nil, fmt.Errorf("%s(%s): %q is not a whole number (or 2+1: 2 and one more every pass)", name, strings.Join(args, ","), a)
 			}
 			out[i] = n
 		}
@@ -214,14 +262,14 @@ func call(name string, args []string) ([]bool, error) {
 		parts := strings.Split(strings.Join(args, ","), ";")
 		n, seed := 16, 1
 		if len(parts) > 1 {
-			v, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+			v, err := intArg(parts[1], 0)
 			if err != nil {
 				return nil, fmt.Errorf("M(): %q is not a number of steps", parts[1])
 			}
 			n = v
 		}
 		if len(parts) > 2 {
-			v, err := strconv.Atoi(strings.TrimSpace(parts[2]))
+			v, err := intArg(parts[2], pass)
 			if err != nil {
 				return nil, fmt.Errorf("M(): %q is not a seed", parts[2])
 			}

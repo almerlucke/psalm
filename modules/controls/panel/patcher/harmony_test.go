@@ -3,7 +3,9 @@ package patcher_test
 import (
 	"math"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
@@ -373,4 +375,37 @@ func TestChordModelKept(t *testing.T) {
 		return
 	}
 	t.Error("the chord model is gone")
+}
+
+// live: when the song leaves the section the chords are written to, the progression is drawn again and written into the harmony: the next time through has other chords; the
+// chords locked stay
+func TestChordModelLive(t *testing.T) {
+	r := newHarmonyRig(t, "A 2, B 2, C 2", "A: C F G C\nB: Am")
+	id := r.add("chordmodel")
+	m := r.pt.Module(id).(*chordmodel.Module)
+	model, _ := chordtools.Preset("pop")
+	m.SetStrip([]chordtools.Slot{{State: model.Index("I"), Bars: 1, Lock: true}, {State: model.Index("IV"), Bars: 1}, {State: model.Index("V"), Bars: 1}, {State: model.Index("I"), Bars: 1}})
+	m.SetTarget("A")
+	m.SetLive(true, 0)
+	before := ""
+	for _, n := range r.pt.Nodes() {
+		if n.Kind == "harmony" {
+			before = r.pt.Texts(n.ID)[0].Value
+		}
+	}
+	r.run(8.5) // A (2 bars of 2 s), B: leaving A is the first redraw
+	for i := 0; i < 200 && m.Drawn() < 1; i++ {
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(50 * time.Millisecond) // written after it is drawn
+	after := r.pt.Texts(r.harmony)[0].Value
+	if after == before || !strings.Contains(after, "B: Am") {
+		t.Errorf("the harmony was %q, is %q: the line of A should be new, the line of B as it was", before, after)
+	}
+	if !strings.HasPrefix(strings.TrimPrefix(after, "A: "), "C ") {
+		t.Errorf("the chord locked did not stay: %q", after)
+	}
+	if got := m.State(); !got.Live {
+		t.Error("live is not kept")
+	}
 }

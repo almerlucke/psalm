@@ -278,7 +278,7 @@ func partSequence(toks []string, i *int, inGroup bool) ([]partElement, error) {
 			}
 		default:
 			base := tok
-			if k := strings.IndexAny(tok, "*?^%"); k >= 0 {
+			if k := strings.IndexAny(tok, "*?^%!"); k >= 0 {
 				base, mods = tok[:k], tok[k:]
 			}
 			switch base {
@@ -354,7 +354,7 @@ func partModifiers(e *partElement, mods string) error {
 		mods = mods[1:]
 		j := 0
 		if op == '%' { // a condition: up to the next modifier
-			for j < len(mods) && !strings.ContainsRune("*?^%", rune(mods[j])) {
+			for j < len(mods) && !strings.ContainsRune("*?^%!", rune(mods[j])) {
 				j++
 			}
 		} else {
@@ -391,6 +391,10 @@ func partModifiers(e *partElement, mods string) error {
 			for k := range e.hits {
 				e.hits[k].Cond = cond
 			}
+		case '!':
+			for k := range e.hits {
+				e.hits[k].Lock = true
+			}
 		case '^':
 			v, err := strconv.Atoi(num)
 			if err != nil || v < 2 || v > 16 {
@@ -406,7 +410,7 @@ func partModifiers(e *partElement, mods string) error {
 			}
 			e.hits = hits
 		default:
-			return fmt.Errorf("%q after a note: *2 longer, ? by chance, ^3 a ratchet, %%2/4 on the second of every four", string(op))
+			return fmt.Errorf("%q after a note: *2 longer, ? by chance, ! stays when it mutates, ^3 a ratchet, %%2/4 on the second of every four", string(op))
 		}
 	}
 	return nil

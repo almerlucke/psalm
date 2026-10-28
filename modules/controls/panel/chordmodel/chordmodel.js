@@ -47,7 +47,11 @@ psalm.register("chordmodel", (p, api) => {
 	target.addEventListener("change", () => send({set: {target: target.value}}));
 	asSel.addEventListener("change", () => send({set: {as: asSel.value}}));
 	bakeB.addEventListener("click", () => send({bake: true}));
-	const actions = mk("div", {className: "cm-bar"}, genB, rerollB, playB, mk("label", {}, "Bars ", barsIn));
+	const liveBox = mk("input", {type: "checkbox", title: "while the song plays: when it leaves the section the chords are written to, draw the chords not locked again and write them to the harmony, so the next time through that section has other chords"});
+	const everyIn = mk("input", {type: "number", min: 0, max: 128, step: 1, title: "without a song: new chords every so many bars (0: the length of the progression)"});
+	liveBox.addEventListener("change", () => send({set: {live: liveBox.checked}}));
+	everyIn.addEventListener("change", () => send({set: {every: Number(everyIn.value) || 0}}));
+	const actions = mk("div", {className: "cm-bar"}, genB, rerollB, playB, mk("label", {}, "Bars ", barsIn), mk("label", {title: liveBox.title}, liveBox, " Live"), mk("label", {}, "every ", everyIn, " bars"));
 	const bake = mk("div", {className: "cm-bar"}, bakeB, mk("label", {}, "to ", target), asSel);
 
 	const BARS = [0.5, 1, 2, 4];
@@ -194,7 +198,7 @@ psalm.register("chordmodel", (p, api) => {
 			fill(scale, s.scales.map((k, i) => [i, k]), s.scale);
 			fill(endSel, [[-1, "(anything)"]].concat(s.names.map((n, i) => [i, `${n}  ${s.model.states[i]}`])), s.model.end);
 			memory.value = s.model.memory;
-			barsIn.value = s.bars; asSel.value = s.as; rate.value = s.rate;
+			barsIn.value = s.bars; asSel.value = s.as; rate.value = s.rate; liveBox.checked = !!s.live; everyIn.value = s.every || 0;
 			fill(target, [["", "the whole harmony"]].concat(s.sections.map(x => [x.name, x.name])), s.target);
 			textEl.textContent = s.text || " ";
 			status.textContent = s.error; status.classList.toggle("bad", !!s.error);

@@ -48,6 +48,8 @@ type Section struct {
 type Link struct {
 	Sections func() []Section
 	Bake     func(section, chords string) error
+	// Where is the section of the song at a tick (false: no song, or it is over); Live uses it to see the song leave a section
+	Where func(tick psalm.CtrlTick) (section string, ok bool)
 }
 
 // State is everything the editor edits
@@ -61,6 +63,8 @@ type State struct {
 	Target string    `json:"target"` // the section the chords are written to
 	As     string    `json:"as"`     // "symbols" or "numerals"
 	Rate   float64   `json:"rate"`   // how much a progression taught counts
+	Live   bool      `json:"live"`   // draw the others again (the chords not locked) and write them to the harmony when the song leaves the section it writes to (when the song has none: every Every bars)
+	Every  float64   `json:"every"`  // the bars between two new progressions without a song (0: the length of the progression)
 	Preset string    `json:"preset"`
 }
 
@@ -80,7 +84,14 @@ type Module struct {
 	started bool
 	origin  int64
 	last    int
-	prev    []float64 // the voicing of the chord before, for the voice leading
+	liveIn  string // live: the section the song was in at the last tick, and whether it was in one
+	liveHas bool
+	liveBar int64
+	liveSet bool
+	redraws chan struct{} // live: a progression is wanted; a goroutine makes it (never on the audio thread)
+	worker  sync.Once
+	drawn   atomic.Int64 // how many progressions live has drawn
+	prev    []float64    // the voicing of the chord before, for the voice leading
 }
 
 // New returns a module with the model of the pop preset in C major and a progression of eight bars
@@ -214,6 +225,73 @@ func (m *Module) Bake() {
 	m.fail(l.Bake(st.Target, st.Text()))
 }
 
+// live asks for a new progression when the song leaves the section the chords are written to (every section when they are written to the whole harmony), and without a song every
+// so many bars: the progression is drawn again (the chords locked stay) and written into the harmony, so the next time through the section has other chords
+func (m *Module) live(tick psalm.CtrlTick) {
+	st := m.st.Load()
+	if !st.Live {
+		m.liveSet = false
+		return
+	}
+	l := m.link.Load()
+	section, has := "", false
+	if l != nil && l.Where != nil {
+		section, has = l.Where(tick)
+	}
+	want := false
+	if has || m.liveHas {
+		if m.liveSet && (m.liveHas && (!has || section != m.liveIn)) && (st.Target == "" || st.Target == m.liveIn) {
+			want = true // the song left the section
+		}
+		m.liveIn, m.liveHas, m.liveSet = section, has, true
+	} else {
+		total := st.Every
+		if total <= 0 {
+			for _, s := range st.Strip {
+				total += s.Bars
+			}
+		}
+		if total <= 0 {
+			return
+		}
+		bar := int64(float64(tick.TickTimestamp) / float64(m.Config().PPQ) / 4 / total)
+		if m.liveSet && bar != m.liveBar {
+			want = true
+		}
+		m.liveBar, m.liveSet = bar, true
+	}
+	if !want {
+		return
+	}
+	m.worker.Do(func() {
+		m.redraws = make(chan struct{}, 1)
+		go func() {
+			for range m.redraws {
+				m.redraw()
+			}
+		}()
+	})
+	select {
+	case m.redraws <- struct{}{}:
+	default:
+	}
+}
+
+// redraw draws the progression again and writes it to the harmony (off the audio thread)
+func (m *Module) redraw() {
+	m.Reroll(m.st.Load().Seed)
+	m.drawn.Add(1)
+	m.Bake()
+}
+
+// Drawn is how many progressions live has drawn
+func (m *Module) Drawn() int64 { return m.drawn.Load() }
+
+// SetLive switches live on or off, and how many bars a progression lasts when the patch has no song (0: the length of the progression)
+func (m *Module) SetLive(on bool, every float64) {
+	m.change(func(st *State) { st.Live, st.Every = on, math.Max(0, math.Min(every, 128)) })
+}
+
 // Preview starts or stops playing the progression through the synths the notes output goes to
 func (m *Module) Preview(on bool) { m.playing.Store(on) }
 
@@ -225,6 +303,7 @@ const errNoLink = linkError("this module is not in a patch with a harmony module
 
 // CtrlTick plays the progression when the preview is on: a chord for its bars, voiced in root position from C3, the progression looping
 func (m *Module) CtrlTick(tick psalm.CtrlTick) {
+	m.live(tick)
 	if !m.playing.Load() {
 		m.started = false
 		return
@@ -328,6 +407,8 @@ func (m *Module) message(raw json.RawMessage) {
 			Target *string    `json:"target"`
 			As     *string    `json:"as"`
 			Rate   *float64   `json:"rate"`
+			Live   *bool      `json:"live"`
+			Every  *float64   `json:"every"`
 		} `json:"set"`
 		Generate *uint64 `json:"generate"`
 		Reroll   *uint64 `json:"reroll"`
@@ -367,6 +448,12 @@ func (m *Module) message(raw json.RawMessage) {
 			}
 			if s.Rate != nil {
 				st.Rate = math.Max(0.01, math.Min(*s.Rate, 2))
+			}
+			if s.Live != nil {
+				st.Live = *s.Live
+			}
+			if s.Every != nil {
+				st.Every = math.Max(0, math.Min(*s.Every, 128))
 			}
 		})
 	case msg.Generate != nil:

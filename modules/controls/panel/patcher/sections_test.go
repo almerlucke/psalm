@@ -60,7 +60,7 @@ func TestParsePart(t *testing.T) {
 	if p, _ := patcher.ParsePart(". - C3"); len(p.Hits) != 1 || p.Hits[0].Len != 1 {
 		t.Errorf("a tie after a rest holds nothing: %v", p.Hits)
 	}
-	for _, bad := range []string{"", "H9", "[C3", "C3]", "[]", "C3*", "C3?200", "C3!"} {
+	for _, bad := range []string{"", "H9", "[C3", "C3]", "[]", "C3*", "C3?200", "C3~"} {
 		if _, err := patcher.ParsePart(bad); err == nil {
 			t.Errorf("%q read", bad)
 		}

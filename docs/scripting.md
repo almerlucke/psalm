@@ -63,6 +63,9 @@ Sends a trigger on the steps of the patch's tempo.
 | groove | straight, mpc 54, mpc 58, mpc 62, shuffle, laid back, push, dilla, backbeat | straight | the feel of the steps of a bar: some later, some softer (`tools/rhythm`) |
 | pattern | text | `x` | a hit on every step |
 | drift | 0 to 0.3 | 0 | how far the timing wanders, in steps, along a smooth curve (not jitter), the same every time |
+| mutate | 0 to 1 | 0 | how much the pattern changes from pass to pass: some hits dropped, some rests become hits (at most a quarter of the steps at 1); the same seed makes the same changes |
+| seed | 0 to 999 | 0 | the seed of the mutations |
+| freeze | switch | off | keep the pattern of the pass it is on: a pattern that evolved and sounds right stays |
 | lanes | text | | a value a step, see below |
 
 The pattern loops. In it:
@@ -76,6 +79,8 @@ The pattern loops. In it:
 | `*2` after a step or group | it lasts 2 steps (`x*2`, `.*4`, `*0.5`); a note of that trigger lasts as long |
 | `?` after a hit or group | by chance, 50% (`x?25`: 25%) |
 | `%2/4` after a hit or group | a condition: only the second time through the pattern in every four (`%!2/4`: the other three); `%fill` only in the last bar of a section, `%first` only the first time through (`%!fill`, `%!first`) |
+| `!` after a hit or group | it stays when the pattern mutates (`x!`; before a `%` condition) |
+| `E(5,16,+1)` | a function that goes on with the passes through the pattern: `+1` a step more every pass (the hits turn round), `2+1` from 2; `CA(30,16,+)` a generation more every pass (the automaton runs on: a new row each time), `M(x . x x;16;3/4)` a new rhythm every 4 passes |
 | `E(5,16)` | a euclidean rhythm: 5 hits spread as evenly as they can be over 16 steps (`E(5,16,2)` turned 2 steps to the right) |
 | `A(3+3+2)` | an additive rhythm: a hit on the first step of every group |
 | `M(x . x x . x . .;16;3)` | a rhythm like the example: a Markov chain on its steps (the last two decide the next), the steps to make, a seed |

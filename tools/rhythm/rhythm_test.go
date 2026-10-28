@@ -183,3 +183,36 @@ func TestMarkovRhythm(t *testing.T) {
 		}
 	}
 }
+
+// functions that go on with the passes
+func TestLiveFunctions(t *testing.T) {
+	if IsLive("E(5,16)") || IsLive("x . x") || IsLive("CA(30,16,5)") {
+		t.Error("a still function is live")
+	}
+	for _, live := range []string{"E(5,16,+1)", "CA(30,16,+)", "M(x . x x;16;3/4)", "E(5,16,2+2)"} {
+		if !IsLive(live) {
+			t.Errorf("%s is not live", live)
+		}
+	}
+	a, _ := ExpandPass("E(3,8,+1)", 0)
+	b, _ := ExpandPass("E(3,8,+1)", 1)
+	c, _ := ExpandPass("E(3,8,+1)", 8)
+	want, _ := Expand("E(3,8,1)")
+	if a == b || a != c || b != want {
+		t.Errorf("a rotation a pass: %q %q %q (want %q for the second, the first again after 8)", a, b, c, want)
+	}
+	g0, _ := ExpandPass("CA(30,16,+)", 0)
+	g3, _ := ExpandPass("CA(30,16,+)", 3)
+	still, _ := Expand("CA(30,16,3)")
+	if g0 == g3 || g3 != still {
+		t.Errorf("a generation a pass: %q %q %q", g0, g3, still)
+	}
+	// a Markov rhythm that is new every 4 passes
+	m := func(pass int64) string { s, _ := ExpandPass("M(x . x x . x . x x . . x;16;3/4)", pass); return s }
+	if m(0) != m(3) || m(0) == m(4) || m(4) != m(7) {
+		t.Errorf("every 4 passes: %q %q %q", m(0), m(3), m(4))
+	}
+	if got, _ := ExpandPass("E(3,8,2+3)", 2); got != func() string { s, _ := Expand("E(3,8,8)"); return s }() {
+		t.Errorf("a start and a step: %q", got)
+	}
+}
