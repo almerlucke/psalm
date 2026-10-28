@@ -203,11 +203,12 @@ func (s *Script) run(fn goja.Callable, args ...goja.Value) {
 // CtrlTick starts a new script, and follows the song
 func (s *Script) CtrlTick(tick psalm.CtrlTick) {
 	s.start()
-	if tick.SampleTimestamp > s.tick.SampleTimestamp {
+	if tick.TickTimestamp < s.lastTick { // the patch started over: its samples are counted from 0 again, and the notes of the script are timed by the tick it has now
+		s.fires, s.later = s.fires[:0], s.later[:0]
 		s.tick = tick
 	}
-	if tick.TickTimestamp < s.lastTick { // the patch started over
-		s.fires, s.later = s.fires[:0], s.later[:0]
+	if tick.SampleTimestamp > s.tick.SampleTimestamp {
+		s.tick = tick
 	}
 	s.lastTick = tick.TickTimestamp
 	s.follow(tick)

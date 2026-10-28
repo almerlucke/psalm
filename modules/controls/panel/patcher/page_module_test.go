@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/midi"
@@ -177,4 +178,56 @@ func TestPageStepLanes(t *testing.T) {
 	// shortened to nothing takes the lane away
 	tb.Eval(lane("prob") + `.querySelectorAll("button")[0].click()`)
 	paneltest.Eventually(t, "the lane taken away", func() bool { return lanesText() == "vel: 100 60 80" })
+}
+
+// an engine that can choose its input device
+type inputChoice struct {
+	*psalm.Module
+	now    atomic.Pointer[string]
+	chosen chan string
+}
+
+func (f *inputChoice) InputDevices() []string {
+	return []string{"default", "headset (pulse)", "built-in (pulse)"}
+}
+func (f *inputChoice) InputDevice() string { return *f.now.Load() }
+func (f *inputChoice) SetInputDevice(n string) error {
+	f.now.Store(&n)
+	f.chosen <- n
+	return nil
+}
+
+// the device of the sound input is chosen in the window of the input module: the engine listens to it
+func TestPageInputDevice(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	src := &inputChoice{Module: psalm.NewModule(nil, []int{psalm.Stereo}), chosen: make(chan string, 4)}
+	src.SetSelf(src)
+	def := "default"
+	src.now.Store(&def)
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Audio: src}))
+	id, err := pt.Add("input", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".pt-node").length === 2`)
+	tb.Size(1300, 800)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	device := `[...S().querySelectorAll(".control")].find(c => c.textContent.startsWith("device") && !c.querySelector(".control") && c.querySelector("select"))?.querySelector("select")`
+	tb.WaitFor(`!!`+device, "the device in the settings of the input")
+	tb.Eval(`(() => { const s = ` + device + `; s.value = "2"; s.dispatchEvent(new (S().defaultView.Event)("change", {bubbles: true})); })()`)
+	select {
+	case got := <-src.chosen:
+		if got != "built-in (pulse)" {
+			t.Errorf("the engine was told %q", got)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the engine was not told")
+	}
 }

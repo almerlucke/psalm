@@ -242,3 +242,31 @@ function trigger(ev) { note(60 + song.beats * 10 + Math.round(song.beat), 0.8, 1
 		t.Errorf("notes %v, want 90 91 92 90 ... (three beats to the bar)", r.rec.pitches)
 	}
 }
+
+// a restart: the notes of a script are timed from the start again (they were timed by the last sample of the patch before it, which is minutes later: a patch that is silent for as
+// long as it had played)
+func TestScriptNotesAfterARestart(t *testing.T) {
+	r := newSongRig(t, "A 8")
+	s := r.add("script")
+	if err := r.pt.SetText(s, "code", "clock(\"1/4\")\nfunction trigger(ev) { note(60, 0.8, 1) }"); err != nil || r.pt.TextError(s, "code") != "" {
+		t.Fatal(err, r.pt.TextError(s, "code"))
+	}
+	r.connect(patcher.Cable{From: s, To: r.add("rec")})
+	r.run(6) // 12 quarters
+	n := len(r.rec.pitches)
+	if n < 10 {
+		t.Fatalf("%d notes before the restart", n)
+	}
+	r.p.Restart()
+	r.run(2.2)
+	after := r.rec.at[n:]
+	early := 0
+	for _, at := range after {
+		if at < int64(2.3*44100) {
+			early++
+		}
+	}
+	if early < 3 {
+		t.Errorf("after a restart %d notes sound within 2.3 s of it (samples %v): they are timed by the patch from before", early, after)
+	}
+}

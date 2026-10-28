@@ -95,7 +95,6 @@ func main() {
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
 	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: church, Audio: p.PatchInput(0)}), patcher.Theme(t))
-	ctl.InputSelect(p.PatchInput(0)) // the sound input to listen to: a headset, the microphone of the computer
 	ids, err := buildPatch(pt, options{just: *tuning == "just", a4: *a4, seed: feelSeed, human: *human, real: *orch && hasOrchestra(), once: *renderTo != "" || *profile})
 	if err != nil {
 		log.Fatal(err)
