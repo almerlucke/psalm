@@ -1129,3 +1129,41 @@ func TestPageNoteRollMelody(t *testing.T) {
 	paneltest.Eventually(t, "a second voice", func() bool { return len(roll.Notes()) > n0 })
 
 }
+
+// a roll whose clip was chosen on the server (a patch made with one shown, SetView) opens on it: its notes and the sections are there, and Generate fills it
+func TestPageNoteRollOpensOnItsClip(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	song, _ := pt.Add("song", "", 60, 200)
+	if err := pt.SetText(song, "sections", "Verse 2, Chorus 2"); err != nil {
+		t.Fatal(err)
+	}
+	id, err := pt.Add("noteroll", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roll := pt.Module(id).(*noteroll.Roll)
+	roll.SetClip("Chorus", []noteroll.Note{{Start: 0, Length: 1, Key: 60, Velocity: 0.8}, {Start: 2, Length: 1, Key: 64, Velocity: 0.8}}, 8)
+	roll.SetView("Chorus")
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	canvas := `S().querySelector(".noteroll canvas")`
+	tb.WaitFor(`!!`+canvas+` && JSON.stringify(`+canvas+`.rollState().view) === '"Chorus"' && `+canvas+`.rollState().notes === 2 && `+canvas+`.rollState().sections === 2`, "the clip chosen on the server, with its notes and the sections")
+	if !tb.Eval(`!!S().querySelector(".nr-view")`).(bool) {
+		t.Error("no selector of the sections")
+	}
+	// the melody panel is open on an empty clip, and Generate puts notes in
+	tb.Eval(`S().querySelector(".noteroll select.nr-view, .nr-view select").value = "Verse"; S().querySelector(".nr-view select").dispatchEvent(new (S().defaultView.Event)("change"))`)
+	tb.WaitFor(`JSON.stringify(`+canvas+`.rollState().view) === '"Verse"'`, "the verse")
+	tb.WaitFor(`S().querySelector(".nr-gen").open`, "the melody generator open on an empty clip")
+	tb.Eval(`S().querySelector(".nr-gen button[title^='make a melody']").click()`)
+	paneltest.Eventually(t, "a melody in the verse", func() bool { c, ok := roll.Clip("Verse"); return ok && len(c.Notes) > 3 })
+}

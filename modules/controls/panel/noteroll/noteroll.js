@@ -37,6 +37,7 @@ psalm.register("noteroll", (p, api) => {
 	let pxb = 0, x0 = 0; // pixels a beat, the first beat shown
 	let cursor = null; // where paste goes (beats)
 	let region = null; // [a, b] in beats
+	let askedView = null; // the clip we asked for, until the server shows it
 	let viewName = "", sections = [], have = [""], playing = "", chords = [], waitView = false; // the clip edited, the sections of the song, the clips there are, the clip playing, the chords over it
 	let grooves = [], scaleInfo = null, scaleLock = false, genId = 0, genPending = null, genSeed = Math.floor(Math.random() * 100000); // the scale of the harmony; keys held to it; the melodies asked for
 	let first = true, showKeys = null; // the key to have in the middle of the roll, until it has a size
@@ -150,7 +151,7 @@ psalm.register("noteroll", (p, api) => {
 	const candEl = mk("div", {className: "nr-cands"});
 	const lockBox = mk("input", {type: "checkbox", title: "the notes you put and move keep to the scale"});
 	lockBox.addEventListener("change", () => { scaleLock = lockBox.checked; });
-	const panelEl = mk("details", {className: "nr-gen"}, mk("summary", {textContent: "Melody"}),
+	const panelEl = mk("details", {className: "nr-gen"}, mk("summary", {textContent: "Melody generator (make notes for this clip)"}),
 		mk("div", {className: "nr-bar"}, pick("Form", "form", [["free", "free"], ["AA'", "a period (A A')"], ["ABAB", "A B A B"], ["AABA", "A A' B A"], ["call", "question and answer"], ["grammar", "a grammar or L-system…"]], "how the phrases repeat and vary"),
 			pick("Contour", "contour", [["free", "free"], ["arch", "arch"], ["rise", "rise"], ["fall", "fall"], ["wave", "wave"]], "the shape of the line over a phrase"),
 			pick("Rhythm", "rhythm", [["mixed", "mixed"], ["even", "even"], ["syncopated", "syncopated"], ["dotted", "dotted"], ["triplet", "triplets"]], "the rhythm of the notes"),
@@ -170,7 +171,7 @@ psalm.register("noteroll", (p, api) => {
 	panelEl.querySelector("select").addEventListener("change", showGram);
 	panelEl.querySelector(".nr-bar").after(gramRow);
 	showGram();
-	bar2.after(panelEl);
+	canvas.after(panelEl); // under the roll, so the notes are the first thing to see
 
 	// the scale the melody and the keys lit are in: its own, or the harmony's
 	const scalePcs = () => gp.mode ? MODES[gp.mode].map(x => (x + gp.root) % 12) : scaleInfo ? scaleInfo.pcs : null;
@@ -246,7 +247,7 @@ psalm.register("noteroll", (p, api) => {
 	// --- the clips: one for every section of a song ---
 	const setView = name => {
 		if (name === viewName) return;
-		viewName = name; waitView = true;
+		viewName = name; waitView = true; askedView = name;
 		notes = []; sel.clear(); region = null; cursor = null; undo.length = 0; redo.length = 0; base = key(); was = state(); updateButtons();
 		api.message(p.name, {view: name});
 	};
@@ -715,16 +716,21 @@ psalm.register("noteroll", (p, api) => {
 		show() { fit(); },
 		update(st) {
 			pos = st.pos; bps = st.bps; at = performance.now();
-			if (st.view !== viewName) return; // the answer to a clip we have left
+			if (st.view !== viewName) {
+				if (askedView !== null) return; // the answer to a clip we have left
+				viewName = st.view; waitView = true; // the server shows another clip (a patch that was made with one chosen, a patch loaded): follow it
+			} else askedView = null;
 			sections = st.sections || []; have = st.clips || [""]; playing = st.playing; chords = st.chords || []; scaleInfo = st.scale || null;
 			if (st.grooves && st.grooves.length > grooves.filter(x => !x.name.startsWith("mine")).length) { grooves = [...st.grooves, ...grooves.filter(x => x.name.startsWith("mine"))]; fillGrooves(); }
 			showOptions();
 			if (first) { // the keys shown are where the notes are (once the roll has its size: the first draw)
 				first = false;
+				if (!st.notes.length) panelEl.open = true;
 				if (st.notes.length) { const ks = st.notes.map(n => n[2]); showKeys = Math.floor((Math.min(...ks) + Math.max(...ks)) / 2); }
 			}
 			if (waitView) { // the clip we asked for: its notes are ours
 				waitView = false; hold = 0;
+				if (!st.notes.length) panelEl.open = true; // an empty clip: the way to fill it is in view
 				notes = fromArrays(st.notes); length = st.length; lenIn.value = length; sel.clear(); base = key(); was = state(); undo.length = 0; redo.length = 0; fit(); updateButtons();
 				return;
 			}
