@@ -173,6 +173,11 @@ func (m *Module) SetStrip(slots []cm.Slot) {
 	m.change(func(st *State) { st.Strip = slices.Clone(slots) })
 }
 
+// SetKey sets the key (an index of Keys) and the scale (an index of Scales) the chords are put in
+func (m *Module) SetKey(key, scale int) {
+	m.change(func(st *State) { st.Key, st.Scale = max(0, min(key, len(Keys)-1)), max(0, min(scale, len(Scales)-1)) })
+}
+
 // SetTarget sets the section the progression is written to (Bake)
 func (m *Module) SetTarget(section string) { m.change(func(st *State) { st.Target = section }) }
 
