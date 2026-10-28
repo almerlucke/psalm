@@ -4,8 +4,11 @@ package audioin
 
 import (
 	"math"
+	"slices"
+	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/audio"
 	"github.com/almerlucke/psalm/blocks/mix"
 	"github.com/almerlucke/psalm/params"
 )
@@ -34,6 +37,8 @@ type Input struct {
 	cfg  Config
 	src  psalm.Modular
 	gain mix.Smoother
+	sel  audio.InputSelector      // when the engine can choose the device it listens to
+	devs atomic.Pointer[[]string] // the devices as the settings offered them (the message of the choice is an index in them: asking the engine takes its time, and the module takes its messages on the audio thread)
 }
 
 // New creates an input that reads src
@@ -45,7 +50,44 @@ func New(src psalm.Modular, cfg Config) *Input {
 		gain:   mix.NewSmoother(db(cfg.Gain), mix.SmoothMs, psalm.SampleRate()),
 	}
 	in.SetSelf(in)
+	if sel, ok := src.(audio.InputSelector); ok {
+		in.sel = sel
+	}
 	return in
+}
+
+// Devices are the input devices to choose from (none: the engine has no choice), "default" first
+func (in *Input) Devices() []string {
+	if in.sel == nil {
+		return nil
+	}
+	return in.sel.InputDevices()
+}
+
+// Device is the device listened to ("" when the engine has no choice)
+func (in *Input) Device() string {
+	if in.sel == nil {
+		return ""
+	}
+	return in.sel.InputDevice()
+}
+
+// SetDevice listens to another device: the engine opens its stream again, which waits for the audio callback to finish, so it is done on a goroutine of its own (the module takes its
+// messages on the audio thread)
+func (in *Input) SetDevice(name string) {
+	if in.sel != nil && name != "" && name != in.sel.InputDevice() {
+		go func() { _ = in.sel.SetInputDevice(name) }()
+	}
+}
+
+// Describe describes the settings of the input: its gain and mono, and with an engine that has a choice the device to listen to
+func (in *Input) Describe() params.Set {
+	set := Describe(in.cfg)
+	if devs := in.Devices(); len(devs) > 1 {
+		in.devs.Store(&devs)
+		set.Params = append([]params.Param{params.C("Input", "device", devs, max(0, slices.Index(devs, in.Device())))}, set.Params...)
+	}
+	return set
 }
 
 func db(x float64) float64 { return math.Pow(10, math.Max(-60, math.Min(x, 24))/20) }
@@ -65,6 +107,11 @@ func (in *Input) Receive(value any, _ int) {
 func (in *Input) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("gain", in.SetGain)
 	msg.IfFltVal("mono", func(v float64) { in.SetMono(v >= 0.5) })
+	msg.IfIntVal("device", func(i int) {
+		if devs := in.devs.Load(); devs != nil && i >= 0 && i < len(*devs) {
+			in.SetDevice((*devs)[i])
+		}
+	})
 }
 
 func (in *Input) Synthesize() {

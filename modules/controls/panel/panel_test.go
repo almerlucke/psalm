@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/almerlucke/psalm"
 )
@@ -228,5 +229,48 @@ func TestPlace(t *testing.T) {
 	tk.tick(1)
 	if len(rec.got) == n {
 		t.Error("a control moved after being placed should send")
+	}
+}
+
+// the input device of an engine that can choose: a select of the devices, the one in use shown, the choice passed to the engine (off the audio thread)
+type fakeInputs struct {
+	devices []string
+	now     string
+	chosen  chan string
+}
+
+func (f *fakeInputs) InputDevices() []string { return f.devices }
+func (f *fakeInputs) InputDevice() string    { return f.now }
+func (f *fakeInputs) SetInputDevice(name string) error {
+	f.now = name
+	f.chosen <- name
+	return nil
+}
+
+func TestInputSelect(t *testing.T) {
+	pn, tk := newPanel()
+	f := &fakeInputs{devices: []string{"default", "headset", "built-in"}, now: "headset", chosen: make(chan string, 1)}
+	sel := pn.InputSelect(f)
+	if sel == nil || sel.Value() != 1 {
+		t.Fatalf("the select shows the device in use: %v", sel)
+	}
+	tk.tick(1)
+	select {
+	case got := <-f.chosen:
+		t.Fatalf("the device in use was chosen again: %q", got)
+	case <-time.After(30 * time.Millisecond):
+	}
+	sel.Set(2)
+	tk.tick(1)
+	select {
+	case got := <-f.chosen:
+		if got != "built-in" {
+			t.Errorf("chose %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the engine was not asked")
+	}
+	if pn.InputSelect(struct{}{}) != nil || pn.InputSelect(&fakeInputs{devices: []string{"default"}}) != nil {
+		t.Error("a select where there is no choice")
 	}
 }

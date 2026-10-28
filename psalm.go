@@ -371,6 +371,22 @@ func (p *Psalm) Close() {
 	}
 }
 
+// PatchInput is the sound input of the patch: what the audio engine listens to. When the engine can choose its input device (audio.InputSelector: the portaudio one can) so can the
+// module returned (it implements audio.InputSelector too), which is how the input module of a patch offers the choice
+func (p *Psalm) PatchInput(index int) Modular {
+	m := p.Patch.PatchInput(index)
+	if sel, ok := p.engine.(audio.InputSelector); ok {
+		return inputWithDevices{Modular: m, InputSelector: sel}
+	}
+	return m
+}
+
+// inputWithDevices is the input of a patch of an engine that has more than one input to listen to
+type inputWithDevices struct {
+	Modular
+	audio.InputSelector
+}
+
 func (p *Psalm) audioCallback(in, out [][]float32) {
 	inputPipe := p.inputModules[0].Output(0).Channels
 

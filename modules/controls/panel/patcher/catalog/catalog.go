@@ -309,7 +309,7 @@ func vocoderKind() patcher.Kind {
 func inputKind(src psalm.Modular) patcher.Kind {
 	return patcher.Kind{Name: "input", Group: "Sources", Outs: outs, Make: func(string) (*patcher.Made, error) {
 		m := audioin.New(src, audioin.DefaultConfig())
-		return &patcher.Made{Module: m, Describe: func(string) params.Set { return audioin.Describe(m.Settings()) }}, nil
+		return &patcher.Made{Module: m, Describe: func(string) params.Set { return m.Describe() }}, nil
 	}}
 }
 

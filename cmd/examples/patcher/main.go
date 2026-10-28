@@ -79,6 +79,7 @@ func main() {
 	ctl.Section("Patch")
 	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: in, IR: hall, Audio: p.PatchInput(0)}),
 		patcher.Keep(*patches), patcher.Presets(*presets), patcher.Theme(t))
+	ctl.InputSelect(p.PatchInput(0)) // the sound input to listen to: a headset, the microphone of the computer
 	mix := mixer.New(p)
 	mix.Channel("patch", pt.Out(), mixer.StripConfig{Volume: -3})
 	p.Out(mix.Master())

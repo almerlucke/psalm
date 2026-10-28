@@ -51,3 +51,41 @@ func TestDescribe(t *testing.T) {
 	in := New(nil, DefaultConfig())
 	paramstest.Check(t, func() params.Set { return Describe(in.Settings()) }, in.ReceiveMessage)
 }
+
+// a source of an engine that can choose its device: the input offers the choice and asks the engine for it
+type choosy struct {
+	*psalm.Module
+	devices []string
+	chosen  chan string
+	now     string
+}
+
+func (c *choosy) InputDevices() []string { return c.devices }
+func (c *choosy) InputDevice() string    { return c.now }
+func (c *choosy) SetInputDevice(name string) error {
+	c.now = name
+	c.chosen <- name
+	return nil
+}
+
+func TestInputChoosesItsDevice(t *testing.T) {
+	src := &choosy{Module: psalm.NewModule(nil, []int{psalm.Stereo}), devices: []string{"default", "headset", "built-in"}, chosen: make(chan string, 1), now: "default"}
+	src.SetSelf(src)
+	in := New(src, DefaultConfig())
+	set := in.Describe()
+	if len(set.Params) == 0 || set.Params[0].Key != "device" || len(set.Params[0].Options) != 3 {
+		t.Fatalf("the settings %+v: the device is the first, of three choices", set.Params)
+	}
+	in.ReceiveMessage(psalm.Message{"device": 2})
+	if got := <-src.chosen; got != "built-in" {
+		t.Errorf("the device chosen is %q", got)
+	}
+	in.ReceiveMessage(psalm.Message{"device": 9}) // not one: nothing
+	// without a choice (an engine with one input, a render): no device setting
+	plain := New(&source{psalm.NewModule(nil, []int{psalm.Stereo})}, DefaultConfig())
+	for _, p := range plain.Describe().Params {
+		if p.Key == "device" {
+			t.Error("a device to choose where there is no choice")
+		}
+	}
+}
