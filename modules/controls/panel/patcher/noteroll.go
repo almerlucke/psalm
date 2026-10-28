@@ -6,6 +6,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/noteroll"
+	"github.com/almerlucke/psalm/tools/harmony"
 )
 
 // NoteRollKind is the note editor: a piano roll in its side panel, a loop of notes (a length in
@@ -52,6 +53,17 @@ func rollLink(roll *noteroll.Roll) noteroll.Link {
 				out = append(out, noteroll.Section{Name: s.Name, Beats: float64(s.Bars) * form.BeatsPerBar})
 			}
 			return out
+		},
+		Scale: func() (int, string, bool) {
+			h := HarmonyOf(roll.Env())
+			if h == nil {
+				return 0, "", false
+			}
+			pc, err := harmony.PitchClass(Keys[h.Key])
+			if err != nil {
+				return 0, "", false
+			}
+			return pc, Scales[h.Scale], true
 		},
 		Chords: func(section string, beats float64) []noteroll.ChordSpan {
 			h := HarmonyOf(roll.Env())

@@ -1068,3 +1068,45 @@ func TestPageLaneRecord(t *testing.T) {
 		t.Errorf("the points written: %+v", got)
 	}
 }
+
+// the melody panel: a melody generated for the clip, six variations to choose from, a mutation of the notes selected
+func TestPageNoteRollMelody(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("noteroll", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roll := pt.Module(id).(*noteroll.Roll)
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	tb.WaitFor(`!!S().querySelector(".nr-gen")`, "the melody panel")
+	tb.Eval(`S().querySelector(".nr-gen").open = true`)
+	btn := func(title string) string {
+		return fmt.Sprintf(`S().querySelector(".nr-gen button[title^='%s']")`, title)
+	}
+	tb.Eval(btn("make a melody") + `.click()`)
+	paneltest.Eventually(t, "a melody in the clip", func() bool { return len(roll.Notes()) > 3 })
+	// six to choose from; one used replaces the notes
+	tb.Eval(btn("make six") + `.click()`)
+	tb.WaitFor(`S().querySelectorAll(".nr-cand").length === 6`, "six melodies")
+	tb.Eval(`S().querySelector(".nr-cand button[title='put it in the clip']").click()`)
+	paneltest.Eventually(t, "the candidate in the clip", func() bool { return len(roll.Notes()) > 3 })
+	// reversed: the same notes, the first one now where the last was
+	first := roll.Notes()
+	time.Sleep(600 * time.Millisecond)
+	first = roll.Notes()
+	tb.Eval(btn("play the notes") + `.click()`)
+	paneltest.Eventually(t, "the notes reversed", func() bool {
+		now := roll.Notes()
+		return len(now) == len(first) && fmt.Sprint(now) != fmt.Sprint(first)
+	})
+}

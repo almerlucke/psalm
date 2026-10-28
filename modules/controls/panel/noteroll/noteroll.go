@@ -21,6 +21,8 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/tools/harmony"
+	"github.com/almerlucke/psalm/tools/melody"
 )
 
 //go:embed noteroll.js
@@ -75,6 +77,7 @@ type Link struct {
 	Where    Where
 	Sections func() []Section
 	Chords   func(section string, beats float64) []ChordSpan
+	Scale    func() (root int, mode string, ok bool) // the key and scale of the harmony (false: it has none)
 }
 
 // Roll is a set of loops of notes, playing with the tempo of the patch: the loop (the clip of no section) goes round from the start of the patch, and the song (when it has
@@ -94,6 +97,12 @@ type Roll struct {
 	heard   sync.Mutex // notes the editor asks to hear while it works, played at the next tick
 	waiting []Note
 	hearing atomic.Int32
+
+	gen     atomic.Pointer[Candidates] // what the editor asked to have made, the last time
+	preview atomic.Pointer[sequence]   // notes the editor asks to hear as they are, once
+	pvCur   *sequence                  // audio thread: the one playing, from the tick it started on
+	pvStart int64
+	pvLast  int64
 }
 
 // New creates a roll of 8 beats (two bars) without notes; add it to a patch as a control module
@@ -223,6 +232,97 @@ func (r *Roll) Position() float64 { return math.Float64frombits(r.pos.Load()) }
 // Playing returns the clip that plays: the section it belongs to, "" for the loop
 func (r *Roll) Playing() string { return *r.playing.Load() }
 
+// sequence is notes to play once, from when the editor asks: beats from the start
+type sequence struct {
+	Notes  []Note
+	Length float64
+}
+
+// Candidates are melodies made for the editor: the id of the request they answer, and each as notes of the clip ([start, length, key, velocity])
+type Candidates struct {
+	ID    int            `json:"id"`
+	Notes [][][4]float64 `json:"notes"`
+}
+
+// GenParams are what the editor asks a melody to be (tools/melody): zero is the default; Mode "" is the scale of the harmony of the patch, when it has one
+type GenParams struct {
+	Root     int     `json:"root"`
+	Mode     string  `json:"mode"`
+	Low      int     `json:"low"`
+	High     int     `json:"high"`
+	Density  float64 `json:"density"`
+	Rest     float64 `json:"rest"`
+	Steps    float64 `json:"steps"`
+	Chord    float64 `json:"chord"`
+	Rhythm   string  `json:"rhythm"`
+	Contour  string  `json:"contour"`
+	Form     string  `json:"form"`
+	Phrase   float64 `json:"phrase"`
+	Grid     float64 `json:"grid"`
+	Velocity float64 `json:"velocity"`
+}
+
+// Generate makes melodies for a stretch of the clip shown (from beat from to beat to), count of them from a seed on, with the chords of the harmony under them; they are what the
+// editor gets next (Candidates)
+func (r *Roll) Generate(id int, from, to float64, count int, seed uint64, gp GenParams) {
+	view := *r.view.Load()
+	l := r.link.Load()
+	c, ok := r.Clip(view)
+	if !ok {
+		c.Length = r.Length()
+	}
+	from, to = math.Max(0, from), math.Min(to, c.Length)
+	if to-from < 0.25 {
+		return
+	}
+	scale, err := r.scaleFor(gp, l)
+	if err != nil {
+		return
+	}
+	mp := melody.Params{Scale: scale, Beats: to - from, Low: gp.Low, High: gp.High, Density: gp.Density, Rest: gp.Rest, Steps: gp.Steps, Chord: gp.Chord,
+		Rhythm: gp.Rhythm, Contour: gp.Contour, Form: gp.Form, Phrase: gp.Phrase, Grid: gp.Grid, Velocity: gp.Velocity}
+	if l != nil && l.Chords != nil {
+		for _, sp := range l.Chords(view, c.Length) {
+			at, end := math.Max(sp.At, from), math.Min(sp.At+sp.Len, to)
+			if end-at > 1e-9 {
+				root := 0
+				if len(sp.Pcs) > 0 {
+					root = sp.Pcs[0]
+				}
+				mp.Chords = append(mp.Chords, melody.Span{At: at - from, Len: end - at, Pcs: sp.Pcs, Root: root})
+			}
+		}
+	}
+	out := &Candidates{ID: id}
+	for i := range max(1, min(count, 12)) {
+		mp.Seed = seed + uint64(i)
+		var notes [][4]float64
+		for _, n := range melody.Generate(mp) {
+			notes = append(notes, [4]float64{n.Start + from, n.Length, float64(n.Key), math.Round(n.Velocity*100) / 100})
+		}
+		out.Notes = append(out.Notes, notes)
+	}
+	r.gen.Store(out)
+}
+
+// scaleFor is the scale a melody is in: the one asked for, or the harmony's
+func (r *Roll) scaleFor(gp GenParams, l *Link) (harmony.Scale, error) {
+	if gp.Mode != "" {
+		return harmony.NewScale(harmony.MustScale("C", "major").Name(((gp.Root%12)+12)%12), gp.Mode)
+	}
+	if l != nil && l.Scale != nil {
+		if root, mode, ok := l.Scale(); ok {
+			return harmony.NewScale(harmony.MustScale("C", "major").Name(((root%12)+12)%12), mode)
+		}
+	}
+	return harmony.NewScale("C", "major")
+}
+
+// Preview plays notes once, as they are (a melody to hear before it is used): beats from the start, from the next control tick
+func (r *Roll) Preview(notes []Note, length float64) {
+	r.preview.Store(&sequence{Notes: slices.Clone(notes), Length: length})
+}
+
 // Audition plays a note at once, for the editor to let you hear what you put in or move (from any goroutine): at the next control tick, for a length in beats
 func (r *Roll) Audition(key int, velocity, beats float64) {
 	r.heard.Lock()
@@ -256,6 +356,7 @@ func (r *Roll) CtrlTick(tick psalm.CtrlTick) {
 	if r.hearing.Load() > 0 {
 		r.hear(tick)
 	}
+	r.playPreview(tick)
 	ppq := float64(r.Config().PPQ)
 	clips := *r.clips.Load()
 	clip, name, base := clips[""], "", int64(0)
@@ -300,6 +401,34 @@ func (r *Roll) CtrlTick(tick psalm.CtrlTick) {
 	}
 }
 
+// playPreview plays the notes the editor asked to hear, from the tick it saw them
+func (r *Roll) playPreview(tick psalm.CtrlTick) {
+	if p := r.preview.Swap(nil); p != nil {
+		r.pvCur, r.pvStart, r.pvLast = p, tick.TickTimestamp, -1
+	}
+	if r.pvCur == nil {
+		return
+	}
+	ppq := float64(r.Config().PPQ)
+	rel := tick.TickTimestamp - r.pvStart
+	second := r.Env().TickDuration() * ppq
+	for _, n := range r.pvCur.Notes {
+		t := int64(math.Round(n.Start * ppq))
+		if t <= r.pvLast || t > rel {
+			continue
+		}
+		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.005, n.Length*second), "amplitude": n.Velocity,
+			"message": psalm.Message{"pitch": float64(n.Key), "velocity": n.Velocity}}
+		for _, target := range r.targets {
+			target.ReceiveMessage(msg)
+		}
+	}
+	r.pvLast = rel
+	if float64(rel) > r.pvCur.Length*ppq+ppq {
+		r.pvCur = nil
+	}
+}
+
 func mod(a, b int64) int64 { return ((a % b) + b) % b }
 
 // state is what the page gets as the roll plays: the notes of the clip it shows as [start, length, key, velocity], and where it plays
@@ -313,6 +442,15 @@ type state struct {
 	Clips    []string     `json:"clips"`
 	Sections []Section    `json:"sections"`
 	Chords   []ChordSpan  `json:"chords"`
+	Scale    *ScaleInfo   `json:"scale"`
+	Gen      *Candidates  `json:"gen"`
+}
+
+// ScaleInfo is the key and scale of the harmony, for the editor to light the keys of the scale
+type ScaleInfo struct {
+	Root int    `json:"root"`
+	Mode string `json:"mode"`
+	Pcs  []int  `json:"pcs"`
 }
 
 func (r *Roll) state() state {
@@ -343,6 +481,18 @@ func (r *Roll) state() state {
 	if l != nil && l.Chords != nil {
 		st.Chords = l.Chords(view, c.Length)
 	}
+	if l != nil && l.Scale != nil {
+		if root, mode, ok := l.Scale(); ok {
+			if sc, err := harmony.NewScale(harmony.MustScale("C", "major").Name(((root%12)+12)%12), mode); err == nil {
+				info := &ScaleInfo{Root: sc.Root, Mode: mode}
+				for _, step := range sc.Steps {
+					info.Pcs = append(info.Pcs, (sc.Root+step)%12)
+				}
+				st.Scale = info
+			}
+		}
+	}
+	st.Gen = r.gen.Load()
 	return st
 }
 
@@ -410,6 +560,18 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 					Key int     `json:"key"`
 					Vel float64 `json:"vel"`
 				} `json:"play"`
+				Gen *struct {
+					ID     int       `json:"id"`
+					From   float64   `json:"from"`
+					To     float64   `json:"to"`
+					Count  int       `json:"count"`
+					Seed   uint64    `json:"seed"`
+					Params GenParams `json:"params"`
+				} `json:"gen"`
+				Preview *struct {
+					Notes  [][4]float64 `json:"notes"`
+					Length float64      `json:"length"`
+				} `json:"preview"`
 			}
 			if json.Unmarshal(raw, &m) != nil {
 				return
@@ -423,6 +585,14 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 				roll.DropClip(*m.Drop)
 			case m.Play != nil:
 				roll.Audition(m.Play.Key, m.Play.Vel, 0.5)
+			case m.Gen != nil:
+				roll.Generate(m.Gen.ID, m.Gen.From, m.Gen.To, m.Gen.Count, m.Gen.Seed, m.Gen.Params)
+			case m.Preview != nil:
+				notes := make([]Note, 0, len(m.Preview.Notes))
+				for _, n := range m.Preview.Notes {
+					notes = append(notes, Note{Start: n[0], Length: n[1], Key: int(math.Round(n[2])), Velocity: n[3]})
+				}
+				roll.Preview(notes, m.Preview.Length)
 			case m.Set != nil:
 				notes := make([]Note, 0, len(m.Set.Notes))
 				for _, n := range m.Set.Notes {

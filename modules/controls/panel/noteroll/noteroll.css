@@ -12,3 +12,13 @@
 	border-radius: calc(var(--radius) * 2 / 3); background: var(--track); cursor: crosshair; touch-action: none;
 }
 .noteroll .nr-hint { font-size: 12px; color: var(--muted); }
+.noteroll .nr-gen { border: 1px solid var(--line); border-radius: calc(var(--radius) * 2 / 3); padding: 4px 8px; }
+.noteroll .nr-gen summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.noteroll .nr-gen .nr-bar { margin-top: 6px; }
+.noteroll .nr-gen select, .noteroll .nr-gen button { min-height: 28px; font-size: 12px; }
+.noteroll .nr-gen input[type=range] { width: 90px; }
+.noteroll .nr-cands { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.noteroll .nr-cand { display: flex; flex-direction: column; gap: 3px; }
+.noteroll .nr-cand-cv { background: var(--track); border-radius: 4px; }
+.noteroll .nr-cand-row { display: flex; gap: 4px; }
+.noteroll .nr-cand-row button { flex: 1; min-height: 24px; }

@@ -10,6 +10,10 @@
 //   arrows move the notes (left/right by the grid, shift by a beat; up/down a semitone, shift an octave), Q quantizes the start, L makes them legato
 //   the wheel scrolls the keys, shift+wheel the beats, ctrl+wheel zooms; the page keeps its own copy while you work and sends all of it when you let go
 //
+// The Melody panel makes melodies (tools/melody) for the region chosen in the ruler, the notes selected, or the whole clip: in the scale of the harmony (or one of its own), over the
+// chords, in phrases that repeat and vary; Generate puts one in (undo takes it away), Variations shows six to hear and choose from; Invert, Reverse, scale steps, Humanize and
+// Thin out change the notes selected.
+//
 // A song has a clip for every section: the clip chosen above the roll (the loop plays when a section has none) is the one edited, and the song plays the clip of the section it is in
 // from the section's start. A clip can be copied to other sections. With a harmony module its chords show in the ruler, and the keys that are tones of the chord are lit under them
 psalm.register("noteroll", (p, api) => {
@@ -34,6 +38,7 @@ psalm.register("noteroll", (p, api) => {
 	let cursor = null; // where paste goes (beats)
 	let region = null; // [a, b] in beats
 	let viewName = "", sections = [], have = [""], playing = "", chords = [], waitView = false; // the clip edited, the sections of the song, the clips there are, the clip playing, the chords over it
+	let scaleInfo = null, scaleLock = false, genId = 0, genPending = null, genSeed = Math.floor(Math.random() * 100000); // the scale of the harmony; keys held to it; the melodies asked for
 	let first = true, showKeys = null; // the key to have in the middle of the roll, until it has a size
 	let hold = 0; // until when the page's own notes stay (the server's come back after a send)
 	let drag = null, band = null;
@@ -77,6 +82,61 @@ psalm.register("noteroll", (p, api) => {
 	bar.append(viewLab, copySel, dropB, ...Object.values(toolBtns), mk("label", {}, "Grid ", snapSel), mk("label", {}, "Beats ", lenIn), dbl, half, mk("label", {}, "Zoom ", zoom));
 	bar2.append(undoB, redoB, quantB, legB, clear, selInfo);
 	setTool("select");
+
+	// --- the melody panel ---
+	const MODES = {major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], dorian: [0, 2, 3, 5, 7, 9, 10], mixolydian: [0, 2, 4, 5, 7, 9, 10], lydian: [0, 2, 4, 6, 7, 9, 11],
+		phrygian: [0, 1, 3, 5, 7, 8, 10], "harmonic minor": [0, 2, 3, 5, 7, 8, 11], "major pentatonic": [0, 2, 4, 7, 9], "minor pentatonic": [0, 3, 5, 7, 10], blues: [0, 3, 5, 6, 7, 10]};
+	const KEYS = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+	const gp = {form: "free", contour: "free", rhythm: "mixed", phrase: 4, density: 0.5, rest: 0.15, steps: 0.7, chord: 0.7, low: 55, high: 79, root: 0, mode: ""};
+	const pick = (label, key, options, title) => {
+		const sel = mk("select", {title});
+		for (const [v, t] of options) sel.append(mk("option", {value: v, textContent: t, selected: String(gp[key]) === String(v)}));
+		sel.addEventListener("change", () => { gp[key] = typeof gp[key] === "number" ? Number(sel.value) : sel.value; });
+		return mk("label", {}, label + " ", sel);
+	};
+	const slide = (label, key, title) => {
+		const i = mk("input", {type: "range", min: 0, max: 1, step: 0.05, value: gp[key], title});
+		i.addEventListener("input", () => { gp[key] = Number(i.value); });
+		return mk("label", {}, label + " ", i);
+	};
+	const rangeIn = key => { const i = mk("input", {type: "number", min: 0, max: 127, step: 1, value: gp[key], title: "key (60 is middle C)"}); i.addEventListener("change", () => { gp[key] = Math.max(0, Math.min(127, Number(i.value) || 0)); }); return i; };
+	const modeSel = mk("select", {title: "the scale the melody is in"}, mk("option", {value: "", textContent: "the harmony's"}), ...Object.keys(MODES).map(m => mk("option", {value: m, textContent: m})));
+	const rootSel = mk("select", {title: "the key of the scale"}, ...KEYS.map((k, i) => mk("option", {value: i, textContent: k})));
+	modeSel.addEventListener("change", () => { gp.mode = modeSel.value; rootSel.disabled = !gp.mode; });
+	rootSel.addEventListener("change", () => { gp.root = Number(rootSel.value); });
+	rootSel.disabled = true;
+	const genB = mk("button", {textContent: "Generate", title: "make a melody for the region of the ruler, the notes selected, or the whole clip (undo takes it away)"});
+	const varB = mk("button", {textContent: "Variations", title: "make six melodies to hear and choose from"});
+	const mutate = (label, title, f) => { const b = mk("button", {textContent: label, title}); b.addEventListener("click", f); return b; };
+	const candEl = mk("div", {className: "nr-cands"});
+	const lockBox = mk("input", {type: "checkbox", title: "the notes you put and move keep to the scale"});
+	lockBox.addEventListener("change", () => { scaleLock = lockBox.checked; });
+	const panelEl = mk("details", {className: "nr-gen"}, mk("summary", {textContent: "Melody"}),
+		mk("div", {className: "nr-bar"}, pick("Form", "form", [["free", "free"], ["AA'", "a period (A A')"], ["ABAB", "A B A B"], ["AABA", "A A' B A"], ["call", "question and answer"]], "how the phrases repeat and vary"),
+			pick("Contour", "contour", [["free", "free"], ["arch", "arch"], ["rise", "rise"], ["fall", "fall"], ["wave", "wave"]], "the shape of the line over a phrase"),
+			pick("Rhythm", "rhythm", [["mixed", "mixed"], ["even", "even"], ["syncopated", "syncopated"], ["dotted", "dotted"], ["triplet", "triplets"]], "the rhythm of the notes"),
+			pick("Phrase", "phrase", [[2, "2 beats"], [4, "4 beats"], [8, "8 beats"], [16, "16 beats"]], "how long a phrase is")),
+		mk("div", {className: "nr-bar"}, slide("Busy", "density", "how many notes"), slide("Rests", "rest", "how often it rests"), slide("Smooth", "steps", "steps against leaps"), slide("Chord tones", "chord", "how much the notes on the beat keep to the chord")),
+		mk("div", {className: "nr-bar"}, mk("label", {}, "Scale ", rootSel, modeSel), mk("label", {}, "From ", rangeIn("low")), mk("label", {}, "to ", rangeIn("high")), mk("label", {}, lockBox, " keep to the scale")),
+		mk("div", {className: "nr-bar"}, genB, varB,
+			mutate("Invert", "turn the notes selected upside down (in the scale)", () => mutateNotes("invert")), mutate("Reverse", "play the notes selected backwards", () => mutateNotes("reverse")),
+			mutate("Step up", "move the notes selected a step up the scale", () => mutateNotes("up")), mutate("Step down", "move them a step down", () => mutateNotes("down")),
+			mutate("Humanize", "a little off the grid and the loudness", () => mutateNotes("humanize")), mutate("Thin out", "take some of the short notes away", () => mutateNotes("thin"))),
+		candEl);
+	bar2.after(panelEl);
+
+	// the scale the melody and the keys lit are in: its own, or the harmony's
+	const scalePcs = () => gp.mode ? MODES[gp.mode].map(x => (x + gp.root) % 12) : scaleInfo ? scaleInfo.pcs : null;
+	const inScale = k => { const pcs = scalePcs(); return !pcs || pcs.includes(((k % 12) + 12) % 12); };
+	const snapKey = k => { if (!scaleLock || inScale(k)) return k; for (let d = 1; d < 12; d++) { if (inScale(k - d)) return k - d; if (inScale(k + d)) return k + d; } return k; };
+	const stepKey = (k, n) => { // a number of steps through the scale
+		const pcs = scalePcs(); if (!pcs) return k + n;
+		let q = k; const dir = Math.sign(n);
+		if (!inScale(q)) q = snapKey2(q);
+		for (let i = 0; i < Math.abs(n); i++) { do { q += dir; } while (q > 0 && q < 127 && !inScale(q)); }
+		return Math.max(0, Math.min(127, q));
+	};
+	const snapKey2 = k => { for (let d = 0; d < 12; d++) { if (inScale(k - d)) return k - d; if (inScale(k + d)) return k + d; } return k; };
 
 	// --- the notes, and what is sent ---
 	const toArrays = () => notes.map(n => [n.s, n.l, n.k, n.v]);
@@ -229,6 +289,7 @@ psalm.register("noteroll", (p, api) => {
 		for (let k = lo; k < lo + g.rows; k++) {
 			const y = yOf(g, k);
 			c.globalAlpha = black(k) ? 0.5 : 0.18; c.fillStyle = colors.line; c.fillRect(gutter, y, g.vw, g.rowH);
+			if (scalePcs() && inScale(k)) { c.globalAlpha = 0.06; c.fillStyle = colors.accent; c.fillRect(gutter, y, g.vw, g.rowH); }
 			if (k % 12 === 0) { c.globalAlpha = 0.5; c.fillRect(gutter, y + g.rowH - 1, g.vw, 1); }
 		}
 		c.globalAlpha = 1;
@@ -382,6 +443,59 @@ psalm.register("noteroll", (p, api) => {
 		commit();
 	};
 
+	// --- melodies ---
+	const genSpan = () => region ? [region[0], region[1]] : sel.size ? [Math.floor(Math.min(...[...sel].map(n => n.s))), Math.min(length, Math.ceil(Math.max(...[...sel].map(n => n.s + n.l))))] : [0, length];
+	const ask = (count, apply) => {
+		const [from, to] = genSpan();
+		genId++; genPending = {id: genId, apply, from, to};
+		const params = {...gp, grid: snap > 0 ? snap : 0.25, velocity: lastVel};
+		api.message(p.name, {gen: {id: genId, from, to, count, seed: genSeed, params}});
+		genSeed += count;
+	};
+	const replaceRegion = (from, to, melody) => { // the notes of a stretch are the melody's
+		notes = notes.filter(n => !(n.s >= from - 1e-9 && n.s < to - 1e-9));
+		const made = melody.map(m => ({s: m[0], l: m[1], k: m[2], v: m[3]}));
+		notes.push(...made); sel.clear(); for (const n of made) sel.add(n);
+		commit();
+	};
+	const drawCandidate = (cv, melody, from, to) => {
+		const c = cv.getContext("2d"), w = cv.width, h = cv.height;
+		c.clearRect(0, 0, w, h);
+		if (!melody.length) return;
+		const lo2 = Math.min(...melody.map(m => m[2])), hi2 = Math.max(...melody.map(m => m[2])), span = Math.max(6, hi2 - lo2 + 1);
+		c.fillStyle = colors.accent;
+		for (const m of melody) c.fillRect((m[0] - from) / (to - from) * w, h - 4 - (m[2] - lo2 + 0.5) / span * (h - 8), Math.max(2, m[1] / (to - from) * w - 1), 3);
+	};
+	const showCandidates = (melodies, from, to) => {
+		candEl.replaceChildren();
+		melodies.forEach((melody, i) => {
+			const cv = mk("canvas", {width: 150, height: 46, className: "nr-cand-cv"});
+			const hear = mk("button", {textContent: "Hear", title: "play it"});
+			hear.addEventListener("click", () => api.message(p.name, {preview: {notes: melody.map(m => [m[0] - from, m[1], m[2], m[3]]), length: to - from}}));
+			const use = mk("button", {textContent: "Use", title: "put it in the clip"});
+			use.addEventListener("click", () => replaceRegion(from, to, melody));
+			candEl.append(mk("div", {className: "nr-cand"}, cv, mk("div", {className: "nr-cand-row"}, hear, use)));
+			drawCandidate(cv, melody, from, to);
+		});
+	};
+	genB.addEventListener("click", () => ask(1, true));
+	varB.addEventListener("click", () => ask(6, false));
+	const mutateNotes = how => {
+		const ts = targets(); if (!ts.length) return;
+		const first = [...ts].sort((a, b) => a.s - b.s)[0];
+		const a = Math.min(...ts.map(n => n.s)), b = Math.max(...ts.map(n => n.s + n.l));
+		switch (how) {
+		case "invert": { const pivot = first.k; for (const n of ts) n.k = Math.max(0, Math.min(127, snapKey2(2 * pivot - n.k))); break; }
+		case "reverse": for (const n of ts) n.s = a + b - (n.s + n.l); break;
+		case "up": for (const n of ts) n.k = stepKey(n.k, 1); break;
+		case "down": for (const n of ts) n.k = stepKey(n.k, -1); break;
+		case "humanize": for (const n of ts) { n.s = Math.max(0, n.s + (Math.random() - 0.5) * 0.06); n.v = Math.max(0.05, Math.min(1, n.v + (Math.random() - 0.5) * 0.16)); } break;
+		case "thin": { const drop = new Set(ts.filter(n => n.l < 0.75 && Math.abs(n.s - Math.round(n.s)) > 1e-6 && Math.random() < 0.4)); notes = notes.filter(n => !drop.has(n)); for (const n of drop) sel.delete(n); break; }
+		}
+		for (const n of notes) clipLen(n);
+		commit();
+	};
+
 	// --- the mouse ---
 	const where = e => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
 	const zone = (g, y) => y < rulerH ? "ruler" : y >= g.velTop ? "vel" : "notes";
@@ -401,7 +515,7 @@ psalm.register("noteroll", (p, api) => {
 		if (zone(g, y) === "ruler") { region = null; return; }
 		if (zone(g, y) !== "notes" || x < gutter || noteAt(g, x, y)) return;
 		const s = Math.max(0, Math.min(snapDown(bOf(g, x)), length - minLen()));
-		const n = {s, l: Math.min(lastLen, length - s), k: keyAt(g, y), v: lastVel};
+		const n = {s, l: Math.min(lastLen, length - s), k: snapKey(keyAt(g, y)), v: lastVel};
 		notes.push(n); sel.clear(); sel.add(n); heard = -1; hear(n.k); commit();
 	});
 	canvas.addEventListener("pointerdown", e => {
@@ -424,7 +538,7 @@ psalm.register("noteroll", (p, api) => {
 		if (tool === "erase") { drag = {mode: "erase", moved: false}; eraseAt(g, x, y); canvas.setPointerCapture(e.pointerId); return; }
 		if (!n && tool === "draw") { // a new note: dragging makes it longer
 			const s = Math.max(0, Math.min(snapDown(b), length - minLen()));
-			n = {s, l: Math.min(lastLen, length - s), k: keyAt(g, y), v: lastVel};
+			n = {s, l: Math.min(lastLen, length - s), k: snapKey(keyAt(g, y)), v: lastVel};
 			notes.push(n); sel.clear(); sel.add(n); cursor = s; heard = -1; hear(n.k);
 			drag = {mode: "resize", fresh: true, moved: false, grab: n, b0: b, orig: [{n, s: n.s, l: n.l}]};
 			canvas.setPointerCapture(e.pointerId); return;
@@ -494,7 +608,7 @@ psalm.register("noteroll", (p, api) => {
 			let db = snapTo(o.s + (b - drag.b0)) - o.s, dk = keyAt(g, y) - drag.k0;
 			const mins = Math.min(...drag.orig.map(r => r.s)), maxe = Math.max(...drag.orig.map(r => r.s + r.l)), mink = Math.min(...drag.orig.map(r => r.k)), maxk = Math.max(...drag.orig.map(r => r.k));
 			db = Math.max(-mins, Math.min(db, length - maxe)); dk = Math.max(-mink, Math.min(dk, 127 - maxk));
-			for (const r of drag.orig) { r.n.s = r.s + db; r.n.k = r.k + dk; }
+			for (const r of drag.orig) { r.n.s = r.s + db; r.n.k = snapKey(r.k + dk); }
 			if (dk !== 0) hear(drag.grab.k);
 			drag.moved = true;
 			break;
@@ -555,7 +669,7 @@ psalm.register("noteroll", (p, api) => {
 		update(st) {
 			pos = st.pos; bps = st.bps; at = performance.now();
 			if (st.view !== viewName) return; // the answer to a clip we have left
-			sections = st.sections || []; have = st.clips || [""]; playing = st.playing; chords = st.chords || [];
+			sections = st.sections || []; have = st.clips || [""]; playing = st.playing; chords = st.chords || []; scaleInfo = st.scale || null;
 			showOptions();
 			if (first) { // the keys shown are where the notes are (once the roll has its size: the first draw)
 				first = false;
@@ -567,6 +681,12 @@ psalm.register("noteroll", (p, api) => {
 				return;
 			}
 			if (drag || performance.now() < hold) return; // our own notes until the server has them
+			if (genPending && st.gen && st.gen.id === genPending.id) { // the melodies asked for are there
+				const ask1 = genPending; genPending = null;
+				if (ask1.apply) { if (st.gen.notes[0] && st.gen.notes[0].length) replaceRegion(ask1.from, ask1.to, st.gen.notes[0]); }
+				else showCandidates(st.gen.notes, ask1.from, ask1.to);
+				return;
+			}
 			const theirs = JSON.stringify([st.length, st.notes.map(n => [+n[0].toFixed(4), +n[1].toFixed(4), n[2], +n[3].toFixed(3)]).sort((a, b) => a[0] - b[0] || a[2] - b[2])]);
 			if (theirs !== key()) { // somewhere else (a patch loaded): theirs
 				notes = fromArrays(st.notes); length = st.length; lenIn.value = length; sel.clear(); region = null; cursor = null;

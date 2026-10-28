@@ -1,6 +1,7 @@
 package noteroll
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -168,5 +169,64 @@ func TestRollClipPlaysPerSection(t *testing.T) {
 	}
 	if r.Playing() != "" {
 		t.Errorf("playing %q: A has no clip, the loop plays", r.Playing())
+	}
+}
+
+// the editor asks for melodies: for a stretch of the clip, in the scale and over the chords the link gives, the notes inside the stretch
+func TestRollGenerate(t *testing.T) {
+	r, _, _ := rig(t)
+	r.Link(Link{
+		Scale: func() (int, string, bool) { return 2, "minor", true }, // D minor
+		Chords: func(string, float64) []ChordSpan {
+			return []ChordSpan{{At: 0, Len: 4, Name: "Dm", Pcs: []int{2, 5, 9}}, {At: 4, Len: 4, Name: "Bb", Pcs: []int{10, 2, 5}}}
+		},
+	})
+	r.Generate(7, 2, 6, 3, 10, GenParams{Low: 57, High: 81, Chord: 1, Form: "AA'", Phrase: 2})
+	g := r.gen.Load()
+	if g == nil || g.ID != 7 || len(g.Notes) != 3 {
+		t.Fatalf("candidates %+v", g)
+	}
+	scale := map[int]bool{2: true, 4: true, 5: true, 7: true, 9: true, 10: true, 0: true} // D minor
+	for _, melody := range g.Notes {
+		if len(melody) == 0 {
+			t.Fatal("an empty melody")
+		}
+		for _, n := range melody {
+			if n[0] < 2 || n[0] >= 6 || n[0]+n[1] > 6+1e-6 || n[2] < 57 || n[2] > 81 || !scale[int(n[2])%12] {
+				t.Fatalf("note %v is outside the stretch 2 to 6, the range or the scale", n)
+			}
+		}
+	}
+	if fmt := g.Notes[0]; len(fmt) == len(g.Notes[1]) && fmt[0] == g.Notes[1][0] && fmt[len(fmt)-1] == g.Notes[1][len(g.Notes[1])-1] {
+		t.Error("two seeds, one melody")
+	}
+	// a stretch that is too short makes nothing new
+	r.Generate(8, 3, 3.1, 1, 1, GenParams{})
+	if r.gen.Load().ID != 7 {
+		t.Error("a stretch of a tenth of a beat made a melody")
+	}
+	// the page gets the scale of the harmony
+	if st := r.state(); st.Scale == nil || st.Scale.Root != 2 || !slices.Equal(st.Scale.Pcs, []int{2, 4, 5, 7, 9, 10, 0}) || st.Gen == nil || st.Gen.ID != 7 {
+		t.Errorf("state: %+v %+v", st.Scale, st.Gen)
+	}
+}
+
+// notes the editor asks to hear play once, on their beats, from the next tick
+func TestRollPreview(t *testing.T) {
+	r, rc, run := rig(t)
+	r.Preview([]Note{{Start: 0, Length: 1, Key: 60, Velocity: 1}, {Start: 1, Length: 1, Key: 64, Velocity: 1}, {Start: 2.5, Length: 1, Key: 67, Velocity: 1}}, 4)
+	run(8)
+	if !slices.Equal(rc.pitches, []float64{60, 64, 67}) {
+		t.Fatalf("pitches %v", rc.pitches)
+	}
+	if d := rc.ticks[1] - rc.ticks[0]; d != 240 {
+		t.Errorf("the second note %d ticks after the first, want a beat (240)", d)
+	}
+	if d := rc.ticks[2] - rc.ticks[0]; d != 600 {
+		t.Errorf("the third note %d ticks after the first, want 2.5 beats", d)
+	}
+	run(8) // not again
+	if len(rc.pitches) != 3 {
+		t.Errorf("played again: %v", rc.pitches)
 	}
 }
