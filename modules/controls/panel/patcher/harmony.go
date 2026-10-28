@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/modules/controls/panel/noteroll"
 	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/tools/harmony"
 )
@@ -191,6 +192,34 @@ func (h *Harmony) ChordAt(tick psalm.CtrlTick) (harmony.Chord, bool) {
 		return harmony.Chord{}, false
 	}
 	return *c, true
+}
+
+// Spans are the chords of a section over a stretch of beats from the start of the section (the progression loops): for an editor to show; the chords of the others when the
+// section has none of its own; none when there are no chords for it
+func (h *Harmony) Spans(section string, beats, bpb float64) []noteroll.ChordSpan {
+	ps := h.prog.Load()
+	p, has := ps.each[section]
+	if !has {
+		if !ps.hasRest {
+			return nil
+		}
+		p = ps.rest
+	}
+	var out []noteroll.ChordSpan
+	for at := 0.0; at < beats-1e-9; {
+		x := math.Mod(at/bpb, p.total)
+		i, in := 0, x
+		for ; i < len(p.bars)-1 && in >= p.bars[i]-1e-9; i++ {
+			in -= p.bars[i]
+		}
+		left := (p.bars[i] - in) * bpb
+		length := math.Min(left, beats-at)
+		if c := p.chords[i]; c != nil {
+			out = append(out, noteroll.ChordSpan{At: at, Len: length, Name: c.Name, Pcs: c.PitchClasses()})
+		}
+		at += math.Max(length, 1e-6)
+	}
+	return out
 }
 
 // Voiced is the chord as it is sent: in root position, the root at or above the lowest note

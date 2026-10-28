@@ -7,6 +7,7 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/panel/noteroll"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
 )
@@ -187,5 +188,85 @@ function trigger(ev) { const c = harmony(); note(c ? c.close(48)[0] : 0, 0.8, 1)
 	r.run(3.9)
 	if len(r.rec.pitches) < 7 || r.rec.pitches[0] != 50 || r.rec.pitches[len(r.rec.pitches)-1] != 55 {
 		t.Errorf("roots %v, want D (50) in the first bar and G (55) in the second", r.rec.pitches)
+	}
+}
+
+// the harmony tells an editor its chords over a stretch of a section: the progression loops, a chord a number of beats
+func TestHarmonySpans(t *testing.T) {
+	r := newHarmonyRig(t, "A 2, B 2", "A: Dm7 G7*0.5 C*0.5\nB: Am")
+	h := r.pt.Module(r.harmony).(*patcher.Harmony)
+	spans := h.Spans("A", 8, 4)
+	type want struct {
+		at, len float64
+		name    string
+	}
+	for i, w := range []want{{0, 4, "Dm7"}, {4, 2, "G7"}, {6, 2, "C"}} {
+		if i >= len(spans) || spans[i].At != w.at || spans[i].Len != w.len || spans[i].Name != w.name {
+			t.Fatalf("spans %v, want Dm7 for a bar, G7 and C for half a bar each", spans)
+		}
+	}
+	if len(spans) != 3 || !slices.Equal(spans[0].Pcs, []int{2, 5, 9, 0}) {
+		t.Errorf("spans %v: %v want the pitch classes D F A C", spans, spans[0].Pcs)
+	}
+	if b := h.Spans("B", 8, 4); len(b) != 2 || b[0].Name != "Am" || b[1].At != 4 { // the progression loops over the clip
+		t.Errorf("B: %v", b)
+	}
+}
+
+// a note editor in a song plays the clip of the section the song is in, from the section's start, and the loop for the sections without a clip
+func TestNoteRollClipsInASong(t *testing.T) {
+	r := newSongRig(t, "A 1, B 1")
+	id := r.add("noteroll")
+	roll := r.pt.Module(id).(*noteroll.Roll)
+	roll.Set([]noteroll.Note{{Start: 0, Length: 1, Key: 48, Velocity: 1}}, 4)          // the loop: a C every bar
+	roll.SetClip("B", []noteroll.Note{{Start: 1, Length: 1, Key: 72, Velocity: 1}}, 2) // B: a high C on the second beat of every two
+	r.connect(patcher.Cable{From: id, To: r.add("rec")})
+	r.run(5.9) // A, B, A: 2 s a bar
+	// A: 48 at 0; B (from 2 s): 72 on the second beat of 2 beats: at 2.5 s and 3.5 s; A again from 4 s: 48
+	if want := []float64{48, 72, 72, 48}; !slices.Equal(r.rec.pitches, want) {
+		t.Fatalf("pitches %v, want %v", r.rec.pitches, want)
+	}
+	at := func(s float64) float64 { return s * 44100 }
+	for i, s := range []float64{0, 2.5, 3.5, 4} {
+		if math.Abs(float64(r.rec.at[i])-at(s)) > 300 {
+			t.Errorf("note %d at sample %d, want about %v (%v s)", i, r.rec.at[i], at(s), s)
+		}
+	}
+}
+
+// the clips of a note editor and the chords of a harmony are kept with the patch
+func TestNoteRollClipsKept(t *testing.T) {
+	p := psalm.New(nil)
+	dir := t.TempDir()
+	pt := patcher.New(p, panel.New(p, "Test"), "Patch", patcher.Generators(), patcher.Keep(dir))
+	id, _ := pt.Add("noteroll", "", 0, 0)
+	roll := pt.Module(id).(*noteroll.Roll)
+	roll.Set([]noteroll.Note{{Start: 1, Length: 1, Key: 60, Velocity: 0.5}}, 4)
+	roll.SetClip("Verse", []noteroll.Note{{Start: 0, Length: 2, Key: 67, Velocity: 0.9}}, 16)
+	h, _ := pt.Add("harmony", "", 0, 100)
+	_ = pt.SetText(h, "chords", "Am F C G")
+	if err := pt.Save("kept"); err != nil {
+		t.Fatal(err)
+	}
+	pt.Clear()
+	if err := pt.Load("kept"); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range pt.Nodes() {
+		switch n.Kind {
+		case "noteroll":
+			r := pt.Module(n.ID).(*noteroll.Roll)
+			c, ok := r.Clip("Verse")
+			if !ok || c.Length != 16 || len(c.Notes) != 1 || c.Notes[0].Key != 67 || c.Notes[0].Velocity != 0.9 {
+				t.Errorf("the clip of the verse after a load: %v %v", c, ok)
+			}
+			if len(r.Notes()) != 1 || r.Length() != 4 {
+				t.Errorf("the loop after a load: %v, length %v", r.Notes(), r.Length())
+			}
+		case "harmony":
+			if got := pt.Texts(n.ID)[0].Value; got != "Am F C G" {
+				t.Errorf("chords after a load: %q", got)
+			}
+		}
 	}
 }

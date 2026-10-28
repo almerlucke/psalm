@@ -2,6 +2,7 @@ package patcher_test
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/midi"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/panel/noteroll"
 	"github.com/almerlucke/psalm/modules/controls/panel/paneltest"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/catalog"
@@ -527,13 +529,14 @@ func TestPageNoteRoll(t *testing.T) {
 	frame := `S()`
 	canvas := frame + `.querySelector(".noteroll canvas")`
 	tb.WaitFor(`!!`+canvas+` && `+canvas+`.clientHeight > 300 && parseInt(W().getElementById("frame").style.height) > 400`, "the roll in the side panel, at its size")
-	// where a beat and a key are on the canvas (in the page), 8 beats, 36 keys from C3
+	// where a beat and a key are on the canvas (in the page): 8 beats across, the keys from C3 up, under the ruler (34 px), over the velocity lane (70 px and a gap of 6), rows of about 13 px
 	at := func(beat, key float64) (float64, float64) {
 		r := tb.Eval(fmt.Sprintf(`(() => { const g = document.querySelector(".pt-win-frame").getBoundingClientRect(), f0 = W().getElementById("frame").getBoundingClientRect(), f = {left: g.left + f0.left, top: g.top + f0.top}, c = %s, r = c.getBoundingClientRect();
-			const pxb = (r.width - 52) / 8, rowH = r.height / 36;
-			return [f.left + r.left + 52 + %v * pxb, f.top + r.top + (36 - 1 - (%v - 48)) * rowH + rowH / 2]; })()`, canvas, beat, key)).([]any)
+			const pxb = (r.width - 52) / 8, areaH = r.height - 34 - 70 - 6, rows = Math.max(4, Math.floor(areaH / 13)), rowH = areaH / rows;
+			return [f.left + r.left + 52 + %v * pxb, f.top + r.top + 34 + (rows - 1 - (%v - 48)) * rowH + rowH / 2]; })()`, canvas, beat, key)).([]any)
 		return r[0].(float64), r[1].(float64)
 	}
+	tb.Eval(`S().querySelector('.nr-tool[data-tool="draw"]').click()`) // the draw tool: a click puts a note
 	values := func() map[string]float64 { return pt.SettingsOf(id).Values() }
 	x0, y0 := at(1.1, 60)
 	x1, _ := at(2.4, 60)
@@ -559,6 +562,194 @@ func TestPageNoteRoll(t *testing.T) {
 	tb.Mouse("mousePressed", xc, yc, map[string]any{"button": "right", "buttons": 2, "clickCount": 1})
 	tb.Mouse("mouseReleased", xc, yc, map[string]any{"button": "right", "clickCount": 1})
 	paneltest.Eventually(t, "the note taken away", func() bool { _, ok := values()["n/0/key"]; return !ok })
+}
+
+// the note editor edits like a sequencer's: a rectangle selects, copy and paste at the cursor, undo and redo, duplicate, a region of the ruler, the velocity lane, quantize
+func TestPageNoteRollEditing(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	id, err := pt.Add("noteroll", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// four notes: C D E F, a beat each, in a loop of 8
+	pt.SettingsOf(id).Apply(map[string]float64{"length": 8,
+		"n/0/start": 0, "n/0/length": 1, "n/0/key": 60, "n/0/velocity": 0.8,
+		"n/1/start": 1, "n/1/length": 1, "n/1/key": 62, "n/1/velocity": 0.8,
+		"n/2/start": 2, "n/2/length": 1, "n/2/key": 64, "n/2/velocity": 0.8,
+		"n/3/start": 3, "n/3/length": 1, "n/3/key": 65, "n/3/velocity": 0.8})
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	canvas := `S().querySelector(".noteroll canvas")`
+	tb.WaitFor(`!!`+canvas+` && `+canvas+`.clientHeight > 300 && parseInt(W().getElementById("frame").style.height) > 400`, "the roll in the side panel, at its size")
+	// the geometry of the canvas, as the page has it: 8 beats across, the keys from the middle of the notes (60 and 65: from 48 or so), a ruler of 34 px, a velocity lane of 70 px
+	geom := func() (left, top, pxb, rowH, rows, lo float64) {
+		r := tb.Eval(fmt.Sprintf(`(() => { const g = document.querySelector(".pt-win-frame").getBoundingClientRect(), f0 = W().getElementById("frame").getBoundingClientRect(), c = %s, r = c.getBoundingClientRect();
+			const areaH = r.height - 34 - 70 - 6, rows = Math.max(4, Math.floor(areaH / 13));
+			return [g.left + f0.left + r.left, g.top + f0.top + r.top, (r.width - 52) / 8, areaH / rows, rows, r.height]; })()`, canvas)).([]any)
+		return r[0].(float64), r[1].(float64), r[2].(float64), r[3].(float64), r[4].(float64), r[5].(float64)
+	}
+	// lo is where the notes are: half way between the lowest and the highest, less half the rows
+	loKey := func() float64 {
+		_, _, _, _, rows, _ := geom()
+		return math.Floor((60+65)/2) - math.Floor(rows/2) // the first state put the keys there
+	}
+	note := func(beat, key float64) (float64, float64) {
+		left, top, pxb, rowH, rows, _ := geom()
+		return left + 52 + beat*pxb, top + 34 + (rows-1-(key-loKey()))*rowH + rowH/2
+	}
+	ruler := func(beat float64) (float64, float64) {
+		left, top, pxb, _, _, _ := geom()
+		return left + 52 + beat*pxb, top + 10
+	}
+	vel := func(beat, level float64) (float64, float64) { // the velocity lane: 70 px high at the bottom, bars of up to 62
+		left, top, pxb, _, _, h := geom()
+		return left + 52 + beat*pxb + 1, top + h - 2 - level*62
+	}
+	press := func(x, y float64) { tb.Mouse("mousePressed", x, y, nil) }
+	moveTo := func(x, y float64) { tb.Mouse("mouseMoved", x, y, nil) }
+	release := func(x, y float64) { tb.Mouse("mouseReleased", x, y, nil) }
+	drag := func(x0, y0, x1, y1 float64) {
+		press(x0, y0)
+		moveTo((x0+x1)/2, (y0+y1)/2)
+		moveTo(x1, y1)
+		release(x1, y1)
+	}
+	keyDown := func(k string, mods ...string) {
+		ctrl, shift := slices.Contains(mods, "ctrl"), slices.Contains(mods, "shift")
+		tb.Eval(fmt.Sprintf(`%s.dispatchEvent(new (S().defaultView.KeyboardEvent)("keydown", {key: %q, ctrlKey: %v, shiftKey: %v, bubbles: true, cancelable: true}))`, canvas, k, ctrl, shift))
+	}
+	starts := func() []float64 {
+		v := pt.SettingsOf(id).Values()
+		var out []float64
+		for i := 0; ; i++ {
+			s, ok := v[fmt.Sprintf("n/%d/start", i)]
+			if !ok {
+				return out
+			}
+			out = append(out, s)
+		}
+	}
+	paneltest.Eventually(t, "the four notes", func() bool { return len(starts()) == 4 })
+
+	// a rectangle around the first two notes selects them; copy; the cursor in the ruler at beat 4; paste
+	x0, y0 := note(0.02, 67)
+	x1, y1 := note(1.9, 59)
+	drag(x0, y0, x1, y1)
+	tb.Eval(canvas + `.focus()`)
+	keyDown("c", "ctrl")
+	rx, ry := ruler(4)
+	press(rx, ry)
+	release(rx, ry)
+	keyDown("v", "ctrl")
+	paneltest.Eventually(t, "the two notes pasted at the cursor", func() bool {
+		s := starts()
+		return len(s) == 6 && slices.Contains(s, 4) && slices.Contains(s, 5)
+	})
+	// undo takes them away, redo puts them back
+	keyDown("z", "ctrl")
+	paneltest.Eventually(t, "the paste undone", func() bool { return len(starts()) == 4 })
+	keyDown("z", "ctrl", "shift")
+	paneltest.Eventually(t, "the paste redone", func() bool { return len(starts()) == 6 })
+
+	// a rectangle around the pasted notes: ctrl+D copies them after themselves (two beats on), the arrows move the copies up a semitone and a beat later
+	px0, py0 := note(4.02, 67)
+	px1, py1 := note(5.9, 59)
+	drag(px0, py0, px1, py1)
+	keyDown("d", "ctrl")
+	paneltest.Eventually(t, "the notes duplicated after themselves", func() bool { s := starts(); return len(s) == 8 && slices.Contains(s, 6) && slices.Contains(s, 7) })
+	keyDown("ArrowUp")
+	keyDown("ArrowRight", "shift")
+	paneltest.Eventually(t, "the copies moved", func() bool {
+		v := pt.SettingsOf(id).Values()
+		moved := 0
+		for i := range 8 {
+			if v[fmt.Sprintf("n/%d/key", i)] == 61 || v[fmt.Sprintf("n/%d/key", i)] == 63 {
+				moved++
+			}
+		}
+		return moved == 2
+	})
+
+	// a drag in the velocity lane sets the velocity of the first note
+	vx, vy := vel(0, 0.25)
+	drag(vx, vy, vx, vy)
+	paneltest.Eventually(t, "the velocity of the first note", func() bool { v := pt.SettingsOf(id).Values(); return v["n/0/velocity"] < 0.4 })
+
+	// a region of the ruler, duplicated: the notes in beats 0 to 2 again in 2 to 4
+	before := len(starts())
+	ax, ay := ruler(0)
+	bx, by := ruler(2)
+	drag(ax, ay, bx, by)
+	tb.Eval(canvas + `.focus()`)
+	keyDown("d", "ctrl")
+	paneltest.Eventually(t, "the region duplicated", func() bool { return len(starts()) > before })
+}
+
+// the note editor has a clip for every section of the song: the one chosen is edited, the chords of the harmony show over it, a clip is copied to other sections
+func TestPageNoteRollClips(t *testing.T) {
+	b := paneltest.Start(t)
+	p := psalm.New(paneltest.NewEngine(t))
+	ctl := panel.New(p, "Patcher")
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	if err := p.AudioStart(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p.AudioStop() })
+	song, _ := pt.Add("song", "", 60, 200)
+	if err := pt.SetText(song, "sections", "Verse 2, Chorus 2, Bridge 1"); err != nil {
+		t.Fatal(err)
+	}
+	harm, _ := pt.Add("harmony", "", 60, 300)
+	if err := pt.SetText(harm, "chords", "Verse: Dm7 G7\nChorus: C Am"); err != nil {
+		t.Fatal(err)
+	}
+	id, err := pt.Add("noteroll", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roll := pt.Module(id).(*noteroll.Roll)
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelector(".pt-node")`)
+	tb.Size(1300, 900)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	canvas := `S().querySelector(".noteroll canvas")`
+	tb.WaitFor(`!!`+canvas+` && `+canvas+`.clientHeight > 300 && `+canvas+`.rollState().sections === 3`, "the roll, with the sections of the song")
+	// the clip of the chorus: eight beats (two bars), the chords of the chorus over it
+	tb.Eval(`(() => { const s = S().querySelector(".nr-view select"); s.value = "Chorus"; s.dispatchEvent(new (S().defaultView.Event)("change")); })()`)
+	tb.WaitFor(`JSON.stringify(`+canvas+`.rollState().view) === '"Chorus"' && `+canvas+`.rollState().chords === 2`, "the chorus, with two chords")
+	// a note drawn there is in the clip of the chorus, not in the loop
+	tb.Eval(`S().querySelector('.nr-tool[data-tool="draw"]').click()`)
+	left := tb.Eval(fmt.Sprintf(`(() => { const g = document.querySelector(".pt-win-frame").getBoundingClientRect(), f0 = W().getElementById("frame").getBoundingClientRect(), r = %s.getBoundingClientRect();
+		return [g.left + f0.left + r.left, g.top + f0.top + r.top, r.width, r.height]; })()`, canvas)).([]any)
+	cl, ct, cw, chh := left[0].(float64), left[1].(float64), left[2].(float64), left[3].(float64)
+	areaH := chh - 34 - 70 - 6
+	x, y := cl+52+(cw-52)/8*1.1, ct+34+areaH/2 // the first beat, half way up
+	tb.Mouse("mousePressed", x, y, nil)
+	tb.Mouse("mouseReleased", x, y, nil)
+	paneltest.Eventually(t, "a note in the clip of the chorus", func() bool {
+		c, ok := roll.Clip("Chorus")
+		return ok && len(c.Notes) == 1 && c.Length == 8 && len(roll.Notes()) == 0
+	})
+	// copied to the verse and the bridge
+	tb.Eval(`(() => { const s = S().querySelector(".nr-view").parentNode.querySelectorAll("select")[1]; s.value = "*"; s.dispatchEvent(new (S().defaultView.Event)("change")); })()`)
+	paneltest.Eventually(t, "the clip copied to the other sections", func() bool {
+		v, ok1 := roll.Clip("Verse")
+		br, ok2 := roll.Clip("Bridge")
+		return ok1 && ok2 && len(v.Notes) == 1 && len(br.Notes) == 1
+	})
+	// a clip taken away
+	tb.WaitFor(`!S().querySelector("button[title^='take the clip']").disabled`, "the button that takes the clip away")
+	tb.Eval(`S().querySelector("button[title^='take the clip']").click()`)
+	paneltest.Eventually(t, "the clip of the chorus taken away", func() bool { _, ok := roll.Clip("Chorus"); return !ok })
 }
 
 // the arpeggiator is on the page: a module with its notes in, clock in and notes out, and its settings in the side panel

@@ -12,6 +12,7 @@ package noteroll
 import (
 	_ "embed"
 	"encoding/json"
+	"maps"
 	"math"
 	"slices"
 	"strconv"
@@ -44,15 +45,50 @@ type Note struct {
 	Velocity      float64
 }
 
-// Roll is a loop of notes, playing with the tempo of the patch. Its notes and length are safe to
-// change from any goroutine (the page, your own code); it plays on the audio thread
+// Clip is a loop of notes: the notes (sorted by start) and its length in beats
+type Clip struct {
+	Notes  []Note
+	Length float64
+}
+
+// Where tells where the song is at a tick: the section it is in and the tick the section began on (false: the patch has no song)
+type Where func(tick psalm.CtrlTick) (section string, began int64, ok bool)
+
+// Section is a section of the song as the editor has it: its name and its length in beats
+type Section struct {
+	Name  string  `json:"name"`
+	Beats float64 `json:"beats"`
+}
+
+// ChordSpan is a chord of the harmony over a part of a clip, in beats, with the pitch classes of its tones
+type ChordSpan struct {
+	At   float64 `json:"at"`
+	Len  float64 `json:"len"`
+	Name string  `json:"name"`
+	Pcs  []int   `json:"pcs"`
+}
+
+// Link is what a roll knows of the patch it is in: where the song is (a roll then plays the clip of the section the song is in, from the start of the section), the
+// sections (the editor has a clip for each), and the chords of a section for the editor to show (nil: it knows none)
+type Link struct {
+	Where    Where
+	Sections func() []Section
+	Chords   func(section string, beats float64) []ChordSpan
+}
+
+// Roll is a set of loops of notes, playing with the tempo of the patch: the loop (the clip of no section) goes round from the start of the patch, and the song (when it has
+// one and the roll has a clip for the section it is in) plays the clip of its section from the section's start. Its notes and length are safe to change from any
+// goroutine (the page, your own code); it plays on the audio thread
 type Roll struct {
 	*psalm.Module
-	notes   atomic.Pointer[[]Note] // sorted by start
-	length  atomic.Uint64          // beats, float64 bits
-	pos     atomic.Uint64          // where it plays, in beats, float64 bits
-	targets []psalm.Receiver       // audio thread
-	last    int64                  // the last tick played
+	clips    atomic.Pointer[map[string]*Clip] // by section; "" is the loop that plays when the song has no clip for the section; replaced, never changed
+	view     atomic.Pointer[string]           // the clip the editor shows
+	link     atomic.Pointer[Link]
+	pos      atomic.Uint64          // where it plays, in beats, float64 bits
+	playing  atomic.Pointer[string] // the clip that plays: its section, "" the loop
+	targets  []psalm.Receiver       // audio thread
+	last     int64                  // the last tick played
+	lastClip string                 // the clip it played then
 }
 
 // New creates a roll of 8 beats (two bars) without notes; add it to a patch as a control module
@@ -65,7 +101,11 @@ func New(p psalm.Patcher) *Roll {
 func newRoll() *Roll {
 	r := &Roll{Module: psalm.NewControl(), last: -1}
 	r.SetSelf(r)
-	r.Set(nil, 8)
+	empty := ""
+	r.view.Store(&empty)
+	r.playing.Store(&empty)
+	m := map[string]*Clip{"": {Length: 8}}
+	r.clips.Store(&m)
 	return r
 }
 
@@ -75,9 +115,11 @@ func NewRoll() *Roll { return newRoll() }
 // SetTargets sets the synths it plays; call it on the audio thread (psalm.Psalm.Do)
 func (r *Roll) SetTargets(targets ...psalm.Receiver) { r.targets = targets }
 
-// Set sets the notes and the length of the loop in beats (1 to MaxBeats). Notes are put in order,
-// within the loop, and made to fit its limits
-func (r *Roll) Set(notes []Note, length float64) {
+// Link tells the roll about the song and the chords of the patch (the patcher does)
+func (r *Roll) Link(l Link) { r.link.Store(&l) }
+
+// makeClip puts notes in order, within the loop, and made to fit its limits
+func makeClip(notes []Note, length float64) *Clip {
 	length = math.Max(1, math.Min(math.Round(length*1000)/1000, MaxBeats))
 	ns := make([]Note, 0, len(notes))
 	for _, n := range notes {
@@ -99,39 +141,114 @@ func (r *Roll) Set(notes []Note, length float64) {
 		}
 		return a.Key - b.Key
 	})
-	r.notes.Store(&ns)
-	r.length.Store(math.Float64bits(length))
+	return &Clip{Notes: ns, Length: length}
 }
 
-// Notes returns the notes, in order of start
-func (r *Roll) Notes() []Note { return slices.Clone(*r.notes.Load()) }
+// with replaces the clips by a changed copy
+func (r *Roll) with(change func(m map[string]*Clip)) {
+	for {
+		old := r.clips.Load()
+		m := maps.Clone(*old)
+		change(m)
+		if r.clips.CompareAndSwap(old, &m) {
+			return
+		}
+	}
+}
+
+// Set sets the notes and the length of the loop in beats (1 to MaxBeats): the loop of no section. Notes are put in order, within the loop, and made to fit its limits
+func (r *Roll) Set(notes []Note, length float64) { r.SetClip("", notes, length) }
+
+// SetClip sets the clip of a section ("" is the loop)
+func (r *Roll) SetClip(section string, notes []Note, length float64) {
+	c := makeClip(notes, length)
+	r.with(func(m map[string]*Clip) { m[section] = c })
+}
+
+// DropClip takes the clip of a section away (the loop can't go: it is emptied)
+func (r *Roll) DropClip(section string) {
+	r.with(func(m map[string]*Clip) {
+		if section == "" {
+			m[""] = &Clip{Length: m[""].Length}
+		} else {
+			delete(m, section)
+		}
+	})
+}
+
+// CopyClip puts a copy of a clip in other sections
+func (r *Roll) CopyClip(from string, to ...string) {
+	src, ok := (*r.clips.Load())[from]
+	if !ok {
+		return
+	}
+	r.with(func(m map[string]*Clip) {
+		for _, name := range to {
+			if name != from {
+				m[name] = &Clip{Notes: slices.Clone(src.Notes), Length: src.Length}
+			}
+		}
+	})
+}
+
+// Clip returns the clip of a section ("" the loop); false when the section has none
+func (r *Roll) Clip(section string) (Clip, bool) {
+	c, ok := (*r.clips.Load())[section]
+	if !ok {
+		return Clip{}, false
+	}
+	return Clip{Notes: slices.Clone(c.Notes), Length: c.Length}, true
+}
+
+// Clips returns the names of the sections that have a clip (and "" for the loop, always first)
+func (r *Roll) Clips() []string {
+	names := slices.Sorted(maps.Keys(*r.clips.Load()))
+	return names
+}
+
+// Notes returns the notes of the loop, in order of start
+func (r *Roll) Notes() []Note { c, _ := r.Clip(""); return c.Notes }
 
 // Length returns the length of the loop in beats
-func (r *Roll) Length() float64 { return math.Float64frombits(r.length.Load()) }
+func (r *Roll) Length() float64 { c, _ := r.Clip(""); return c.Length }
 
-// Position returns where the loop plays, in beats
+// Position returns where the clip that plays is, in beats
 func (r *Roll) Position() float64 { return math.Float64frombits(r.pos.Load()) }
 
-// CtrlTick plays the notes that start on the tick: the loop comes round every Length beats of the
+// Playing returns the clip that plays: the section it belongs to, "" for the loop
+func (r *Roll) Playing() string { return *r.playing.Load() }
+
+// CtrlTick plays the notes that start on the tick: the clip of the section the song is in (from the start of the section), else the loop, which comes round every Length beats of the
 // patch, wherever the tempo is
 func (r *Roll) CtrlTick(tick psalm.CtrlTick) {
 	ppq := float64(r.Config().PPQ)
-	loop := int64(math.Round(r.Length() * ppq))
+	clips := *r.clips.Load()
+	clip, name, base := clips[""], "", int64(0)
+	if l := r.link.Load(); l != nil && l.Where != nil {
+		if section, began, ok := l.Where(tick); ok {
+			if c, has := clips[section]; has {
+				clip, name, base = c, section, began
+			}
+		}
+	}
+	if name != *r.playing.Load() {
+		r.playing.Store(&name)
+	}
+	loop := int64(math.Round(clip.Length * ppq))
 	if loop < 1 {
 		return
 	}
 	t := tick.TickTimestamp
-	r.pos.Store(math.Float64bits(float64(t%loop) / ppq))
+	r.pos.Store(math.Float64bits(float64(mod(t-base, loop)) / ppq))
 	from := r.last + 1
-	if r.last < 0 || t < from || t-from >= loop { // the first tick, a jump back, a long pause: only this one
+	if r.last < 0 || t < from || t-from >= loop || name != r.lastClip { // the first tick, a jump back, a long pause, another clip: only this one
 		from = t
 	}
-	r.last = t
-	notes := *r.notes.Load()
-	beat := r.Env().TickDuration() * ppq // seconds
+	r.last, r.lastClip = t, name
+	second := r.Env().TickDuration() * ppq // seconds a beat
 	for tt := from; tt <= t; tt++ {
-		at := tt % loop
-		for _, n := range notes {
+		at := mod(tt-base, loop)
+		for _, n := range clip.Notes {
 			start := int64(math.Round(n.Start * ppq))
 			if start > at {
 				break
@@ -139,7 +256,7 @@ func (r *Roll) CtrlTick(tick psalm.CtrlTick) {
 			if start != at {
 				continue
 			}
-			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.005, n.Length*beat), "amplitude": n.Velocity,
+			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.005, n.Length*second), "amplitude": n.Velocity,
 				"message": psalm.Message{"pitch": float64(n.Key), "velocity": n.Velocity}}
 			for _, target := range r.targets {
 				target.ReceiveMessage(msg)
@@ -148,20 +265,92 @@ func (r *Roll) CtrlTick(tick psalm.CtrlTick) {
 	}
 }
 
-// state is what the page gets as the roll plays: the notes as [start, length, key, velocity]
+func mod(a, b int64) int64 { return ((a % b) + b) % b }
+
+// state is what the page gets as the roll plays: the notes of the clip it shows as [start, length, key, velocity], and where it plays
 type state struct {
-	Notes  [][4]float64 `json:"notes"`
-	Length float64      `json:"length"`
-	Pos    float64      `json:"pos"`
-	BPS    float64      `json:"bps"` // beats a second
+	Notes    [][4]float64 `json:"notes"`
+	Length   float64      `json:"length"`
+	Pos      float64      `json:"pos"` // where the clip shown plays, -1 when another plays
+	BPS      float64      `json:"bps"` // beats a second
+	View     string       `json:"view"`
+	Playing  string       `json:"playing"`
+	Clips    []string     `json:"clips"`
+	Sections []Section    `json:"sections"`
+	Chords   []ChordSpan  `json:"chords"`
 }
 
 func (r *Roll) state() state {
-	st := state{Notes: [][4]float64{}, Length: r.Length(), Pos: math.Round(r.Position()*1000) / 1000, BPS: r.Env().BPM() / 60}
-	for _, n := range *r.notes.Load() {
+	view := *r.view.Load()
+	l := r.link.Load()
+	st := state{Notes: [][4]float64{}, BPS: r.Env().BPM() / 60, View: view, Playing: r.Playing(), Clips: r.Clips(), Sections: []Section{}, Chords: []ChordSpan{}}
+	if l != nil && l.Sections != nil {
+		st.Sections = l.Sections()
+	}
+	c, ok := r.Clip(view)
+	if !ok { // no clip yet: as long as the section, else as the loop
+		c.Length = r.Length()
+		for _, s := range st.Sections {
+			if s.Name == view && s.Beats > 0 {
+				c.Length = math.Min(s.Beats, MaxBeats)
+			}
+		}
+	}
+	st.Length = c.Length
+	for _, n := range c.Notes {
 		st.Notes = append(st.Notes, [4]float64{n.Start, n.Length, float64(n.Key), math.Round(n.Velocity*100) / 100})
 	}
+	if st.Playing == view {
+		st.Pos = math.Round(r.Position()*1000) / 1000
+	} else {
+		st.Pos = -1
+	}
+	if l != nil && l.Chords != nil {
+		st.Chords = l.Chords(view, c.Length)
+	}
 	return st
+}
+
+// StateText is the clips as a text the patch keeps (the clips of the sections as well as the loop)
+func (r *Roll) StateText() string {
+	type clip struct {
+		Length float64      `json:"length"`
+		Notes  [][4]float64 `json:"notes"`
+	}
+	out := map[string]clip{}
+	for name, c := range *r.clips.Load() {
+		cl := clip{Length: c.Length, Notes: [][4]float64{}}
+		for _, n := range c.Notes {
+			cl.Notes = append(cl.Notes, [4]float64{n.Start, n.Length, float64(n.Key), n.Velocity})
+		}
+		out[name] = cl
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
+}
+
+// SetStateText gives the clips back from StateText
+func (r *Roll) SetStateText(text string) error {
+	var in map[string]struct {
+		Length float64      `json:"length"`
+		Notes  [][4]float64 `json:"notes"`
+	}
+	if err := json.Unmarshal([]byte(text), &in); err != nil {
+		return err
+	}
+	m := map[string]*Clip{}
+	for name, c := range in {
+		notes := make([]Note, 0, len(c.Notes))
+		for _, n := range c.Notes {
+			notes = append(notes, Note{Start: n[0], Length: n[1], Key: int(math.Round(n[2])), Velocity: n[3]})
+		}
+		m[name] = makeClip(notes, c.Length)
+	}
+	if _, ok := m[""]; !ok {
+		m[""] = &Clip{Length: 8}
+	}
+	r.clips.Store(&m)
+	return nil
 }
 
 // Add adds the editor of a roll to a panel (and the plugin to its page)
@@ -172,18 +361,38 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 		panel.OnMessage(func(raw json.RawMessage) {
 			var m struct {
 				Set *struct {
+					Clip   *string      `json:"clip"`
 					Notes  [][4]float64 `json:"notes"`
 					Length float64      `json:"length"`
 				} `json:"set"`
+				View *string `json:"view"`
+				Copy *struct {
+					From string   `json:"from"`
+					To   []string `json:"to"`
+				} `json:"copy"`
+				Drop *string `json:"drop"`
 			}
-			if json.Unmarshal(raw, &m) != nil || m.Set == nil {
+			if json.Unmarshal(raw, &m) != nil {
 				return
 			}
-			notes := make([]Note, 0, len(m.Set.Notes))
-			for _, n := range m.Set.Notes {
-				notes = append(notes, Note{Start: n[0], Length: n[1], Key: int(math.Round(n[2])), Velocity: n[3]})
+			switch {
+			case m.View != nil:
+				roll.view.Store(m.View)
+			case m.Copy != nil:
+				roll.CopyClip(m.Copy.From, m.Copy.To...)
+			case m.Drop != nil:
+				roll.DropClip(*m.Drop)
+			case m.Set != nil:
+				notes := make([]Note, 0, len(m.Set.Notes))
+				for _, n := range m.Set.Notes {
+					notes = append(notes, Note{Start: n[0], Length: n[1], Key: int(math.Round(n[2])), Velocity: n[3]})
+				}
+				name := *roll.view.Load()
+				if m.Set.Clip != nil {
+					name = *m.Set.Clip
+				}
+				roll.SetClip(name, notes, m.Set.Length)
 			}
-			roll.Set(notes, m.Set.Length)
 		}))
 }
 
@@ -191,7 +400,7 @@ func Add(ctl *panel.Panel, name string, roll *Roll) *panel.Param {
 // "n/<i>/length", "n/<i>/key", "n/<i>/velocity" for every note): Apply reads them back
 func (r *Roll) Values() map[string]float64 {
 	v := map[string]float64{"length": r.Length()}
-	for i, n := range *r.notes.Load() {
+	for i, n := range r.Notes() {
 		p := "n/" + strconv.Itoa(i) + "/"
 		v[p+"start"], v[p+"length"], v[p+"key"], v[p+"velocity"] = n.Start, n.Length, float64(n.Key), n.Velocity
 	}

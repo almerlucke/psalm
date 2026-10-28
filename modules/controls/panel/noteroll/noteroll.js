@@ -1,197 +1,572 @@
-// a note editor: a piano roll of a loop to draw notes on. The notes are [start, length, key,
-// velocity] (start and length in beats). A click on an empty place puts a note (drag to make it
-// longer), a drag on a note moves it, a drag on its right end resizes it, a right click takes it
-// away; the page keeps its own copy while you work and sends all of it when you let go
+// a note editor: a piano roll of a loop. The notes are [start, length, key, velocity] (start and length in beats). It works like the piano roll of a sequencer:
+//
+//   select tool (V)  a drag on empty space draws a rectangle that selects notes; a click on a note selects it (shift adds), a drag moves the notes selected (alt copies them),
+//                    the right edge of a note resizes all the notes selected; a double click on empty space puts a note
+//   draw tool (D)    a click puts a note, a drag makes it longer
+//   erase tool (E)   a drag takes the notes it crosses away; a right click takes a note away with every tool
+//   the ruler        a click puts the cursor (where paste goes), a drag chooses a region of the loop: copy it, duplicate it (ctrl+D repeats it), delete it
+//   the velocity lane under the notes: drag a bar up or down, or paint across the notes
+//   ctrl+A all, ctrl+C/X/V copy, cut, paste (at the cursor), ctrl+D duplicate (after the notes or region), ctrl+Z/ctrl+shift+Z undo, redo, Delete,
+//   arrows move the notes (left/right by the grid, shift by a beat; up/down a semitone, shift an octave), Q quantizes the start, L makes them legato
+//   the wheel scrolls the keys, shift+wheel the beats, ctrl+wheel zooms; the page keeps its own copy while you work and sends all of it when you let go
+//
+// A song has a clip for every section: the clip chosen above the roll (the loop plays when a section has none) is the one edited, and the song plays the clip of the section it is in
+// from the section's start. A clip can be copied to other sections. With a harmony module its chords show in the ruler, and the keys that are tones of the chord are lit under them
 psalm.register("noteroll", (p, api) => {
 	const canvas = document.createElement("canvas");
 	const bar = document.createElement("div"); bar.className = "nr-bar";
+	const bar2 = document.createElement("div"); bar2.className = "nr-bar";
 	const hint = document.createElement("div"); hint.className = "nr-hint";
-	hint.textContent = "click to put a note, drag its end to make it longer, drag it to move it, right click to take it away; the wheel scrolls the keys";
+	hint.textContent = "V select, D draw, E erase; double click puts a note; ctrl+C/X/V/D/A/Z; arrows move; Q quantize, L legato; ctrl+wheel zooms, shift+wheel scrolls";
 	const el = api.labelled(p, canvas, hint);
 	el.classList.add("noteroll");
 	canvas.parentNode.insertBefore(bar, canvas);
+	canvas.parentNode.insertBefore(bar2, canvas);
 
+	// the notes are objects here: {s: start, l: length, k: key, v: velocity}
 	let notes = [], length = 8, pos = 0, bps = 2, at = performance.now();
-	let selected = -1, snap = 0.25, lastLen = 1, lastVel = 0.8;
-	let lo = 48, rows = 36; // the lowest key shown, how many keys
-	let first = true; // the first state: the keys shown are where the notes are
+	const sel = new Set();
+	let tool = "select";
+	let snap = 0.25;
+	let lastLen = 1, lastVel = 0.8;
+	let lo = 48; // the lowest key shown
+	let pxb = 0, x0 = 0; // pixels a beat, the first beat shown
+	let cursor = null; // where paste goes (beats)
+	let region = null; // [a, b] in beats
+	let viewName = "", sections = [], have = [""], playing = "", chords = [], waitView = false; // the clip edited, the sections of the song, the clips there are, the clip playing, the chords over it
+	let first = true, showKeys = null; // the key to have in the middle of the roll, until it has a size
 	let hold = 0; // until when the page's own notes stay (the server's come back after a send)
-	let drag = null;
+	let drag = null, band = null;
+	const undo = [], redo = [];
+	let base = ""; // the last state sent, as text
 
-	// the bar: length, snap, velocity of the one chosen, clear
+	const gutter = 52, rulerH = 34, velH = 70, rowH = 13, gap = 6;
+	const MAXBEATS = 64;
+
+	// --- the bar ---
 	const mk = (tag, props, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); e.append(...kids); return e; };
-	const lenIn = mk("input", {type: "number", min: 1, max: 64, step: 1, value: length, title: "how many beats the loop has"});
+	const toolBtns = {};
+	for (const [id, label, title] of [["select", "Select", "select and move notes (V)"], ["draw", "Draw", "click to put notes (D)"], ["erase", "Erase", "drag over notes to take them away (E)"]]) {
+		toolBtns[id] = mk("button", {textContent: label, title, className: "nr-tool"});
+		toolBtns[id].dataset.tool = id;
+		toolBtns[id].addEventListener("click", () => setTool(id));
+	}
+	const setTool = t => {
+		tool = t;
+		for (const [id, b] of Object.entries(toolBtns)) b.classList.toggle("on", id === t);
+		canvas.style.cursor = t === "erase" ? "not-allowed" : "crosshair";
+	};
 	const snapSel = mk("select", {title: "what the notes snap to"});
-	for (const [name, v] of [["1 beat", 1], ["1/2", 0.5], ["1/4 (16th)", 0.25], ["1/8", 0.125], ["1/3 (triplet)", 1 / 3], ["1/6", 1 / 6]]) {
+	for (const [name, v] of [["off", 0], ["1 beat", 1], ["1/2", 0.5], ["1/4 (16th)", 0.25], ["1/8", 0.125], ["1/3 (triplet)", 1 / 3], ["1/6", 1 / 6]]) {
 		const o = mk("option", {value: v, textContent: name}); if (v === snap) o.selected = true; snapSel.append(o);
 	}
-	const velIn = mk("input", {type: "range", min: 1, max: 127, step: 1, value: 100, title: "the velocity of the note chosen"});
-	const velLab = mk("label", {}, "Velocity ", velIn);
+	const lenIn = mk("input", {type: "number", min: 1, max: MAXBEATS, step: 1, value: length, title: "how many beats the loop has"});
+	const dbl = mk("button", {textContent: "×2", title: "double the loop: its notes are copied into the second half"});
+	const half = mk("button", {textContent: "½", title: "halve the loop: the second half is cut off"});
+	const zoom = mk("input", {type: "range", min: 0, max: 1, step: 0.01, value: 0, title: "zoom (ctrl+wheel)", className: "nr-zoom"});
+	const undoB = mk("button", {textContent: "Undo", title: "ctrl+Z"});
+	const redoB = mk("button", {textContent: "Redo", title: "ctrl+shift+Z"});
+	const quantB = mk("button", {textContent: "Quantize", title: "put the start of the notes (selected, or all) on the grid (Q)"});
+	const legB = mk("button", {textContent: "Legato", title: "make the notes (selected, or all) last until the next one (L)"});
 	const clear = mk("button", {textContent: "Clear", title: "take every note away"});
 	const selInfo = mk("span", {className: "nr-sel"});
-	bar.append(mk("label", {}, "Beats ", lenIn), mk("label", {}, "Snap ", snapSel), velLab, clear, selInfo);
+	const viewSel = mk("select", {title: "the clip edited: a song plays the clip of the section it is in; the loop plays where a section has no clip"});
+	const copySel = mk("select", {title: "copy this clip to other sections"});
+	const dropB = mk("button", {textContent: "Delete clip", title: "take the clip of this section away (the loop plays there instead)"});
+	const viewLab = mk("label", {className: "nr-view"}, "Clip ", viewSel);
+	bar.append(viewLab, copySel, dropB, ...Object.values(toolBtns), mk("label", {}, "Grid ", snapSel), mk("label", {}, "Beats ", lenIn), dbl, half, mk("label", {}, "Zoom ", zoom));
+	bar2.append(undoB, redoB, quantB, legB, clear, selInfo);
+	setTool("select");
 
+	// --- the notes, and what is sent ---
+	const toArrays = () => notes.map(n => [n.s, n.l, n.k, n.v]);
+	const fromArrays = a => a.map(n => ({s: n[0], l: n[1], k: n[2], v: n[3]}));
+	const key = () => JSON.stringify([length, notes.map(n => [+n.s.toFixed(4), +n.l.toFixed(4), n.k, +n.v.toFixed(3)]).sort((a, b) => a[0] - b[0] || a[2] - b[2])]);
+	base = key();
 	const send = () => {
 		hold = performance.now() + 700;
-		api.message(p.name, {set: {length, notes}});
+		api.message(p.name, {set: {clip: viewName, length, notes: toArrays()}});
 	};
-	lenIn.addEventListener("change", () => {
-		length = Math.max(1, Math.min(64, Math.round(Number(lenIn.value)) || 1)); lenIn.value = length;
-		notes = notes.filter(n => n[0] < length); selected = -1; send();
-	});
-	snapSel.addEventListener("change", () => { snap = Number(snapSel.value); });
-	velIn.addEventListener("input", () => {
-		if (selected < 0) return;
-		notes[selected][3] = lastVel = Number(velIn.value) / 127; send();
-	});
-	clear.addEventListener("click", () => { notes = []; selected = -1; send(); });
+	// commit: what changed becomes one step of the history, and goes to the server
+	const state = () => ({length, notes: notes.map(n => ({...n}))});
+	let was = state(); // the notes before the step that is under way
+	const commit = () => {
+		const now = key();
+		if (now === base) return;
+		undo.push(was); if (undo.length > 100) undo.shift();
+		redo.length = 0;
+		base = now; was = state();
+		send(); updateButtons();
+	};
+	const restore = s => {
+		notes = s.notes.map(n => ({...n})); length = s.length; lenIn.value = length;
+		sel.clear(); base = key(); was = state(); fit(); send(); updateButtons();
+	};
+	const doUndo = () => { if (!undo.length) return; redo.push(state()); restore(undo.pop()); };
+	const doRedo = () => { if (!redo.length) return; undo.push(state()); restore(redo.pop()); };
+	const updateButtons = () => { undoB.disabled = !undo.length; redoB.disabled = !redo.length; };
+	updateButtons();
 
+	undoB.addEventListener("click", doUndo);
+	redoB.addEventListener("click", doRedo);
+	snapSel.addEventListener("change", () => { snap = Number(snapSel.value); });
+	lenIn.addEventListener("change", () => {
+		length = Math.max(1, Math.min(MAXBEATS, Math.round(Number(lenIn.value)) || 1)); lenIn.value = length;
+		notes = notes.filter(n => n.s < length); for (const n of notes) n.l = Math.min(n.l, length - n.s);
+		sel.clear(); fit(); commit();
+	});
+	dbl.addEventListener("click", () => {
+		if (length * 2 > MAXBEATS) return;
+		const copies = notes.map(n => ({...n, s: n.s + length}));
+		length *= 2; lenIn.value = length; notes.push(...copies); fit(); commit();
+	});
+	half.addEventListener("click", () => {
+		if (length < 2) return;
+		length = Math.max(1, Math.round(length / 2)); lenIn.value = length;
+		notes = notes.filter(n => n.s < length); for (const n of notes) n.l = Math.min(n.l, length - n.s);
+		sel.clear(); fit(); commit();
+	});
+	clear.addEventListener("click", () => { notes = []; sel.clear(); region = null; commit(); });
+	quantB.addEventListener("click", () => quantize());
+	legB.addEventListener("click", () => legato());
+	zoom.addEventListener("input", () => {
+		const g = geom(), c = x0 + (g.vw / g.pxb) / 2;
+		pxb = zoomPx(Number(zoom.value)); x0 = c - g.vw / pxb / 2; clampView();
+	});
+
+	// --- the clips: one for every section of a song ---
+	const setView = name => {
+		if (name === viewName) return;
+		viewName = name; waitView = true;
+		notes = []; sel.clear(); region = null; cursor = null; undo.length = 0; redo.length = 0; base = key(); was = state(); updateButtons();
+		api.message(p.name, {view: name});
+	};
+	viewSel.addEventListener("change", () => setView(viewSel.value));
+	copySel.addEventListener("change", () => {
+		const to = copySel.value === "*" ? sections.map(s => s.name).filter(n => n !== viewName) : copySel.value ? [copySel.value] : [];
+		copySel.value = "";
+		if (to.length) { commitNow(); api.message(p.name, {copy: {from: viewName, to}}); }
+	});
+	dropB.addEventListener("click", () => { waitView = true; hold = 0; api.message(p.name, {drop: viewName}); });
+	const commitNow = () => { if (key() !== base) commit(); };
+	let optionsKey = "";
+	const showOptions = () => { // the choices of the clip and of the copy: the sections of the song, a mark on the ones that have a clip
+		const k = JSON.stringify([sections.map(s => s.name), have, viewName]);
+		if (k === optionsKey) return;
+		optionsKey = k;
+		viewSel.replaceChildren(mk("option", {value: "", textContent: (have.includes("") && viewName !== "" ? "● " : "") + "the loop"}));
+		for (const s of sections) viewSel.append(mk("option", {value: s.name, textContent: (have.includes(s.name) ? "● " : "") + s.name}));
+		viewSel.value = viewName;
+		copySel.replaceChildren(mk("option", {value: "", textContent: "copy to…"}));
+		if (sections.length > 1) copySel.append(mk("option", {value: "*", textContent: "all the others"}));
+		for (const s of sections) if (s.name !== viewName) copySel.append(mk("option", {value: s.name, textContent: s.name}));
+		const song = sections.length > 0;
+		viewLab.style.display = copySel.style.display = dropB.style.display = song ? "" : "none";
+		dropB.disabled = viewName === "" || !have.includes(viewName);
+	};
+	showOptions();
+
+	// --- the view: the beats shown (zoom, scroll), the keys shown ---
 	const name = k => ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][k % 12] + (Math.floor(k / 12) - 1);
 	const black = k => [1, 3, 6, 8, 10].includes(k % 12);
+	const geom = () => {
+		const w = canvas.clientWidth, h = canvas.clientHeight;
+		const vw = w - gutter, areaTop = rulerH, areaH = h - rulerH - velH - gap, rows = Math.max(4, Math.floor(areaH / rowH));
+		return {w, h, vw, pxb: pxb || vw / length, areaTop, areaH, rows, velTop: h - velH, rowH: areaH / rows};
+	};
+	const minPx = () => (canvas.clientWidth - gutter) / length; // the whole loop fits
+	const maxPx = 240;
+	const zoomPx = z => { const a = minPx(); return a * Math.pow(maxPx / a, z); };
+	const fit = () => { // the loop changed: the view keeps within it
+		const a = minPx(); if (!pxb || pxb < a) pxb = a;
+		clampView(); zoom.value = Math.log(pxb / a) / Math.log(maxPx / a) || 0;
+	};
+	const clampView = () => {
+		const vw = canvas.clientWidth - gutter, span = vw / pxb;
+		x0 = Math.max(0, Math.min(x0, Math.max(0, length - span)));
+	};
+	const xOf = (g, b) => gutter + (b - x0) * g.pxb;
+	const bOf = (g, x) => x0 + (x - gutter) / g.pxb;
+	const keyAt = (g, y) => lo + g.rows - 1 - Math.floor((y - g.areaTop) / g.rowH);
+	const yOf = (g, k) => g.areaTop + (lo + g.rows - 1 - k) * g.rowH;
+	const snapTo = b => snap > 0 ? Math.round(b / snap) * snap : Math.round(b * 1000) / 1000;
+	const snapDown = b => snap > 0 ? Math.floor(b / snap + 1e-9) * snap : b;
+	const minLen = () => snap > 0 ? snap : 0.05;
+	const head = () => { const t = (performance.now() - at) / 1000; return ((pos + bps * t) % length + length) % length; };
 
 	let colors = {};
 	const restyle = () => { colors = {bg: api.css("track"), ink: api.css("ink"), muted: api.css("muted"), line: api.css("line"), accent: api.css("accent")}; };
 	restyle();
 
-	const gutter = 52;
-	const geom = () => {
-		const w = canvas.clientWidth, h = canvas.clientHeight;
-		return {w, h, pxb: (w - gutter) / length, rowH: h / rows};
+	const outOfChord = n => { // a note that is no tone of the chord it starts in (a harmony module: its chords are shown)
+		for (const sp of chords) if (n.s >= sp.at - 1e-6 && n.s < sp.at + sp.len - 1e-6) return !sp.pcs.includes(n.k % 12);
+		return false;
 	};
-	const keyAt = (g, y) => lo + rows - 1 - Math.floor(y / g.rowH);
-	const yOf = (g, k) => (lo + rows - 1 - k) * g.rowH;
-	const snapTo = b => Math.round(b / snap) * snap;
-	const find = (g, x, y) => { // the note at a place (the last drawn is on top)
-		const k = keyAt(g, y), b = (x - gutter) / g.pxb;
-		for (let i = notes.length - 1; i >= 0; i--) if (notes[i][2] === k && b >= notes[i][0] && b <= notes[i][0] + notes[i][1]) return i;
-		return -1;
+	const noteAt = (g, x, y) => { // the note at a place (the last drawn is on top)
+		const k = keyAt(g, y), b = bOf(g, x);
+		for (let i = notes.length - 1; i >= 0; i--) { const n = notes[i]; if (n.k === k && b >= n.s && b <= n.s + n.l) return n; }
+		return null;
 	};
-	const head = () => { const t = (performance.now() - at) / 1000; return ((pos + bps * t) % length + length) % length; };
+	const onEdge = (g, n, x) => xOf(g, n.s + n.l) - x <= Math.min(8, n.l * g.pxb / 3);
 
+	// --- drawing ---
 	const draw = () => {
 		if (!canvas.isConnected) return;
 		const g = geom(), dpr = window.devicePixelRatio || 1;
+		if (!pxb) fit();
+		if (showKeys !== null && g.h > 0) { lo = Math.max(0, Math.min(128 - g.rows, showKeys - Math.floor(g.rows / 2))); showKeys = null; }
 		if (canvas.width !== Math.round(g.w * dpr) || canvas.height !== Math.round(g.h * dpr)) {
 			canvas.width = Math.round(g.w * dpr); canvas.height = Math.round(g.h * dpr);
 		}
 		const c = canvas.getContext("2d");
 		c.setTransform(dpr, 0, 0, dpr, 0, 0);
 		c.clearRect(0, 0, g.w, g.h);
-		const hd = head();
-		// the keys, and the rows
-		c.font = "10px sans-serif"; c.textBaseline = "middle";
-		for (let k = lo; k < lo + rows; k++) {
+		const live = pos >= 0, hd = live ? head() : -1;
+		c.save(); c.beginPath(); c.rect(gutter, 0, g.vw, g.h); c.clip();
+		// the rows
+		for (let k = lo; k < lo + g.rows; k++) {
 			const y = yOf(g, k);
-			c.globalAlpha = black(k) ? 0.5 : 0.18; c.fillStyle = colors.line; c.fillRect(gutter, y, g.w - gutter, g.rowH);
+			c.globalAlpha = black(k) ? 0.5 : 0.18; c.fillStyle = colors.line; c.fillRect(gutter, y, g.vw, g.rowH);
+			if (k % 12 === 0) { c.globalAlpha = 0.5; c.fillRect(gutter, y + g.rowH - 1, g.vw, 1); }
+		}
+		c.globalAlpha = 1;
+		// the chords of the harmony: the keys that are tones of the chord are lit under it
+		for (const sp of chords) {
+			const x1 = xOf(g, sp.at), x2 = xOf(g, Math.min(length, sp.at + sp.len));
+			if (x2 < gutter || x1 > g.w) continue;
+			c.fillStyle = colors.accent;
+			for (let k = lo; k < lo + g.rows; k++) if (sp.pcs.includes(k % 12)) { c.globalAlpha = 0.13; c.fillRect(x1, yOf(g, k), x2 - x1, g.rowH); }
+			c.globalAlpha = 0.45; c.fillRect(Math.round(x1), g.areaTop, 1, g.areaH);
+		}
+		c.globalAlpha = 1;
+		// the region, under the grid
+		if (region) { c.globalAlpha = 0.16; c.fillStyle = colors.accent; c.fillRect(xOf(g, region[0]), g.areaTop, (region[1] - region[0]) * g.pxb, g.h - g.areaTop); c.globalAlpha = 1; }
+		// the grid: the grid lines, the beats, the bars (4 beats); the loop's end
+		const visFrom = Math.floor(x0), visTo = Math.min(length, Math.ceil(x0 + g.vw / g.pxb));
+		if (snap > 0 && snap * g.pxb >= 6) {
+			c.globalAlpha = 0.18; c.fillStyle = colors.line;
+			for (let b = Math.ceil(x0 / snap) * snap; b <= visTo + 1e-9; b += snap) c.fillRect(Math.round(xOf(g, b)), g.areaTop, 1, g.areaH);
+		}
+		for (let b = visFrom; b <= visTo; b++) {
+			c.globalAlpha = b % 4 === 0 ? 0.9 : 0.4; c.fillStyle = colors.line;
+			c.fillRect(Math.round(xOf(g, b)), g.areaTop, 1, g.h - g.areaTop);
+		}
+		c.globalAlpha = 0.35; c.fillStyle = colors.bg; c.fillRect(xOf(g, length), g.areaTop, g.w, g.h - g.areaTop); // past the end of the loop
+		c.globalAlpha = 1;
+		// the notes
+		for (const n of notes) {
+			if (n.k < lo || n.k >= lo + g.rows) continue;
+			const x = xOf(g, n.s), w = Math.max(3, n.l * g.pxb - 1), y = yOf(g, n.k);
+			if (x + w < gutter || x > g.w) continue;
+			const on = live && n.s <= hd && hd < n.s + n.l, s = sel.has(n), out = outOfChord(n);
+			c.globalAlpha = (on ? 1 : 0.5 + 0.4 * n.v) * (out ? 0.7 : 1);
+			c.fillStyle = colors.accent; c.fillRect(x, y + 1, w, g.rowH - 2);
 			c.globalAlpha = 1;
-			c.fillStyle = colors.ink; c.globalAlpha = 0.8;
-			c.fillRect(0, y + 0.5, gutter - 2, g.rowH - 1); // the white key under all
+			if (out) { c.strokeStyle = colors.muted; c.setLineDash([3, 2]); c.strokeRect(x + 0.5, y + 1.5, w - 1, g.rowH - 3); c.setLineDash([]); }
+			if (s) { c.strokeStyle = colors.ink; c.lineWidth = 2; c.strokeRect(x + 1, y + 2, w - 2, g.rowH - 4); }
+			if (w > 28 && g.rowH >= 11) { c.font = "9px sans-serif"; c.textBaseline = "middle"; c.fillStyle = colors.bg; c.globalAlpha = 0.85; c.fillText(name(n.k), x + 3, y + g.rowH / 2); c.globalAlpha = 1; }
+		}
+		// the velocity lane
+		c.fillStyle = colors.line; c.globalAlpha = 0.25; c.fillRect(gutter, g.velTop, g.vw, velH); c.globalAlpha = 1;
+		for (const n of notes) {
+			const x = xOf(g, n.s); if (x < gutter - 4 || x > g.w) continue;
+			const h = Math.max(2, n.v * (velH - 8));
+			c.fillStyle = sel.has(n) ? colors.ink : colors.accent; c.globalAlpha = sel.has(n) ? 1 : 0.7;
+			c.fillRect(x, g.velTop + velH - 2 - h, Math.min(4, Math.max(2, n.l * g.pxb - 1)), h);
+		}
+		c.globalAlpha = 1;
+		// the cursor, the rubber band, the playhead
+		if (cursor !== null) { c.fillStyle = colors.ink; c.globalAlpha = 0.6; c.fillRect(Math.round(xOf(g, cursor)) - 1, g.areaTop, 1, g.h - g.areaTop); c.globalAlpha = 1; }
+		if (band) {
+			const bx = Math.min(band.x1, band.x2), by = Math.min(band.y1, band.y2), bw = Math.abs(band.x2 - band.x1), bh = Math.abs(band.y2 - band.y1);
+			c.fillStyle = colors.accent; c.globalAlpha = 0.15; c.fillRect(bx, by, bw, bh); c.globalAlpha = 1; c.strokeStyle = colors.accent; c.strokeRect(bx + 0.5, by + 0.5, bw, bh);
+		}
+		if (live) { c.fillStyle = colors.accent; c.fillRect(Math.round(xOf(g, hd)) - 1, rulerH - 4, 2, g.h - rulerH + 4); }
+		c.restore();
+		// the ruler
+		c.fillStyle = colors.line; c.globalAlpha = 0.35; c.fillRect(gutter, 0, g.vw, rulerH); c.globalAlpha = 1;
+		if (region) { c.fillStyle = colors.accent; c.globalAlpha = 0.5; c.fillRect(xOf(g, region[0]), 0, (region[1] - region[0]) * g.pxb, rulerH); c.globalAlpha = 1; }
+		c.save(); c.beginPath(); c.rect(gutter, 0, g.vw, rulerH); c.clip();
+		c.font = "10px sans-serif"; c.textBaseline = "middle"; c.fillStyle = colors.ink;
+		for (let b = visFrom; b <= visTo; b++) {
+			const x = Math.round(xOf(g, b));
+			c.globalAlpha = 0.5; c.fillRect(x, b % 4 === 0 ? 3 : rulerH - 7, 1, b % 4 === 0 ? rulerH - 3 : 7);
+			if (b % 4 === 0 || g.pxb > 40) { c.globalAlpha = 0.9; c.fillText(b % 4 === 0 ? String(b / 4 + 1) : "." + (b % 4 + 1), x + 3, 8); }
+		}
+		for (const sp of chords) { // the chords, in the lower half of the ruler
+			const x = Math.round(xOf(g, sp.at));
+			c.globalAlpha = 0.5; c.fillRect(x, 15, 1, rulerH - 15);
+			c.globalAlpha = 0.95; c.font = "bold 11px sans-serif"; c.fillText(sp.name, x + 3, 25); c.font = "10px sans-serif";
+		}
+		c.restore(); c.globalAlpha = 1;
+		// the keys
+		c.font = "10px sans-serif"; c.textBaseline = "middle";
+		for (let k = lo; k < lo + g.rows; k++) {
+			const y = yOf(g, k);
+			c.fillStyle = colors.ink; c.globalAlpha = 0.8; c.fillRect(0, y + 0.5, gutter - 2, g.rowH - 1);
 			if (black(k)) { c.fillStyle = colors.bg; c.globalAlpha = 0.85; c.fillRect(0, y + 0.5, gutter * 0.62, g.rowH - 1); }
 			c.globalAlpha = 1;
 			if (k % 12 === 0) { c.fillStyle = colors.bg; c.fillText(name(k), gutter - 24, y + g.rowH / 2); }
 		}
-		// the beats and the bars
-		for (let b = 0; b <= length; b++) {
-			c.globalAlpha = b % 4 === 0 ? 0.9 : 0.4; c.fillStyle = colors.line;
-			c.fillRect(Math.round(gutter + b * g.pxb), 0, 1, g.h);
-		}
-		c.globalAlpha = 1;
-		notes.forEach((n, i) => {
-			const [s, l, k, v] = n;
-			if (k < lo || k >= lo + rows) return;
-			const x = gutter + s * g.pxb, w = Math.max(3, l * g.pxb - 1), y = yOf(g, k);
-			const on = s <= hd && hd < s + l;
-			c.globalAlpha = on ? 1 : 0.5 + 0.4 * v;
-			c.fillStyle = colors.accent; c.fillRect(x, y + 1, w, g.rowH - 2);
-			c.globalAlpha = 1;
-			if (i === selected) { c.strokeStyle = colors.ink; c.lineWidth = 2; c.strokeRect(x + 1, y + 2, w - 2, g.rowH - 4); }
-		});
-		c.fillStyle = colors.accent; c.fillRect(Math.round(gutter + hd * g.pxb) - 1, 0, 2, g.h);
-		selInfo.textContent = selected >= 0 && notes[selected] ? `${name(notes[selected][2])}  ${+notes[selected][0].toFixed(3)} + ${+notes[selected][1].toFixed(3)}` : "";
+		c.fillStyle = colors.muted; c.fillText("velocity", 4, g.velTop + 10);
+		const n1 = sel.size;
+		selInfo.textContent = n1 === 1 ? (() => { const n = [...sel][0]; return `${name(n.k)}  ${+n.s.toFixed(3)} + ${+n.l.toFixed(3)}  v${Math.round(n.v * 127)}`; })()
+			: n1 > 1 ? `${n1} notes` : region ? `region ${+region[0].toFixed(3)} – ${+region[1].toFixed(3)}` : `${notes.length} notes`;
 		requestAnimationFrame(draw);
 	};
 	requestAnimationFrame(draw);
 
+	// --- editing ---
+	const clipLen = n => { n.s = Math.max(0, Math.min(n.s, length - minLen())); n.l = Math.max(0.01, Math.min(n.l, length - n.s)); n.k = Math.max(0, Math.min(127, n.k)); };
+	const targets = () => sel.size ? [...sel] : region ? notes.filter(n => n.s >= region[0] - 1e-9 && n.s < region[1] - 1e-9) : notes;
+	const quantize = () => { for (const n of targets()) { n.s = Math.min(snapTo(n.s), length - minLen()); } commit(); };
+	const legato = () => {
+		const ts = targets(), starts = [...new Set(notes.map(n => n.s))].sort((a, b) => a - b);
+		for (const n of ts) { const next = starts.find(s => s > n.s + 1e-6); n.l = Math.max(0.01, (next === undefined ? length : next) - n.s); }
+		commit();
+	};
+	const removeSelected = () => {
+		if (sel.size) { notes = notes.filter(n => !sel.has(n)); sel.clear(); commit(); }
+		else if (region) { notes = notes.filter(n => !(n.s >= region[0] - 1e-9 && n.s < region[1] - 1e-9)); commit(); }
+	};
+	const clipboard = () => (window.__psalmRollClipboard = window.__psalmRollClipboard || {notes: [], span: 0});
+	const copy = () => {
+		const ts = sel.size ? [...sel] : region ? targets() : [];
+		if (!ts.length) return false;
+		const from = sel.size ? Math.min(...ts.map(n => n.s)) : region[0];
+		const span = sel.size ? Math.max(...ts.map(n => n.s + n.l)) - from : region[1] - region[0];
+		window.__psalmRollClipboard = {notes: ts.map(n => ({s: n.s - from, l: n.l, k: n.k, v: n.v})), span};
+		return true;
+	};
+	// put notes in, extending the loop when they run past its end (to the most it can be)
+	const insert = (list, shift) => {
+		const out = list.map(n => ({...n, s: n.s + shift}));
+		const end = Math.max(0, ...out.map(n => n.s + n.l));
+		if (end > length + 1e-9 && length < MAXBEATS) { length = Math.min(MAXBEATS, Math.ceil(end)); lenIn.value = length; fit(); }
+		const fits = out.filter(n => n.s < length - 1e-9);
+		for (const n of fits) n.l = Math.min(n.l, length - n.s);
+		notes.push(...fits);
+		return fits;
+	};
+	const paste = () => {
+		const cb = clipboard(); if (!cb.notes.length) return;
+		const to = cursor !== null ? cursor : region ? region[0] : 0;
+		const put = insert(cb.notes, to);
+		sel.clear(); for (const n of put) sel.add(n);
+		cursor = Math.min(length, to + cb.span);
+		commit();
+	};
+	const duplicate = () => {
+		if (sel.size) {
+			const ts = [...sel], from = Math.min(...ts.map(n => n.s)), end = Math.max(...ts.map(n => n.s + n.l));
+			const span = snap > 0 ? Math.ceil((end - from) / snap - 1e-9) * snap : end - from;
+			const put = insert(ts, span);
+			sel.clear(); for (const n of put) sel.add(n);
+			commit();
+		} else if (region) {
+			const [a, b] = region, ts = notes.filter(n => n.s >= a - 1e-9 && n.s < b - 1e-9);
+			insert(ts, b - a);
+			region = [b, Math.min(length, b + (b - a))]; cursor = region[0];
+			if (region[1] <= region[0]) region = null;
+			commit();
+		}
+	};
+	const move = (dk, db) => {
+		const ts = [...sel]; if (!ts.length) return;
+		const mins = Math.min(...ts.map(n => n.s)), maxe = Math.max(...ts.map(n => n.s + n.l)), mink = Math.min(...ts.map(n => n.k)), maxk = Math.max(...ts.map(n => n.k));
+		db = Math.max(-mins, Math.min(db, length - maxe)); dk = Math.max(-mink, Math.min(dk, 127 - maxk));
+		for (const n of ts) { n.s += db; n.k += dk; }
+		commit();
+	};
+
+	// --- the mouse ---
 	const where = e => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+	const zone = (g, y) => y < rulerH ? "ruler" : y >= g.velTop ? "vel" : "notes";
+	const inBand = (g, r, n) => { // does a note touch a rectangle (pixels)
+		const x = xOf(g, n.s), w = Math.max(3, n.l * g.pxb), y = yOf(g, n.k);
+		return x < r.x2 && x + w > r.x1 && y < r.y2 && y + g.rowH > r.y1;
+	};
+	const eraseAt = (g, x, y) => { const n = noteAt(g, x, y); if (n) { notes.splice(notes.indexOf(n), 1); sel.delete(n); drag.moved = true; } };
+
 	canvas.addEventListener("contextmenu", e => {
 		e.preventDefault();
-		const [x, y] = where(e), i = find(geom(), x, y);
-		if (i >= 0) { notes.splice(i, 1); selected = -1; send(); }
+		const g = geom(), [x, y] = where(e), n = zone(g, y) === "notes" ? noteAt(g, x, y) : null;
+		if (n) { notes.splice(notes.indexOf(n), 1); sel.delete(n); commit(); }
+	});
+	canvas.addEventListener("dblclick", e => {
+		const g = geom(), [x, y] = where(e);
+		if (zone(g, y) === "ruler") { region = null; return; }
+		if (zone(g, y) !== "notes" || x < gutter || noteAt(g, x, y)) return;
+		const s = Math.max(0, Math.min(snapDown(bOf(g, x)), length - minLen()));
+		const n = {s, l: Math.min(lastLen, length - s), k: keyAt(g, y), v: lastVel};
+		notes.push(n); sel.clear(); sel.add(n); commit();
 	});
 	canvas.addEventListener("pointerdown", e => {
 		if (e.button !== 0) return;
-		const g = geom(), [x, y] = where(e);
+		canvas.focus();
+		const g = geom(), [x, y] = where(e), z = zone(g, y);
 		if (x < gutter) return;
-		let i = find(g, x, y);
-		const b = (x - gutter) / g.pxb;
-		if (i < 0) { // a new note: dragging makes it longer
-			const s = Math.max(0, Math.min(snapTo(b - snap / 2 + 1e-9), length - snap));
-			notes.push([s, Math.min(lastLen, length - s), keyAt(g, y), lastVel]);
-			i = notes.length - 1;
-			drag = {mode: "resize", i, moved: false, fresh: true};
-		} else {
-			const n = notes[i], edge = Math.min(8, n[1] * g.pxb / 3);
-			drag = (gutter + (n[0] + n[1]) * g.pxb - x <= edge) ? {mode: "resize", i, moved: false}
-				: {mode: "move", i, dx: b - n[0], moved: false};
-			lastVel = n[3];
+		const b = bOf(g, x);
+		if (z === "ruler") {
+			const s = Math.max(0, Math.min(snapTo(b), length));
+			drag = {mode: "region", from: s, moved: false}; cursor = s; sel.clear();
+			canvas.setPointerCapture(e.pointerId); return;
 		}
-		selected = i; velIn.value = Math.round(notes[i][3] * 127);
+		if (z === "vel") { // a bar of the velocity lane: set it, drag to paint across the notes
+			drag = {mode: "vel", moved: false};
+			setVel(g, x, y, e.shiftKey);
+			canvas.setPointerCapture(e.pointerId); return;
+		}
+		let n = noteAt(g, x, y);
+		if (tool === "erase") { drag = {mode: "erase", moved: false}; eraseAt(g, x, y); canvas.setPointerCapture(e.pointerId); return; }
+		if (!n && tool === "draw") { // a new note: dragging makes it longer
+			const s = Math.max(0, Math.min(snapDown(b), length - minLen()));
+			n = {s, l: Math.min(lastLen, length - s), k: keyAt(g, y), v: lastVel};
+			notes.push(n); sel.clear(); sel.add(n); cursor = s;
+			drag = {mode: "resize", fresh: true, moved: false, grab: n, b0: b, orig: [{n, s: n.s, l: n.l}]};
+			canvas.setPointerCapture(e.pointerId); return;
+		}
+		if (!n) { // empty space: a rectangle that selects (shift keeps what is selected)
+			if (!e.shiftKey) sel.clear();
+			cursor = Math.max(0, Math.min(snapTo(b), length)); region = null;
+			band = {x1: x, y1: y, x2: x, y2: y, keep: new Set(sel)};
+			drag = {mode: "band", moved: false};
+			canvas.setPointerCapture(e.pointerId); return;
+		}
+		if (e.shiftKey) { if (sel.has(n)) { sel.delete(n); return; } sel.add(n); }
+		else if (!sel.has(n)) { sel.clear(); sel.add(n); }
+		lastVel = n.v;
+		if (e.altKey && !onEdge(g, n, x)) { // a copy is dragged, the notes stay
+			const origs = [...sel], copies = origs.map(m => ({...m})), at0 = origs.indexOf(n);
+			notes.push(...copies); sel.clear(); for (const m of copies) sel.add(m); n = copies[Math.max(0, at0)];
+		}
+		const orig = [...sel].map(m => ({n: m, s: m.s, l: m.l, k: m.k}));
+		drag = {mode: onEdge(g, n, x) ? "resize" : "move", moved: false, grab: n, b0: b, k0: keyAt(g, y), orig, copied: e.altKey};
 		canvas.setPointerCapture(e.pointerId);
 	});
+	const setVel = (g, x, y, all) => {
+		const v = Math.max(0.01, Math.min(1, (g.velTop + velH - 2 - y) / (velH - 8)));
+		const b = bOf(g, x), tol = Math.max(3 / g.pxb, 0.02);
+		let hit = notes.filter(n => Math.abs(n.s - b) <= tol).sort((a, c) => Math.abs(a.s - b) - Math.abs(c.s - b));
+		if (!hit.length) return;
+		const target = hit[0];
+		if (sel.has(target) && sel.size > 1 && !all) { // the notes selected move together by the same amount
+			const d = v - target.v;
+			for (const n of sel) n.v = Math.max(0.01, Math.min(1, n.v + d));
+		} else for (const n of all ? notes.filter(m => sel.size === 0 || sel.has(m)) : [target]) n.v = v;
+		lastVel = target.v; drag && (drag.moved = true);
+	};
 	canvas.addEventListener("pointermove", e => {
 		const g = geom(), [x, y] = where(e);
 		if (!drag) { // the cursor at a note's end
-			const i = find(g, x, y);
-			canvas.style.cursor = i >= 0 && gutter + (notes[i][0] + notes[i][1]) * g.pxb - x <= Math.min(8, notes[i][1] * g.pxb / 3) ? "ew-resize" : i >= 0 ? "grab" : "crosshair";
+			const n = zone(g, y) === "notes" && x >= gutter ? noteAt(g, x, y) : null;
+			canvas.style.cursor = tool === "erase" ? "not-allowed" : n ? (onEdge(g, n, x) ? "ew-resize" : "grab") : zone(g, y) === "vel" ? "ns-resize" : zone(g, y) === "ruler" ? "text" : "crosshair";
 			return;
 		}
-		const n = notes[drag.i], b = (x - gutter) / g.pxb;
-		if (drag.mode === "resize") {
-			const l = Math.max(snap, Math.min(snapTo(b - n[0] + snap / 2 - 1e-9), length - n[0]));
-			if (l !== n[1]) { n[1] = l; drag.moved = true; }
-		} else {
-			const s = Math.max(0, Math.min(snapTo(b - drag.dx), length - Math.min(n[1], snap)));
-			const k = Math.max(0, Math.min(127, keyAt(g, y)));
-			if (s !== n[0] || k !== n[2]) { n[0] = s; n[2] = k; drag.moved = true; n[1] = Math.min(n[1], length - s); }
+		const b = bOf(g, x);
+		switch (drag.mode) {
+		case "region": {
+			const s = Math.max(0, Math.min(snapTo(b), length));
+			if (Math.abs(s - drag.from) > 1e-9 || region) { region = [Math.min(s, drag.from), Math.max(s, drag.from)]; drag.moved = true; }
+			if (region && region[1] - region[0] < 1e-9) region = null;
+			break;
+		}
+		case "vel": setVel(g, x, y, false); break;
+		case "erase": eraseAt(g, x, y); break;
+		case "band":
+			band.x2 = x; band.y2 = y; drag.moved = true;
+			{ const r = {x1: Math.min(band.x1, band.x2), x2: Math.max(band.x1, band.x2), y1: Math.min(band.y1, band.y2), y2: Math.max(band.y1, band.y2)};
+			  sel.clear(); for (const n of band.keep) sel.add(n); for (const n of notes) if (inBand(g, r, n)) sel.add(n); }
+			break;
+		case "resize": {
+			const o = drag.orig.find(r => r.n === drag.grab) || drag.orig[0];
+			if (drag.fresh && Math.abs(b - drag.b0) * g.pxb < 3) break; // a click: the note as long as the last one
+			const end = drag.fresh ? snapTo(b) : snapTo(o.s + o.l + (b - drag.b0)), want = Math.max(minLen(), end - o.s), delta = want - o.l;
+			for (const r of drag.orig) r.n.l = Math.max(0.01, Math.min(r.l + delta, length - r.n.s));
+			drag.moved = true;
+			break;
+		}
+		case "move": {
+			const o = drag.orig.find(r => r.n === drag.grab) || drag.orig[0];
+			let db = snapTo(o.s + (b - drag.b0)) - o.s, dk = keyAt(g, y) - drag.k0;
+			const mins = Math.min(...drag.orig.map(r => r.s)), maxe = Math.max(...drag.orig.map(r => r.s + r.l)), mink = Math.min(...drag.orig.map(r => r.k)), maxk = Math.max(...drag.orig.map(r => r.k));
+			db = Math.max(-mins, Math.min(db, length - maxe)); dk = Math.max(-mink, Math.min(dk, 127 - maxk));
+			for (const r of drag.orig) { r.n.s = r.s + db; r.n.k = r.k + dk; }
+			drag.moved = true;
+			break;
+		}
 		}
 	});
 	const up = () => {
 		if (!drag) return;
-		const n = notes[drag.i];
-		if (drag.mode === "resize" && n && (drag.moved || drag.fresh)) lastLen = n[1];
-		if (drag.moved || drag.fresh) send();
-		drag = null;
+		const d = drag; drag = null; band = null;
+		if (d.mode === "resize" && d.moved) { const n = d.grab; if (n) lastLen = n.l; }
+		if (d.mode === "resize" && d.fresh) lastLen = d.grab.l;
+		if (d.mode === "region" && !d.moved) region = null; // a click: only the cursor
+		for (const n of notes) clipLen(n);
+		commit();
 	};
 	canvas.addEventListener("pointerup", up);
 	canvas.addEventListener("pointercancel", up);
 	canvas.addEventListener("wheel", e => {
 		e.preventDefault();
-		lo = Math.max(0, Math.min(128 - rows, lo + (e.deltaY < 0 ? 2 : -2)));
+		const g = geom();
+		if (e.ctrlKey || e.metaKey) { // zoom around the pointer
+			const [x] = where(e), b = bOf(g, Math.max(gutter, x)), z = Math.max(0, Math.min(1, Number(zoom.value) + (e.deltaY < 0 ? 0.06 : -0.06)));
+			pxb = zoomPx(z); x0 = b - (Math.max(gutter, x) - gutter) / pxb; clampView(); zoom.value = z;
+		} else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+			x0 += (e.shiftKey ? e.deltaY : e.deltaX) / g.pxb; clampView();
+		} else lo = Math.max(0, Math.min(128 - g.rows, lo + (e.deltaY < 0 ? 2 : -2)));
 	}, {passive: false});
-	// Delete takes the note chosen away (when the roll has the focus)
+
+	// --- the keyboard (when the roll has the focus) ---
 	canvas.tabIndex = 0;
 	canvas.addEventListener("keydown", e => {
-		if ((e.key === "Delete" || e.key === "Backspace") && selected >= 0) { e.preventDefault(); notes.splice(selected, 1); selected = -1; send(); }
+		const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+		const used = () => e.preventDefault();
+		if (mod && k === "z") { used(); e.shiftKey ? doRedo() : doUndo(); }
+		else if (mod && k === "y") { used(); doRedo(); }
+		else if (mod && k === "a") { used(); sel.clear(); for (const n of notes) sel.add(n); }
+		else if (mod && k === "c") { used(); copy(); }
+		else if (mod && k === "x") { used(); if (copy()) removeSelected(); }
+		else if (mod && k === "v") { used(); paste(); }
+		else if (mod && k === "d") { used(); duplicate(); }
+		else if (e.key === "Delete" || e.key === "Backspace") { used(); removeSelected(); }
+		else if (e.key === "Escape") { sel.clear(); region = null; }
+		else if (e.key === "ArrowUp") { used(); move(e.shiftKey ? 12 : 1, 0); }
+		else if (e.key === "ArrowDown") { used(); move(e.shiftKey ? -12 : -1, 0); }
+		else if (e.key === "ArrowLeft") { used(); move(0, -(e.shiftKey ? 1 : (snap || 0.25))); }
+		else if (e.key === "ArrowRight") { used(); move(0, e.shiftKey ? 1 : (snap || 0.25)); }
+		else if (!mod && k === "q") { used(); quantize(); }
+		else if (!mod && k === "l") { used(); legato(); }
+		else if (!mod && k === "v") { used(); setTool("select"); }
+		else if (!mod && k === "d") { used(); setTool("draw"); }
+		else if (!mod && k === "e") { used(); setTool("erase"); }
 	});
 
+	canvas.rollState = () => ({view: viewName, chords: chords.length, sections: sections.length, notes: notes.length, selected: sel.size, cursor, region, length, tool, x0, pxb, lo, band: band && {x1: band.x1, y1: band.y1, x2: band.x2, y2: band.y2}, list: notes.map(n => [n.s, n.k])}); // for the tests of the page
 	return {
 		el,
-		show() {},
+		show() { fit(); },
 		update(st) {
 			pos = st.pos; bps = st.bps; at = performance.now();
-			if (first) {
+			if (st.view !== viewName) return; // the answer to a clip we have left
+			sections = st.sections || []; have = st.clips || [""]; playing = st.playing; chords = st.chords || [];
+			showOptions();
+			if (first) { // the keys shown are where the notes are (once the roll has its size: the first draw)
 				first = false;
-				if (st.notes.length) {
-					const ks = st.notes.map(n => n[2]);
-					lo = Math.max(0, Math.min(128 - rows, Math.floor((Math.min(...ks) + Math.max(...ks)) / 2) - rows / 2));
-				}
+				if (st.notes.length) { const ks = st.notes.map(n => n[2]); showKeys = Math.floor((Math.min(...ks) + Math.max(...ks)) / 2); }
+			}
+			if (waitView) { // the clip we asked for: its notes are ours
+				waitView = false; hold = 0;
+				notes = fromArrays(st.notes); length = st.length; lenIn.value = length; sel.clear(); base = key(); was = state(); undo.length = 0; redo.length = 0; fit(); updateButtons();
+				return;
 			}
 			if (drag || performance.now() < hold) return; // our own notes until the server has them
-			const same = st.length === length && st.notes.length === notes.length && st.notes.every((n, i) => n.every((v, j) => Math.abs(v - notes[i][j]) < 1e-6));
-			if (!same) { // somewhere else (a patch loaded): theirs, the chosen one by where it was
-				const was = selected >= 0 ? notes[selected] : null;
-				notes = st.notes.map(n => n.slice()); length = st.length; lenIn.value = length;
-				selected = was ? notes.findIndex(n => n[0] === was[0] && n[2] === was[2]) : -1;
+			const theirs = JSON.stringify([st.length, st.notes.map(n => [+n[0].toFixed(4), +n[1].toFixed(4), n[2], +n[3].toFixed(3)]).sort((a, b) => a[0] - b[0] || a[2] - b[2])]);
+			if (theirs !== key()) { // somewhere else (a patch loaded): theirs
+				notes = fromArrays(st.notes); length = st.length; lenIn.value = length; sel.clear(); region = null; cursor = null;
+				base = key(); was = state(); undo.length = 0; redo.length = 0; fit(); updateButtons();
 			}
 		},
 		restyle,
