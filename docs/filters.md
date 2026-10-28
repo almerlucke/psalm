@@ -52,4 +52,4 @@ lp.ValueIn(lfo.New(true, 0.25, 200, 3000, lfo.Sine).AddTo(p), 0, 1) // sweep the
 - **Formant**: makes any bright sound "speak" vowels, morph it with an LFO on input 3.
 
 The subtractive synth has the SVF, ladder and formant filters built into its voices, see
-[synths](synths.md#filter).
+[synths](synths/subtractive.md#filter).

@@ -82,7 +82,7 @@ exported as constants):
 **Messages**: `frequency`, `pulseWidth`, `waveform`, `amplitude`, `syncPhase`, and `sync` to
 restart the phase. From code: `SetFrequency`, `SetPulseWidth`, `SetWaveform`, `SetAmplitude`,
 `SetSyncPhase` and `Sync`. The waveforms are listed in [blocks](blocks.md#blosc). For a full synth
-voice use the [subtractive synth](synths.md#subtractive).
+voice use the [subtractive synth](synths/subtractive.md#subtractive).
 
 ## lfo
 
