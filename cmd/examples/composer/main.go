@@ -46,7 +46,7 @@ func main() {
 	ctl.SetTheme(t)
 	hall := convolver.IRFromSoundFile(sndfile.MustSoundFile[float32]("assets/IR44100/Musikvereinsaal.wav"))
 	ctl.Section("Patch")
-	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: hall}), patcher.Keep(*patches), patcher.Theme(t))
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), IR: hall, Audio: p.PatchInput(0)}), patcher.Keep(*patches), patcher.Theme(t))
 	mix := mixer.New(p)
 	mix.Channel("patch", pt.Out(), mixer.StripConfig{Volume: -3})
 	p.Out(mix.Master())
