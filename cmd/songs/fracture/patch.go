@@ -66,7 +66,7 @@ func strips() []strip {
 		{name: "glitch", kind: "drumsynth", preset: "electro", level: 1.0, pan: 0.15, echo: 0.3, grit: 0.35, insert: "crusher", insertSet: map[string]float64{"bits": 8, "rate": 9000, "mix": 0.55, "output": 6}},
 		{name: "clicks", kind: "pulsar", preset: "crackle", level: 0.5, pan: -0.25, reverb: 0.15, echo: 0.2},
 		{name: "bass", kind: "pulsar", preset: "buzzBass", level: 0.45, grit: 0.05},
-		{name: "pad", kind: "supersaw", preset: "darkSwarm", level: 0.3, reverb: 0.35, air: 0.4},
+		{name: "pad", kind: "subtractive", preset: "warmPad", level: 0.3, reverb: 0.35, air: 0.4},
 		{name: "metal", kind: "modal", preset: "anvil", level: 0.35, pan: -0.35, reverb: 0.3, echo: 0.35, air: 0.2},
 	}
 	// the samplers: a blurry vocal cut into pieces that stutter and fall over each other, and the strokes of a tabla loop cut up and played in any order, both through the crusher
