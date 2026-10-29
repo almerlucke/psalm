@@ -9,19 +9,24 @@
 //     Markov rhythm that is drawn again every few passes, and mutate, which takes hits away and puts others in (a hit with a ! after it stays); conditions (the second time through in every
 //     four, a fill in the last bar of a section); lanes of 3, 4, 5 and 7 steps against the 16 and 32 of the patterns, so the accents drift against each other; the groove of Dilla and a
 //     drift of the timing
-//   - chords that are drawn by a Markov model of progressions each time the song leaves a section (the Machine and the Drift have no chords of their own: they get the last drawing)
+//   - chords that are drawn by a Markov model of progressions each time the song leaves a section (the Machine and the Drive have no chords of their own: they get the last drawing)
 //   - samplers: a sung recording cut into short syllables and a tabla loop cut at its strokes, played in any order by the same kind of rhythms (rolls, ratchets, mutations), through the crusher and the
 //     granulator: the glitch
 //   - a toy box: a melancholic melody on a music box in three layers (melodists over the chords, in the phrygian scale of the harmony, a question and its answer, a falling tune and a rising
 //     answer, the tune of the section before changed a little each time through): the tune alone in the Static, a lower answer under it in the Fracture, a glittering high layer in the Machine,
-//     nothing in the Collapse, the tune and the glitter in the Drift, the tune alone thinning in the Residue
+//     the glitter and the answer in the Drive, and in the Collapse, when it has all fallen apart, the tune alone
 //   - a groove that builds the tune up: an 808 kick, hats, a rim and congas whose chance and velocity are moved by one curve of the song (a lane: nothing in the Static, fuller and louder
-//     through the Fracture to full in the Machine, away in the Collapse, back and fading in the Drift and the Residue)
+//     through the Fracture to full in the Machine and the Drive, away in the Collapse); a synth plays the chords in sixteenths to drive the tune, its filter opening with the curve
 //   - a bass that plays the chords by notes relative to them, its notes lengthening with the same curve (short and plucked early, long and buzzing in the Machine, so it drives the tune), a pad that is held voice led, a crusher whose bit depth is moved by a random source and an echo whose feedback is moved by a
 //     slow wave
 //
-// The sections: Static (a heart, dust, a held chord), Fracture (the rhythms break in), Machine (a floor of four that falls apart), Collapse (automata alone), Drift (what is left, turning),
-// Residue (dust and a held chord). It goes round: every pass is another.
+//   - it gets more and more epic: one curve rises through the whole piece to the end of the Drive and everything grand follows it, coming in one by one and louder as it goes (timpani on the
+//     root of the chord with a roll in the last bar of each section, strings held voice led and doubled an octave up, brass on the root and the fifth, a choir, a longer room, a brighter shimmer),
+//     and the acid bass gets deeper and deeper (the resonance, the amount of the filter envelope and the drive of the buzz bass rise with it)
+//
+// The sections: Static (a heart, dust, a held chord, the tune alone), Fracture (the rhythms break in, timpani), Machine (a floor of four that falls apart, the synth, strings and brass), Drive (the
+// build goes on to full, the choir, and explodes in the roll at the end), Collapse (one section after it: everything falls apart, automata and dust under the tune alone, a held chord). It goes
+// round: every pass is another.
 package main
 
 import (
