@@ -71,7 +71,7 @@ func strips() []strip {
 		{name: "glitch", kind: "drumsynth", preset: "electro", level: 1.0, pan: 0.15, echo: 0.3, grit: 0.35, insert: "crusher", insertSet: map[string]float64{"bits": 8, "rate": 9000, "mix": 0.55, "output": 6}},
 		{name: "bass", kind: "pulsar", preset: "buzzBass", level: 0.45, grit: 0.05},
 		{name: "pad", kind: "subtractive", preset: "warmPad", level: 0.3, reverb: 0.35, air: 0.4},
-		{name: "toybox", kind: "modal", preset: "kalimba", level: 0.28, pan: 0.25, reverb: 0.45, echo: 0.5, air: 0.3},
+		{name: "toybox", kind: "modal", preset: "kalimba", level: 0.31, pan: 0.25, reverb: 0.65, echo: 0.5, air: 0.45},
 		{name: "groove", kind: "drumsynth", preset: "808", level: 0.55, pan: -0.1, reverb: 0.12, echo: 0.12},
 		// the synth that drives the tune, and what makes the piece epic as it goes: strings, brass, timpani and a choir that come in and swell (see the epic curve)
 		{name: "pulse", kind: "subtractive", preset: "analogSeq", level: 0.35, pan: -0.2, reverb: 0.12, echo: 0.3, grit: 0.1},
@@ -207,7 +207,7 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	connect(patcher.Cable{From: master, To: limiter})
 	connect(patcher.Cable{From: limiter, To: "out"})
 	apply(mixer, m)
-	apply(room, map[string]float64{"mix": 1, "decay": 1.6, "size": 0.6})
+	apply(room, map[string]float64{"mix": 1, "decay": 4.6, "size": 0.8})
 	apply(echo, map[string]float64{"time": 0.75, "feedback": 0.45, "stereo": 1, "highCut": 6000, "lowCut": 250, "mix": 1})
 	apply(grit, map[string]float64{"density": 40, "grainSize": 60, "jitter": 0.7, "spray": 120, "pitchSpread": 5, "mix": 1})
 
@@ -285,7 +285,6 @@ Collapse: CA(110,32,+)`, "prob: 100 35 80 20 90 50 100\nvel: 100 50 70 40\nshift
 		map[string]float64{"mutate": 0.3, "drift": 0.1}, 0.6)
 	rhythmPart("metal", "hits", 370, "1/16", `Rift: CA(90,16,11+1)%2/3
 Bare: CA(90,16,11+1)%2/3
-Collapse: CA(90,16,3+1)%2/3
 Fracture: CA(90,16,+)%2/3`, "vel: 100 60 80 50 90", []int{60, 63, 66, 69, 61, 72}, shuffled, map[string]float64{"mutate": 0.15, "drift": 0.05}, 0.55)
 
 	// the samplers: the pieces of a recording in any order, a hit and a roll of them (x3) that stutter and fall over each other, lanes of 5 and 3 steps for the chance and the length

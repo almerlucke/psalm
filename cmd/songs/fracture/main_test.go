@@ -42,7 +42,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 	p := psalm.New(nil)
 	taps := map[string]*tap{}
 	kinds := catalog.Kinds(catalog.Config{Input: midi.NewQueue()})
-	for _, n := range []string{"drums kick", "drums hats", "glitch ticks", "chops part", "slices strokes", "groove kick", "groove hats", "bass part"} {
+	for _, n := range []string{"drums kick", "drums hats", "glitch ticks", "chops part", "slices strokes", "groove kick", "groove hats", "bass part", "metal hits", "timp part"} {
 		tp := &tap{Module: psalm.NewControl()}
 		tp.SetSelf(tp)
 		taps[n] = tp
@@ -154,9 +154,9 @@ func TestPieceNeverRepeats(t *testing.T) {
 	if perBar(taps["bass part"], "Bare") < 1 || perBar(taps["drums hats"], "Bare") < 1 {
 		t.Error("the Bare has no bass or no drums")
 	}
-	for _, n := range []string{"drums kick", "drums hats", "groove kick", "groove hats", "bass part"} {
+	for _, n := range []string{"drums kick", "drums hats", "groove kick", "groove hats", "bass part", "metal hits", "timp part"} {
 		if got := perBar(taps[n], "Collapse"); got != 0 {
-			t.Errorf("%s plays %.2f hits a bar in the Collapse, which has no drums and no bass", n, got)
+			t.Errorf("%s plays %.2f hits a bar in the Collapse, which has no drums, no bass, no anvil and no timpani", n, got)
 		}
 	}
 	for i, id := range ids.toybox {
