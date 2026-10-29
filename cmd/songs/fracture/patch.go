@@ -78,7 +78,7 @@ func strips() []strip {
 		if c == &tablaCut {
 			s.pan, s.level = -0.15, 0.6
 		} else {
-			s.pan = 0.3
+			s.pan, s.level = 0.3, 1.1 // the vocal chops, louder
 		}
 		all = append(all, s)
 	}
@@ -287,7 +287,7 @@ Collapse: @5 . . @3' . . @1' . @5 . . . @3 . @5'^2 .
 Drift: @3 . . @5' . . @1' . . . @3' . . @5 . .
 Residue: . . . . . . . . . . . . . . @1' .`)
 		text(chops, "lanes", "prob: 100 60 90 40 80\nvel: 100 60 80\nlen: 100 40 100 60 100 30 100")
-		apply(chops, map[string]float64{"division": 3, "velocity": 0.6, "length": 0.5, "register": 50, "mutate": 0.25, "seed": float64(seed % 1000), "groove": dilla, "drift": 0.06})
+		apply(chops, map[string]float64{"division": 3, "velocity": 0.75, "length": 0.5, "register": 43, "mutate": 0.25, "seed": float64(seed % 1000), "groove": dilla, "drift": 0.06})
 		connect(patcher.Cable{From: chops, To: synth[vocalCut.name]})
 		out.notes["chops part"] = chops
 		out.musicOnly = append(out.musicOnly, chops)
