@@ -47,6 +47,7 @@ type Params struct {
 	Grammar  string  // rules that write the form (see Expand): when there are some they are the form and Form is not used
 	Phrase   float64 // how long a phrase is in beats (4)
 	Velocity float64 // the loudness of a note, accents on top (0.8)
+	Dynamics float64 // 0 to 1: how much the notes differ in loudness (0: a little, as they were; 1: a lot: the beats accented, the line swelling to the middle of a phrase, the notes in between falling away)
 	Seed     uint64
 }
 
@@ -447,14 +448,21 @@ func (g *gen) stepWeight(step, lastDir, lastStep int) float64 {
 }
 
 func (g *gen) velocity(s slot, first bool) float64 {
+	d := math.Max(0, math.Min(g.p.Dynamics, 1))
 	v := g.p.Velocity
 	if strong(s.at, s.len) {
-		v += 0.06
+		v += 0.06 + 0.2*d
 	}
 	if first {
-		v += 0.04
+		v += 0.04 + 0.1*d
 	}
-	v += (g.rng.Float64() - 0.5) * 0.08
+	if d > 0 && g.p.Phrase > 0 && s.at >= 0 && s.at < g.p.Phrase { // the line swells to the middle of the phrase and falls away after it
+		v += 0.16*d*math.Sin(math.Pi*s.at/g.p.Phrase) - 0.06*d
+	}
+	if d > 0 && !strong(s.at, s.len) && s.len < 0.75 { // the short notes between the beats are softer
+		v -= 0.1 * d
+	}
+	v += (g.rng.Float64() - 0.5) * (0.08 + 0.4*d)
 	return math.Max(0.1, math.Min(v, 1))
 }
 

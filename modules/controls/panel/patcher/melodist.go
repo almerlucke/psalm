@@ -55,6 +55,7 @@ type MelodistConfig struct {
 	Mutate                      float64
 	Freeze, Counter, Just       bool // Just: the notes in just intonation (pure ratios from the tonic, the key of the scale) instead of equal temperament
 	Velocity                    float64
+	Dynamics                    float64 // 0 to 1: how much the notes differ in loudness
 	Grid                        float64 // the shortest note in beats (0.25): 1 or 2 makes a slow tune of long notes
 	Length                      float64 // beats a pass without a song
 }
@@ -129,6 +130,7 @@ func (m *Melodist) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("chord", f01(&c.Chord))
 	msg.IfFltVal("mutate", f01(&c.Mutate))
 	msg.IfFltVal("velocity", func(v float64) { c.Velocity = math.Max(0.05, math.Min(v, 1)) })
+	msg.IfFltVal("dynamics", f01(&c.Dynamics))
 	msg.IfIntVal("contour", func(i int) { c.Contour = max(0, min(i, len(MelodyContours)-1)) })
 	msg.IfIntVal("rhythm", func(i int) { c.Rhythm = max(0, min(i, len(MelodyRhythms)-1)) })
 	msg.IfIntVal("form", func(i int) { c.Form = max(0, min(i, len(MelodyForms)-1)) })
@@ -180,6 +182,7 @@ func (m *Melodist) Describe() params.Set {
 		params.S("Range", "just", c.Just, params.Label("just intonation")),
 		params.K("Live", "length", 2, 128, c.Length, params.Step(1), params.Label("beats a pass (no song)")),
 		params.K("Live", "velocity", 0.05, 1, c.Velocity),
+		params.K("Live", "dynamics", 0, 1, c.Dynamics, params.Label("dynamics (notes of different loudness)")),
 	}}
 }
 
@@ -243,7 +246,7 @@ func (m *Melodist) makePass(c MelodistConfig, grammar string, r melodyReq, befor
 		bpb = tr.Form().BeatsPerBar
 	}
 	p := melody.Params{Scale: scale, Beats: r.beats, Low: int(c.Low), High: int(math.Max(c.High, c.Low+4)), Density: c.Density, Rest: c.Rest, Steps: c.Steps, Chord: c.Chord,
-		Grid: c.Grid, Rhythm: MelodyRhythms[c.Rhythm], Contour: MelodyContours[c.Contour], Form: MelodyForms[c.Form], Phrase: MelodyPhrases[c.Phrase], Velocity: c.Velocity}
+		Grid: c.Grid, Rhythm: MelodyRhythms[c.Rhythm], Contour: MelodyContours[c.Contour], Form: MelodyForms[c.Form], Phrase: MelodyPhrases[c.Phrase], Velocity: c.Velocity, Dynamics: c.Dynamics}
 	if p.Form == "grammar" {
 		p.Grammar = grammar
 	}

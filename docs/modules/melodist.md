@@ -24,6 +24,7 @@ So the second chorus is the first chorus, varied. The first time a section is pl
 | shortest note | the shortest note in beats (0.25 to 4): with 1 or 2 the tune is slow, of long notes (the busy setting changes the notes little; this changes how long they are) |
 | busy, rests, smooth, chord tones | how many notes, how often it rests, steps against leaps, how much the notes on the beat keep to the chord |
 | low, high, key, scale | the range; the scale is that of the harmony, or a key and scale of its own |
+| dynamics | how much the notes differ in loudness (0 to 1; 0 a little, as before): the notes on the beat accented, the line swelling to the middle of a phrase and falling away after it, the short notes between the beats softer, and more spread between one note and the next |
 | mutate, seed, freeze | see above; the seed makes the same melody every time |
 | just intonation | the notes in pure ratios from the tonic (the key of the harmony) instead of equal temperament: for a patch that is tuned that way |
 | second voice | a counter-line goes with the melody (as the roll's Counter-line: consonant, against the melody, no parallel fifths or octaves), to the same synth |

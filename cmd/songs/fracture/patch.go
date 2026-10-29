@@ -353,8 +353,8 @@ Collapse: @v*16`)
 		out.toybox = append(out.toybox, m)
 		out.musicOnly = append(out.musicOnly, m, g)
 	}
-	layer("tune", 640, "Static, Fracture, Ridge, Rift", map[string]float64{"form": 4, "contour": 3, "steps": 0.92, "velocity": 0.42, "rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 70, "high": 88, "mutate": 0.12, "seed": float64(seed % 10000)})
-	layer("answer", 700, "Fracture, Ridge, Rift", map[string]float64{"form": 4, "contour": 2, "steps": 0.92, "rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.36, "seed": float64(seed%10000 + 17)})
+	layer("tune", 640, "Static, Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 3, "steps": 0.92, "velocity": 0.42, "rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 70, "high": 88, "mutate": 0.12, "seed": float64(seed % 10000)})
+	layer("answer", 700, "Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 2, "steps": 0.92, "rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.36, "seed": float64(seed%10000 + 17)})
 	// the groove that builds the tune up: an 808 kick, hats, a rim and a conga, that come in as one curve rises (a lane of the song: from nothing in the Static to full in the Machine, full and
 	// driving through the Drive, falling away in the Collapse). The curve moves the chance of every hit (more and more of the pattern is played) and the velocity (louder), so the
 	// groove grows fuller and louder as the sections go
