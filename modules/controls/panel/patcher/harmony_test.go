@@ -409,3 +409,31 @@ func TestChordModelLive(t *testing.T) {
 		t.Error("live is not kept")
 	}
 }
+
+// a chord of the progression is heard once, with its bass, through the synths the notes go to
+func TestChordModelHearsAChord(t *testing.T) {
+	r := newSongRig(t, "A 4")
+	id := r.add("chordmodel")
+	m := r.pt.Module(id).(*chordmodel.Module)
+	model, _ := chordtools.Preset("pop")
+	m.SetStrip([]chordtools.Slot{{State: model.Index("I"), Bars: 1}, {State: model.Index("V"), Bars: 1}})
+	r.connect(patcher.Cable{From: id, To: r.add("rec")})
+	m.Hear(1) // G
+	m.Hear(9) // not a chord of the progression: nothing
+	r.run(0.5)
+	pcs := map[int]bool{}
+	for _, p := range r.rec.pitches {
+		pcs[int(p)%12] = true
+	}
+	if len(r.rec.pitches) < 3 || !pcs[7] || !pcs[11] || !pcs[2] {
+		t.Errorf("a G heard: pitches %v", r.rec.pitches)
+	}
+	if r.rec.pitches[0] > 45 {
+		t.Errorf("no bass under it: %v", r.rec.pitches)
+	}
+	n := len(r.rec.pitches)
+	r.run(1)
+	if len(r.rec.pitches) != n {
+		t.Errorf("heard again: %d to %d notes", n, len(r.rec.pitches))
+	}
+}

@@ -1,7 +1,10 @@
 package patcher_test
 
 import (
+	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -229,5 +232,56 @@ func TestPageInputDevice(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("the engine was not told")
+	}
+}
+
+// the editor of a melodist: what plays, the sections as chips, a preset, a slider, the keyboard of the range, freeze
+func TestPageMelodistEditor(t *testing.T) {
+	b, pt, base := newPage(t)
+	song, _ := pt.Add("song", "", 60, 300)
+	if err := pt.SetText(song, "sections", "Verse 8, Chorus 8"); err != nil {
+		t.Fatal(err)
+	}
+	harm, _ := pt.Add("harmony", "", 60, 400)
+	if err := pt.SetText(harm, "chords", "Verse: Dm7 G7 Cmaj7 Am7\nChorus: F C Dm Bb"); err != nil {
+		t.Fatal(err)
+	}
+	id, err := pt.Add("melodist", "", 60, 40)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := pt.Module(id).(*patcher.Melodist)
+	tb := b.Open(t, base, `document.querySelectorAll(".pt-node").length >= 4`)
+	tb.Size(1300, 1000)
+	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
+	root := `S().querySelector(".melodist .md")`
+	tb.WaitFor(`!!`+root+` && `+root+`.querySelectorAll(".md-chip").length === 3 && /notes/.test(`+root+`.querySelector(".md-status").textContent)`, "the editor, with the chips of the sections and what plays")
+	click := func(sel string) {
+		tb.Eval(`(() => { ` + root + `.querySelector(` + strconv.Quote(sel) + `).click(); })()`)
+	}
+	// a preset
+	tb.Eval(`(() => { const s = ` + root + `.querySelector(".md-bar select"); s.value = "Music box tune"; s.dispatchEvent(new (S().defaultView.Event)("change")); })()`)
+	paneltest.Eventually(t, "a preset taken", func() bool { v := m.Values(); return v["grid"] == 1.5 && v["contour"] == 3 && v["low"] == 70 })
+	// a slider: the movement to leaps
+	tb.Eval(`(() => { const r = [...` + root + `.querySelectorAll(".md-row")].find(r => r.textContent.startsWith("Movement")).querySelector("input"); r.value = "0.8"; r.dispatchEvent(new (S().defaultView.Event)("input")); })()`)
+	paneltest.Eventually(t, "the slider taken", func() bool { return math.Abs(m.Values()["steps"]-0.2) < 0.02 })
+	// the sections: out of the Verse
+	click(".md-chip:nth-child(2)") // Verse off
+	paneltest.Eventually(t, "the verse taken out of where it plays", func() bool {
+		var st struct {
+			Plays []string `json:"plays"`
+		}
+		raw, _ := json.Marshal(m.View())
+		_ = json.Unmarshal(raw, &st)
+		return len(st.Plays) == 1 && st.Plays[0] == "Chorus"
+	})
+	// freeze
+	click(".md-bar button:nth-child(3)")
+	paneltest.Eventually(t, "frozen", func() bool { return m.Values()["freeze"] == 1 })
+	// what a patch keeps: back from its state
+	st := m.StateText()
+	n := patcher.NewMelodist()
+	if err := n.SetStateText(st); err != nil || n.Values()["grid"] != 1.5 || n.Values()["freeze"] != 1 {
+		t.Errorf("the state kept: %v %v", err, n.Values())
 	}
 }

@@ -778,6 +778,7 @@ func TestPageChordModel(t *testing.T) {
 	tb.Size(1300, 1100)
 	doubleTap(tb, fmt.Sprintf(`document.querySelector(".pt-node[data-id='%s'] .pt-head")`, id))
 	tb.WaitFor(`!!S() && S().querySelectorAll(".cm-card").length > 2 && S().querySelectorAll(".cm-cell").length >= 56`, "the progression and the matrix")
+	tb.Eval(`S().querySelector(".cm-adv").open = true`)
 	want := len(m.State().Strip)
 	if n := tb.Eval(`S().querySelectorAll(".cm-card").length`).(float64); int(n) != want {
 		t.Errorf("%v cards for %d chords", n, want)
@@ -786,7 +787,7 @@ func TestPageChordModel(t *testing.T) {
 	tb.Eval(`S().querySelector(".cm-lock").click()`)
 	paneltest.Eventually(t, "the first chord locked", func() bool { return m.State().Strip[0].Lock })
 	first := m.State().Strip[0].State
-	tb.Eval(`[...S().querySelectorAll("button")].find(b => b.textContent.startsWith("Draw the others")).click()`)
+	tb.Eval(`[...S().querySelectorAll("button")].find(b => b.textContent.startsWith("Redraw the unlocked")).click()`)
 	paneltest.Eventually(t, "the others drawn again, the locked chord kept", func() bool { s := m.State(); return s.Seed > 2 && s.Strip[0].State == first && s.Strip[0].Lock })
 	// another chord chosen from the list of a card: it is locked
 	tb.Eval(`(() => { const s = S().querySelectorAll(".cm-card-chord")[2]; s.value = "3"; s.dispatchEvent(new (S().defaultView.Event)("change")); })()`)

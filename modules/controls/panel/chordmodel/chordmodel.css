@@ -9,9 +9,18 @@
 .chordmodel .cm-card { position: relative; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: calc(var(--radius) * 2 / 3); background: var(--track); border: 1px solid var(--line); min-width: 96px; }
 .chordmodel .cm-card.now { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .chordmodel .cm-roman { font-size: 11px; color: var(--muted); text-align: center; }
-.chordmodel .cm-card-chord { font-weight: 600; width: 100%; }
+.chordmodel .cm-length { font-size: 11px; color: var(--muted); text-align: center; }
+.chordmodel .cm-card.locked { border-color: var(--accent); }
+.chordmodel .cm-icon { min-height: 26px !important; min-width: 0; padding: 0 !important; flex: 1; font-size: 12px !important; }
+.chordmodel .cm-muted { color: var(--muted); font-size: 12px; }
+.chordmodel .cm-label { color: var(--muted); font-size: 12px; }
+.chordmodel .cm-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.chordmodel .cm-adv { border: 1px solid var(--line); border-radius: calc(var(--radius) * 2 / 3); padding: 4px 8px; }
+.chordmodel .cm-adv summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+
+.chordmodel .cm-card-chord { font-weight: 700; font-size: 18px !important; width: 100%; text-align: center; min-height: 40px !important; }
 .chordmodel .cm-card-row { display: flex; gap: 4px; }
-.chordmodel .cm-card-row button { flex: 1; min-width: 0; min-height: 24px; padding: 0 4px; font-size: 11px; }
+.chordmodel .cm-card-row { gap: 3px; }
 .chordmodel .cm-card .cm-del { position: absolute; top: 3px; right: 3px; min-height: 18px; width: 18px; padding: 0; font-size: 12px; line-height: 1; border: 0; background: none; color: var(--muted); }
 .chordmodel .cm-lock.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .chordmodel .cm-add { min-width: 36px; }

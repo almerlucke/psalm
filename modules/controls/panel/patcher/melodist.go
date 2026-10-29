@@ -1,14 +1,18 @@
 package patcher
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/panel/melodyui"
 	"github.com/almerlucke/psalm/modules/controls/panel/noteroll"
 	"github.com/almerlucke/psalm/params"
 	"github.com/almerlucke/psalm/tools/harmony"
@@ -27,12 +31,18 @@ type Melodist struct {
 	cfg MelodistConfig
 	gr  string // the grammar, when the form is one
 
-	req    chan melodyReq
-	ready  atomic.Pointer[[]*melodyPass] // the passes made, the newest last
-	last   atomic.Pointer[melodyPass]    // the pass playing (for Keep)
-	status atomic.Pointer[string]
-	made   atomic.Int64
-	closed atomic.Bool
+	req        chan melodyReq
+	ready      atomic.Pointer[[]*melodyPass] // the passes made, the newest last
+	last       atomic.Pointer[melodyPass]    // the pass playing (for Keep)
+	status     atomic.Pointer[string]
+	grammarErr atomic.Pointer[string]
+	kept       atomic.Pointer[string]
+	made       atomic.Int64
+	closed     atomic.Bool
+
+	plays atomic.Pointer[[]string] // the sections it plays in (nil: all of them)
+	pos   atomic.Uint64            // where it is in the pass playing, in beats (float64 bits)
+	cur   atomic.Pointer[string]   // the section of the pass playing
 
 	// on the audio thread
 	targets  []psalm.Receiver
@@ -353,6 +363,11 @@ func (m *Melodist) CtrlTick(tick psalm.CtrlTick) {
 		from = t
 	}
 	m.lastTick = t
+	m.pos.Store(math.Float64bits(float64(t-began) / float64(ppq)))
+	m.cur.Store(&section)
+	if pl := m.plays.Load(); pl != nil && !slices.Contains(*pl, section) { // not a section it plays in
+		return
+	}
 	second := m.Env().TickDuration() * float64(ppq)
 	for _, list := range [][]melody.Note{pass.notes, pass.counter} {
 		for _, n := range list {
@@ -455,18 +470,222 @@ func melodistKind() Kind {
 		Make: func(string) (*Made, error) {
 			m := NewMelodist()
 			return &Made{Module: m, Describe: func(string) params.Set { return m.Describe() },
-				Texts:   []Text{{Key: "grammar", Label: "grammar", Value: "", Help: MelodyHelp}},
-				SetText: func(_, v string) error { return m.SetGrammar(v) },
-				Notes:   m.SetTargets,
-				Status:  m.Status,
-				Actions: []Action{
-					{Key: "again", Label: "Draw again", Title: "forget what the sections had: the next time through each section is a new melody", Do: func() error { m.DrawAgain(); return nil }},
-					{Key: "keep", Label: "Keep in the roll", Title: "write the melody that plays into the clip of its section in the note editor of the patch", Do: m.Keep},
+				State:    func() (string, error) { return m.StateText(), nil },
+				SetState: m.SetStateText,
+				Edit: func(page *panel.Panel, name, _ string) Settings {
+					page.Section("Melody")
+					melodyui.Add(page, name, m)
+					return m
 				},
+				Notes:  m.SetTargets,
+				Status: m.Status,
 				Close: func() {
 					if m.closed.CompareAndSwap(false, true) {
 						close(m.req)
 					}
 				}}, nil
 		}}
+}
+
+// --- the editor ---
+
+// melodyPresets are the settings of a few kinds of melody, to start from
+var melodyPresetNames = []string{"Music box tune", "Answer, lower", "Glitter", "Slow lead", "Busy line", "Sparse bells"}
+var melodyPresets = map[string]map[string]float64{
+	"Music box tune": {"form": 4, "contour": 3, "rhythm": 1, "phrase": 2, "grid": 1.5, "density": 0.1, "rest": 0.4, "steps": 0.92, "chord": 0.85, "low": 70, "high": 88, "mutate": 0.12, "dynamics": 0.8, "velocity": 0.42},
+	"Answer, lower":  {"form": 4, "contour": 2, "rhythm": 1, "phrase": 2, "grid": 2, "density": 0.1, "rest": 0.55, "steps": 0.92, "chord": 0.85, "low": 60, "high": 79, "mutate": 0.3, "dynamics": 0.8, "velocity": 0.36},
+	"Glitter":        {"form": 4, "contour": 3, "rhythm": 3, "phrase": 1, "grid": 0.5, "density": 0.2, "rest": 0.55, "steps": 0.8, "chord": 0.7, "low": 84, "high": 103, "mutate": 0.6, "dynamics": 0.5, "velocity": 0.35},
+	"Slow lead":      {"form": 3, "contour": 1, "rhythm": 0, "phrase": 2, "grid": 1, "density": 0.3, "rest": 0.3, "steps": 0.8, "chord": 0.8, "low": 62, "high": 84, "mutate": 0.2, "dynamics": 0.6, "velocity": 0.6},
+	"Busy line":      {"form": 3, "contour": 4, "rhythm": 2, "phrase": 1, "grid": 0.25, "density": 0.7, "rest": 0.15, "steps": 0.6, "chord": 0.6, "low": 60, "high": 84, "mutate": 0.4, "dynamics": 0.4, "velocity": 0.7},
+	"Sparse bells":   {"form": 4, "contour": 3, "rhythm": 1, "phrase": 3, "grid": 2, "density": 0.08, "rest": 0.65, "steps": 0.9, "chord": 0.9, "low": 76, "high": 96, "mutate": 0.5, "dynamics": 0.7, "velocity": 0.4},
+}
+
+// configMap is the settings as numbers by their keys: what the editor shows and what a patch keeps of it
+func configMap(c MelodistConfig) map[string]float64 {
+	b2f := func(b bool) float64 {
+		if b {
+			return 1
+		}
+		return 0
+	}
+	return map[string]float64{"density": c.Density, "rest": c.Rest, "steps": c.Steps, "chord": c.Chord, "form": float64(c.Form), "contour": float64(c.Contour), "rhythm": float64(c.Rhythm),
+		"phrase": float64(c.Phrase), "low": c.Low, "high": c.High, "key": float64(c.Key), "scale": float64(c.Scale), "seed": float64(c.Seed), "mutate": c.Mutate, "freeze": b2f(c.Freeze),
+		"counter": b2f(c.Counter), "just": b2f(c.Just), "velocity": c.Velocity, "dynamics": c.Dynamics, "grid": c.Grid, "length": c.Length}
+}
+
+// melodistView is what the editor gets
+type melodistView struct {
+	Config     map[string]float64 `json:"cfg"`
+	Grammar    string             `json:"grammar"`
+	GrammarErr string             `json:"grammarErr"`
+	Sections   []string           `json:"sections"`
+	Plays      []string           `json:"plays"` // the sections it plays in (empty: all)
+	Section    string             `json:"section"`
+	Pass       int64              `json:"pass"`
+	Beats      float64            `json:"beats"`
+	Notes      [][4]float64       `json:"notes"`
+	Counter    [][4]float64       `json:"counter"`
+	Chords     []melodyChord      `json:"chords"`
+	Pos        float64            `json:"pos"`
+	BPS        float64            `json:"bps"`
+	Presets    []string           `json:"presets"`
+	Keys       []string           `json:"keys"`
+	Scales     []string           `json:"scales"`
+	Forms      []string           `json:"forms"`
+	Contours   []string           `json:"contours"`
+	Rhythms    []string           `json:"rhythms"`
+	Status     string             `json:"status"`
+	Kept       string             `json:"kept"`
+}
+
+type melodyChord struct {
+	At   float64 `json:"at"`
+	Len  float64 `json:"len"`
+	Name string  `json:"name"`
+}
+
+// View is what the editor gets: the settings, the pass that plays with the chords over it, where it is in it, the sections and the ones it plays in
+func (m *Melodist) View() any {
+	m.mu.Lock()
+	gr := m.gr
+	m.mu.Unlock()
+	v := melodistView{Config: configMap(m.config()), Grammar: gr, Sections: []string{}, Plays: []string{}, Presets: melodyPresetNames, Keys: Keys, Scales: append([]string{"the harmony's"}, Scales...),
+		Forms: MelodyForms, Contours: MelodyContours, Rhythms: MelodyRhythms, Status: m.Status(), Pos: -1, BPS: m.Env().BPM() / 60, Notes: [][4]float64{}, Counter: [][4]float64{}, Chords: []melodyChord{}}
+	if e := m.grammarErr.Load(); e != nil {
+		v.GrammarErr = *e
+	}
+	if k := m.kept.Load(); k != nil {
+		v.Kept = *k
+	}
+	bpb := 4.0
+	if tr := m.song.Transport(); tr != nil {
+		form := tr.Form()
+		bpb = form.BeatsPerBar
+		for _, s := range form.Sections {
+			v.Sections = append(v.Sections, s.Name)
+		}
+	}
+	if pl := m.plays.Load(); pl != nil {
+		v.Plays = *pl
+	}
+	if p := m.last.Load(); p != nil {
+		v.Section, v.Pass, v.Beats = p.section, p.n, p.beats
+		for _, n := range p.notes {
+			v.Notes = append(v.Notes, [4]float64{n.Start, n.Length, float64(n.Key), n.Velocity})
+		}
+		for _, n := range p.counter {
+			v.Counter = append(v.Counter, [4]float64{n.Start, n.Length, float64(n.Key), n.Velocity})
+		}
+		if h := HarmonyOf(m.Env()); h != nil {
+			for _, sp := range h.Spans(p.section, p.beats, bpb) {
+				v.Chords = append(v.Chords, melodyChord{At: sp.At, Len: sp.Len, Name: sp.Name})
+			}
+		}
+		if cur := m.cur.Load(); cur != nil && *cur == p.section {
+			v.Pos = math.Float64frombits(m.pos.Load())
+		}
+	}
+	return v
+}
+
+// Message is what the editor asks: settings to change (by key), the grammar, the sections it plays in, a preset, a button
+func (m *Melodist) Message(raw json.RawMessage) {
+	var msg struct {
+		Set     map[string]float64 `json:"set"`
+		Grammar *string            `json:"grammar"`
+		Plays   *[]string          `json:"plays"`
+		Preset  string             `json:"preset"`
+		Action  string             `json:"action"`
+	}
+	if json.Unmarshal(raw, &msg) != nil {
+		return
+	}
+	apply := func(set map[string]float64) {
+		pm := psalm.Message{}
+		for k, v := range set {
+			pm[k] = v
+		}
+		m.ReceiveMessage(pm)
+	}
+	switch {
+	case msg.Set != nil:
+		apply(msg.Set)
+	case msg.Grammar != nil:
+		e := ""
+		if err := m.SetGrammar(*msg.Grammar); err != nil {
+			e = err.Error()
+		}
+		m.grammarErr.Store(&e)
+	case msg.Plays != nil:
+		if pl := slices.Clone(*msg.Plays); len(pl) > 0 {
+			m.plays.Store(&pl)
+		} else {
+			m.plays.Store(nil)
+		}
+	case msg.Preset != "":
+		if set, ok := melodyPresets[msg.Preset]; ok {
+			apply(set)
+		}
+	case msg.Action == "again":
+		m.DrawAgain()
+	case msg.Action == "keep":
+		e := "kept in the note editor"
+		if err := m.Keep(); err != nil {
+			e = err.Error()
+		}
+		m.kept.Store(&e)
+	}
+}
+
+// melodistState is what a patch keeps of a melodist: the settings, the grammar and the sections it plays in
+type melodistState struct {
+	Config  map[string]float64 `json:"cfg"`
+	Grammar string             `json:"grammar"`
+	Plays   []string           `json:"plays,omitempty"`
+}
+
+// StateText is the settings, the grammar and the sections as a text a patch keeps; SetStateText gives them back
+func (m *Melodist) StateText() string {
+	m.mu.Lock()
+	gr := m.gr
+	m.mu.Unlock()
+	st := melodistState{Config: configMap(m.config()), Grammar: gr}
+	if pl := m.plays.Load(); pl != nil {
+		st.Plays = *pl
+	}
+	b, _ := json.Marshal(st)
+	return string(b)
+}
+
+// SetStateText reads a state kept
+func (m *Melodist) SetStateText(text string) error {
+	var st melodistState
+	if err := json.Unmarshal([]byte(text), &st); err != nil {
+		return err
+	}
+	pm := psalm.Message{}
+	for k, v := range st.Config {
+		pm[k] = v
+	}
+	m.ReceiveMessage(pm)
+	if err := m.SetGrammar(st.Grammar); err != nil {
+		return err
+	}
+	if len(st.Plays) > 0 {
+		pl := slices.Clone(st.Plays)
+		m.plays.Store(&pl)
+	} else {
+		m.plays.Store(nil)
+	}
+	return nil
+}
+
+// Values and Apply are the settings of the editor as a patch and a preset keep them
+func (m *Melodist) Values() map[string]float64 { return configMap(m.config()) }
+func (m *Melodist) Apply(v map[string]float64) {
+	pm := psalm.Message{}
+	for k, x := range v {
+		pm[k] = x
+	}
+	m.ReceiveMessage(pm)
 }

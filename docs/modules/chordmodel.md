@@ -4,6 +4,10 @@
 
 A Markov model of chord progressions (`tools/chordmodel`) with an editor on the page. Kept with the patch.
 
+## The window
+
+The progression is first: a card for every chord with its symbol large and its numeral small. **▶** on a card plays that chord (with its bass) once, **−** and **+** change how many bars it lasts, the lock (🔒) keeps it when the others are drawn again, a choice in the card puts another chord there (and locks it). Under the cards: **⟳ New** draws a whole progression, **Redraw the unlocked** only the chords not locked, **▶ Hear all** plays it, **Bars** is its length; **New chords after each section** is Live (below); **Use these chords in** a section **as** chords or numerals, **Write to the harmony**. The matrix, the end chord, the memory, the lengths and teaching are folded under **How it chooses (advanced)**.
+
 ## The model
 
 A matrix of how likely each chord (roman numerals of a key: `I ii iii IV V vi vii°`) is to follow each other chord.

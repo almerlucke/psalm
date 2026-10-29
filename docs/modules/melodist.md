@@ -4,6 +4,21 @@
 
 A melody that is made **while the song plays**. Where the [note editor](noteroll.md) makes a melody once and keeps it in a clip, the melodist makes a pass of it (a section of the song, else so many beats) at a time, over the chords of the [harmony](harmony.md), in its scale, in phrases that repeat and vary (`tools/melody`). The next pass is made ahead, off the audio thread, so it is there at the bar line.
 
+## The window
+
+The window is an editor (`modules/controls/panel/melodyui`), top to bottom:
+
+- **Presets, Draw again, Freeze, Keep in the roll** at the top: a preset sets the settings to a kind of melody (music box tune, answer, glitter, slow lead, busy line, sparse bells).
+- **What plays now**: the pass as a small piano roll, the chords over it, a playhead, the second voice fainter; the louder notes are brighter.
+- **Where it plays**: a chip for every section of the song (All, Verse, Chorus...): click one to take the section in or out. Without a song it plays all the time.
+- **Feel**: sliders from one thing to its opposite: note length (long to short), silence, notes (calm to busy), movement (steps to leaps), harmony (anywhere to chord tones), expression (even to expressive), loudness.
+- **Shape**: the contour as pictures, the rhythm, the length of a phrase, the form.
+- **Range**: a keyboard with two ends to drag, and the scale (the harmony's or one of its own).
+- **Over time**: how much changes the next time through a section (same every time to new every time) and a dice that draws another melody.
+- **More**: a second voice, just intonation, the beats of a pass without a song, and the grammar of the form.
+
+A patch keeps the settings, the grammar and the sections it plays in (the state of the module); `Values` and `Apply` are the settings by key.
+
 ## From pass to pass
 
 Each pass of a section is made from the pass before it of **the same section**, changed by `mutate`:

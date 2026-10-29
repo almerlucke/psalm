@@ -90,8 +90,9 @@ type Module struct {
 	liveSet bool
 	redraws chan struct{} // live: a progression is wanted; a goroutine makes it (never on the audio thread)
 	worker  sync.Once
-	drawn   atomic.Int64 // how many progressions live has drawn
-	prev    []float64    // the voicing of the chord before, for the voice leading
+	drawn   atomic.Int64              // how many progressions live has drawn
+	hear    atomic.Pointer[[]float64] // a chord asked for to hear (once), played at the next tick
+	prev    []float64                 // the voicing of the chord before, for the voice leading
 }
 
 // New returns a module with the model of the pop preset in C major and a progression of eight bars
@@ -287,6 +288,20 @@ func (m *Module) redraw() {
 // Drawn is how many progressions live has drawn
 func (m *Module) Drawn() int64 { return m.drawn.Load() }
 
+// Hear plays one chord of the progression once, through the synths the notes output goes to (the bass under it)
+func (m *Module) Hear(i int) {
+	st := m.st.Load()
+	if i < 0 || i >= len(st.Strip) {
+		return
+	}
+	c, err := st.scale().Roman(st.Model.States[st.Strip[i].State])
+	if err != nil {
+		return
+	}
+	pitches := append([]float64{c.BassPitch(36)}, c.Close(55)...)
+	m.hear.Store(&pitches)
+}
+
 // SetLive switches live on or off, and how many bars a progression lasts when the patch has no song (0: the length of the progression)
 func (m *Module) SetLive(on bool, every float64) {
 	m.change(func(st *State) { st.Live, st.Every = on, math.Max(0, math.Min(every, 128)) })
@@ -304,6 +319,15 @@ const errNoLink = linkError("this module is not in a patch with a harmony module
 // CtrlTick plays the progression when the preview is on: a chord for its bars, voiced in root position from C3, the progression looping
 func (m *Module) CtrlTick(tick psalm.CtrlTick) {
 	m.live(tick)
+	if p := m.hear.Swap(nil); p != nil { // a chord to hear
+		second := m.Env().TickDuration() * float64(m.Config().PPQ)
+		for _, pitch := range *p {
+			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": 1.6 * second, "amplitude": 0.6, "message": psalm.Message{"pitch": pitch, "velocity": 0.6}}
+			for _, t := range m.targets {
+				t.ReceiveMessage(msg)
+			}
+		}
+	}
 	if !m.playing.Load() {
 		m.started = false
 		return
@@ -416,6 +440,7 @@ func (m *Module) message(raw json.RawMessage) {
 		Learn    *string `json:"learn"`
 		Bake     bool    `json:"bake"`
 		Preview  *bool   `json:"preview"`
+		Hear     *int    `json:"hear"`
 	}
 	if json.Unmarshal(raw, &msg) != nil {
 		return
@@ -466,6 +491,8 @@ func (m *Module) message(raw json.RawMessage) {
 		m.Learn(strings.TrimSpace(*msg.Learn))
 	case msg.Bake:
 		m.Bake()
+	case msg.Hear != nil:
+		m.Hear(*msg.Hear)
 	case msg.Preview != nil:
 		m.Preview(*msg.Preview)
 	}

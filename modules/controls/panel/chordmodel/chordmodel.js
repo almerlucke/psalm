@@ -20,7 +20,7 @@ psalm.register("chordmodel", (p, api) => {
 	const scale = mk("select", {title: "the scale the numerals are read in"});
 	const endSel = mk("select", {title: "the chord every progression ends on"});
 	const memory = mk("input", {type: "range", min: 0, max: 1, step: 0.05, title: "0: only the matrix; 1: what was taught of the two chords before, where there is any"});
-	const top = mk("div", {className: "cm-bar"}, mk("label", {}, "Style ", preset), mk("label", {}, "Key ", key), mk("label", {}, "Scale ", scale), mk("label", {}, "End on ", endSel), mk("label", {}, "Memory ", memory));
+	const top = mk("div", {className: "cm-bar"}, mk("label", {}, "Style ", preset), mk("label", {}, "Key ", key), mk("label", {}, "Scale ", scale));
 	preset.addEventListener("change", () => { if (preset.value) send({preset: preset.value}); });
 	key.addEventListener("change", () => send({set: {key: Number(key.value)}}));
 	scale.addEventListener("change", () => send({set: {scale: Number(scale.value)}}));
@@ -31,13 +31,13 @@ psalm.register("chordmodel", (p, api) => {
 	// --- the progression: a card for every chord ---
 	const stripEl = mk("div", {className: "cm-strip"});
 	const textEl = mk("code", {className: "cm-text"});
-	const genB = mk("button", {textContent: "New progression", title: "draw a whole new progression of the bars below"});
-	const rerollB = mk("button", {textContent: "Draw the others again", title: "draw again the chords that are not locked, each fitting the ones next to it"});
-	const playB = mk("button", {textContent: "Hear", title: "play the progression through the synths this module is cabled to"});
+	const genB = mk("button", {textContent: "\u27f3 New", title: "draw a whole new progression of the bars to the right"});
+	const rerollB = mk("button", {textContent: "Redraw the unlocked", title: "draw again the chords that are not locked (\u{1F512}), each fitting the ones next to it"});
+	const playB = mk("button", {textContent: "\u25b6 Hear all", title: "play the progression through the synths this module is cabled to"});
 	const barsIn = mk("input", {type: "number", min: 1, max: 128, step: 1, title: "how many bars a new progression has"});
 	const target = mk("select", {title: "the section of the song the chords are written to"});
 	const asSel = mk("select", {title: "write the chords as symbols (Dm7) or as numerals (ii7)"}, mk("option", {value: "symbols", textContent: "as chords"}), mk("option", {value: "numerals", textContent: "as numerals"}));
-	const bakeB = mk("button", {textContent: "Write to the harmony", title: "put this progression in the harmony module of the patch (the section chosen: its line)"});
+	const bakeB = mk("button", {className: "cm-primary", textContent: "Write to the harmony", title: "put this progression in the harmony module of the patch (the section chosen: its line)"});
 	const status = mk("div", {className: "cm-status"});
 	const nextSeed = () => { seed = Math.max(seed, st.seed); return seed++; }; // the server's next seed, or the one after when two clicks come before its answer
 	genB.addEventListener("click", () => send({generate: nextSeed()}));
@@ -51,27 +51,33 @@ psalm.register("chordmodel", (p, api) => {
 	const everyIn = mk("input", {type: "number", min: 0, max: 128, step: 1, title: "without a song: new chords every so many bars (0: the length of the progression)"});
 	liveBox.addEventListener("change", () => send({set: {live: liveBox.checked}}));
 	everyIn.addEventListener("change", () => send({set: {every: Number(everyIn.value) || 0}}));
-	const actions = mk("div", {className: "cm-bar"}, genB, rerollB, playB, mk("label", {}, "Bars ", barsIn), mk("label", {title: liveBox.title}, liveBox, " Live"), mk("label", {}, "every ", everyIn, " bars"));
-	const bake = mk("div", {className: "cm-bar"}, bakeB, mk("label", {}, "to ", target), asSel);
+	const actions = mk("div", {className: "cm-bar"}, genB, rerollB, playB, mk("label", {}, "Bars ", barsIn));
+	const live = mk("div", {className: "cm-bar"}, mk("label", {title: liveBox.title}, liveBox, " New chords after each section"), mk("label", {className: "cm-muted", title: everyIn.title}, " (without a song: every ", everyIn, " bars)"));
+	const bake = mk("div", {className: "cm-bar cm-use"}, mk("span", {className: "cm-label", textContent: "Use these chords in"}), target, asSel, bakeB);
 
 	const BARS = [0.5, 1, 2, 4];
+	const barsText = n => (n === 0.5 ? "\u00bd" : String(n)) + (n === 1 ? " bar" : " bars");
 	const drawStrip = () => {
 		stripEl.replaceChildren();
 		const total = st.strip.reduce((a, s) => a + s.bars, 0) || 1;
 		st.strip.forEach((s, i) => {
-			const sel = mk("select", {className: "cm-card-chord", title: "choose the chord"});
-			st.model.states.forEach((n, j) => sel.append(mk("option", {value: j, textContent: st.names[j] + "  " + n, selected: j === s.s})));
+			const sel = mk("select", {className: "cm-card-chord", title: "choose another chord"});
+			st.model.states.forEach((n, j) => sel.append(mk("option", {value: j, textContent: st.names[j], selected: j === s.s})));
 			sel.addEventListener("change", () => { s.s = Number(sel.value); s.lock = true; sendStrip(); });
-			const bars = mk("button", {className: "cm-bars", textContent: (s.bars === 0.5 ? "½" : s.bars) + (s.bars === 1 ? " bar" : " bars"), title: "how many bars the chord lasts"});
-			bars.addEventListener("click", () => { s.bars = BARS[(BARS.indexOf(s.bars) + 1) % BARS.length] || 1; sendStrip(); });
-			const lock = mk("button", {className: "cm-lock" + (s.lock ? " on" : ""), textContent: s.lock ? "locked" : "lock", title: "keep this chord when the others are drawn again"});
+			const hear = mk("button", {className: "cm-icon", textContent: "\u25b6", title: "hear this chord"});
+			hear.addEventListener("click", () => send({hear: i}));
+			const less = mk("button", {className: "cm-icon", textContent: "\u2212", title: "a shorter chord"});
+			less.addEventListener("click", () => { const k = BARS.indexOf(s.bars); s.bars = BARS[Math.max(0, (k < 0 ? 1 : k) - 1)]; sendStrip(); });
+			const more = mk("button", {className: "cm-icon", textContent: "+", title: "a longer chord"});
+			more.addEventListener("click", () => { const k = BARS.indexOf(s.bars); s.bars = BARS[Math.min(BARS.length - 1, (k < 0 ? 1 : k) + 1)]; sendStrip(); });
+			const lock = mk("button", {className: "cm-icon cm-lock" + (s.lock ? " on" : ""), textContent: s.lock ? "\u{1F512}" : "\u{1F513}", title: s.lock ? "locked: it stays when the others are drawn again (click to let go)" : "lock: keep this chord when the others are drawn again"});
 			lock.addEventListener("click", () => { s.lock = !s.lock; sendStrip(); });
-			const del = mk("button", {className: "cm-del", textContent: "×", title: "take the chord out"});
+			const del = mk("button", {className: "cm-del", textContent: "\u00d7", title: "take the chord out"});
 			del.addEventListener("click", () => { st.strip.splice(i, 1); sendStrip(); });
-			const name = mk("div", {className: "cm-roman", textContent: st.model.states[s.s]});
-			const card = mk("div", {className: "cm-card"}, name, sel, mk("div", {className: "cm-card-row"}, bars, lock), del);
+			const card = mk("div", {className: "cm-card" + (s.lock ? " locked" : "")}, mk("div", {className: "cm-roman", textContent: st.model.states[s.s]}), sel,
+				mk("div", {className: "cm-length", textContent: barsText(s.bars)}), mk("div", {className: "cm-card-row"}, hear, less, more, lock), del);
 			card.style.flexGrow = String(s.bars / total * 10);
-			card.style.flexBasis = "96px";
+			card.style.flexBasis = "104px";
 			card.dataset.index = i;
 			stripEl.append(card);
 		});
@@ -173,11 +179,13 @@ psalm.register("chordmodel", (p, api) => {
 	// --- teaching ---
 	const learnText = mk("textarea", {rows: 3, placeholder: "I vi IV V\nii V I\nI bVII IV I", title: "progressions in numerals, a line each: what follows what is made likelier, chords the model doesn't have are added"});
 	const rate = mk("input", {type: "number", min: 0.05, max: 2, step: 0.05, title: "how much a progression counts against what the matrix says (1 against the sum of a row)", value: 0.25});
-	const learnB = mk("button", {textContent: "Teach", title: "make what these progressions do likelier"});
+	const learnB = mk("button", {textContent: "Teach it", title: "make what these progressions do likelier"});
 	learnB.addEventListener("click", () => { send({set: {rate: Number(rate.value)}}); send({learn: learnText.value}); });
 	const learn = mk("div", {className: "cm-learn"}, learnText, mk("div", {className: "cm-bar"}, learnB, mk("label", {}, "weight ", rate)));
 
-	root.append(top, stripEl, actions, textEl, bake, status, mk("h4", {textContent: "What follows what"}), matrixEl, lengthsEl, mk("h4", {textContent: "Teach it progressions"}), learn);
+	const endRow = mk("div", {className: "cm-bar"}, mk("label", {title: endSel.title}, "End on ", endSel), mk("label", {title: memory.title}, "Memory ", memory));
+	const adv = mk("details", {className: "cm-adv"}, mk("summary", {textContent: "How it chooses (advanced)"}), endRow, mk("h4", {textContent: "What follows what"}), matrixEl, lengthsEl, mk("h4", {textContent: "Teach it a progression you like"}), learn);
+	root.append(top, stripEl, actions, live, textEl, bake, status, adv);
 
 	const fill = (select, options, value) => { // keep the choice as it is when nothing changed
 		const k = JSON.stringify(options);
@@ -190,7 +198,7 @@ psalm.register("chordmodel", (p, api) => {
 		show() {},
 		update(s) {
 			if (dragging || performance.now() < hold) return;
-			if (s.rev === rev && st) { st.playing = s.playing; st.pos = s.pos; markPlaying(); playB.textContent = s.playing ? "Stop" : "Hear"; return; }
+			if (s.rev === rev && st) { st.playing = s.playing; st.pos = s.pos; markPlaying(); playB.textContent = s.playing ? "\u25a0 Stop" : "\u25b6 Hear all"; return; }
 			rev = s.rev; st = s;
 			model = JSON.parse(JSON.stringify(s.model));
 			fill(preset, [["", s.preset ? "choose a style…" : "(taught)"]].concat(s.presets.map(n => [n, n])), s.preset || "");
@@ -202,7 +210,7 @@ psalm.register("chordmodel", (p, api) => {
 			fill(target, [["", "the whole harmony"]].concat(s.sections.map(x => [x.name, x.name])), s.target);
 			textEl.textContent = s.text || " ";
 			status.textContent = s.error; status.classList.toggle("bad", !!s.error);
-			playB.textContent = s.playing ? "Stop" : "Hear";
+			playB.textContent = s.playing ? "\u25a0 Stop" : "\u25b6 Hear all";
 			drawStrip(); drawMatrix(); drawLengths(); markPlaying();
 		},
 		restyle() {},

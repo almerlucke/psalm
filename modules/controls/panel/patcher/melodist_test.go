@@ -134,23 +134,14 @@ func TestMelodistKeepsInARoll(t *testing.T) {
 	r, m, _ := melodistRun(t, 2.5, func(m *patcher.Melodist) {})
 	roll := r.add("noteroll")
 	rl := r.pt.Module(roll).(*noteroll.Roll)
-	var id string
-	for _, n := range r.pt.Nodes() {
-		if n.Kind == "melodist" {
-			id = n.ID
-		}
-	}
-	if err := r.pt.Act(id, "keep"); err != nil {
+	if err := m.Keep(); err != nil {
 		t.Fatal(err)
 	}
 	c, ok := rl.Clip("A")
 	if !ok || len(c.Notes) < 3 || c.Length != 8 {
 		t.Errorf("the clip of A: %+v %v", c, ok)
 	}
-	_ = m
-	if err := r.pt.Act(id, "nothing"); err == nil {
-		t.Error("a button that is not there")
-	}
+
 }
 
 // just intonation: the notes a few cents off the equal temperament, from the tonic of the harmony
