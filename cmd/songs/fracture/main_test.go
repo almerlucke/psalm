@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"os"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -31,6 +32,9 @@ func (t *tap) Receive(v any, _ int) {
 // the piece builds, has no text that can't be read, sounds in every section without clipping, and does not repeat: the bars of the rhythms are not the same bar again, the melodist
 // makes a new pass every time through, and the chord model draws new chords when the song leaves a section
 func TestPieceNeverRepeats(t *testing.T) {
+	if err := os.Chdir("../../.."); err != nil { // the recordings are found from the root of the repository
+		t.Fatal(err)
+	}
 	tempo := 300.0 // the fastest the patch goes
 	psalm.PushConfig(psalm.Config{BPM: tempo, PPQ: 240, SampleRate: 44100, BufferSize: 256})
 	defer psalm.PopConfig()
@@ -38,7 +42,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 	p := psalm.New(nil)
 	taps := map[string]*tap{}
 	kinds := catalog.Kinds(catalog.Config{Input: midi.NewQueue()})
-	for _, n := range []string{"drums kick", "drums hats", "glitch ticks"} {
+	for _, n := range []string{"drums kick", "drums hats", "glitch ticks", "chops syllables", "slices strokes"} {
 		tp := &tap{Module: psalm.NewControl()}
 		tp.SetSelf(tp)
 		taps[n] = tp
@@ -117,7 +121,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 	for _, c := range []struct {
 		tap, section string
 		min          int
-	}{{"drums kick", "Fracture", 8}, {"drums kick", "Machine", 10}, {"drums hats", "Fracture", 8}, {"drums hats", "Machine", 8}, {"glitch ticks", "Machine", 15}} {
+	}{{"drums kick", "Fracture", 8}, {"drums kick", "Machine", 10}, {"drums hats", "Fracture", 8}, {"drums hats", "Machine", 8}, {"glitch ticks", "Machine", 15}, {"chops syllables", "Machine", 10}, {"slices strokes", "Machine", 10}} {
 		if got := distinct(taps[c.tap], c.section); got < c.min {
 			t.Errorf("%s in the %s: only %d different bars", c.tap, c.section, got)
 		}

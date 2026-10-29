@@ -57,18 +57,34 @@ type strip struct {
 	air                float64 // the shimmer
 	insert             string
 	insertSet          map[string]float64
+	cut                *cutSound // a sampler that plays the pieces of a recording
 }
 
 func strips() []strip {
-	return []strip{
-		{name: "drums", kind: "drumsynth", preset: "industrial", level: 0.3, reverb: 0.08, grit: 0.06},
-		{name: "glitch", kind: "drumsynth", preset: "electro", level: 1.3, pan: 0.15, echo: 0.3, grit: 0.35, insert: "crusher", insertSet: map[string]float64{"bits": 8, "rate": 14000, "mix": 0.7, "output": 6}},
+	all := []strip{
+		// the drums go through an eq that takes the sizzle off the top
+		{name: "drums", kind: "drumsynth", preset: "industrial", level: 0.3, reverb: 0.08, grit: 0.06, insert: "eq", insertSet: map[string]float64{"highFreq": 4500, "highGain": -9, "highCut": 9000}},
+		{name: "glitch", kind: "drumsynth", preset: "electro", level: 1.0, pan: 0.15, echo: 0.3, grit: 0.35, insert: "crusher", insertSet: map[string]float64{"bits": 8, "rate": 9000, "mix": 0.55, "output": 6}},
 		{name: "clicks", kind: "pulsar", preset: "crackle", level: 0.5, pan: -0.25, reverb: 0.15, echo: 0.2},
 		{name: "bass", kind: "pulsar", preset: "buzzBass", level: 0.45, grit: 0.05},
 		{name: "pad", kind: "supersaw", preset: "darkSwarm", level: 0.3, reverb: 0.35, air: 0.4},
-		{name: "lead", kind: "pulsar", preset: "chopLead", level: 0.6, pan: 0.2, reverb: 0.2, echo: 0.4, grit: 0.15, insert: "ringmod", insertSet: map[string]float64{"freq": 330, "mix": 0.3}},
+		{name: "lead", kind: "pulsar", preset: "chopLead", level: 0.5, pan: 0.2, reverb: 0.2, echo: 0.4, grit: 0.15, insert: "ringmod", insertSet: map[string]float64{"freq": 330, "mix": 0.1}},
 		{name: "metal", kind: "modal", preset: "anvil", level: 0.35, pan: -0.35, reverb: 0.3, echo: 0.35, air: 0.2},
 	}
+	// the samplers: a blurry vocal cut into pieces that stutter and fall over each other, and the strokes of a tabla loop cut up and played in any order, both through the crusher
+	for _, c := range []*cutSound{&vocalCut, &tablaCut} {
+		if !c.there() {
+			continue
+		}
+		s := strip{name: c.name, kind: "sampler", cut: c, level: 0.7, reverb: 0.2, echo: 0.35, grit: 0.4, insert: "crusher", insertSet: map[string]float64{"bits": 9, "rate": 18000, "mix": 0.5}}
+		if c == &tablaCut {
+			s.pan, s.level = -0.15, 0.6
+		} else {
+			s.pan = 0.3
+		}
+		all = append(all, s)
+	}
+	return all
 }
 
 // buildPatch makes the piece. Nothing in it repeats: the rhythms are made while it plays (a euclidean rhythm that turns every pass, cellular automata that run on, a Markov rhythm drawn
@@ -145,8 +161,12 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	for i, s := range all {
 		synth[s.name] = add(s.kind, s.preset, 1100, 20+float64(i)*90)
 		out.synths[s.name] = synth[s.name]
+		if s.cut != nil {
+			text(synth[s.name], "sounds", s.cut.line())
+		}
 	}
-	mixer := add("mixer", "8 channels", 1500, 300)
+	channels := 16
+	mixer := add("mixer", fmt.Sprintf("%d channels", channels), 1500, 300)
 	room := add("reverb", "", 1760, 20)
 	echo := add("pingpong", "", 1760, 160)
 	grit := add("granulator", "", 1760, 300)
@@ -171,7 +191,7 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	}
 	for i, fx := range []string{room, echo, grit, air} {
 		connect(patcher.Cable{From: mixer, Out: 1 + i, To: fx})
-		connect(patcher.Cable{From: fx, To: mixer, In: 8 + i})
+		connect(patcher.Cable{From: fx, To: mixer, In: channels + i})
 	}
 	connect(patcher.Cable{From: mixer, Out: 0, To: "out"})
 	apply(mixer, m)
@@ -186,7 +206,7 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	apply(rnd, map[string]float64{"beats": 3, "smooth": 0.1})
 	apply(slow, map[string]float64{"beats": 23})
 	if id := connect(patcher.Cable{Type: patcher.Mod, From: rnd, To: out.synths["glitch crusher"], In: 1, Key: "bits"}); id != "" {
-		err = pt.SetRange(id, "", 0.12, 0.55)
+		err = pt.SetRange(id, "", 0.2, 0.55)
 	}
 	if id := connect(patcher.Cable{Type: patcher.Mod, From: slow, To: echo, In: 1, Key: "feedback"}); id != "" && err == nil {
 		err = pt.SetRange(id, "", 0.25, 0.9)
@@ -242,7 +262,7 @@ Drift: . . . . x%2/4 . . . . . . . x . . .`, "vel: 100 70", []int{38}, 0, map[st
 	rhythmPart("drums", "hats", 160, "1/16", `Fracture: CA(30,16,+)
 Machine: E(11,16,+1)
 Collapse: CA(30,16,3+1)
-Drift: M(x . x . x x . x . x . x x . x .;16;7/3)`, "prob: 100 70 90 50 100\nvel: 100 60 80 50 90 70 60\nshift: 0 8 -5 0 10 -8 0 4 0", []int{42, 42, 42, 46}, random,
+Drift: M(x . x . x x . x . x . x x . x .;16;7/3)`, "prob: 100 70 90 50 100\nvel: 100 60 80 50 90 70 60\nshift: 0 8 -5 0 10 -8 0 4 0", []int{42, 42, 42, 42, 44}, random,
 		map[string]float64{"mutate": 0.2, "groove": dilla, "drift": 0.06}, 0.55)
 	// the glitch: thirty-seconds of an automaton (rule 110, then 30), a euclidean rhythm that turns three steps a pass, a Markov rhythm drawn again every two passes; lanes of 7, 4
 	// and 7 steps against the 32; the sounds in any order
@@ -257,6 +277,28 @@ Residue: M(x . . . . . . . . . . . . x . .;32;13/1)`, "vel: 100 40 70", []int{60
 	rhythmPart("metal", "hits", 370, "1/16", `Machine: E(3,16,+1)%2/4
 Collapse: E(5,16,+2)
 Fracture: CA(90,16,+)%2/3`, "vel: 100 60 80 50 90", []int{60, 63, 66, 69, 61, 72}, shuffled, map[string]float64{"mutate": 0.15, "drift": 0.05}, 0.55)
+
+	// the samplers: the pieces of a recording in any order, a hit and a roll of them (x3) that stutter and fall over each other, lanes of 5 and 3 steps for the chance and the length
+	if !vocalCut.there() {
+	} else if keys, kerr := vocalCut.keys(); kerr == nil && len(keys) > 1 {
+		rhythmPart("chops", "syllables", 440, "1/32", `Static: M(x . . . . . . . . . x . . . . .;32;21/1)
+Fracture: M(x . x x3 . . x . x . . [x x x x] . x . .;32;4/1)
+Machine: CA(30,32,+3)
+Collapse: M(x x3 . x . . x4 . . x . x . . x .;32;9/2)
+Residue: M(x . . . . . . . . . . . . x . .;32;31/1)`, "prob: 100 60 90 40 80\nlen: 100 40 40 100 30 60 100\nvel: 100 60 80", keys, random,
+			map[string]float64{"mutate": 0.25, "drift": 0.08}, 0.6)
+	} else if kerr != nil {
+		err = kerr
+	}
+	if !tablaCut.there() {
+	} else if keys, kerr := tablaCut.keys(); kerr == nil && len(keys) > 1 {
+		rhythmPart("slices", "strokes", 510, "1/16", `Fracture: M(. . x . . x . . . x . . x . . .;16;6/2)
+Machine: E(9,32,+3)
+Collapse: CA(90,32,+)
+Drift: M(x . . x . x . . . x . . . . x .;32;2/1)`, "prob: 100 50 80\nvel: 100 70 85 60\nshift: 0 10 -8 0 6", keys, random, map[string]float64{"mutate": 0.3, "groove": dilla, "drift": 0.05}, 0.65)
+	} else if kerr != nil {
+		err = kerr
+	}
 
 	// the bass and the pad play the chords: notes written relative to them (@b the bass, @1 the root, @5 the fifth), a figure that mutates; the pad holds the chord voice led from the
 	// one before
@@ -283,9 +325,9 @@ Residue: @v*16`)
 	gate := add("gate", "", 540, 600)
 	text(lead, "grammar", "axiom: A\niterate: 3\nA -> A B A' | B A~ | A< B\nB -> A^ | B'")
 	text(gate, "name", "lead")
-	text(gate, "sections", "Fracture, Machine, Drift")
+	text(gate, "sections", "Fracture, Machine")
 	whole := float64(1 + slices.Index(patcher.Scales, "whole tone"))
-	apply(lead, map[string]float64{"form": 5, "contour": 4, "rhythm": 2, "phrase": 1, "density": 0.45, "rest": 0.35, "steps": 0.35, "chord": 0.3, "low": 62, "high": 94,
+	apply(lead, map[string]float64{"form": 5, "contour": 4, "rhythm": 2, "phrase": 1, "density": 0.45, "rest": 0.35, "steps": 0.35, "chord": 0.3, "low": 58, "high": 84,
 		"scale": whole, "key": 0, "mutate": 0.5, "seed": float64(seed % 10000), "counter": 1, "velocity": 0.7})
 	connect(patcher.Cable{From: lead, To: gate, In: 1})
 	connect(patcher.Cable{From: gate, Out: 1, To: synth["lead"]})
