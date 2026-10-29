@@ -42,7 +42,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 	p := psalm.New(nil)
 	taps := map[string]*tap{}
 	kinds := catalog.Kinds(catalog.Config{Input: midi.NewQueue()})
-	for _, n := range []string{"drums kick", "drums hats", "glitch ticks", "chops part", "slices strokes", "groove kick", "groove hats"} {
+	for _, n := range []string{"drums kick", "drums hats", "glitch ticks", "chops part", "slices strokes", "groove kick", "groove hats", "groove beat kick", "groove beat clap"} {
 		tp := &tap{Module: psalm.NewControl()}
 		tp.SetSelf(tp)
 		taps[n] = tp
@@ -145,8 +145,22 @@ func TestPieceNeverRepeats(t *testing.T) {
 	for _, n := range []string{"groove kick", "groove hats"} {
 		a, b, c := perBar(taps[n], "Static"), perBar(taps[n], "Fracture"), perBar(taps[n], "Machine")
 		t.Logf("%s: %.1f hits a bar in the Static, %.1f in the Fracture, %.1f in the Machine", n, a, b, c)
-		if !(a <= b && b < c) || c < 1.5 {
-			t.Errorf("%s does not build: %.2f, %.2f, %.2f hits a bar", n, a, b, c)
+		if !(a <= b) || b < 0.5 { // the groove comes in with the Fracture (the beat takes over in the Machine)
+			t.Errorf("%s does not come in: %.2f, %.2f, %.2f hits a bar", n, a, b, c)
+		}
+	}
+	// the beat to dance to: a kick on every beat and a clap on two and four, steady, in the Machine and the Drive
+	for _, c := range []struct {
+		part string
+		want float64
+	}{{"groove beat kick", 4}, {"groove beat clap", 2}} {
+		for _, sec := range []string{"Machine", "Drive"} {
+			if got := perBar(taps[c.part], sec); got < c.want*0.95 || got > c.want*1.05 {
+				t.Errorf("%s plays %.2f hits a bar in the %s, want %.0f", c.part, got, sec, c.want)
+			}
+		}
+		if got := perBar(taps[c.part], "Fracture"); got != 0 {
+			t.Errorf("%s plays in the Fracture (%.2f a bar): the Fracture is as it was", c.part, got)
 		}
 	}
 	for i, id := range ids.toybox {

@@ -44,6 +44,7 @@ type ids struct {
 	chords    string
 	toybox    []string // the melodists of the toy box
 	grooves   []string // the parts of the groove that builds
+	beat      []string // the beat of the Machine and the Drive
 	epic      string   // the curve that makes it epic
 	harmony   string
 	synths    map[string]string
@@ -181,7 +182,7 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	if err != nil {
 		return out, err
 	}
-	m := map[string]float64{"returnA": 0.9, "returnB": 0.7, "returnC": 0.6, "returnD": 0.6, "level": 0.55}
+	m := map[string]float64{"returnA": 0.55, "returnB": 0.7, "returnC": 0.6, "returnD": 0.3, "level": 0.55}
 	for i, s := range all {
 		n := fmt.Sprint(i + 1)
 		var to string = synth[s.name]
@@ -194,7 +195,7 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 		}
 		connect(patcher.Cable{From: to, To: mixer, In: i})
 		m["level"+n], m["pan"+n] = s.level, s.pan
-		m["sendA"+n], m["sendB"+n], m["sendC"+n], m["sendD"+n] = s.reverb, s.echo, s.grit, s.air
+		m["sendA"+n], m["sendB"+n], m["sendC"+n], m["sendD"+n] = s.reverb*0.6, s.echo, s.grit, s.air*0.5
 	}
 	for i, fx := range []string{room, echo, grit, air} {
 		connect(patcher.Cable{From: mixer, Out: 1 + i, To: fx})
@@ -202,7 +203,7 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	}
 	connect(patcher.Cable{From: mixer, Out: 0, To: "out"})
 	apply(mixer, m)
-	apply(room, map[string]float64{"mix": 1, "decay": 2.2, "size": 0.7})
+	apply(room, map[string]float64{"mix": 1, "decay": 1.6, "size": 0.6})
 	apply(echo, map[string]float64{"time": 0.75, "feedback": 0.45, "stereo": 1, "highCut": 6000, "lowCut": 250, "mix": 1})
 	apply(grit, map[string]float64{"density": 40, "grainSize": 60, "jitter": 0.7, "spray": 120, "pitchSpread": 5, "mix": 1})
 	apply(air, map[string]float64{"shimmer": 0.5, "mix": 1, "decay": 4})
@@ -372,21 +373,30 @@ Collapse: 1 → 0 smooth`)
 	}
 	gset := map[string]float64{"groove": mpc58, "mutate": 0.1, "drift": 0.03}
 	rhythmPart("groove", "kick", 900, "1/16", `Static: x . . . . . . . . . . . . . . .
-Fracture: x . . . . . . x . . x . . . . .
-Machine: x . . . . . x . . . x . . . . x
-Drive: x . . . . . x . . . x . . . . x`, "vel: 100 80 90", []int{36}, 0, gset, 0.8)
-	rhythmPart("groove", "hats", 960, "1/16", `Fracture: . . x . . . x . . . x . . . x .
-Machine: x . x . x . x . x . x . x . x .
-Drive: x . x . x . x . x . x . x . x .`, "vel: 100 60 80 50", []int{42, 42, 44}, random, gset, 0.6)
-	rhythmPart("groove", "rim", 1020, "1/16", `Fracture: . . . . . . . . x . . . . . . .
-Machine: . . . . x . . . . . . . x . . .
-Drive: . . . . x . . . . . . . x . . .`, "", []int{37}, 0, gset, 0.7)
+Fracture: x . . . . . . x . . x . . . . .`, "vel: 100 80 90", []int{36}, 0, gset, 0.8)
+	rhythmPart("groove", "hats", 960, "1/16", `Fracture: . . x . . . x . . . x . . . x .`, "vel: 100 60 80 50", []int{42, 42, 44}, random, gset, 0.6)
+	rhythmPart("groove", "rim", 1020, "1/16", `Fracture: . . . . . . . . x . . . . . . .`, "", []int{37}, 0, gset, 0.7)
 	rhythmPart("groove", "congas", 1080, "1/16", `Machine: . . x . . x . . x . . . x . x .
 Drive: . . x . . x . . x . . . x . x .`, "vel: 100 70 85", []int{62, 63, 64, 60}, random, gset, 0.6)
 	// the bass grows with it: its notes are short and plucked where the curve is low and run long and buzzing where it is high, so it drives the tune in the Machine
 	if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: bass, In: 0, Key: "length"}); id != "" && err == nil {
 		err = pt.SetRange(id, "", 0.2, 1)
 	}
+	// the beat, to dance to: from the Machine on a kick on every beat, a clap on the two and the four and hats on the eighths with the offbeat accented, steady (the chance is always full, nothing
+	// mutates), with the 808 of the groove; it gets louder with the curve like the rest. The Fracture is as it was: its rhythms are the rhythms of the piece, the beat is what the later sections stand on
+	steady := map[string]float64{"groove": mpc58, "drift": 0.01}
+	rhythmPart("groove", "beat kick", 1140, "1/16", `Machine: x . . . x . . . x . . . x . . .
+Drive: x . . . x . . . x . . . x . . .`, "vel: 100 85 95 85", []int{36}, 0, steady, 0.85)
+	rhythmPart("groove", "beat clap", 1200, "1/16", `Machine: . . . . x . . . . . . . x . . .
+Drive: . . . . x . . . . . . . x . . .`, "", []int{39}, 0, steady, 0.75)
+	rhythmPart("groove", "beat hats", 1260, "1/16", `Machine: x . x . x . x . x . x . x . x .
+Drive: x . x . x . x . x . x . x . x .`, "vel: 55 100 60 100", []int{42, 42, 44}, random, steady, 0.6)
+	for _, name := range []string{"groove beat kick", "groove beat clap", "groove beat hats"} {
+		if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: out.notes[name], In: 4, Key: "velocity"}); id != "" && err == nil {
+			err = pt.SetRange(id, "", 0.45, 0.85)
+		}
+	}
+	out.beat = []string{"groove beat kick", "groove beat clap"}
 	grow("groove kick", 0.5, 1)
 	grow("groove hats", 0, 0.9)
 	grow("groove rim", 0.1, 0.9)
@@ -459,10 +469,10 @@ Collapse: @b*16`, map[string]float64{"bass": 26, "length": 1}, 0.25, 0.95)
 	swell("choir", 1440, `Drive: @v'*16`, map[string]float64{"register": 48}, 0.15, 0.8)
 	// a longer room and a brighter shimmer as it grows
 	if id := connect(patcher.Cable{Type: patcher.Mod, From: epic, Out: 1, To: room, In: 1, Key: "decay"}); id != "" && err == nil {
-		err = pt.SetRange(id, "", 0.25, 0.8)
+		err = pt.SetRange(id, "", 0.15, 0.5)
 	}
 	if id := connect(patcher.Cable{Type: patcher.Mod, From: epic, Out: 1, To: mixer, In: channels + 4, Key: "returnD"}); id != "" && err == nil {
-		err = pt.SetRange(id, "", 0.2, 0.9)
+		err = pt.SetRange(id, "", 0.1, 0.5)
 	}
 	return out, err
 }
