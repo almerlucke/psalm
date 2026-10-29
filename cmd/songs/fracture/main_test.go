@@ -42,7 +42,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 	p := psalm.New(nil)
 	taps := map[string]*tap{}
 	kinds := catalog.Kinds(catalog.Config{Input: midi.NewQueue()})
-	for _, n := range []string{"drums kick", "drums hats", "glitch ticks", "chops syllables", "slices strokes"} {
+	for _, n := range []string{"drums kick", "drums hats", "glitch ticks", "chops part", "slices strokes"} {
 		tp := &tap{Module: psalm.NewControl()}
 		tp.SetSelf(tp)
 		taps[n] = tp
@@ -121,7 +121,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 	for _, c := range []struct {
 		tap, section string
 		min          int
-	}{{"drums kick", "Fracture", 8}, {"drums kick", "Machine", 10}, {"drums hats", "Fracture", 8}, {"drums hats", "Machine", 8}, {"glitch ticks", "Machine", 15}, {"chops syllables", "Machine", 10}, {"slices strokes", "Machine", 10}} {
+	}{{"drums kick", "Fracture", 8}, {"drums kick", "Machine", 10}, {"drums hats", "Fracture", 8}, {"drums hats", "Machine", 8}, {"glitch ticks", "Machine", 15}, {"chops part", "Machine", 10}, {"slices strokes", "Machine", 10}} {
 		if got := distinct(taps[c.tap], c.section); got < c.min {
 			t.Errorf("%s in the %s: only %d different bars", c.tap, c.section, got)
 		}

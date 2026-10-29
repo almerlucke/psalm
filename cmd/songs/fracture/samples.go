@@ -13,14 +13,15 @@ type cutSound struct {
 	rise, gap  float64 // how a hit is found: dB over the 50 ms before, and the seconds between two
 	vol        float64 // dB
 	maxSec     float64 // the pieces longer than this are left out: a piece plays to its end, and a long one is a sound that does not stop
+	pitched    bool    // the pieces are tuned to the key they are played on (the sampler's chops): a note plays one of them, chosen at random
 }
 
 const firstKey = 36
 
 var (
 	// a sung recording cut into syllables (the short ones only), the loop of a tabla cut at its strokes
-	vocalCut = cutSound{"chops", "assets/sounds/goedertierenheid.wav", 9, 0.06, 0, 0.4}
-	tablaCut = cutSound{"slices", "assets/sounds/various/tabla_loop_4bars_90bpm-86005.wav", 9, 0.08, 0, 0.5}
+	vocalCut = cutSound{"chops", "assets/sounds/goedertierenheid.wav", 9, 0.06, 0, 0.4, true}
+	tablaCut = cutSound{"slices", "assets/sounds/various/tabla_loop_4bars_90bpm-86005.wav", 9, 0.08, 0, 0.5, false}
 )
 
 // there says whether the recording is there (the piece plays without the ones that are not)
@@ -31,6 +32,9 @@ func (c cutSound) there() bool {
 
 // line is the sound of the sampler: the recording cut at its hits
 func (c cutSound) line() string {
+	if c.pitched {
+		return fmt.Sprintf("%d %q chops %g %g 0 0 %g name=%s vol=%g", firstKey, c.path, c.rise, c.gap, c.maxSec, c.name, c.vol)
+	}
 	return fmt.Sprintf("%d %q hits %g %g name=%s vol=%g", firstKey, c.path, c.rise, c.gap, c.name, c.vol)
 }
 

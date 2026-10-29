@@ -276,16 +276,21 @@ Collapse: E(5,16,+2)
 Fracture: CA(90,16,+)%2/3`, "vel: 100 60 80 50 90", []int{60, 63, 66, 69, 61, 72}, shuffled, map[string]float64{"mutate": 0.15, "drift": 0.05}, 0.55)
 
 	// the samplers: the pieces of a recording in any order, a hit and a roll of them (x3) that stutter and fall over each other, lanes of 5 and 3 steps for the chance and the length
-	if !vocalCut.there() {
-	} else if keys, kerr := vocalCut.keys(); kerr == nil && len(keys) > 1 {
-		rhythmPart("chops", "syllables", 440, "1/32", `Static: M(x . . . . . . . . . x . . . . .;32;21/1)
-Fracture: M(x . x x3 . . x . x . . [x x x x] . x . .;32;4/1)
-Machine: CA(30,32,+3)
-Collapse: M(x x3 . x . . x4 . . x . x . . x .;32;9/2)
-Residue: M(x . . . . . . . . . . . . x . .;32;31/1)`, "prob: 100 60 90 40 80\nlen: 100 40 40 100 30 60 100\nvel: 100 60 80", keys, random,
-			map[string]float64{"mutate": 0.25, "drift": 0.08}, 0.6)
-	} else if kerr != nil {
-		err = kerr
+	if vocalCut.there() {
+		// the vocal chops are played by the chords: a part of notes relative to the chord of the moment (@1 the root, @3 and @5 the tones above it, ' an octave up), each note one of
+		// the syllables, tuned to the tone (a sung syllable is on the pitch it is played at), chosen at random; the figure mutates and the chords change as the song goes
+		chops := add("part", "", 300, 440)
+		text(chops, "notes", `Static: . . . . . . . . . . @5 . . . . .
+Fracture: . . @3 . . @5 . @1' . @3'^2 . . @5 . . .
+Machine: @1 . @5' . @3 . . @1' . . @5 . @3'^3 . . @1'
+Collapse: @5 . . @3' . . @1' . @5 . . . @3 . @5'^2 .
+Drift: @3 . . @5' . . @1' . . . @3' . . @5 . .
+Residue: . . . . . . . . . . . . . . @1' .`)
+		text(chops, "lanes", "prob: 100 60 90 40 80\nvel: 100 60 80\nlen: 100 40 100 60 100 30 100")
+		apply(chops, map[string]float64{"division": 3, "velocity": 0.6, "length": 0.5, "register": 43, "mutate": 0.25, "seed": float64(seed % 1000), "groove": dilla, "drift": 0.06})
+		connect(patcher.Cable{From: chops, To: synth[vocalCut.name]})
+		out.notes["chops part"] = chops
+		out.musicOnly = append(out.musicOnly, chops)
 	}
 	if !tablaCut.there() {
 	} else if keys, kerr := tablaCut.keys(); kerr == nil && len(keys) > 1 {
