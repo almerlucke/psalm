@@ -42,7 +42,6 @@ Residue: Csus2*4 C5*4`
 type ids struct {
 	clocks    map[string]string // the clocks of the rhythm parts, by name
 	notes     map[string]string // the notes modules that follow them
-	melodist  string
 	chords    string
 	harmony   string
 	synths    map[string]string
@@ -68,7 +67,6 @@ func strips() []strip {
 		{name: "clicks", kind: "pulsar", preset: "crackle", level: 0.5, pan: -0.25, reverb: 0.15, echo: 0.2},
 		{name: "bass", kind: "pulsar", preset: "buzzBass", level: 0.45, grit: 0.05},
 		{name: "pad", kind: "supersaw", preset: "darkSwarm", level: 0.3, reverb: 0.35, air: 0.4},
-		{name: "lead", kind: "pulsar", preset: "chopLead", level: 0.5, pan: 0.2, reverb: 0.2, echo: 0.4, grit: 0.15, insert: "ringmod", insertSet: map[string]float64{"freq": 330, "mix": 0.1}},
 		{name: "metal", kind: "modal", preset: "anvil", level: 0.35, pan: -0.35, reverb: 0.3, echo: 0.35, air: 0.2},
 	}
 	// the samplers: a blurry vocal cut into pieces that stutter and fall over each other, and the strokes of a tabla loop cut up and played in any order, both through the crusher
@@ -89,8 +87,7 @@ func strips() []strip {
 
 // buildPatch makes the piece. Nothing in it repeats: the rhythms are made while it plays (a euclidean rhythm that turns every pass, cellular automata that run on, a Markov rhythm drawn
 // again every so many passes), mutate takes hits away and puts others in, lanes of other lengths than the bar (5, 7, 3 steps against 16) drift against each other, the chords are drawn
-// again by a model each time the song leaves a section, the lead is a melody made while it plays from an L-system and changed a little every time through, and a random source
-// moves the bit depth of the crusher and the feedback of the echo
+// again by a model each time the song leaves a section, and a random source moves the bit depth of the crusher and the feedback of the echo
 func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	out = ids{clocks: map[string]string{}, notes: map[string]string{}, synths: map[string]string{}}
 	add := func(kind, preset string, x, y float64) string {
@@ -319,19 +316,5 @@ Residue: @v*16`)
 	connect(patcher.Cable{From: pad, To: synth["pad"]})
 	out.musicOnly = append(out.musicOnly, bass, pad)
 
-	// the lead: a melodist in a scale of its own, a whole tone scale over chords that are not (the chord tones count little), with a grammar that is an L-system: it rewrites itself three
-	// times into a form no one wrote, and every time through a section changes about half of it; a second voice goes with it
-	lead := add("melodist", "", 300, 600)
-	gate := add("gate", "", 540, 600)
-	text(lead, "grammar", "axiom: A\niterate: 3\nA -> A B A' | B A~ | A< B\nB -> A^ | B'")
-	text(gate, "name", "lead")
-	text(gate, "sections", "Fracture, Machine")
-	whole := float64(1 + slices.Index(patcher.Scales, "whole tone"))
-	apply(lead, map[string]float64{"form": 5, "contour": 4, "rhythm": 2, "phrase": 1, "density": 0.45, "rest": 0.35, "steps": 0.35, "chord": 0.3, "low": 58, "high": 84,
-		"scale": whole, "key": 0, "mutate": 0.5, "seed": float64(seed % 10000), "counter": 1, "velocity": 0.7})
-	connect(patcher.Cable{From: lead, To: gate, In: 1})
-	connect(patcher.Cable{From: gate, Out: 1, To: synth["lead"]})
-	out.melodist = lead
-	out.musicOnly = append(out.musicOnly, lead, gate)
 	return out, err
 }

@@ -10,14 +10,12 @@
 //     four, a fill in the last bar of a section); lanes of 3, 4, 5 and 7 steps against the 16 and 32 of the patterns, so the accents drift against each other; the groove of Dilla and a
 //     drift of the timing
 //   - chords that are drawn by a Markov model of progressions each time the song leaves a section (the Machine and the Drift have no chords of their own: they get the last drawing)
-//   - a lead that is a melody made while it plays (a melodist): a whole tone scale over chords that are not, a grammar that is an L-system, about half of it changed every time through a
-//     section, with a second voice that goes against it
 //   - samplers: a blurry vocal cut into syllables and a tabla loop cut at its strokes, played in any order by the same kind of rhythms (rolls, ratchets, mutations), through the crusher and the
 //     granulator: the glitch
 //   - a bass that plays the chords by notes relative to them, a pad that is held voice led, a crusher whose bit depth is moved by a random source and an echo whose feedback is moved by a
 //     slow wave
 //
-// The sections: Static (a heart, dust, a held chord), Fracture (the rhythms break in), Machine (a floor of four that falls apart), Collapse (automata alone), Drift (what is left, turning: no lead),
+// The sections: Static (a heart, dust, a held chord), Fracture (the rhythms break in), Machine (a floor of four that falls apart), Collapse (automata alone), Drift (what is left, turning),
 // Residue (dust and a held chord). It goes round: every pass is another.
 package main
 

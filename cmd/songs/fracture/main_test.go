@@ -29,8 +29,8 @@ func (t *tap) Receive(v any, _ int) {
 	}
 }
 
-// the piece builds, has no text that can't be read, sounds in every section without clipping, and does not repeat: the bars of the rhythms are not the same bar again, the melodist
-// makes a new pass every time through, and the chord model draws new chords when the song leaves a section
+// the piece builds, has no text that can't be read, sounds in every section without clipping, and does not repeat: the bars of the rhythms are not the same bar again,
+// and the chord model draws new chords when the song leaves a section
 func TestPieceNeverRepeats(t *testing.T) {
 	if err := os.Chdir("../../.."); err != nil { // the recordings are found from the root of the repository
 		t.Fatal(err)
@@ -125,9 +125,6 @@ func TestPieceNeverRepeats(t *testing.T) {
 		if got := distinct(taps[c.tap], c.section); got < c.min {
 			t.Errorf("%s in the %s: only %d different bars", c.tap, c.section, got)
 		}
-	}
-	if n := pt.Module(ids.melodist).(*patcher.Melodist).Passes(); n < 3 {
-		t.Errorf("the melodist made %d passes", n)
 	}
 	// the chords of the sections that have none of their own were drawn again as the song left the sections: the harmony has another line than it began with
 	if got := pt.Texts(ids.harmony)[0].Value; got == harmonyText {
