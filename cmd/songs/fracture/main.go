@@ -11,31 +11,21 @@
 //     four, a fill in the last bar of a section); lanes of 3, 4, 5 and 7 steps against the 16 and 32 of the patterns, so the accents drift against each other; the groove of Dilla and a
 //     drift of the timing
 //
-//   - chords that are drawn by a Markov model of progressions each time the song leaves a section (the Shatter, the Splinter and the Drive have no chords of their own: they get the last drawing)
+//   - samplers: a sung recording cut into short syllables and played by the chords (each syllable tuned to the tone it is played at), and a tabla loop cut at its strokes and played in any
+//     order, by the same kind of rhythms, through the crusher and the granulator: the glitch
 //
-//   - samplers: a sung recording cut into short syllables and a tabla loop cut at its strokes, played in any order by the same kind of rhythms (rolls, ratchets, mutations), through the crusher and the
-//     granulator: the glitch
+//   - a toy box: a melancholic melody on a music box in two layers (melodists over the chords, in the phrygian scale of the harmony, a question and its answer, a falling tune and a rising
+//     answer, the tune of the section before changed a little each time through)
 //
-//   - a toy box: a melancholic melody on a music box in three layers (melodists over the chords, in the phrygian scale of the harmony, a question and its answer, a falling tune and a rising
-//     answer, the tune of the section before changed a little each time through): the tune alone in the Static, a lower answer under it in the Fracture, a glittering high layer in the Drive,
-//     the glitter and the answer in the Drive, and in the Collapse, when it has all fallen apart, the tune alone
+//   - an 808 groove under it (a kick, hats and a rim), a synth that drives the tune in sixteenths on the chord, timpani, a bass that plays the chords by notes relative to them (an acid bass:
+//     the buzz bass through a low filter that the envelope snaps open), a pad held voice led; one curve of the song moves the chance and the velocity of the groove, the length of the bass and
+//     the filter of the synth, another the acid of the bass, in every section the same way; a random source moves the bit depth of a crusher and a slow wave the feedback of the echo
 //
-//   - a groove that builds the tune up: an 808 kick, hats, a rim and congas whose chance and velocity are moved by one curve of the song (a lane: nothing in the Static, fuller and louder
-//     through the Fracture to full in the Shatter, the Splinter and the Drive, away in the Collapse); a synth plays the chords in sixteenths to drive the tune, its filter opening with the curve
+//   - a master that is loud: a compressor on the sum and a limiter after it. No shimmer
 //
-//   - a bass that plays the chords by notes relative to them, its notes lengthening with the same curve (short and plucked early, long and buzzing in the Drive, so it drives the tune), a pad that is held voice led, a crusher whose bit depth is moved by a random source and an echo whose feedback is moved by a
-//     slow wave
-//
-//   - a beat to dance to from the Shatter on: a kick on every beat, a clap on the two and the four, hats on the eighths with the offbeat accented, steady (nothing mutates), on the 808, louder with the
-//     curve; the Fracture keeps its own rhythms, the beat is what the later sections stand on
-//
-//   - it gets more and more epic: one curve rises through the whole piece to the end of the Drive and everything grand follows it, coming in one by one and louder as it goes (timpani on the
-//     root of the chord with a roll in the last bar of each section, strings held voice led and doubled an octave up, brass on the root and the fifth, a choir, a longer room, a brighter shimmer),
-//     and the acid bass gets deeper and deeper (the resonance, the amount of the filter envelope and the drive of the buzz bass rise with it)
-//
-// The sections: Static (a heart, dust, a held chord, the tune alone), Fracture (the rhythms break in, timpani), Shatter and Splinter (two more sections of the same kind as the Fracture, each its own
-// pattern of rhythms and figures, the tune building: a glitter on top in the Shatter, an upper voice, the synth, strings and brass in the Splinter), Drive (the build goes on to full, the choir, and
-// it explodes in the roll at the end), Collapse (one section after it: everything falls apart, automata and dust under the tune alone, a held chord). It goes round: every pass is another.
+// The sections: Static (a heart, dust, a held chord, the tune alone), Fracture (the rhythms break in), the Fault and the Rift (the Fracture again, a little different each time: other rotations
+// and seeds of the same rhythms, the same figures with a step moved, the chords of the Fracture in another order), Collapse (it falls apart: automata and dust under the tune alone, a held
+// chord). It goes round: every pass is another.
 package main
 
 import (
