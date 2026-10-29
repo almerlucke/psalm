@@ -10,7 +10,7 @@
 //     four, a fill in the last bar of a section); lanes of 3, 4, 5 and 7 steps against the 16 and 32 of the patterns, so the accents drift against each other; the groove of Dilla and a
 //     drift of the timing
 //   - chords that are drawn by a Markov model of progressions each time the song leaves a section (the Machine and the Drift have no chords of their own: they get the last drawing)
-//   - samplers: a blurry vocal cut into syllables and a tabla loop cut at its strokes, played in any order by the same kind of rhythms (rolls, ratchets, mutations), through the crusher and the
+//   - samplers: a sung recording cut into short syllables and a tabla loop cut at its strokes, played in any order by the same kind of rhythms (rolls, ratchets, mutations), through the crusher and the
 //     granulator: the glitch
 //   - a bass that plays the chords by notes relative to them, a pad that is held voice led, a crusher whose bit depth is moved by a random source and an echo whose feedback is moved by a
 //     slow wave

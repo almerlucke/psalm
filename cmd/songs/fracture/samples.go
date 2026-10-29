@@ -12,14 +12,15 @@ type cutSound struct {
 	name, path string
 	rise, gap  float64 // how a hit is found: dB over the 50 ms before, and the seconds between two
 	vol        float64 // dB
+	maxSec     float64 // the pieces longer than this are left out: a piece plays to its end, and a long one is a sound that does not stop
 }
 
 const firstKey = 36
 
 var (
-	// a blurry vocal cut into syllables and breaths, the loop of a tabla cut at its strokes
-	vocalCut = cutSound{"chops", "assets/sounds/various/Cymatics - Blurry Vocal - 80 BPM F Min.wav", 6, 0.06, 0}
-	tablaCut = cutSound{"slices", "assets/sounds/various/tabla_loop_4bars_90bpm-86005.wav", 9, 0.08, 0}
+	// a sung recording cut into syllables (the short ones only), the loop of a tabla cut at its strokes
+	vocalCut = cutSound{"chops", "assets/sounds/goedertierenheid.wav", 9, 0.06, 0, 0.4}
+	tablaCut = cutSound{"slices", "assets/sounds/various/tabla_loop_4bars_90bpm-86005.wav", 9, 0.08, 0, 0.5}
 )
 
 // there says whether the recording is there (the piece plays without the ones that are not)
@@ -40,9 +41,12 @@ func (c cutSound) keys() ([]int, error) {
 		return nil, err
 	}
 	cuts := sampler.OnsetCuts(snd, c.rise, c.gap)
+	sr := snd.SampleRate()
 	var keys []int
 	for i := 0; i+1 < len(cuts) && firstKey+i <= 127; i++ {
-		keys = append(keys, firstKey+i)
+		if c.maxSec <= 0 || float64(cuts[i+1]-cuts[i])/sr <= c.maxSec {
+			keys = append(keys, firstKey+i)
+		}
 	}
 	return keys, nil
 }
