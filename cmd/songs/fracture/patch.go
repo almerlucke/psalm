@@ -44,6 +44,7 @@ type ids struct {
 	notes     map[string]string // the notes modules that follow them
 	chords    string
 	toybox    []string // the melodists of the toy box
+	grooves   []string // the parts of the groove that builds
 	harmony   string
 	synths    map[string]string
 	musicOnly []string
@@ -69,6 +70,7 @@ func strips() []strip {
 		{name: "bass", kind: "pulsar", preset: "buzzBass", level: 0.45, grit: 0.05},
 		{name: "pad", kind: "subtractive", preset: "warmPad", level: 0.3, reverb: 0.35, air: 0.4},
 		{name: "toybox", kind: "dx", preset: "musicBox", level: 0.3, pan: 0.25, reverb: 0.45, echo: 0.5, air: 0.3},
+		{name: "groove", kind: "drumsynth", preset: "808", level: 0.55, pan: -0.1, reverb: 0.12, echo: 0.12},
 		{name: "metal", kind: "modal", preset: "anvil", level: 0.35, pan: -0.35, reverb: 0.3, echo: 0.35, air: 0.2},
 	}
 	// the samplers: a blurry vocal cut into pieces that stutter and fall over each other, and the strokes of a tabla loop cut up and played in any order, both through the crusher
@@ -345,5 +347,44 @@ Residue: @v*16`)
 	layer("tune", 640, "Static, Fracture, Machine, Drift, Residue", map[string]float64{"form": 4, "contour": 3, "steps": 0.92, "velocity": 0.42, "rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 70, "high": 88, "mutate": 0.12, "seed": float64(seed % 10000)})
 	layer("answer", 700, "Fracture, Machine", map[string]float64{"form": 4, "contour": 2, "steps": 0.92, "rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.36, "seed": float64(seed%10000 + 17)})
 	layer("glitter", 760, "Machine, Drift", map[string]float64{"grid": 0.5, "density": 0.2, "rest": 0.55, "low": 84, "high": 103, "mutate": 0.6, "velocity": 0.35, "rhythm": 3, "seed": float64(seed%10000 + 31)})
+	// the groove that builds the tune up: an 808 kick, hats, a rim and a conga, that come in as one curve rises (a lane of the song: from nothing in the Static to full in the Machine, away
+	// in the Collapse, back and fading in the Drift and the Residue). The curve moves the chance of every hit (more and more of the pattern is played) and the velocity (louder), so the
+	// groove grows fuller and louder as the sections go
+	build := add("lane", "", 300, 840)
+	text(build, "curves", `Static: 0 → 0.2 smooth
+Fracture: 0.2 → 0.65 smooth
+Machine: 0.65 → 1 smooth
+Collapse: 1 → 0.3
+Drift: 0.3 → 0.7 smooth
+Residue: 0.7 → 0 smooth`)
+	mpc58 := float64(slices.Index(rhythm.GrooveNames(), "mpc 58"))
+	grow := func(part string, chanceLo, chanceHi float64) {
+		clock, notes := out.clocks[part], out.notes[part]
+		if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: clock, In: 0, Key: "chance"}); id != "" && err == nil {
+			err = pt.SetRange(id, "", chanceLo, chanceHi)
+		}
+		if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: notes, In: 4, Key: "velocity"}); id != "" && err == nil {
+			err = pt.SetRange(id, "", 0.25, 0.8)
+		}
+	}
+	gset := map[string]float64{"groove": mpc58, "mutate": 0.1, "drift": 0.03}
+	rhythmPart("groove", "kick", 900, "1/16", `Static: x . . . . . . . . . . . . . . .
+Fracture: x . . . . . . x . . x . . . . .
+Machine: x . . . . . x . . . x . . . . x
+Drift: x . . . . . . x . . x . . . . .
+Residue: x . . . . . . . . . . . . . . .`, "vel: 100 80 90", []int{36}, 0, gset, 0.8)
+	rhythmPart("groove", "hats", 960, "1/16", `Fracture: . . x . . . x . . . x . . . x .
+Machine: x . x . x . x . x . x . x . x .
+Drift: . . x . . . x . . . x . . . x .`, "vel: 100 60 80 50", []int{42, 42, 44}, random, gset, 0.6)
+	rhythmPart("groove", "rim", 1020, "1/16", `Fracture: . . . . . . . . x . . . . . . .
+Machine: . . . . x . . . . . . . x . . .
+Drift: . . . . . . . . x . . . . . . .`, "", []int{37}, 0, gset, 0.7)
+	rhythmPart("groove", "congas", 1080, "1/16", `Machine: . . x . . x . . x . . . x . x .
+Drift: . . . x . . . . . x . . . . . .`, "vel: 100 70 85", []int{62, 63, 64, 60}, random, gset, 0.6)
+	grow("groove kick", 0.5, 1)
+	grow("groove hats", 0, 0.9)
+	grow("groove rim", 0.1, 0.9)
+	grow("groove congas", 0, 0.8)
+	out.grooves = []string{"groove kick", "groove hats"}
 	return out, err
 }

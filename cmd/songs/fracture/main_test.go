@@ -42,7 +42,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 	p := psalm.New(nil)
 	taps := map[string]*tap{}
 	kinds := catalog.Kinds(catalog.Config{Input: midi.NewQueue()})
-	for _, n := range []string{"drums kick", "drums hats", "glitch ticks", "chops part", "slices strokes"} {
+	for _, n := range []string{"drums kick", "drums hats", "glitch ticks", "chops part", "slices strokes", "groove kick", "groove hats"} {
 		tp := &tap{Module: psalm.NewControl()}
 		tp.SetSelf(tp)
 		taps[n] = tp
@@ -124,6 +124,29 @@ func TestPieceNeverRepeats(t *testing.T) {
 	}{{"drums kick", "Fracture", 8}, {"drums kick", "Machine", 10}, {"drums hats", "Fracture", 8}, {"drums hats", "Machine", 8}, {"glitch ticks", "Machine", 15}, {"chops part", "Machine", 10}, {"slices strokes", "Machine", 10}} {
 		if got := distinct(taps[c.tap], c.section); got < c.min {
 			t.Errorf("%s in the %s: only %d different bars", c.tap, c.section, got)
+		}
+	}
+	// the groove builds: more hits a bar as the sections go (the Static to the Fracture to the Machine)
+	perBar := func(tp *tap, name string) float64 {
+		from, to := section(name)
+		c := 0
+		for _, at := range tp.at {
+			if float64(at) >= from && float64(at) < to {
+				c++
+			}
+		}
+		for _, sec := range sections {
+			if sec.name == name {
+				return float64(c) / float64(sec.bars)
+			}
+		}
+		return 0
+	}
+	for _, n := range []string{"groove kick", "groove hats"} {
+		a, b, c := perBar(taps[n], "Static"), perBar(taps[n], "Fracture"), perBar(taps[n], "Machine")
+		t.Logf("%s: %.1f hits a bar in the Static, %.1f in the Fracture, %.1f in the Machine", n, a, b, c)
+		if !(a <= b && b < c) || c < 1.5 {
+			t.Errorf("%s does not build: %.2f, %.2f, %.2f hits a bar", n, a, b, c)
 		}
 	}
 	for i, id := range ids.toybox {
