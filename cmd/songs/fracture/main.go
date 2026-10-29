@@ -5,18 +5,24 @@
 //	go run ./cmd/songs/fracture -theme midnight
 //
 // It is made with what the patcher has for change:
+//
 //   - rhythms that are made while it plays: a euclidean kick that turns a step every pass (E(5,16,+1)), cellular automata that run on (rule 30, 90, 110: a new row every pass), a
 //     Markov rhythm that is drawn again every few passes, and mutate, which takes hits away and puts others in (a hit with a ! after it stays); conditions (the second time through in every
 //     four, a fill in the last bar of a section); lanes of 3, 4, 5 and 7 steps against the 16 and 32 of the patterns, so the accents drift against each other; the groove of Dilla and a
 //     drift of the timing
+//
 //   - chords that are drawn by a Markov model of progressions each time the song leaves a section (the Machine and the Drive have no chords of their own: they get the last drawing)
+//
 //   - samplers: a sung recording cut into short syllables and a tabla loop cut at its strokes, played in any order by the same kind of rhythms (rolls, ratchets, mutations), through the crusher and the
 //     granulator: the glitch
+//
 //   - a toy box: a melancholic melody on a music box in three layers (melodists over the chords, in the phrygian scale of the harmony, a question and its answer, a falling tune and a rising
 //     answer, the tune of the section before changed a little each time through): the tune alone in the Static, a lower answer under it in the Fracture, a glittering high layer in the Machine,
 //     the glitter and the answer in the Drive, and in the Collapse, when it has all fallen apart, the tune alone
+//
 //   - a groove that builds the tune up: an 808 kick, hats, a rim and congas whose chance and velocity are moved by one curve of the song (a lane: nothing in the Static, fuller and louder
 //     through the Fracture to full in the Machine and the Drive, away in the Collapse); a synth plays the chords in sixteenths to drive the tune, its filter opening with the curve
+//
 //   - a bass that plays the chords by notes relative to them, its notes lengthening with the same curve (short and plucked early, long and buzzing in the Machine, so it drives the tune), a pad that is held voice led, a crusher whose bit depth is moved by a random source and an echo whose feedback is moved by a
 //     slow wave
 //
