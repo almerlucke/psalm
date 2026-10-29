@@ -326,7 +326,7 @@ Residue: @v*16`)
 	// the toy box: a melancholic melody on a music box, over the chords of the moment (the tones of the chord count most, the scale is the harmony's, phrygian), in three layers that
 	// come in and go as the sections go: the tune alone in the Static; a lower answer under it in the Fracture; a glittering high layer on top in the Machine; nothing in the Collapse
 	// (the automata alone); the tune and the glitter in the Drift; the tune alone, thinning, in the Residue. Each layer is a melodist: a pass a section, the pass of the section before
-	// changed a little (the tune is the tune again and a little other), and a form that says the tune twice, then something else, then the tune again (AABA)
+	// changed a little (the tune is the tune again and a little other), and a form of a question and its answer (the question ends open, on the third or the fifth of the chord, the answer closes on the root), the tune falling, a sigh, and the answer under it rising
 	layer := func(name string, y float64, sections string, set map[string]float64) {
 		m := add("melodist", "", 300, y)
 		g := add("gate", "", 540, y)
@@ -342,8 +342,8 @@ Residue: @v*16`)
 		out.toybox = append(out.toybox, m)
 		out.musicOnly = append(out.musicOnly, m, g)
 	}
-	layer("tune", 640, "Static, Fracture, Machine, Drift, Residue", map[string]float64{"rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 72, "high": 91, "mutate": 0.12, "seed": float64(seed % 10000)})
-	layer("answer", 700, "Fracture, Machine", map[string]float64{"rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.4, "seed": float64(seed%10000 + 17)})
+	layer("tune", 640, "Static, Fracture, Machine, Drift, Residue", map[string]float64{"form": 4, "contour": 3, "steps": 0.92, "velocity": 0.42, "rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 70, "high": 88, "mutate": 0.12, "seed": float64(seed % 10000)})
+	layer("answer", 700, "Fracture, Machine", map[string]float64{"form": 4, "contour": 2, "steps": 0.92, "rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.36, "seed": float64(seed%10000 + 17)})
 	layer("glitter", 760, "Machine, Drift", map[string]float64{"grid": 0.5, "density": 0.2, "rest": 0.55, "low": 84, "high": 103, "mutate": 0.6, "velocity": 0.35, "rhythm": 3, "seed": float64(seed%10000 + 31)})
 	return out, err
 }

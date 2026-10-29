@@ -12,8 +12,8 @@
 //   - chords that are drawn by a Markov model of progressions each time the song leaves a section (the Machine and the Drift have no chords of their own: they get the last drawing)
 //   - samplers: a sung recording cut into short syllables and a tabla loop cut at its strokes, played in any order by the same kind of rhythms (rolls, ratchets, mutations), through the crusher and the
 //     granulator: the glitch
-//   - a toy box: a melancholic melody on a music box in three layers (melodists over the chords, in the phrygian scale of the harmony, a form that says the tune twice and then something
-//     else, the tune of the section before changed a little each time through): the tune alone in the Static, a lower answer under it in the Fracture, a glittering high layer in the Machine,
+//   - a toy box: a melancholic melody on a music box in three layers (melodists over the chords, in the phrygian scale of the harmony, a question and its answer, a falling tune and a rising
+//     answer, the tune of the section before changed a little each time through): the tune alone in the Static, a lower answer under it in the Fracture, a glittering high layer in the Machine,
 //     nothing in the Collapse, the tune and the glitter in the Drift, the tune alone thinning in the Residue
 //   - a bass that plays the chords by notes relative to them, a pad that is held voice led, a crusher whose bit depth is moved by a random source and an echo whose feedback is moved by a
 //     slow wave
