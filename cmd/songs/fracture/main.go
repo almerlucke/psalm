@@ -23,8 +23,8 @@
 //
 //   - a master that is loud: a compressor on the sum and a limiter after it. No shimmer
 //
-// The sections: Static (a heart, dust, a held chord, the tune alone), Fracture (the rhythms break in), the Fault and the Rift (the Fracture again, a little different each time: other rotations
-// and seeds of the same rhythms, the same figures with a step moved, the chords of the Fracture in another order), Collapse (it falls apart: automata and dust under the tune alone, a held
+// The sections: Static (a heart, a held chord, the tune alone), Fracture (the rhythms break in), the Fault and the Rift (the Fracture again, a little different each time: other rotations
+// and seeds of the same rhythms, the same figures with a step moved, the chords of the Fracture in another order), Collapse (it falls apart: automata under the tune alone, a held
 // chord). It goes round: every pass is another.
 package main
 

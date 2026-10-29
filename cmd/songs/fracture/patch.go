@@ -68,7 +68,6 @@ func strips() []strip {
 		// the drums go through an eq that takes the sizzle off the top
 		{name: "drums", kind: "drumsynth", preset: "industrial", level: 0.3, reverb: 0.08, grit: 0.06, insert: "eq", insertSet: map[string]float64{"highFreq": 4500, "highGain": -9, "highCut": 9000}},
 		{name: "glitch", kind: "drumsynth", preset: "electro", level: 1.0, pan: 0.15, echo: 0.3, grit: 0.35, insert: "crusher", insertSet: map[string]float64{"bits": 8, "rate": 9000, "mix": 0.55, "output": 6}},
-		{name: "clicks", kind: "pulsar", preset: "crackle", level: 0.5, pan: -0.25, reverb: 0.15, echo: 0.2},
 		{name: "bass", kind: "pulsar", preset: "buzzBass", level: 0.45, grit: 0.05},
 		{name: "pad", kind: "subtractive", preset: "warmPad", level: 0.3, reverb: 0.35, air: 0.4},
 		{name: "toybox", kind: "dx", preset: "musicBox", level: 0.3, pan: 0.25, reverb: 0.45, echo: 0.5, air: 0.3},
@@ -282,11 +281,6 @@ Fault: CA(110,32,6+1)
 Rift: CA(110,32,13+1)
 Collapse: E(13,32,+3)`, "prob: 100 35 80 20 90 50 100\nvel: 100 50 70 40\nshift: 0 12 -10 5 0 0 15", []int{37, 39, 42, 46, 48, 50, 56, 60, 63, 75}, random,
 		map[string]float64{"mutate": 0.3, "drift": 0.1}, 0.6)
-	rhythmPart("clicks", "dust", 300, "1/32", `Static: M(x . . . . . x . . . . . . x . .;32;3/1)
-Fracture: M(x . . x . . . x . . . . x . . .;32;11/1)
-Fault: M(x . . x . . . x . . . . x . . .;32;19/1)
-Rift: M(x . . x . . . x . . . . x . . .;32;27/1)
-Collapse: M(x . . . . . . . . . . . . x . .;32;13/1)`, "vel: 100 40 70", []int{60, 72, 84, 67}, random, map[string]float64{"mutate": 0.2}, 0.4)
 	rhythmPart("metal", "hits", 370, "1/16", `Fault: CA(90,16,5+1)%2/3
 Rift: CA(90,16,11+1)%2/3
 Collapse: E(5,16,+2)
