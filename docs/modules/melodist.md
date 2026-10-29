@@ -21,6 +21,7 @@ So the second chorus is the first chorus, varied. The first time a section is pl
 | | |
 |---|---|
 | form, contour, rhythm, phrase | as the Melody panel of the [note editor](noteroll.md): the form (`free`, `AA'`, `ABAB`, `AABA`, `call`, or a **grammar** typed in the box of the window), the shape of a phrase, the rhythm, how long a phrase is |
+| shortest note | the shortest note in beats (0.25 to 4): with 1 or 2 the tune is slow, of long notes (the busy setting changes the notes little; this changes how long they are) |
 | busy, rests, smooth, chord tones | how many notes, how often it rests, steps against leaps, how much the notes on the beat keep to the chord |
 | low, high, key, scale | the range; the scale is that of the harmony, or a key and scale of its own |
 | mutate, seed, freeze | see above; the seed makes the same melody every time |

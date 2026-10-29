@@ -342,8 +342,8 @@ Residue: @v*16`)
 		out.toybox = append(out.toybox, m)
 		out.musicOnly = append(out.musicOnly, m, g)
 	}
-	layer("tune", 640, "Static, Fracture, Machine, Drift, Residue", map[string]float64{"density": 0.22, "rest": 0.3, "low": 72, "high": 91, "mutate": 0.12, "seed": float64(seed % 10000)})
-	layer("answer", 700, "Fracture, Machine", map[string]float64{"density": 0.15, "rest": 0.5, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.4, "seed": float64(seed%10000 + 17)})
-	layer("glitter", 760, "Machine, Drift", map[string]float64{"density": 0.35, "rest": 0.3, "low": 84, "high": 103, "mutate": 0.6, "velocity": 0.35, "rhythm": 3, "seed": float64(seed%10000 + 31)})
+	layer("tune", 640, "Static, Fracture, Machine, Drift, Residue", map[string]float64{"rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 72, "high": 91, "mutate": 0.12, "seed": float64(seed % 10000)})
+	layer("answer", 700, "Fracture, Machine", map[string]float64{"rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.4, "seed": float64(seed%10000 + 17)})
+	layer("glitter", 760, "Machine, Drift", map[string]float64{"grid": 0.5, "density": 0.2, "rest": 0.55, "low": 84, "high": 103, "mutate": 0.6, "velocity": 0.35, "rhythm": 3, "seed": float64(seed%10000 + 31)})
 	return out, err
 }

@@ -55,6 +55,7 @@ type MelodistConfig struct {
 	Mutate                      float64
 	Freeze, Counter, Just       bool // Just: the notes in just intonation (pure ratios from the tonic, the key of the scale) instead of equal temperament
 	Velocity                    float64
+	Grid                        float64 // the shortest note in beats (0.25): 1 or 2 makes a slow tune of long notes
 	Length                      float64 // beats a pass without a song
 }
 
@@ -91,7 +92,7 @@ type melodyReq struct {
 // NewMelodist returns a melodist of the settings that are good to start with
 func NewMelodist() *Melodist {
 	m := &Melodist{Module: psalm.NewControl(), req: make(chan melodyReq, 8), lastTick: -1, asked: -1,
-		cfg: MelodistConfig{Density: 0.5, Rest: 0.15, Steps: 0.7, Chord: 0.7, Form: 3, Phrase: 2, Low: 60, High: 84, Seed: 1, Mutate: 0.25, Velocity: 0.8, Length: 16}}
+		cfg: MelodistConfig{Density: 0.5, Rest: 0.15, Steps: 0.7, Chord: 0.7, Form: 3, Phrase: 2, Low: 60, High: 84, Seed: 1, Mutate: 0.25, Velocity: 0.8, Grid: 0.25, Length: 16}}
 	m.SetSelf(m)
 	m.song = SongOf(m.Env())
 	go m.work()
@@ -138,6 +139,7 @@ func (m *Melodist) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("high", func(v float64) { c.High = math.Max(0, math.Min(v, 127)) })
 	msg.IfFltVal("seed", func(v float64) { c.Seed = int(math.Max(0, math.Min(v, 9999))) })
 	msg.IfFltVal("length", func(v float64) { c.Length = math.Max(2, math.Min(v, 128)) })
+	msg.IfFltVal("grid", func(v float64) { c.Grid = math.Max(0.25, math.Min(v, 4)) })
 	msg.IfBoolVal("freeze", func(b bool) { c.Freeze = b })
 	msg.IfBoolVal("counter", func(b bool) { c.Counter = b })
 	msg.IfBoolVal("just", func(b bool) { c.Just = b })
@@ -166,6 +168,7 @@ func (m *Melodist) Describe() params.Set {
 		params.K("Melody", "rest", 0, 1, c.Rest, params.Label("rests")),
 		params.K("Melody", "steps", 0, 1, c.Steps, params.Label("smooth")),
 		params.K("Melody", "chord", 0, 1, c.Chord, params.Label("chord tones")),
+		params.K("Melody", "grid", 0.25, 4, c.Grid, params.Exp(), params.Unit("beats"), params.Label("shortest note")),
 		params.K("Range", "low", 24, 100, c.Low, params.Step(1)),
 		params.K("Range", "high", 40, 120, c.High, params.Step(1)),
 		params.C("Range", "key", Keys, c.Key),
@@ -240,7 +243,7 @@ func (m *Melodist) makePass(c MelodistConfig, grammar string, r melodyReq, befor
 		bpb = tr.Form().BeatsPerBar
 	}
 	p := melody.Params{Scale: scale, Beats: r.beats, Low: int(c.Low), High: int(math.Max(c.High, c.Low+4)), Density: c.Density, Rest: c.Rest, Steps: c.Steps, Chord: c.Chord,
-		Rhythm: MelodyRhythms[c.Rhythm], Contour: MelodyContours[c.Contour], Form: MelodyForms[c.Form], Phrase: MelodyPhrases[c.Phrase], Velocity: c.Velocity}
+		Grid: c.Grid, Rhythm: MelodyRhythms[c.Rhythm], Contour: MelodyContours[c.Contour], Form: MelodyForms[c.Form], Phrase: MelodyPhrases[c.Phrase], Velocity: c.Velocity}
 	if p.Form == "grammar" {
 		p.Grammar = grammar
 	}
