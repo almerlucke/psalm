@@ -314,7 +314,7 @@ Drift: M(x . . x . x . . . x . . . . x .;32;2/1)`, "prob: 100 50 80\nvel: 100 70
 Machine: @b @b . @b . @b^2 . . @1 . @b . @b . @5%2/4 .
 Collapse: @b*4 . . . . @b*4 . . . .
 Drift: @b . . . @b . . @1 . . @b . . . @5 .`)
-	text(bass, "lanes", "pitch: 0 0 0 12 0 -12 0\nvel: 100 70 85 60 90")
+	text(bass, "lanes", "pitch: 0 0 0 12 0 -12 0\nvel: 100 70 85 60 90\nlen: 100 100 160 100 220")
 	apply(bass, map[string]float64{"division": 3, "velocity": 0.8, "length": 0.6, "register": 36, "bass": 28, "mutate": 0.18, "seed": float64(seed % 1000), "groove": dilla, "drift": 0.04})
 	text(pad, "notes", `Static: @v*16
 Collapse: @v*16
@@ -381,6 +381,10 @@ Machine: . . . . x . . . . . . . x . . .
 Drift: . . . . . . . . x . . . . . . .`, "", []int{37}, 0, gset, 0.7)
 	rhythmPart("groove", "congas", 1080, "1/16", `Machine: . . x . . x . . x . . . x . x .
 Drift: . . . x . . . . . x . . . . . .`, "vel: 100 70 85", []int{62, 63, 64, 60}, random, gset, 0.6)
+	// the bass grows with it: its notes are short and plucked where the curve is low and run long and buzzing where it is high, so it drives the tune in the Machine
+	if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: bass, In: 0, Key: "length"}); id != "" && err == nil {
+		err = pt.SetRange(id, "", 0.2, 1)
+	}
 	grow("groove kick", 0.5, 1)
 	grow("groove hats", 0, 0.9)
 	grow("groove rim", 0.1, 0.9)

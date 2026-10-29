@@ -17,7 +17,7 @@
 //     nothing in the Collapse, the tune and the glitter in the Drift, the tune alone thinning in the Residue
 //   - a groove that builds the tune up: an 808 kick, hats, a rim and congas whose chance and velocity are moved by one curve of the song (a lane: nothing in the Static, fuller and louder
 //     through the Fracture to full in the Machine, away in the Collapse, back and fading in the Drift and the Residue)
-//   - a bass that plays the chords by notes relative to them, a pad that is held voice led, a crusher whose bit depth is moved by a random source and an echo whose feedback is moved by a
+//   - a bass that plays the chords by notes relative to them, its notes lengthening with the same curve (short and plucked early, long and buzzing in the Machine, so it drives the tune), a pad that is held voice led, a crusher whose bit depth is moved by a random source and an echo whose feedback is moved by a
 //     slow wave
 //
 // The sections: Static (a heart, dust, a held chord), Fracture (the rhythms break in), Machine (a floor of four that falls apart), Collapse (automata alone), Drift (what is left, turning),
