@@ -122,7 +122,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 	for _, c := range []struct {
 		tap, section string
 		min          int
-	}{{"drums kick", "Fracture", 8}, {"drums kick", "Seam", 10}, {"drums hats", "Fracture", 8}, {"drums hats", "Seam", 8}, {"glitch ticks", "Seam", 15}, {"chops part", "Seam", 10}, {"slices strokes", "Seam", 10}} {
+	}{{"drums kick", "Fracture", 8}, {"drums kick", "Ridge", 10}, {"drums hats", "Fracture", 8}, {"drums hats", "Ridge", 8}, {"glitch ticks", "Ridge", 15}, {"chops part", "Ridge", 10}, {"slices strokes", "Ridge", 10}} {
 		if got := distinct(taps[c.tap], c.section); got < c.min {
 			t.Errorf("%s in the %s: only %d different bars", c.tap, c.section, got)
 		}
@@ -144,8 +144,8 @@ func TestPieceNeverRepeats(t *testing.T) {
 		return 0
 	}
 	for _, n := range []string{"groove kick", "groove hats"} {
-		a, b, c := perBar(taps[n], "Static"), perBar(taps[n], "Fracture"), perBar(taps[n], "Seam")
-		t.Logf("%s: %.1f hits a bar in the Static, %.1f in the Fracture, %.1f in the Seam", n, a, b, c)
+		a, b, c := perBar(taps[n], "Static"), perBar(taps[n], "Fracture"), perBar(taps[n], "Ridge")
+		t.Logf("%s: %.1f hits a bar in the Static, %.1f in the Fracture, %.1f in the Ridge", n, a, b, c)
 		if !(a <= b) || b < 0.5 { // the groove comes in with the Fracture
 			t.Errorf("%s does not come in: %.2f, %.2f, %.2f hits a bar", n, a, b, c)
 		}
