@@ -53,7 +53,9 @@ psalm.register("patcher", (p, api) => {
 	logBtn.title = "the log of the patch: what the scripts log, a line each with the time and the module";
 	const lanesBtn = el("button", "pt-lanes-btn", "Lanes");
 	lanesBtn.title = "the lanes of the automation modules, over the bars of the song: draw them, a mod cable from each moves a setting";
-	bar.append(maxBtn, logBtn, lanesBtn, el("span", "pt-sep"), kindSel, presetSel, addBtn, sep, patchSel, nameIn, saveBtn, delBtn, clearBtn, note);
+	const gridBtn = el("button", "pt-grid-btn", "Sections");
+	gridBtn.title = "the sections of the song as a grid: a pattern for every part in every section, to edit, vary and copy";
+	bar.append(maxBtn, logBtn, lanesBtn, gridBtn, el("span", "pt-sep"), kindSel, presetSel, addBtn, sep, patchSel, nameIn, saveBtn, delBtn, clearBtn, note);
 
 	// --- the patch: modules over a layer of cables ---
 	const area = el("div", "pt-area");
@@ -108,8 +110,12 @@ psalm.register("patcher", (p, api) => {
 	const lanes = psalm.lanesView(send);
 	lanes.onToggle = on => lanesBtn.classList.toggle("on", on);
 	lanesBtn.addEventListener("click", () => lanes.toggle());
+	const grid = psalm.sectionGrid(send);
+	grid.onToggle = on => gridBtn.classList.toggle("on", on);
+	gridBtn.addEventListener("click", () => { if (!grid.isOpen && lanes.isOpen) lanes.toggle(); grid.toggle(); });
+	lanes.onToggle = on => { lanesBtn.classList.toggle("on", on); if (on && grid.isOpen) grid.toggle(); };
 	const stage = el("div", "pt-stage");
-	stage.append(area, lanes.el);
+	stage.append(area, lanes.el, grid.el);
 	root.append(bar, logBox, stage, inspector);
 
 	let st = {nodes: [], cables: [], patches: [], selected: ""}, shownPatches = "";
@@ -534,6 +540,7 @@ psalm.register("patcher", (p, api) => {
 			const was = JSON.stringify(st);
 			st = rest;
 			lanes.update(st.nodes, st.selected);
+			grid.update(st);
 			if (JSON.stringify(rest) === was) return;
 			updateNodes();
 			if (picked && !st.cables.some(c => c.id === picked)) picked = "";

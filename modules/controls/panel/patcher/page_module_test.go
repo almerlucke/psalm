@@ -285,3 +285,54 @@ func TestPageMelodistEditor(t *testing.T) {
 		t.Errorf("the state kept: %v %v", err, n.Values())
 	}
 }
+
+// the grid of the sections: a row for every pattern text, a column for every section; a cell edits, varies, clears and copies the line of its section
+func TestPageSectionGrid(t *testing.T) {
+	b, pt, base := newPage(t)
+	song, _ := pt.Add("song", "", 60, 300)
+	if err := pt.SetText(song, "sections", "Verse 8, Chorus 8"); err != nil {
+		t.Fatal(err)
+	}
+	clk, _ := pt.Add("clock", "", 60, 40)
+	if err := pt.SetText(clk, "pattern", "Verse: x . x x\nChorus: E(5,16,+)"); err != nil {
+		t.Fatal(err)
+	}
+	tb := b.Open(t, base, `document.querySelectorAll(".pt-node").length >= 2`)
+	tb.Size(1300, 1000)
+	tb.Eval(`document.querySelector(".pt-grid-btn").click()`)
+	tb.WaitFor(`document.querySelectorAll(".pt-grid-cell").length === 2 && document.querySelectorAll(".pt-grid-col").length === 2`, "a row with a cell for each section")
+	cell := func(i int) string {
+		return `document.querySelectorAll(".pt-grid-cell")[` + strconv.Itoa(i) + `]`
+	}
+	text := func(id, key string) string {
+		for _, x := range pt.Texts(id) {
+			if x.Key == key {
+				return x.Value
+			}
+		}
+		return ""
+	}
+	// edit the verse
+	tb.Eval(cell(0) + `.click()`)
+	tb.WaitFor(`!!document.querySelector(".pt-grid-text")`, "the editor of the cell")
+	tb.Eval(`(() => { const a = document.querySelector(".pt-grid-text"); a.value = "x x x x"; [...document.querySelectorAll(".pt-grid-edit-row button")].find(b => b.textContent === "Save").click(); })()`)
+	paneltest.Eventually(t, "the verse saved", func() bool { return text(clk, "pattern") == "Verse: x x x x\nChorus: E(5,16,+)" })
+	// vary the chorus: the rotation of the Euclidean pattern moves
+	tb.Eval(cell(1) + `.click()`)
+	tb.WaitFor(`/E\(5/.test(document.querySelector(".pt-grid-text")?.value || "")`, "the chorus in the editor")
+	tb.Eval(`[...document.querySelectorAll(".pt-grid-edit-row button")].find(b => b.textContent === "Vary").click()`)
+	paneltest.Eventually(t, "the chorus varied", func() bool {
+		s := text(clk, "pattern")
+		return strings.HasPrefix(s, "Verse: x x x x\nChorus: E(5,16,") && !strings.Contains(s, "E(5,16,+)")
+	})
+	// copy the verse to the chorus
+	tb.Eval(cell(0) + `.click()`)
+	tb.WaitFor(`document.querySelector(".pt-grid-text")?.value === "x x x x"`, "the verse in the editor")
+	tb.Eval(`(() => { const s = document.querySelector(".pt-grid-edit-row select"); s.value = "Chorus"; s.dispatchEvent(new Event("change")); })()`)
+	paneltest.Eventually(t, "the verse copied", func() bool { return text(clk, "pattern") == "Verse: x x x x\nChorus: x x x x" })
+	// clear the chorus
+	tb.Eval(cell(1) + `.click()`)
+	tb.WaitFor(`document.querySelector(".pt-grid-edit-title")?.textContent.endsWith("Chorus")`, "the chorus in the editor")
+	tb.Eval(`[...document.querySelectorAll(".pt-grid-edit-row button")].find(b => b.textContent === "Clear").click()`)
+	paneltest.Eventually(t, "the chorus cleared", func() bool { return text(clk, "pattern") == "Verse: x x x x" })
+}

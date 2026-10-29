@@ -49,13 +49,19 @@ var styles string
 //go:embed lanes.js
 var lanesScript string
 
+//go:embed sectiongrid.js
+var gridScript string
+
+//go:embed sectiongrid.css
+var gridStyles string
+
 // the window of a module (a double click opens it): its page, styles and script, served under plugins/patcher/
 //
 //go:embed module.html module.css module.js
 var moduleFiles embed.FS
 
 // Plugin is the plugin (New uses it)
-var Plugin = panel.Plugin{Name: "patcher", JS: lanesScript + "\n" + script, CSS: styles, Files: moduleFiles}
+var Plugin = panel.Plugin{Name: "patcher", JS: lanesScript + "\n" + gridScript + "\n" + script, CSS: styles + "\n" + gridStyles, Files: moduleFiles}
 
 // PortType is what goes through a port: sound, notes or modulation
 type PortType string
@@ -1062,19 +1068,30 @@ type nodeState struct {
 	Lanes    *LanesView        `json:"lanes,omitempty"`  // lanes to draw and edit at the bottom of the patch (an automation module's)
 }
 
+// SectionInfo is a section of the song for the page: its name and its bars
+type SectionInfo struct {
+	Name string `json:"name"`
+	Bars int    `json:"bars"`
+}
+
+// sectionTexts are the texts that can say something per section ("Chorus: x . x x"), by the kind that has them: the rows of the grid of the sections
+var sectionTexts = map[string][]string{"clock": {"pattern"}, "part": {"notes"}, "sequence": {"values"}, "harmony": {"chords"}}
+
 type state struct {
-	Nodes    []nodeState          `json:"nodes"`
-	Cables   []*Cable             `json:"cables"`
-	Selected string               `json:"selected"`
-	Patches  []string             `json:"patches"`
-	Current  string               `json:"current"`
-	Keeps    bool                 `json:"keeps"`
-	Note     string               `json:"note"`
-	Pasted   []string             `json:"pasted,omitempty"` // the modules the last paste made
-	PasteN   int                  `json:"pasteN,omitempty"` // the pastes so far: another one, the page chooses them
-	Journal  string               `json:"journal"`          // the log of the patch, the newest lines
-	Lines    int                  `json:"lines"`            // how many lines it has had
-	Heads    map[string]*LaneHead `json:"heads,omitempty"`  // where the lanes of the automation modules are
+	Nodes        []nodeState          `json:"nodes"`
+	Cables       []*Cable             `json:"cables"`
+	Selected     string               `json:"selected"`
+	Patches      []string             `json:"patches"`
+	Current      string               `json:"current"`
+	Keeps        bool                 `json:"keeps"`
+	Note         string               `json:"note"`
+	Pasted       []string             `json:"pasted,omitempty"` // the modules the last paste made
+	PasteN       int                  `json:"pasteN,omitempty"` // the pastes so far: another one, the page chooses them
+	Journal      string               `json:"journal"`          // the log of the patch, the newest lines
+	Lines        int                  `json:"lines"`            // how many lines it has had
+	Heads        map[string]*LaneHead `json:"heads,omitempty"`  // where the lanes of the automation modules are
+	Sections     []SectionInfo        `json:"sections"`         // the sections of the song, for the grid
+	SectionTexts map[string][]string  `json:"sectionTexts"`     // the kinds that have a text per section, and which texts
 }
 
 func (pt *Patcher) state() any {
@@ -1082,7 +1099,12 @@ func (pt *Patcher) state() any {
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
 	st := state{Cables: []*Cable{}, Selected: pt.selected, Patches: patches, Current: pt.current, Keeps: pt.dir != "", Note: pt.note,
-		Pasted: pt.pasted, PasteN: pt.pasteN, Journal: pt.journal.Text(), Lines: pt.journal.Len()}
+		Pasted: pt.pasted, PasteN: pt.pasteN, Journal: pt.journal.Text(), Lines: pt.journal.Len(), Sections: []SectionInfo{}, SectionTexts: sectionTexts}
+	if tr := SongOf(pt.p.Env()).Transport(); tr != nil {
+		for _, s := range tr.Form().Sections {
+			st.Sections = append(st.Sections, SectionInfo{Name: s.Name, Bars: s.Bars})
+		}
+	}
 	for _, c := range pt.cables {
 		cc := *c
 		st.Cables = append(st.Cables, &cc)
