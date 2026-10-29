@@ -502,3 +502,98 @@ func Notes(snd Sound, firstKey, spacing int, notes [][3]float64) []Region {
 	}
 	return regions
 }
+
+// DetectPitch finds the pitch of a stretch of a sound (the frames from to to) as a MIDI pitch with a fraction, by the autocorrelation of its middle: the pitch of a vowel of a
+// sung syllable; false for a stretch with no clear pitch (a consonant, a breath, noise) or too short
+func DetectPitch(snd Sound, from, to int64) (float64, bool) {
+	rate := snd.SampleRate()
+	n := to - from
+	if n < int64(rate*0.04) {
+		return 0, false
+	}
+	// the middle of the piece (the attack is noise), at most 4096 frames, the channels mixed
+	win := min(n/2, 4096)
+	start := from + (n-win)/2
+	x := make([]float64, win)
+	for c := range snd.NumChannels() {
+		buf := snd.Buffer(c, 0)
+		for i := range win {
+			x[i] += float64(buf[start+i])
+		}
+	}
+	lagLo, lagHi := int(rate/900), min(int(rate/70), int(win/2))
+	if lagHi <= lagLo+2 {
+		return 0, false
+	}
+	var r0 float64
+	for _, v := range x {
+		r0 += v * v
+	}
+	if r0 < 1e-6 {
+		return 0, false
+	}
+	corr := make([]float64, lagHi+2)
+	best := 0.0
+	for lag := lagLo - 1; lag <= lagHi+1; lag++ {
+		var s, e1, e2 float64
+		for i := 0; i+lag < len(x); i++ {
+			s += x[i] * x[i+lag]
+			e1 += x[i] * x[i]
+			e2 += x[i+lag] * x[i+lag]
+		}
+		if e1 > 0 && e2 > 0 {
+			corr[lag] = s / math.Sqrt(e1*e2)
+		}
+		best = math.Max(best, corr[lag])
+	}
+	if best < 0.6 {
+		return 0, false
+	}
+	// the first peak that is nearly the best one: the shortest period, not a multiple of it
+	for lag := lagLo; lag <= lagHi; lag++ {
+		if corr[lag] >= 0.9*best && corr[lag] >= corr[lag-1] && corr[lag] >= corr[lag+1] {
+			// a parabola through the peak for a fraction of a frame
+			a, b, c := corr[lag-1], corr[lag], corr[lag+1]
+			d := a - 2*b + c
+			frac := 0.0
+			if d != 0 {
+				frac = 0.5 * (a - c) / d
+			}
+			period := float64(lag) + frac
+			return 69 + 12*math.Log2(rate/period/440), true
+		}
+	}
+	return 0, false
+}
+
+// Chops makes of the pieces between the cuts (the ones no longer than maxSec seconds, 0 for all) regions that answer every key, for pitched chops: each piece is tuned to the key it
+// is played on (its root is the pitch found in it: a sung syllable is on the chord tone it is played at), a piece with no pitch plays as it is on every key. A note plays one of the
+// pieces, chosen at random (the random numbers of the regions divide 0 to 1 between them)
+func Chops(snd Sound, cuts []int64, maxSec float64) []Region {
+	rate := snd.SampleRate()
+	over := int64(sliceFade * rate)
+	var regions []Region
+	for i := 0; i+1 < len(cuts); i++ {
+		if maxSec > 0 && float64(cuts[i+1]-cuts[i])/rate > maxSec {
+			continue
+		}
+		root, pitched := DetectPitch(snd, cuts[i], cuts[i+1])
+		if !pitched {
+			root = 60
+		}
+		r := NewRegion(snd).Keys(0, 127, root)
+		if !pitched {
+			r.KeyTrack = 0
+		}
+		r.Offset, r.End = cuts[i], min(cuts[i+1]-1+over, snd.NumFrames()-1)
+		r.Loop = OneShot
+		r.Env = Envelope{Attack: sliceFade, Sustain: 1, Release: 0.01}
+		r.EndFade = sliceFade
+		r.Name = "chop"
+		regions = append(regions, r)
+	}
+	for i := range regions {
+		regions[i].LoRand, regions[i].HiRand = float64(i)/float64(len(regions)), float64(i+1)/float64(len(regions))
+	}
+	return regions
+}

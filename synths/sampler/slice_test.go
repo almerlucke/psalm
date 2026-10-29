@@ -328,3 +328,43 @@ func TestFieldsQuotes(t *testing.T) {
 		t.Errorf("%q, want %q", got, want)
 	}
 }
+
+// the pitch of a piece is found, and the chops are tuned by it
+func TestChopsAreTunedToTheirPitch(t *testing.T) {
+	snd := hits(2.1, 0.1, 0.6, 1.1, 1.6) // 300, 400, 500, 600 Hz
+	cuts := OnsetCuts(snd, 9, 0.08)
+	for i, f := range []float64{300, 400, 500, 600} {
+		got, ok := DetectPitch(snd, cuts[i+1], cuts[i+2])
+		want := 69 + 12*math.Log2(f/440)
+		if !ok || math.Abs(got-want) > 0.3 {
+			t.Errorf("piece %d: pitch %v %v, want %.2f", i, got, ok, want)
+		}
+	}
+	regions := Chops(snd, cuts, 0)
+	if len(regions) != 5 { // the first piece, before the first hit, is silence: no pitch
+		t.Fatalf("%d regions", len(regions))
+	}
+	pitched := 0
+	for i, r := range regions {
+		if r.LoKey != 0 || r.HiKey != 127 {
+			t.Errorf("region %d answers keys %d-%d, want all", i, r.LoKey, r.HiKey)
+		}
+		if math.Abs(r.LoRand-float64(i)/5) > 1e-9 || math.Abs(r.HiRand-float64(i+1)/5) > 1e-9 {
+			t.Errorf("region %d random numbers %v-%v", i, r.LoRand, r.HiRand)
+		}
+		if r.KeyTrack == 100 {
+			pitched++
+		}
+	}
+	if pitched != 4 || regions[0].KeyTrack != 0 {
+		t.Errorf("%d pieces tuned (want the four hits, not the silence before the first)", pitched)
+	}
+	if len(Chops(snd, cuts, 0.2)) >= len(regions) {
+		t.Error("the longest piece is not taken into account")
+	}
+	// the text of a sampler: chops
+	inst, report, err := ParseBanks("36 \"x.wav\" chops 9 0.08", func(string) (Sound, error) { return snd, nil })
+	if err != nil || inst == nil || len(report) == 0 {
+		t.Errorf("chops in a text of sounds: %v %v", report, err)
+	}
+}

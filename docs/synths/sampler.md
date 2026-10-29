@@ -33,6 +33,8 @@ snd, _ := sampler.LoadFile("assets/sounds/various/tabla_loop_4bars_90bpm-86005.w
 inst := sampler.MustInstrument(sampler.Slices(snd, 36, sampler.OnsetCuts(snd, 9, 0.08))...)   // 44 pieces on keys 36-79
 ```
 
+`Chops(snd, cuts, maxSec)` makes pitched chops of the pieces: every piece answers every key and is tuned to the key it is played on, its root the pitch `DetectPitch(snd, from, to)` finds in it (by autocorrelation: a sung syllable is on the chord tone it is played at; a consonant or a breath with no pitch plays as it is on every key), and a note plays one piece, chosen at random (`LoRand`/`HiRand` divide 0 to 1 between them). In a text of sounds: `36 voice.wav chops 9 0.06 0 0 0.4` (rise, gap, from, to, the longest piece). Play it with chord notes (a part of `@1 @3 @5`) and the voice sings the chords.
+
 `Notes(snd, firstKey, spacing, notes)` makes a region for each played note of a recording (sung notes, a phrase): `[from, to, pitch]` in seconds and a MIDI pitch
 with a fraction, which tunes it. Note i is on the key `firstKey+spacing*i` and two either side, so a key a little off plays it a little higher or lower; it fades in over 40 ms, and goes on as long as the key is held (its second half goes round, with a crossfade), releasing over 0.4 s.
 

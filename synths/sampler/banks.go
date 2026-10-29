@@ -98,6 +98,8 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 			switch mode {
 			case "hits":
 				made = Slices(snd, first, Window(OnsetCuts(snd, arg(0, 9), arg(1, 0.08)), snd.SampleRate(), arg(2, 0), arg(3, 0), snd.NumFrames()))
+			case "chops": // the pieces at the hits, tuned to the key they are played on, one at random for a note: rise, gap, from, to, the longest piece (seconds)
+				made = Chops(snd, Window(OnsetCuts(snd, arg(0, 9), arg(1, 0.08)), snd.SampleRate(), arg(2, 0), arg(3, 0), snd.NumFrames()), arg(4, 0))
 			case "change":
 				made = Slices(snd, first, ChangeCuts(snd, arg(0, 1.1), arg(1, 0.25)))
 			case "pauses":
@@ -117,7 +119,7 @@ func ParseBanks(text string, load Loader) (*Instrument, []string, error) {
 				made = []Region{NewRegion(snd).Keys(first, max(first, hi), arg(1, float64(first)))}
 				made[0].Loop = OneShot
 			default:
-				return nil, nil, fail("%q: hits, change, pauses, verses, even, notes, whole or sfz", mode)
+				return nil, nil, fail("%q: hits, chops, change, pauses, verses, even, notes, whole or sfz", mode)
 			}
 			for i := range made {
 				made[i].Name = name
