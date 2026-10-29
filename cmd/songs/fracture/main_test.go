@@ -82,6 +82,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 				energy += float64(v) * float64(v)
 			}
 		}
+		t.Logf("%-9s peak %.2f, level %.1f dB", s.name, sectionPeak, 10*math.Log10(energy/float64(s.bars*bar*256)+1e-12))
 		if sectionPeak < 0.005 || math.IsNaN(energy) {
 			t.Errorf("section %s: peak %v", s.name, sectionPeak)
 		}
@@ -121,7 +122,7 @@ func TestPieceNeverRepeats(t *testing.T) {
 	for _, c := range []struct {
 		tap, section string
 		min          int
-	}{{"drums kick", "Fracture", 8}, {"drums kick", "Machine", 10}, {"drums hats", "Fracture", 8}, {"drums hats", "Machine", 8}, {"glitch ticks", "Machine", 15}, {"chops part", "Machine", 10}, {"slices strokes", "Machine", 10}} {
+	}{{"drums kick", "Fracture", 8}, {"drums kick", "Shatter", 10}, {"drums hats", "Fracture", 8}, {"drums hats", "Shatter", 8}, {"glitch ticks", "Shatter", 15}, {"chops part", "Shatter", 10}, {"slices strokes", "Shatter", 10}} {
 		if got := distinct(taps[c.tap], c.section); got < c.min {
 			t.Errorf("%s in the %s: only %d different bars", c.tap, c.section, got)
 		}
@@ -143,18 +144,18 @@ func TestPieceNeverRepeats(t *testing.T) {
 		return 0
 	}
 	for _, n := range []string{"groove kick", "groove hats"} {
-		a, b, c := perBar(taps[n], "Static"), perBar(taps[n], "Fracture"), perBar(taps[n], "Machine")
-		t.Logf("%s: %.1f hits a bar in the Static, %.1f in the Fracture, %.1f in the Machine", n, a, b, c)
+		a, b, c := perBar(taps[n], "Static"), perBar(taps[n], "Fracture"), perBar(taps[n], "Shatter")
+		t.Logf("%s: %.1f hits a bar in the Static, %.1f in the Fracture, %.1f in the Shatter", n, a, b, c)
 		if !(a <= b) || b < 0.5 { // the groove comes in with the Fracture (the beat takes over in the Machine)
 			t.Errorf("%s does not come in: %.2f, %.2f, %.2f hits a bar", n, a, b, c)
 		}
 	}
-	// the beat to dance to: a kick on every beat and a clap on two and four, steady, in the Machine and the Drive
+	// the beat to dance to: a kick on every beat and a clap on two and four, steady, in the Shatter, the Splinter and the Drive
 	for _, c := range []struct {
 		part string
 		want float64
 	}{{"groove beat kick", 4}, {"groove beat clap", 2}} {
-		for _, sec := range []string{"Machine", "Drive"} {
+		for _, sec := range []string{"Shatter", "Splinter", "Drive"} {
 			if got := perBar(taps[c.part], sec); got < c.want*0.95 || got > c.want*1.05 {
 				t.Errorf("%s plays %.2f hits a bar in the %s, want %.0f", c.part, got, sec, c.want)
 			}
