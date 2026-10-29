@@ -28,6 +28,7 @@
 //
 //   - a beat to dance to from the Machine on: a kick on every beat, a clap on the two and the four, hats on the eighths with the offbeat accented, steady (nothing mutates), on the 808, louder with the
 //     curve; the Fracture keeps its own rhythms, the beat is what the later sections stand on
+//
 //   - it gets more and more epic: one curve rises through the whole piece to the end of the Drive and everything grand follows it, coming in one by one and louder as it goes (timpani on the
 //     root of the chord with a roll in the last bar of each section, strings held voice led and doubled an octave up, brass on the root and the fifth, a choir, a longer room, a brighter shimmer),
 //     and the acid bass gets deeper and deeper (the resonance, the amount of the filter envelope and the drive of the buzz bass rise with it)
