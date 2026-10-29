@@ -126,6 +126,11 @@ func TestPieceNeverRepeats(t *testing.T) {
 			t.Errorf("%s in the %s: only %d different bars", c.tap, c.section, got)
 		}
 	}
+	for i, id := range ids.toybox {
+		if n := pt.Module(id).(*patcher.Melodist).Passes(); n < 2 {
+			t.Errorf("the toy box layer %d made %d passes", i, n)
+		}
+	}
 	// the chords of the sections that have none of their own were drawn again as the song left the sections: the harmony has another line than it began with
 	if got := pt.Texts(ids.harmony)[0].Value; got == harmonyText {
 		t.Error("the chord model wrote nothing to the harmony")

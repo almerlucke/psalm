@@ -43,6 +43,7 @@ type ids struct {
 	clocks    map[string]string // the clocks of the rhythm parts, by name
 	notes     map[string]string // the notes modules that follow them
 	chords    string
+	toybox    []string // the melodists of the toy box
 	harmony   string
 	synths    map[string]string
 	musicOnly []string
@@ -67,6 +68,7 @@ func strips() []strip {
 		{name: "clicks", kind: "pulsar", preset: "crackle", level: 0.5, pan: -0.25, reverb: 0.15, echo: 0.2},
 		{name: "bass", kind: "pulsar", preset: "buzzBass", level: 0.45, grit: 0.05},
 		{name: "pad", kind: "subtractive", preset: "warmPad", level: 0.3, reverb: 0.35, air: 0.4},
+		{name: "toybox", kind: "dx", preset: "musicBox", level: 0.3, pan: 0.25, reverb: 0.45, echo: 0.5, air: 0.3},
 		{name: "metal", kind: "modal", preset: "anvil", level: 0.35, pan: -0.35, reverb: 0.3, echo: 0.35, air: 0.2},
 	}
 	// the samplers: a blurry vocal cut into pieces that stutter and fall over each other, and the strokes of a tabla loop cut up and played in any order, both through the crusher
@@ -321,5 +323,27 @@ Residue: @v*16`)
 	connect(patcher.Cable{From: pad, To: synth["pad"]})
 	out.musicOnly = append(out.musicOnly, bass, pad)
 
+	// the toy box: a melancholic melody on a music box, over the chords of the moment (the tones of the chord count most, the scale is the harmony's, phrygian), in three layers that
+	// come in and go as the sections go: the tune alone in the Static; a lower answer under it in the Fracture; a glittering high layer on top in the Machine; nothing in the Collapse
+	// (the automata alone); the tune and the glitter in the Drift; the tune alone, thinning, in the Residue. Each layer is a melodist: a pass a section, the pass of the section before
+	// changed a little (the tune is the tune again and a little other), and a form that says the tune twice, then something else, then the tune again (AABA)
+	layer := func(name string, y float64, sections string, set map[string]float64) {
+		m := add("melodist", "", 300, y)
+		g := add("gate", "", 540, y)
+		text(g, "name", name)
+		text(g, "sections", sections)
+		base := map[string]float64{"form": 3, "contour": 1, "rhythm": 0, "phrase": 2, "steps": 0.85, "chord": 0.85, "velocity": 0.5, "key": 0, "scale": 0}
+		for k, v := range set {
+			base[k] = v
+		}
+		apply(m, base)
+		connect(patcher.Cable{From: m, To: g, In: 1})
+		connect(patcher.Cable{From: g, Out: 1, To: synth["toybox"]})
+		out.toybox = append(out.toybox, m)
+		out.musicOnly = append(out.musicOnly, m, g)
+	}
+	layer("tune", 640, "Static, Fracture, Machine, Drift, Residue", map[string]float64{"density": 0.22, "rest": 0.3, "low": 72, "high": 91, "mutate": 0.12, "seed": float64(seed % 10000)})
+	layer("answer", 700, "Fracture, Machine", map[string]float64{"density": 0.15, "rest": 0.5, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.4, "seed": float64(seed%10000 + 17)})
+	layer("glitter", 760, "Machine, Drift", map[string]float64{"density": 0.35, "rest": 0.3, "low": 84, "high": 103, "mutate": 0.6, "velocity": 0.35, "rhythm": 3, "seed": float64(seed%10000 + 31)})
 	return out, err
 }
