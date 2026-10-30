@@ -535,10 +535,11 @@ psalm.register("patcher", (p, api) => {
 			if (m[1] !== undefined) parent.append(el("code", "", m[1]));
 			else if (m[2] !== undefined) parent.append(el("b", "", m[2]));
 			else {
-				const to = m[4].match(/^(?:\.\/)?([a-z0-9]+)\.md$/);
-				if (to && kindOf(to[1])) {
-					const a = el("a", "", m[3]); a.href = "#"; a.title = "the help of " + to[1];
-					a.addEventListener("click", e => { e.preventDefault(); openHelp(null, to[1]); });
+				const to = m[4].match(/^(?:\.\/)?([A-Za-z0-9%+ -]+)\.md$/); // (a kind with a space in its name is %20 in a link)
+				const target = to && decodeURIComponent(to[1]);
+				if (target && kindOf(target)) {
+					const a = el("a", "", m[3]); a.href = "#"; a.title = "the help of " + target;
+					a.addEventListener("click", e => { e.preventDefault(); openHelp(null, target); });
 					parent.append(a);
 				} else parent.append(m[3]);
 			}
