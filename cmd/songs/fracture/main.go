@@ -24,7 +24,7 @@
 //   - a master that is loud: a compressor on the sum and a limiter after it. No shimmer
 //
 // The sections: Static (a heart, a held chord, the tune alone), Fracture (the rhythms break in), the Ridge and the Rift (the Fracture again, a little different each time: other rotations and
-// seeds of the same rhythms, the chords of the Fracture in another order), the Bare (the Rift without the tune) and the Collapse (the Fracture again without the tune, the drums and the bass: the
+// seeds of the same rhythms, the chords of the Fracture in another order), the Bare (the Rift without the tune), the Skeleton (eight bars of the drums, a rim, the bass, the glitch and the metal) and the Collapse (the Fracture again without the tune, the drums and the bass: the
 // glitch, the sung syllables, the tabla, the synth and the pad that are left). It goes round: every pass is another.
 package main
 

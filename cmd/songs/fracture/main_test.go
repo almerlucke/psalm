@@ -161,6 +161,17 @@ func TestPieceNeverRepeats(t *testing.T) {
 			t.Errorf("%s plays %.2f hits a bar in the Collapse, which has no drums, no bass, no anvil and no timpani", n, got)
 		}
 	}
+	// the Skeleton, after the Bare, is the drums, a rim, the bass and the glitch and the metal that are left: not the tune, the groove, the synth, the samplers and the timpani
+	for _, n := range []string{"drums kick", "drums hats", "bass part", "glitch ticks"} {
+		if perBar(taps[n], "Skeleton") <= 0 {
+			t.Errorf("%s does not play in the Skeleton", n)
+		}
+	}
+	for _, n := range []string{"timp part", "groove kick", "groove hats", "chops part", "slices strokes", "modem chirps"} {
+		if got := perBar(taps[n], "Skeleton"); got != 0 {
+			t.Errorf("%s plays %.2f hits a bar in the Skeleton, which keeps the drums, the bass, the glitch and the metal", n, got)
+		}
+	}
 	for i, id := range ids.toybox {
 		if n := pt.Module(id).(*patcher.Melodist).Passes(); n < 2 {
 			t.Errorf("the toy box layer %d made %d passes", i, n)
@@ -170,8 +181,8 @@ func TestPieceNeverRepeats(t *testing.T) {
 		}
 		raw, _ := json.Marshal(pt.Module(id).(*patcher.Melodist).View())
 		_ = json.Unmarshal(raw, &v)
-		if len(v.Plays) == 0 || slices.Contains(v.Plays, "Collapse") || slices.Contains(v.Plays, "Bare") {
-			t.Errorf("the toy box layer %d plays in %v: not in the Bare and the Collapse", i, v.Plays)
+		if len(v.Plays) == 0 || slices.Contains(v.Plays, "Collapse") || slices.Contains(v.Plays, "Bare") || slices.Contains(v.Plays, "Skeleton") {
+			t.Errorf("the toy box layer %d plays in %v: not in the Bare, the Skeleton and the Collapse", i, v.Plays)
 		}
 
 	}

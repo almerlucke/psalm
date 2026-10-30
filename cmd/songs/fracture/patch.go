@@ -20,7 +20,7 @@ type section struct {
 	bars int
 }
 
-var sections = []section{{"Static", 8}, {"Fracture", 16}, {"Ridge", 16}, {"Rift", 16}, {"Bare", 16}, {"Collapse", 16}}
+var sections = []section{{"Static", 8}, {"Fracture", 16}, {"Ridge", 16}, {"Rift", 16}, {"Bare", 16}, {"Skeleton", 8}, {"Collapse", 16}}
 
 func sectionsText() string {
 	parts := make([]string, len(sections))
@@ -37,6 +37,7 @@ Fracture: Cm7b5 Dbmaj7 Fdim7 Gbsus4 Bbm7 Ab7b9
 Ridge: Cm7b5 Dbmaj7 Fdim7 Bbm7 Gbsus4 Ab7b9
 Rift: Cm7b5 Fdim7 Dbmaj7 Gbsus4 Ab7b9 Bbm7
 Bare: Cm7b5 Fdim7 Dbmaj7 Gbsus4 Ab7b9 Bbm7
+Skeleton: Cm7b5*8
 Collapse: Cm7b5 Dbmaj7 Fdim7 Gbsus4 Bbm7 Ab7b9`
 
 // ids are the modules of the patch that tests look at
@@ -269,15 +270,18 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 Fracture: E(5,16,+1)
 Ridge: E(5,16,5+2)
 Rift: E(5,16,+3)
-Bare: E(5,16,+3)`, "vel: 100 80 90", []int{36}, 0, map[string]float64{"mutate": 0.3, "drift": 0.03}, 0.95)
+Bare: E(5,16,+3)
+Skeleton: E(5,16,+3)`, "vel: 100 80 90", []int{36}, 0, map[string]float64{"mutate": 0.3, "drift": 0.03}, 0.95)
 	rhythmPart("drums", "snare", 90, "1/16", `Fracture: . . . . x . . . . . . . x . [x x x]%fill .
 Ridge: . . . . x . . . . . . . x . [x x x]%fill .
 Rift: . . . . x . . . . . . . x . . [x x x]%fill
-Bare: . . . . x . . . . . . . x . . [x x x]%fill`, "vel: 100 70", []int{38}, 0, map[string]float64{"mutate": 0.25, "groove": dilla}, 0.85)
+Bare: . . . . x . . . . . . . x . . [x x x]%fill
+Skeleton: . . . . x . . . . . . . x . . [x x x]%fill`, "vel: 100 70", []int{38}, 0, map[string]float64{"mutate": 0.25, "groove": dilla}, 0.85)
 	rhythmPart("drums", "hats", 160, "1/16", `Fracture: CA(30,16,+)
 Ridge: CA(30,16,14+1)
 Rift: CA(30,16,9+1)
-Bare: CA(30,16,9+1)`, "prob: 100 70 90 50 100\nvel: 100 60 80 50 90 70 60\nshift: 0 8 -5 0 10 -8 0 4 0", []int{42, 42, 42, 42, 44}, random,
+Bare: CA(30,16,9+1)
+Skeleton: CA(30,16,9+1)`, "prob: 100 70 90 50 100\nvel: 100 60 80 50 90 70 60\nshift: 0 8 -5 0 10 -8 0 4 0", []int{42, 42, 42, 42, 44}, random,
 		map[string]float64{"mutate": 0.2, "groove": dilla, "drift": 0.06}, 0.55)
 	// the glitch: thirty-seconds of an automaton (rule 110, then 30), a euclidean rhythm that turns three steps a pass, a Markov rhythm drawn again every two passes; lanes of 7, 4
 	// and 7 steps against the 32; the sounds in any order
@@ -285,10 +289,12 @@ Bare: CA(30,16,9+1)`, "prob: 100 70 90 50 100\nvel: 100 60 80 50 90 70 60\nshift
 Ridge: CA(110,32,21+1)
 Rift: CA(110,32,13+1)
 Bare: CA(110,32,13+1)
+Skeleton: CA(110,32,13+1)
 Collapse: CA(110,32,+)`, "prob: 100 35 80 20 90 50 100\nvel: 100 50 70 40\nshift: 0 12 -10 5 0 0 15", []int{37, 39, 42, 46, 48, 50, 56, 60, 63, 75}, random,
 		map[string]float64{"mutate": 0.3, "drift": 0.1}, 0.6)
 	rhythmPart("metal", "hits", 370, "1/16", `Rift: CA(90,16,11+1)%2/3
 Bare: CA(90,16,11+1)%2/3
+Skeleton: CA(90,16,11+1)%2/3
 Fracture: CA(90,16,+)%2/3`, "vel: 100 60 80 50 90", []int{60, 63, 66, 69, 61, 72}, shuffled, map[string]float64{"mutate": 0.15, "drift": 0.05}, 0.55)
 
 	// the samplers: the pieces of a recording in any order, a hit and a roll of them (x3) that stutter and fall over each other, lanes of 5 and 3 steps for the chance and the length
@@ -339,7 +345,8 @@ Bare: M(. . . x . . . . . x . . . . x .;16;13/2)`, "prob: 100 40 70\nvel: 100 60
 	text(bass, "notes", `Fracture: @b . . @1 . . @b . . . @5 . . @b . @1'
 Ridge: @b . . @1 . . @b . . . @5 . . @b . @1'
 Rift: @b . . @1 . . @b . . @5 . . . @b . @1'
-Bare: @b . . @1 . . @b . . @5 . . . @b . @1'`)
+Bare: @b . . @1 . . @b . . @5 . . . @b . @1'
+Skeleton: @b . . @1 . . @b . . @5 . . . @b . @1'`)
 	text(bass, "lanes", "pitch: 0 0 0 12 0 -12 0\nvel: 100 70 85 60 90\nlen: 100 100 160 100 220")
 	apply(bass, map[string]float64{"division": 3, "velocity": 0.8, "length": 0.6, "register": 36, "bass": 28, "mutate": 0.18, "seed": float64(seed % 1000), "groove": dilla, "drift": 0.04})
 	text(pad, "notes", `Static: @v*16
@@ -374,8 +381,8 @@ Collapse: @v*16`)
 	layer("tune", "toybox", 640, "Static, Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 3, "steps": 0.92, "velocity": 0.42, "rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 70, "high": 88, "mutate": 0.12, "seed": float64(seed % 10000)})
 	layer("answer", "toybox", 700, "Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 2, "steps": 0.92, "rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.36, "seed": float64(seed%10000 + 17)})
 	// the counterpoint: a line of its own on the left, rising where the tune falls, longer notes where the tune moves (the shortest note three sixteenths against the tune's one and a half),
-	// lower than the tune and above the answer, in the sections the tune plays in (not the Static: it enters with the groove), a pass of its own that changes a little every time
-	layer("counterpoint", "counter", 760, "Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 3, "contour": 2, "steps": 0.9, "rhythm": 3, "grid": 3, "density": 0.1, "rest": 0.5, "low": 62, "high": 80, "mutate": 0.2, "velocity": 0.34, "seed": float64(seed%10000 + 31)})
+	// an octave up, above the tune, so that it stands out, in the sections the tune plays in (not the Static: it enters with the groove), a pass of its own that changes a little every time
+	layer("counterpoint", "counter", 760, "Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 3, "contour": 2, "steps": 0.9, "rhythm": 3, "grid": 3, "density": 0.1, "rest": 0.5, "low": 74, "high": 92, "mutate": 0.2, "velocity": 0.34, "seed": float64(seed%10000 + 31)})
 	// the groove that builds the tune up: an 808 kick, hats, a rim and a conga, that come in as one curve rises (a lane of the song: from nothing in the Static to full in the Machine, full and
 	// driving through the Drive, falling away in the Collapse). The curve moves the chance of every hit (more and more of the pattern is played) and the velocity (louder), so the
 	// groove grows fuller and louder as the sections go
@@ -385,6 +392,7 @@ Fracture: 0.2 → 0.65 smooth
 Ridge: 0.2 → 0.65 smooth
 Rift: 0.2 → 0.65 smooth
 Bare: 0.2 → 0.65 smooth
+Skeleton: 0.65 → 0.2 smooth
 Collapse: 0.2 → 0.65 smooth`)
 	mpc58 := float64(slices.Index(rhythm.GrooveNames(), "mpc 58"))
 	grow := func(part string, chanceLo, chanceHi float64) {
@@ -409,7 +417,8 @@ Bare: . . x . . . x . . . x . . . x x`, "vel: 100 60 80 50", []int{42, 42, 44}, 
 	rhythmPart("groove", "rim", 1020, "1/16", `Fracture: . . . . . . . . x . . . . . . .
 Ridge: . . . . . . . . x . . . . . . .
 Rift: . . . . . . . x . . . . . . . .
-Bare: . . . . . . . x . . . . . . . .`, "", []int{37}, 0, gset, 0.7)
+Bare: . . . . . . . x . . . . . . . .
+Skeleton: . . . . . . . x . . . . . . . .`, "", []int{37}, 0, gset, 0.7)
 	// the bass grows with it: its notes are short and plucked where the curve is low and run long and buzzing where it is high, so it drives the tune in the Machine
 	if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: bass, In: 0, Key: "length"}); id != "" && err == nil {
 		err = pt.SetRange(id, "", 0.2, 1)
@@ -455,6 +464,7 @@ Fracture: 0.08 → 0.3 smooth
 Ridge: 0.08 → 0.3 smooth
 Rift: 0.08 → 0.3 smooth
 Bare: 0.08 → 0.3 smooth
+Skeleton: 0.3 → 0.08 smooth
 Collapse: 0.08 → 0.3 smooth`)
 	// the acid bass: the buzz bass goes through a low filter with an envelope that snaps it open on every note (the squelch), and the resonance, the amount of the envelope and the drive
 	// of the filter all rise with the epic curve, so the acid gets deeper and deeper as the piece goes on
