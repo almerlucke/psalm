@@ -72,6 +72,8 @@ func strips() []strip {
 		{name: "bass", kind: "pulsar", preset: "buzzBass", level: 0.45, grit: 0.05},
 		{name: "pad", kind: "subtractive", preset: "warmPad", level: 0.3, reverb: 0.35, air: 0.4},
 		{name: "toybox", kind: "dx", preset: "musicBox", level: 0.3, pan: 0.25, reverb: 0.45, echo: 0.5, air: 0.3},
+		// the counterpoint to the tune: the same music box, on the left, as the tune is on the right
+		{name: "counter", kind: "dx", preset: "musicBox", level: 0.26, pan: -0.65, reverb: 0.45, echo: 0.35, air: 0.25},
 		{name: "groove", kind: "drumsynth", preset: "808", level: 0.55, pan: -0.1, reverb: 0.12, echo: 0.12},
 		// the synth that drives the tune, and what makes the piece epic as it goes: strings, brass, timpani and a choir that come in and swell (see the epic curve)
 		{name: "pulse", kind: "subtractive", preset: "analogSeq", level: 0.35, pan: -0.2, reverb: 0.12, echo: 0.3, grit: 0.1},
@@ -351,7 +353,7 @@ Collapse: @v*16`)
 	// come in and go as the sections go: the tune alone in the Static; a lower answer under it in the Fracture; a glittering high layer on top in the Machine and the Drive; and in the
 	// Collapse, when it has all fallen apart, the tune alone over the automata. Each layer is a melodist: a pass a section, the pass of the section before
 	// changed a little (the tune is the tune again and a little other), and a form of a question and its answer (the question ends open, on the third or the fifth of the chord, the answer closes on the root), the tune falling, a sigh, and the answer under it rising
-	layer := func(name string, y float64, sections string, set map[string]float64) {
+	layer := func(name, voice string, y float64, sections string, set map[string]float64) {
 		m := add("melodist", "", 300, y)
 		nameIt(m, "melodist "+name)
 		g := add("gate", "", 540, y)
@@ -363,12 +365,15 @@ Collapse: @v*16`)
 		}
 		apply(m, base)
 		connect(patcher.Cable{From: m, To: g, In: 1})
-		connect(patcher.Cable{From: g, Out: 1, To: synth["toybox"]})
+		connect(patcher.Cable{From: g, Out: 1, To: synth[voice]})
 		out.toybox = append(out.toybox, m)
 		out.musicOnly = append(out.musicOnly, m, g)
 	}
-	layer("tune", 640, "Static, Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 3, "steps": 0.92, "velocity": 0.42, "rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 70, "high": 88, "mutate": 0.12, "seed": float64(seed % 10000)})
-	layer("answer", 700, "Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 2, "steps": 0.92, "rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.36, "seed": float64(seed%10000 + 17)})
+	layer("tune", "toybox", 640, "Static, Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 3, "steps": 0.92, "velocity": 0.42, "rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 70, "high": 88, "mutate": 0.12, "seed": float64(seed % 10000)})
+	layer("answer", "toybox", 700, "Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 2, "steps": 0.92, "rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.36, "seed": float64(seed%10000 + 17)})
+	// the counterpoint: a line of its own on the left, rising where the tune falls, longer notes where the tune moves (the shortest note three sixteenths against the tune's one and a half),
+	// lower than the tune and above the answer, in the sections the tune plays in (not the Static: it enters with the groove), a pass of its own that changes a little every time
+	layer("counterpoint", "counter", 760, "Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 3, "contour": 2, "steps": 0.9, "rhythm": 3, "grid": 3, "density": 0.1, "rest": 0.5, "low": 62, "high": 80, "mutate": 0.2, "velocity": 0.34, "seed": float64(seed%10000 + 31)})
 	// the groove that builds the tune up: an 808 kick, hats, a rim and a conga, that come in as one curve rises (a lane of the song: from nothing in the Static to full in the Machine, full and
 	// driving through the Drive, falling away in the Collapse). The curve moves the chance of every hit (more and more of the pattern is played) and the velocity (louder), so the
 	// groove grows fuller and louder as the sections go
