@@ -169,7 +169,10 @@ psalm.register("patcher", (p, api) => {
 		box.dataset.id = n.id;
 		const head = el("div", "pt-head");
 		const title = el("span", "pt-title");
-		head.append(title);
+		const helpBtn = el("button", "pt-help", "?"); helpBtn.title = "what this module is for: a tutorial and examples to load";
+		helpBtn.addEventListener("pointerdown", e => e.stopPropagation()); // not a move of the module
+		helpBtn.addEventListener("click", e => { e.stopPropagation(); openHelp(n.id); });
+		head.append(title, helpBtn);
 		head.addEventListener("contextmenu", e => { // a name of its own
 			e.preventDefault();
 			const was = (nodes[n.id] && nodes[n.id].data.name) || "";
@@ -445,7 +448,9 @@ psalm.register("patcher", (p, api) => {
 		const head = el("div", "pt-win-head");
 		const title = el("span", "pt-win-title", n.kind + (n.preset ? " · " + n.preset : ""));
 		const x = el("button", "pt-x", "×"); x.title = "close (Esc in a box): what is typed is taken";
-		head.append(title, x);
+		const hb = el("button", "pt-help-win", "?"); hb.title = "what this module is for: a tutorial and examples to load";
+		hb.addEventListener("click", () => openHelp(id));
+		head.append(title, hb, x);
 		const frame = el("iframe", "pt-win-frame"); frame.title = n.kind;
 		const grip = el("div", "pt-win-grip"); grip.title = "drag to resize";
 		el_.append(head, frame, grip);
@@ -518,6 +523,159 @@ psalm.register("patcher", (p, api) => {
 		}
 	});
 
+	// --- the help of a module: what it is for, a tutorial and examples (help/<kind>.md, markdown), in a window of its own, one a kind. An example (a block ```example) has a
+	// button that loads it into the module the help was opened from: its texts ([pattern], [lanes], [values]... a line of its own names the text) and its settings ([set], a
+	// `name = number` a line) ---
+	const helps = {}; // the help windows open, by kind
+	const inline = (parent, text, kind) => { // `code`, **bold**, [a link](kind.md) to the help of another module
+		const re = /`([^`]+)`|\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\)/g;
+		let at = 0, m;
+		while ((m = re.exec(text))) {
+			if (m.index > at) parent.append(text.slice(at, m.index));
+			if (m[1] !== undefined) parent.append(el("code", "", m[1]));
+			else if (m[2] !== undefined) parent.append(el("b", "", m[2]));
+			else {
+				const to = m[4].match(/^(?:\.\/)?([a-z0-9]+)\.md$/);
+				if (to && kindOf(to[1])) {
+					const a = el("a", "", m[3]); a.href = "#"; a.title = "the help of " + to[1];
+					a.addEventListener("click", e => { e.preventDefault(); openHelp(null, to[1]); });
+					parent.append(a);
+				} else parent.append(m[3]);
+			}
+			at = re.lastIndex;
+		}
+		if (at < text.length) parent.append(text.slice(at));
+		return parent;
+	};
+	function parseExample(body) { // [name] lines make the texts, [set] the settings
+		const texts = {}, settings = {};
+		let key = null;
+		for (const line of body.split("\n")) {
+			const h = line.match(/^\[([a-z]+)\]\s*$/);
+			if (h) { key = h[1]; if (key !== "set") texts[key] = []; continue; }
+			if (key === "set") {
+				const kv = line.match(/^\s*([A-Za-z0-9_ -]+?)\s*=\s*(-?[0-9.]+)/);
+				if (kv) settings[kv[1]] = Number(kv[2]);
+			} else if (key) texts[key].push(line);
+		}
+		for (const k of Object.keys(texts)) texts[k] = texts[k].join("\n").replace(/\n+$/, "");
+		return {texts, settings};
+	}
+	function markdown(text, id, kind) {
+		const out = el("div", "pt-md");
+		const lines = text.split("\n");
+		for (let i = 0; i < lines.length;) {
+			const line = lines[i];
+			let m;
+			if (!line.trim()) { i++; continue; }
+			if ((m = line.match(/^```(\w*)\s*(.*)$/))) { // a block of code; an example has a button
+				const body = [];
+				for (i++; i < lines.length && !lines[i].startsWith("```"); i++) body.push(lines[i]);
+				i++;
+				const box = el("div", m[1] === "example" ? "pt-md-example" : "pt-md-code");
+				if (m[1] === "example") {
+					const ex = parseExample(body.join("\n"));
+					const head = el("div", "pt-md-exhead");
+					head.append(el("b", "", m[2] || "Example"));
+					const load = el("button", "", "Load into the module"); load.title = "puts its texts and settings in the module (what was typed there is replaced)";
+					const say = el("span", "pt-md-say");
+					load.disabled = !id || !nodeOf(id);
+					load.addEventListener("click", () => {
+						send({example: {id, texts: ex.texts, settings: ex.settings}});
+						say.textContent = "loaded"; setTimeout(() => { say.textContent = ""; }, 1500);
+					});
+					head.append(load, say);
+					box.append(head);
+					for (const [k, v] of Object.entries(ex.texts)) {
+						if (Object.keys(ex.texts).length > 1) box.append(el("div", "pt-md-key", k));
+						box.append(el("pre", "", v));
+					}
+					if (Object.keys(ex.settings).length) box.append(el("div", "pt-md-set", Object.entries(ex.settings).map(([k, v]) => k + " " + v).join(" · ")));
+				} else box.append(el("pre", "", body.join("\n")));
+				out.append(box);
+			} else if ((m = line.match(/^(#{1,4})\s+(.*)$/))) {
+				out.append(inline(el("h" + Math.min(4, m[1].length + 1)), m[2], kind)); i++;
+			} else if (line.startsWith("|")) { // a table
+				const rows = [];
+				for (; i < lines.length && lines[i].startsWith("|"); i++) rows.push(lines[i]);
+				const cells = r => r.replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, "|"));
+				const table = el("table");
+				rows.forEach((r, ri) => {
+					if (/^\|[\s:|-]+\|?$/.test(r)) return;
+					const tr = el("tr");
+					for (const c of cells(r)) tr.append(inline(el(ri === 0 ? "th" : "td"), c, kind));
+					table.append(tr);
+				});
+				out.append(table);
+			} else if (/^\s*([-*]|\d+\.)\s+/.test(line)) { // a list
+				const ordered = /^\s*\d+\./.test(line);
+				const list = el(ordered ? "ol" : "ul");
+				for (; i < lines.length && /^\s*([-*]|\d+\.)\s+/.test(lines[i]); i++) list.append(inline(el("li"), lines[i].replace(/^\s*([-*]|\d+\.)\s+/, ""), kind));
+				out.append(list);
+			} else { // a paragraph
+				const para = [];
+				for (; i < lines.length && lines[i].trim() && !/^(```|#|\||\s*([-*]|\d+\.)\s)/.test(lines[i]); i++) para.push(lines[i]);
+				out.append(inline(el("p"), para.join(" "), kind));
+			}
+		}
+		return out;
+	}
+	// openHelp opens the help of the kind of a module (id), or of a kind (id null: from a link in a help), over the module it was opened from
+	function openHelp(id, kindName) {
+		const n = id ? nodeOf(id) : null;
+		const kind = kindName || (n && n.kind);
+		if (!kind) return;
+		const was = helps[kind];
+		if (was) { if (id) was.id = id; was.render(); toFront(was); return; }
+		const el_ = el("div", "pt-win pt-help-window");
+		const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+		const width = Math.min(640, vw - 20), height = Math.min(720, vh - 20), count = Object.keys(helps).length;
+		el_.style.cssText = `left:${Math.max(10, 40 + 30 * count)}px;top:${Math.max(10, 40 + 30 * count)}px;width:${width}px;height:${height}px`;
+		const head = el("div", "pt-win-head");
+		const x = el("button", "pt-x", "×"); x.title = "close";
+		head.append(el("span", "pt-win-title", "help · " + kind), x);
+		const page = el("div", "pt-help-page");
+		const grip = el("div", "pt-win-grip"); grip.title = "drag to resize";
+		el_.append(head, page, grip);
+		root.append(el_);
+		const w = {el: el_, id, kind, render() {
+			page.innerHTML = "";
+			page.append(el("p", "pt-md-wait", "…"));
+			fetch(new URL(".", location.href).href + "plugins/patcher/help/" + encodeURIComponent(kind) + ".md")
+				.then(r => r.ok ? r.text() : Promise.reject(new Error("no help yet for " + kind)))
+				.then(t => { page.innerHTML = ""; page.append(markdown(t, w.id, kind)); })
+				.catch(err => { page.innerHTML = ""; page.append(el("p", "pt-md-wait", String(err.message || err))); });
+		}};
+		helps[kind] = w;
+		toFront(w);
+		w.render();
+		el_.addEventListener("pointerdown", () => toFront(w));
+		x.addEventListener("click", () => { delete helps[kind]; el_.remove(); });
+		const drag = (target, onMove) => target.addEventListener("pointerdown", e => {
+			if (e.target.closest("button")) return;
+			e.preventDefault();
+			target.setPointerCapture(e.pointerId);
+			const r = el_.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY;
+			const move = ev => onMove(r, ev.clientX - x0, ev.clientY - y0);
+			const up = () => { target.removeEventListener("pointermove", move); target.removeEventListener("pointerup", up); target.removeEventListener("pointercancel", up); };
+			target.addEventListener("pointermove", move);
+			target.addEventListener("pointerup", up);
+			target.addEventListener("pointercancel", up);
+		});
+		drag(head, (r, dx, dy) => {
+			el_.style.left = Math.max(-r.width + 80, Math.min(document.documentElement.clientWidth - 80, r.left + dx)) + "px";
+			el_.style.top = Math.max(0, Math.min(document.documentElement.clientHeight - 30, r.top + dy)) + "px";
+		});
+		drag(grip, (r, dx, dy) => {
+			el_.style.width = Math.max(300, Math.min(document.documentElement.clientWidth - r.left, r.width + dx)) + "px";
+			el_.style.height = Math.max(200, Math.min(document.documentElement.clientHeight - r.top, r.height + dy)) + "px";
+		});
+	}
+	// the Load button of an example needs its module: it goes when the module does
+	function updateHelps() {
+		for (const w of Object.values(helps)) if (w.id && !nodeOf(w.id)) { w.id = null; w.render(); }
+	}
+
 	function updatePatches() {
 		const key = JSON.stringify(st.patches || []);
 		if (key !== shownPatches) {
@@ -562,6 +720,7 @@ psalm.register("patcher", (p, api) => {
 			if (!inspector.contains(document.activeElement)) showInspector();
 			updatePatches();
 			updateWindows();
+			updateHelps();
 		},
 		restyle() { drawCables(); lanes.restyle(); },
 	};

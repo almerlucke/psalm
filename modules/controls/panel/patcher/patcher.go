@@ -55,9 +55,10 @@ var gridScript string
 //go:embed sectiongrid.css
 var gridStyles string
 
-// the window of a module (a double click opens it): its page, styles and script, served under plugins/patcher/
+// the window of a module (a double click opens it): its page, styles and script, served under plugins/patcher/; and the help of the kinds (help/<kind>.md, what the ? of a module
+// shows)
 //
-//go:embed module.html module.css module.js
+//go:embed module.html module.css module.js help
 var moduleFiles embed.FS
 
 // Plugin is the plugin (New uses it)
@@ -406,6 +407,11 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		Action *struct {
 			ID, Key string
 		} `json:"action"`
+		Example *struct {
+			ID       string
+			Texts    map[string]string
+			Settings map[string]float64
+		} `json:"example"`
 		Lanes *struct {
 			ID    string     `json:"id"`
 			Lanes []LaneData `json:"lanes"`
@@ -469,6 +475,8 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		return pt.SetText(m.Text.ID, m.Text.Key, m.Text.Value)
 	case m.Action != nil:
 		return pt.Act(m.Action.ID, m.Action.Key)
+	case m.Example != nil:
+		return pt.LoadExample(m.Example.ID, m.Example.Texts, m.Example.Settings)
 	case m.Lanes != nil:
 		return pt.SetLanes(m.Lanes.ID, m.Lanes.Lanes)
 	case m.ArmLane != nil:
@@ -988,6 +996,43 @@ func (pt *Patcher) SetText(id, key, value string) error {
 		n.textErr[key] = err.Error()
 	} else {
 		delete(n.textErr, key)
+	}
+	return nil
+}
+
+// LoadExample loads an example of the help into a module: its texts (by key) and its settings (by key); a text or a setting the module does not have is an error and nothing is
+// loaded
+func (pt *Patcher) LoadExample(id string, texts map[string]string, settings map[string]float64) error {
+	pt.mu.Lock()
+	n := pt.node(id)
+	pt.mu.Unlock()
+	if n == nil {
+		return errors.New("no such module")
+	}
+	if len(settings) > 0 {
+		s := pt.SettingsOf(id)
+		if s == nil {
+			return errors.New("this module has no settings")
+		}
+		have := s.Values()
+		for k := range settings {
+			if _, ok := have[k]; !ok {
+				return fmt.Errorf("no setting %q", k)
+			}
+		}
+	}
+	for k := range texts {
+		if !slices.ContainsFunc(n.made.Texts, func(t Text) bool { return t.Key == k }) {
+			return fmt.Errorf("no text %q", k)
+		}
+	}
+	if len(settings) > 0 {
+		pt.SettingsOf(id).Apply(settings)
+	}
+	for k, v := range texts {
+		if err := pt.SetText(id, k, v); err != nil {
+			return err
+		}
 	}
 	return nil
 }

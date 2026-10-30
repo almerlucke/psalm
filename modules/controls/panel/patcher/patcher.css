@@ -115,3 +115,20 @@ section:has(.pt) { flex-basis: 100%; min-width: 0; }
 .pt-win-grip { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; touch-action: none;
 	background: linear-gradient(135deg, transparent 0 50%, var(--muted) 50% 56%, transparent 56% 66%, var(--muted) 66% 72%, transparent 72%); opacity: .6; }
 .pt-dragging .pt-win-frame { pointer-events: none; }
+
+.pt-head button.pt-help { margin-left: auto; min-width: 0; min-height: 0; width: 18px; height: 18px; padding: 0; border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 50%; font-size: 11px; line-height: 1; cursor: pointer; flex: none; }
+.pt-head .pt-help:hover { color: var(--text, inherit); }
+.pt-win-head button.pt-help-win { background: none; color: var(--muted); cursor: pointer; min-width: 0; min-height: 0; font-size: 13px; border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px; padding: 0; }
+.pt-help-page { flex: 1; min-height: 0; overflow: auto; padding: 4px 16px 16px; font-size: 13.5px; line-height: 1.5; user-select: text; }
+.pt-md h2 { font-size: 18px; margin: 14px 0 6px; } .pt-md h3 { font-size: 15px; margin: 14px 0 4px; } .pt-md h4, .pt-md h5 { font-size: 13.5px; margin: 10px 0 2px; }
+.pt-md p { margin: 6px 0; } .pt-md ul, .pt-md ol { margin: 6px 0; padding-left: 22px; }
+.pt-md code { font-family: ui-monospace, monospace; font-size: 12.5px; background: var(--card-2, rgba(128,128,128,.15)); padding: 0 4px; border-radius: 3px; }
+.pt-md table { border-collapse: collapse; margin: 8px 0; font-size: 12.5px; } .pt-md th, .pt-md td { border: 1px solid var(--line); padding: 3px 8px; text-align: left; vertical-align: top; }
+.pt-md-code pre, .pt-md-example pre { margin: 0; padding: 8px 10px; overflow: auto; font: 12.5px/1.45 ui-monospace, monospace; white-space: pre; }
+.pt-md-code, .pt-md-example { border: 1px solid var(--line); border-radius: 6px; margin: 8px 0; overflow: hidden; }
+.pt-md-exhead { display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--line); background: rgba(128,128,128,.1); }
+.pt-md-exhead b { flex: 1; }
+.pt-md-key { padding: 4px 10px 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.pt-md-set { padding: 4px 10px 8px; font: 12px ui-monospace, monospace; color: var(--muted); }
+.pt-md-say, .pt-md-wait { color: var(--muted); }
+.pt-md a { color: inherit; text-decoration: underline; }
