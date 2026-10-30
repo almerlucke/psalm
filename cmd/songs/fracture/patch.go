@@ -80,7 +80,7 @@ func strips() []strip {
 		{name: "metal", kind: "modal", preset: "anvil", level: 0.35, pan: -0.35, reverb: 0.3, echo: 0.35, air: 0.2},
 	}
 	// the samplers: a blurry vocal cut into pieces that stutter and fall over each other, and the strokes of a tabla loop cut up and played in any order, both through the crusher
-	for _, c := range []*cutSound{&vocalCut, &tablaCut, &rivetCut, &modemCut} {
+	for _, c := range []*cutSound{&vocalCut, &tablaCut, &modemCut} {
 		if !c.there() {
 			continue
 		}
@@ -88,10 +88,8 @@ func strips() []strip {
 		switch c {
 		case &tablaCut:
 			s.pan, s.level = -0.15, 0.6
-		case &rivetCut:
-			s.pan, s.level, s.insertSet = -0.4, 0.8, map[string]float64{"bits": 10, "rate": 22050, "mix": 0.35}
 		case &modemCut:
-			s.pan, s.level = 0.5, 0.6
+			s.pan, s.level = 0.5, 0.8 // loud enough to be heard in the mix
 		default:
 			s.pan, s.level = 0.3, 1.1 // the vocal chops, louder
 		}
@@ -322,23 +320,11 @@ Collapse: M(. . x . . x . . . x . . x . . .;16;30/2)`, "prob: 100 50 80\nvel: 10
 		err = kerr
 	}
 	// the chirps of a dial-up modem as the glitch of the Static and the Rift
-	if rivetCut.there() {
-		if keys, kerr := rivetCut.keys(); kerr == nil && len(keys) > 1 {
-			// the pieces are long (up to a second): few hits, so that they ring into each other
-			rhythmPart("rivets", "strikes", 580, "1/16", `Fracture: E(3,16,+1)%2/3
-Ridge: E(4,16,+1)%2/3
-Rift: E(3,16,+1)
-Bare: E(3,16,+1)
-Collapse: E(5,16,+1)%2/3`, "prob: 100 70 90\nvel: 100 60 80 50", keys, random, map[string]float64{"mutate": 0.3, "groove": dilla, "drift": 0.05}, 0.6)
-		} else if kerr != nil {
-			err = kerr
-		}
-	}
 	if modemCut.there() {
 		if keys, kerr := modemCut.keys(); kerr == nil && len(keys) > 1 {
 			rhythmPart("modem", "chirps", 650, "1/32", `Static: M(. . . x . . . . . x . . . . x .;16;5/2)
 Rift: M(. . . x . . . . . x . . . . x .;16;13/2)
-Bare: M(. . . x . . . . . x . . . . x .;16;13/2)`, "prob: 100 40 70\nvel: 100 60 80", keys, shuffled, map[string]float64{"mutate": 0.3, "drift": 0.05}, 0.5)
+Bare: M(. . . x . . . . . x . . . . x .;16;13/2)`, "prob: 100 40 70\nvel: 100 60 80", keys, shuffled, map[string]float64{"mutate": 0.3, "drift": 0.05}, 0.7)
 		} else if kerr != nil {
 			err = kerr
 		}

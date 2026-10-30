@@ -22,9 +22,8 @@ var (
 	// a sung recording cut into syllables (the short ones only), the loop of a tabla cut at its strokes
 	vocalCut = cutSound{"chops", "assets/sounds/goedertierenheid.wav", 9, 0.06, 0, 0.4, true}
 	tablaCut = cutSound{"slices", "assets/sounds/various/tabla_loop_4bars_90bpm-86005.wav", 9, 0.08, 0, 0.5, false}
-	// free recordings (assets/glitch-sources, kept out of the repository): a riveting machine and the chirps of a dial-up modem, cut at their hits
-	rivetCut = cutSound{"rivets", "assets/glitch-sources/rivetingmachine.wav", 6, 0.05, -3, 1, false}
-	modemCut = cutSound{"modem", "assets/glitch-sources/dial_up_modem_noises.wav", 6, 0.08, -3, 0.5, false}
+	// free recordings (assets/glitch-sources, kept out of the repository): the chirps of a dial-up modem, cut at their hits
+	modemCut = cutSound{"modem", "assets/glitch-sources/dial_up_modem_noises.wav", 6, 0.08, 0, 0.5, false}
 )
 
 // there says whether the recording is there (the piece plays without the ones that are not)
