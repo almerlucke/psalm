@@ -114,7 +114,9 @@ psalm.sectionGrid = function (send) {
 		for (const s of sections) { const h = el("div", "pt-grid-col", s.name); h.append(el("small", "", s.bars + " bars")); table.append(h); }
 		for (const r of rows()) {
 			const label = el("div", "pt-grid-row");
-			label.append(el("b", "", r.n.kind + (r.key === "pattern" || r.key === "notes" || r.key === "values" || r.key === "chords" || r.key === "curves" ? "" : " " + r.key)), el("small", "", r.n.id + (target(r.n, state) ? " → " + target(r.n, state) : "")));
+			label.append(el("b", "", (r.n.name ? r.n.name : r.n.kind) + (r.n.name ? "" : r.key === "pattern" || r.key === "notes" || r.key === "values" || r.key === "chords" || r.key === "curves" ? "" : " " + r.key)), el("small", "", (r.n.name ? r.n.kind + " " : "") + r.n.id + (target(r.n, state) ? " → " + target(r.n, state) : "")));
+			label.title = "double-click to give it a name";
+			label.addEventListener("dblclick", () => { const name = window.prompt("A name for this module (empty: none)", r.n.name || ""); if (name !== null) send({name: {id: r.n.id, value: name}}); });
 			if (r.error) { label.classList.add("bad"); label.title = r.error; }
 			table.append(label);
 			const lines = parse(r.text), others = othersText(lines);

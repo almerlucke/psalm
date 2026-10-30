@@ -204,6 +204,7 @@ type node struct {
 	ID     string  `json:"id"`
 	Kind   string  `json:"kind"`
 	Preset string  `json:"preset,omitempty"`
+	Name   string  `json:"name,omitempty"` // what its owner calls it (the grid of the sections and the head show it)
 	X      float64 `json:"x"`
 	Y      float64 `json:"y"`
 
@@ -385,14 +386,15 @@ func (pt *Patcher) worker() {
 // handle does one thing the page asks
 func (pt *Patcher) handle(raw json.RawMessage) error {
 	var m struct {
-		Add    string  `json:"add"`
-		Preset string  `json:"preset"`
-		Move   string  `json:"move"`
-		Remove string  `json:"remove"`
-		Select *string `json:"select"`
-		Cable  *Cable  `json:"connect"`
-		Unplug string  `json:"disconnect"`
-		Range  *Cable  `json:"range"`
+		Add    string                      `json:"add"`
+		Preset string                      `json:"preset"`
+		Move   string                      `json:"move"`
+		Name   *struct{ ID, Value string } `json:"name"`
+		Remove string                      `json:"remove"`
+		Select *string                     `json:"select"`
+		Cable  *Cable                      `json:"connect"`
+		Unplug string                      `json:"disconnect"`
+		Range  *Cable                      `json:"range"`
 		Text   *struct {
 			ID, Key, Value string
 		} `json:"text"`
@@ -431,6 +433,8 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		}
 		_, err := pt.Add(m.Add, m.Preset, x, y)
 		return err
+	case m.Name != nil:
+		return pt.SetName(m.Name.ID, m.Name.Value)
 	case m.Move != "" && m.Pos != nil:
 		pt.Move(m.Move, m.Pos[0], m.Pos[1])
 	case m.Open != "":
@@ -648,6 +652,18 @@ func (pt *Patcher) Move(id string, x, y float64) {
 	if n := pt.node(id); n != nil {
 		n.X, n.Y = x, y
 	}
+}
+
+// SetName gives a module a name of its own ("" takes it away): the head of the module and the grid of the sections show it, a patch kept has it
+func (pt *Patcher) SetName(id, name string) error {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+	n := pt.node(id)
+	if n == nil {
+		return errors.New("no such module")
+	}
+	n.Name = strings.TrimSpace(name)
+	return nil
 }
 
 // Select chooses the module whose settings the side panel shows (its page, served by the
@@ -1052,6 +1068,7 @@ type nodeState struct {
 	ID       string            `json:"id"`
 	Kind     string            `json:"kind"`
 	Preset   string            `json:"preset,omitempty"`
+	Name     string            `json:"name,omitempty"`
 	X        float64           `json:"x"`
 	Y        float64           `json:"y"`
 	Ins      []Port            `json:"ins"`
@@ -1110,7 +1127,7 @@ func (pt *Patcher) state() any {
 		st.Cables = append(st.Cables, &cc)
 	}
 	for _, n := range pt.nodes {
-		ns := nodeState{ID: n.ID, Kind: n.Kind, Preset: n.Preset, X: n.X, Y: n.Y, Ins: n.ins(), Outs: n.outPorts()}
+		ns := nodeState{ID: n.ID, Kind: n.Kind, Preset: n.Preset, Name: n.Name, X: n.X, Y: n.Y, Ins: n.ins(), Outs: n.outPorts()}
 		if ns.Ins == nil { // lists, also empty ones, for the page
 			ns.Ins = []Port{}
 		}
@@ -1261,6 +1278,9 @@ func (pt *Patcher) place(f patchFile, dx, dy float64, out bool) (map[string]stri
 			continue
 		}
 		ids[n.ID] = id
+		if n.Name != "" {
+			_ = pt.SetName(id, n.Name)
+		}
 		hasState := false
 		if n.State != "" {
 			pt.mu.Lock()
@@ -1481,8 +1501,8 @@ func (e *engine) CtrlTick(tick psalm.CtrlTick) {
 
 // NodeInfo is a module of the patch: its id, kind, preset and place
 type NodeInfo struct {
-	ID, Kind, Preset string
-	X, Y             float64
+	ID, Kind, Preset, Name string
+	X, Y                   float64
 }
 
 // Nodes returns the modules of the patch (the output first)
@@ -1491,7 +1511,7 @@ func (pt *Patcher) Nodes() []NodeInfo {
 	defer pt.mu.Unlock()
 	var ns []NodeInfo
 	for _, n := range pt.nodes {
-		ns = append(ns, NodeInfo{ID: n.ID, Kind: n.Kind, Preset: n.Preset, X: n.X, Y: n.Y})
+		ns = append(ns, NodeInfo{ID: n.ID, Kind: n.Kind, Preset: n.Preset, Name: n.Name, X: n.X, Y: n.Y})
 	}
 	return ns
 }

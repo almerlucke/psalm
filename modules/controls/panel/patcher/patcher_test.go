@@ -271,3 +271,32 @@ func TestCopyPaste(t *testing.T) {
 		}
 	}
 }
+
+// a module can be given a name; a patch kept has it
+func TestModuleNameIsKept(t *testing.T) {
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}), patcher.Keep(t.TempDir()))
+	id, _ := pt.Add("clock", "", 0, 0)
+	if err := pt.SetName(id, "  kick "); err != nil {
+		t.Fatal(err)
+	}
+	if err := pt.SetName("nope", "x"); err == nil {
+		t.Error("a name for a module that is not there")
+	}
+	if err := pt.Save("named"); err != nil {
+		t.Fatal(err)
+	}
+	pt.Clear()
+	if err := pt.Load("named"); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range pt.Nodes() {
+		if n.Kind == "clock" {
+			if n.Name != "kick" {
+				t.Errorf("the name after loading: %q", n.Name)
+			}
+			return
+		}
+	}
+	t.Error("the clock is gone")
+}

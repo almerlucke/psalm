@@ -115,6 +115,11 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 		id, err = pt.Connect(c)
 		return id
 	}
+	nameIt := func(id, n string) {
+		if err == nil {
+			err = pt.SetName(id, n)
+		}
+	}
 	text := func(id, key, value string) {
 		if err == nil {
 			err = pt.SetText(id, key, value)
@@ -144,6 +149,9 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	song := add("song", "", 20, 20)
 	harm := add("harmony", "", 20, 130)
 	model := add("chordmodel", "", 20, 260)
+	nameIt(song, "song")
+	nameIt(harm, "chords")
+	nameIt(model, "chord model")
 	text(song, "sections", sectionsText())
 	text(harm, "chords", harmonyText)
 	phrygian := float64(slices.Index(patcher.Scales, "phrygian"))
@@ -229,6 +237,8 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	rhythmPart := func(name, to string, y float64, div, pattern, lanes string, keys []int, order float64, settings map[string]float64, velocity float64) {
 		clock := add("clock", "", 300, y)
 		notes := add("notes", "", 780, y)
+		nameIt(notes, name+" "+to+" notes")
+		nameIt(clock, name+" "+to)
 		text(clock, "pattern", pattern)
 		if lanes != "" {
 			text(clock, "lanes", lanes)
@@ -242,6 +252,7 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 		connect(patcher.Cable{From: clock, To: notes})
 		if len(keys) > 1 {
 			seq := add("sequence", "", 540, y)
+			nameIt(seq, name+" "+to+" order")
 			vals := make([]string, len(keys))
 			for i, k := range keys {
 				vals[i] = fmt.Sprint(k)
@@ -292,6 +303,7 @@ Fracture: CA(90,16,+)%2/3`, "vel: 100 60 80 50 90", []int{60, 63, 66, 69, 61, 72
 		// the vocal chops are played by the chords: a part of notes relative to the chord of the moment (@1 the root, @3 and @5 the tones above it, ' an octave up), each note one of
 		// the syllables, tuned to the tone (a sung syllable is on the pitch it is played at), chosen at random; the figure mutates and the chords change as the song goes
 		chops := add("part", "", 300, 440)
+		nameIt(chops, "vocal chops")
 		text(chops, "notes", `Static: . . . . . . . . . . @5 . . . . .
 Fracture: . . @3 . . @5 . @1' . @3'^2 . . @5 . . .
 Ridge: . . @3 . . @5 . @1' . @3'^2 . . @5 . . .
@@ -319,6 +331,8 @@ Collapse: M(. . x . . x . . . x . . x . . .;16;30/2)`, "prob: 100 50 80\nvel: 10
 	// one before
 	bass := add("part", "", 300, 460)
 	pad := add("part", "", 300, 530)
+	nameIt(bass, "acid bass")
+	nameIt(pad, "pad")
 	text(bass, "notes", `Fracture: @b . . @1 . . @b . . . @5 . . @b . @1'
 Ridge: @b . . @1 . . @b . . . @5 . . @b . @1'
 Rift: @b . . @1 . . @b . . @5 . . . @b . @1'
@@ -339,6 +353,7 @@ Collapse: @v*16`)
 	// changed a little (the tune is the tune again and a little other), and a form of a question and its answer (the question ends open, on the third or the fifth of the chord, the answer closes on the root), the tune falling, a sigh, and the answer under it rising
 	layer := func(name string, y float64, sections string, set map[string]float64) {
 		m := add("melodist", "", 300, y)
+		nameIt(m, "melodist "+name)
 		g := add("gate", "", 540, y)
 		text(g, "name", name)
 		text(g, "sections", sections)
@@ -400,6 +415,7 @@ Bare: . . . . . . . x . . . . . . . .`, "", []int{37}, 0, gset, 0.7)
 	// the synth that drives the tune: sixteenths on the chord (the root, the fifth, the root an octave up), a figure that mutates, a filter that opens with the build curve and notes
 	// that get louder with it
 	pulse := add("part", "", 300, 1140)
+	nameIt(pulse, "synth pulse")
 	text(pulse, "notes", `Fracture: @1 . . @1 . . @3 . @1 . . @1 . @3 . .
 Ridge: @1 . . @1 . . @3 . @1 . . @1 . @3 . .
 Rift: @1 . . @1 . @3 . . @1 . . @1 . @3 . .
@@ -443,6 +459,7 @@ Collapse: 0.08 → 0.3 smooth`)
 	}
 	swell := func(name string, y float64, notes string, set map[string]float64, lo, hi float64) {
 		part := add("part", "", 300, y)
+		nameIt(part, name)
 		text(part, "notes", notes)
 		base := map[string]float64{"division": 3, "velocity": 0.5, "length": 1, "register": 48}
 		for k, v := range set {

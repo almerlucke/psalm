@@ -312,6 +312,11 @@ func TestPageSectionGrid(t *testing.T) {
 		}
 		return ""
 	}
+	// a name of its own is the name of the row
+	if err := pt.SetName(clk, "kick"); err != nil {
+		t.Fatal(err)
+	}
+	tb.WaitFor(`document.querySelector(".pt-grid-row b")?.textContent === "kick" && /^clock/.test(document.querySelector(".pt-grid-row small").textContent)`, "the name on the row")
 	// edit the verse
 	tb.Eval(cell(0) + `.click()`)
 	tb.WaitFor(`!!document.querySelector(".pt-grid-text")`, "the editor of the cell")

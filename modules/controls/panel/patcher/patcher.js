@@ -170,6 +170,12 @@ psalm.register("patcher", (p, api) => {
 		const head = el("div", "pt-head");
 		const title = el("span", "pt-title");
 		head.append(title);
+		head.addEventListener("contextmenu", e => { // a name of its own
+			e.preventDefault();
+			const was = (nodes[n.id] && nodes[n.id].data.name) || "";
+			const name = window.prompt("A name for this module (empty: none)", was);
+			if (name !== null) send({name: {id: n.id, value: name}});
+		});
 		const ports = el("div", "pt-ports");
 		const ins = el("div", "pt-ins"), outs = el("div", "pt-outs");
 		ports.append(ins, outs);
@@ -238,7 +244,7 @@ psalm.register("patcher", (p, api) => {
 			seen.add(n.id);
 			const v = nodes[n.id] || (nodes[n.id] = makeNode(n));
 			v.data = n;
-			v.title.textContent = n.kind + (n.preset ? " · " + n.preset : "");
+			v.title.textContent = n.name ? n.name + " (" + n.kind + ")" : n.kind + (n.preset ? " · " + n.preset : "");
 			const sig = JSON.stringify([n.ins, n.outs]);
 			if (sig !== v.sig) {
 				v.sig = sig;
@@ -492,7 +498,7 @@ psalm.register("patcher", (p, api) => {
 		for (const [id, w] of Object.entries(windows)) {
 			const n = nodeOf(id);
 			if (!n) { closeWindow(id); continue; }
-			const title = n.kind + (n.preset ? " · " + n.preset : "");
+			const title = n.name ? n.name + " (" + n.kind + ")" : n.kind + (n.preset ? " · " + n.preset : "");
 			if (w.title.textContent !== title) w.title.textContent = title;
 			sendNode(w, n);
 		}
