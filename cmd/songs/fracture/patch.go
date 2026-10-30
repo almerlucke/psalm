@@ -58,7 +58,7 @@ type strip struct {
 	name, kind, preset string
 	level, pan         float64
 	reverb, echo, grit float64 // the sends: the room, the ping pong, the granulator
-	air                float64 // the shimmer
+	air                float64 // the send to the shimmer
 	insert             string
 	insertSet          map[string]float64
 	cut                *cutSound // a sampler that plays the pieces of a recording
@@ -71,14 +71,14 @@ func strips() []strip {
 		{name: "glitch", kind: "drumsynth", preset: "electro", level: 1.0, pan: 0.15, echo: 0.3, grit: 0.35, insert: "crusher", insertSet: map[string]float64{"bits": 8, "rate": 9000, "mix": 0.55, "output": 6}},
 		{name: "bass", kind: "pulsar", preset: "buzzBass", level: 0.45, grit: 0.05},
 		{name: "pad", kind: "subtractive", preset: "warmPad", level: 0.3, reverb: 0.35, air: 0.4},
-		{name: "toybox", kind: "dx", preset: "crystalGlock", level: 0.3, pan: 0.25, reverb: 0.45, echo: 0.5, air: 0.3},
+		{name: "toybox", kind: "dx", preset: "crystalGlock", level: 0.3, pan: 0.25, reverb: 0.45, echo: 0.5, air: 0.45},
 		// the counterpoint to the tune: the same music box, on the left, as the tune is on the right
-		{name: "counter", kind: "dx", preset: "crystalGlock", level: 0.26, pan: -0.65, reverb: 0.45, echo: 0.35, air: 0.25},
+		{name: "counter", kind: "dx", preset: "crystalGlock", level: 0.26, pan: -0.65, reverb: 0.45, echo: 0.35, air: 0.45},
 		{name: "groove", kind: "drumsynth", preset: "808", level: 0.55, pan: -0.1, reverb: 0.12, echo: 0.12},
 		// the synth that drives the tune, and what makes the piece epic as it goes: strings, brass, timpani and a choir that come in and swell (see the epic curve)
 		{name: "pulse", kind: "subtractive", preset: "analogSeq", level: 0.35, pan: -0.2, reverb: 0.12, echo: 0.3, grit: 0.1},
 		{name: "timp", kind: "dx", preset: "timpani", level: 0.3, reverb: 0.3},
-		{name: "metal", kind: "modal", preset: "anvil", level: 0.35, pan: -0.35, reverb: 0.3, echo: 0.35, air: 0.2},
+		{name: "metal", kind: "modal", preset: "anvil", level: 0.35, pan: -0.35, reverb: 0.3, echo: 0.35},
 	}
 	// the samplers: a blurry vocal cut into pieces that stutter and fall over each other, and the strokes of a tabla loop cut up and played in any order, both through the crusher
 	for _, c := range []*cutSound{&vocalCut, &tablaCut, &modemCut} {
@@ -186,10 +186,11 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	room := add("reverb", "", 1760, 20)
 	echo := add("pingpong", "", 1760, 160)
 	grit := add("granulator", "", 1760, 300)
+	shimmer := add("shimmer", "", 1760, 440)
 	if err != nil {
 		return out, err
 	}
-	m := map[string]float64{"returnA": 0.55, "returnB": 0.7, "returnC": 0.6, "returnD": 0, "level": 0.8}
+	m := map[string]float64{"returnA": 0.55, "returnB": 0.7, "returnC": 0.6, "returnD": 0.32, "level": 0.8}
 	for i, s := range all {
 		n := fmt.Sprint(i + 1)
 		var to string = synth[s.name]
@@ -202,9 +203,9 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 		}
 		connect(patcher.Cable{From: to, To: mixer, In: i})
 		m["level"+n], m["pan"+n] = s.level, s.pan
-		m["sendA"+n], m["sendB"+n], m["sendC"+n], m["sendD"+n] = s.reverb*0.6, s.echo, s.grit, 0
+		m["sendA"+n], m["sendB"+n], m["sendC"+n], m["sendD"+n] = s.reverb*0.6, s.echo, s.grit, s.air
 	}
-	for i, fx := range []string{room, echo, grit} {
+	for i, fx := range []string{room, echo, grit, shimmer} {
 		connect(patcher.Cable{From: mixer, Out: 1 + i, To: fx})
 		connect(patcher.Cable{From: fx, To: mixer, In: channels + i})
 	}
@@ -219,6 +220,7 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	apply(mixer, m)
 	apply(room, map[string]float64{"mix": 1, "decay": 4.6, "size": 0.8})
 	apply(echo, map[string]float64{"time": 0.75, "feedback": 0.45, "stereo": 1, "highCut": 6000, "lowCut": 250, "mix": 1})
+	apply(shimmer, map[string]float64{"mix": 1, "semitones": 7}) // a fifth up, on the glockenspiels
 	apply(grit, map[string]float64{"density": 40, "grainSize": 60, "jitter": 0.7, "spray": 120, "pitchSpread": 5, "mix": 1})
 
 	// the sources of change: a random value moves the bit depth of the crusher, a slow wave the feedback of the echo

@@ -21,7 +21,7 @@
 //     the buzz bass through a low filter that the envelope snaps open), a pad held voice led; one curve of the song moves the chance and the velocity of the groove, the length of the bass and
 //     the filter of the synth, another the acid of the bass, in every section the same way; a random source moves the bit depth of a crusher and a slow wave the feedback of the echo
 //
-//   - a master that is loud: a compressor on the sum and a limiter after it. No shimmer
+//   - a master that is loud: a compressor on the sum and a limiter after it. A shimmer (a fifth up) on the fourth bus, for the two glockenspiels only
 //
 // The sections: Static (a heart, a held chord, the tune alone), Fracture (the rhythms break in), the Ridge and the Rift (the Fracture again, a little different each time: other rotations and
 // seeds of the same rhythms, the chords of the Fracture in another order), the Bare (the Rift without the tune), the Skeleton (eight bars of the drums, a rim, the bass, the glitch and the metal) and the Collapse (the Fracture again without the tune, the drums and the bass: the
