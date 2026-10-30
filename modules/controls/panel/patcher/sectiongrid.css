@@ -27,3 +27,4 @@
 .pt-grid-empty { color: var(--muted); font-size: 13px; padding: 10px 0; }
 .pt-grid-btn.on { border-color: var(--accent); }
 .pt-grid-head .pt-x { width: 26px; min-width: 0; height: 26px; min-height: 0; padding: 0; line-height: 1; }
+.pt-grid-on { margin-top: 3px; max-width: 100%; min-height: 0; padding: 1px 4px; font-size: 11px; }

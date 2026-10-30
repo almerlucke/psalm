@@ -341,3 +341,43 @@ func TestPageSectionGrid(t *testing.T) {
 	tb.Eval(`[...document.querySelectorAll(".pt-grid-edit-row button")].find(b => b.textContent === "Clear").click()`)
 	paneltest.Eventually(t, "the chorus cleared", func() bool { return text(clk, "pattern") == "Verse: x x x x" })
 }
+
+// plays on: the row of a clock says which instrument its notes go to, and the dropdown moves the cable
+func TestPageSectionGridPlaysOn(t *testing.T) {
+	b, pt, base := newPage(t)
+	song, _ := pt.Add("song", "", 60, 300)
+	_ = pt.SetText(song, "sections", "Verse 8")
+	clk, _ := pt.Add("clock", "", 60, 40)
+	notes, _ := pt.Add("notes", "", 300, 40)
+	one, _ := pt.Add("dx", "crystalGlock", 600, 40)
+	two, _ := pt.Add("modal", "kalimba", 600, 200)
+	for _, c := range []patcher.Cable{{From: clk, To: notes}, {From: notes, To: one}} {
+		if _, err := pt.Connect(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tb := b.Open(t, base, `document.querySelectorAll(".pt-node").length >= 5`)
+	tb.Size(1300, 1000)
+	tb.Eval(`document.querySelector(".pt-grid-btn").click()`)
+	tb.WaitFor(`document.querySelector(".pt-grid-on")?.dataset.on === "`+one+`"`, "the row plays on the first instrument")
+	tb.Eval(`(() => { const s = document.querySelector(".pt-grid-on"); s.value = "` + two + `"; s.dispatchEvent(new Event("change")); })()`)
+	paneltest.Eventually(t, "the notes moved to the other instrument", func() bool {
+		to := map[string]bool{}
+		for _, c := range pt.Cables() {
+			if c.From == notes {
+				to[c.To] = true
+			}
+		}
+		return to[two] && !to[one]
+	})
+	tb.WaitFor(`document.querySelector(".pt-grid-on")?.dataset.on === "`+two+`"`, "the dropdown follows")
+	tb.Eval(`(() => { const s = document.querySelector(".pt-grid-on"); s.value = "-"; s.dispatchEvent(new Event("change")); })()`)
+	paneltest.Eventually(t, "the notes go nowhere", func() bool {
+		for _, c := range pt.Cables() {
+			if c.From == notes {
+				return false
+			}
+		}
+		return true
+	})
+}

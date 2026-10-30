@@ -69,20 +69,34 @@ psalm.sectionGrid = function (send) {
 		return toks.join(" ");
 	};
 
-	// what a module plays, found along its cables: "part → kalimba"
-	const target = (n, st) => {
+	// the instruments of the patch: what takes notes and makes sound
+	const instruments = st => st.nodes.filter(t => (t.ins || []).some(p => p.type === "notes") && (t.outs || []).some(p => p.type === "audio"));
+	const instLabel = t => (t.name ? t.name + " (" + t.kind + ")" : t.kind + (t.preset ? " \u00b7 " + t.preset : "")) + " " + t.id;
+	// where a module plays, found along its notes cables (a clock through its notes module, a part at once): the instrument and the cable that reaches it
+	const route = (n, st) => {
+		const insts = new Set(instruments(st).map(t => t.id));
 		const seen = new Set([n.id]);
 		let frontier = [n.id];
 		for (let hop = 0; hop < 4 && frontier.length; hop++) {
 			const next = [];
-			for (const id of frontier) for (const c of st.cables) if (c.from === id && !seen.has(c.to)) {
+			for (const id of frontier) for (const c of st.cables) if (c.from === id && c.type !== "mod" && !seen.has(c.to)) {
+				if (insts.has(c.to) && c.type === "notes") return {inst: st.nodes.find(x => x.id === c.to), cable: c};
 				seen.add(c.to); next.push(c.to);
-				const t = st.nodes.find(x => x.id === c.to);
-				if (t && (t.preset || /^(drumsynth|sampler|streamer|pulsar|dx|modal|vocal|piano|organ|subtractive|supersaw|wavetable|waveguide|shaper|grains)$/.test(t.kind))) return t.kind + (t.preset ? " " + t.preset : "");
 			}
 			frontier = next;
 		}
-		return "";
+		return null;
+	};
+	// plays on: the cable of the notes goes to another instrument (the module that sends them stays)
+	const playOn = (n, st, id) => {
+		const r = route(n, st);
+		let from = r ? r.cable.from : null, out = r ? r.cable.out : 0;
+		if (!r) { const o = (n.outs || []).findIndex(p => p.type === "notes"); if (o < 0) return; from = n.id; out = o; }
+		const inst = st.nodes.find(t => t.id === id);
+		if (r) send({disconnect: r.cable.id});
+		if (!inst) return;
+		const i = inst.ins.findIndex(p => p.type === "notes");
+		if (i >= 0) send({connect: {from, out, to: id, in: i}});
 	};
 
 	const rows = () => {
@@ -114,10 +128,21 @@ psalm.sectionGrid = function (send) {
 		for (const s of sections) { const h = el("div", "pt-grid-col", s.name); h.append(el("small", "", s.bars + " bars")); table.append(h); }
 		for (const r of rows()) {
 			const label = el("div", "pt-grid-row");
-			label.append(el("b", "", (r.n.name ? r.n.name : r.n.kind) + (r.n.name ? "" : r.key === "pattern" || r.key === "notes" || r.key === "values" || r.key === "chords" || r.key === "curves" ? "" : " " + r.key)), el("small", "", (r.n.name ? r.n.kind + " " : "") + r.n.id + (target(r.n, state) ? " → " + target(r.n, state) : "")));
+			label.append(el("b", "", (r.n.name ? r.n.name : r.n.kind) + (r.n.name ? "" : r.key === "pattern" || r.key === "notes" || r.key === "values" || r.key === "chords" || r.key === "curves" ? "" : " " + r.key)), el("small", "", (r.n.name ? r.n.kind + " " : "") + r.n.id));
 			label.title = "double-click to give it a name";
 			label.addEventListener("dblclick", () => { const name = window.prompt("A name for this module (empty: none)", r.n.name || ""); if (name !== null) send({name: {id: r.n.id, value: name}}); });
 			if (r.error) { label.classList.add("bad"); label.title = r.error; }
+			if (r.n.kind !== "harmony") {
+				const rt = route(r.n, state), pick = el("select", "pt-grid-on");
+				pick.title = "plays on: the instrument these notes go to";
+				pick.dataset.on = rt ? rt.inst.id : "";
+				pick.append(new Option(rt ? "plays on\u2026" : "plays on\u2026 (none yet)", ""));
+				for (const t of instruments(state)) pick.append(new Option(instLabel(t), t.id));
+				if (rt) { pick.append(new Option("none", "-")); pick.value = rt.inst.id; }
+				if (!rt && !(r.n.outs || []).some(p => p.type === "notes")) { pick.disabled = true; pick.title = "no notes come out of this module: add a notes module after it first"; }
+				pick.addEventListener("change", () => { if (pick.value === "") return; playOn(r.n, state, pick.value === "-" ? "" : pick.value); });
+				label.append(pick);
+			}
 			table.append(label);
 			const lines = parse(r.text), others = othersText(lines);
 			for (const s of sections) {
@@ -186,12 +211,12 @@ psalm.sectionGrid = function (send) {
 			if (root.hidden) return;
 			if (editing && document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("pt-grid-text")) { // being typed: the cells under it follow, the box stays
 				const keep = document.activeElement, v = keep.value, s = keep.selectionStart;
-				const sig = JSON.stringify([st.sections, rows().map(r => [r.n.id, r.key, r.text, r.error])]);
+				const sig = JSON.stringify([st.sections, rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))])]);
 				if (sig === api._sig) return;
 				api._sig = sig; build(); const k = body.querySelector(".pt-grid-text"); if (k) { k.value = v; k.focus(); k.setSelectionRange(s, s); }
 				return;
 			}
-			const sig = JSON.stringify([st.sections, rows().map(r => [r.n.id, r.key, r.text, r.error]), editing && [editing.row.n.id, editing.section]]);
+			const sig = JSON.stringify([st.sections, rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))]), editing && [editing.row.n.id, editing.section]]);
 			if (sig === api._sig) return;
 			api._sig = sig; build();
 		},
