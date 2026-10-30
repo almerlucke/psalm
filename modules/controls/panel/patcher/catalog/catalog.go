@@ -263,7 +263,7 @@ func Kinds(cfg Config) []patcher.Kind {
 			m := compressor.New(compressor.DefaultConfig())
 			return m, func() params.Set { return compressor.Describe(m.Settings()) }
 		}),
-		effect("gate", func() (psalm.Modular, func() params.Set) {
+		effect("gate fx", func() (psalm.Modular, func() params.Set) {
 			m := gate.New(gate.DefaultConfig())
 			return m, func() params.Set { return gate.Describe(m.Settings()) }
 		}),

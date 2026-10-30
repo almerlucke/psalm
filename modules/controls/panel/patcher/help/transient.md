@@ -36,4 +36,4 @@ output = -2
 
 ## See also
 
-[compressor](compressor.md), [gate-effect](gate-effect.md), [eq](eq.md), [lane](lane.md).
+[compressor](compressor.md), [gate fx](gate%20fx.md), [eq](eq.md), [lane](lane.md).

@@ -49,4 +49,4 @@ mix = 0.7
 
 ## See also
 
-[gate-effect](gate-effect.md), [transient](transient.md), [eq](eq.md), [lane](lane.md).
+[gate fx](gate%20fx.md), [transient](transient.md), [eq](eq.md), [lane](lane.md).
