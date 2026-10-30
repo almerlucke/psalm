@@ -14,7 +14,7 @@
 //   - samplers: a sung recording cut into short syllables and played by the chords (each syllable tuned to the tone it is played at), and a tabla loop cut at its strokes and played in any
 //     order, by the same kind of rhythms, through the crusher and the granulator: the glitch
 //
-//   - a toy box: a melancholic melody on a music box in two layers, and a counterpoint to it on the left (melodists over the chords, in the phrygian scale of the harmony, a question and its answer, a falling tune and a rising
+//   - a toy box: a melancholic melody on a glockenspiel (the dx crystalGlock) in two layers, and a counterpoint to it on the left (melodists over the chords, in the phrygian scale of the harmony, a question and its answer, a falling tune and a rising
 //     answer, the tune of the section before changed a little each time through)
 //
 //   - an 808 groove under it (a kick, hats and a rim), a synth that drives the tune in sixteenths on the chord, timpani, a bass that plays the chords by notes relative to them (an acid bass:
