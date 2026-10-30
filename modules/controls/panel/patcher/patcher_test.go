@@ -300,3 +300,29 @@ func TestModuleNameIsKept(t *testing.T) {
 	}
 	t.Error("the clock is gone")
 }
+
+// the chord model is made when the grid asks for chords, and its live switch follows
+func TestChordsLiveFromTheGrid(t *testing.T) {
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	if err := pt.Chords("live", "", true); err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]bool{}
+	for _, n := range pt.Nodes() {
+		kinds[n.Kind] = true
+	}
+	if !kinds["chordmodel"] || !kinds["harmony"] {
+		t.Errorf("the model and the harmony are made: %v", kinds)
+	}
+	if err := pt.Chords("nope", "", false); err == nil {
+		t.Error("an action it does not know")
+	}
+	if _, err := pt.AddVoice("tuba", "", ""); err == nil {
+		t.Error("a voice it does not know")
+	}
+	ids, err := pt.AddVoice("melody", "lead", "")
+	if err != nil || len(ids) != 1 {
+		t.Errorf("a melody: %v %v", ids, err)
+	}
+}

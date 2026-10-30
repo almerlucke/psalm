@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/almerlucke/psalm/modules/controls/panel/chordmodel"
 	"maps"
 	"math"
 	"os"
@@ -386,15 +387,20 @@ func (pt *Patcher) worker() {
 // handle does one thing the page asks
 func (pt *Patcher) handle(raw json.RawMessage) error {
 	var m struct {
-		Add    string                      `json:"add"`
-		Preset string                      `json:"preset"`
-		Move   string                      `json:"move"`
-		Name   *struct{ ID, Value string } `json:"name"`
-		Remove string                      `json:"remove"`
-		Select *string                     `json:"select"`
-		Cable  *Cable                      `json:"connect"`
-		Unplug string                      `json:"disconnect"`
-		Range  *Cable                      `json:"range"`
+		Add    string                           `json:"add"`
+		Preset string                           `json:"preset"`
+		Move   string                           `json:"move"`
+		Name   *struct{ ID, Value string }      `json:"name"`
+		Voice  *struct{ Kind, Name, To string } `json:"voice"`
+		Chords *struct {
+			Action, Section string
+			On              bool
+		} `json:"chords"`
+		Remove string  `json:"remove"`
+		Select *string `json:"select"`
+		Cable  *Cable  `json:"connect"`
+		Unplug string  `json:"disconnect"`
+		Range  *Cable  `json:"range"`
 		Text   *struct {
 			ID, Key, Value string
 		} `json:"text"`
@@ -433,6 +439,11 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		}
 		_, err := pt.Add(m.Add, m.Preset, x, y)
 		return err
+	case m.Voice != nil:
+		_, err := pt.AddVoice(m.Voice.Kind, m.Voice.Name, m.Voice.To)
+		return err
+	case m.Chords != nil:
+		return pt.Chords(m.Chords.Action, m.Chords.Section, m.Chords.On)
 	case m.Name != nil:
 		return pt.SetName(m.Name.ID, m.Name.Value)
 	case m.Move != "" && m.Pos != nil:
@@ -1108,6 +1119,7 @@ type state struct {
 	Lines        int                  `json:"lines"`            // how many lines it has had
 	Heads        map[string]*LaneHead `json:"heads,omitempty"`  // where the lanes of the automation modules are
 	Sections     []SectionInfo        `json:"sections"`         // the sections of the song, for the grid
+	Chords       *ChordsInfo          `json:"chords,omitempty"` // the chord model of the patch, for the grid
 	SectionTexts map[string][]string  `json:"sectionTexts"`     // the kinds that have a text per section, and which texts
 }
 
@@ -1117,6 +1129,12 @@ func (pt *Patcher) state() any {
 	defer pt.mu.Unlock()
 	st := state{Cables: []*Cable{}, Selected: pt.selected, Patches: patches, Current: pt.current, Keeps: pt.dir != "", Note: pt.note,
 		Pasted: pt.pasted, PasteN: pt.pasteN, Journal: pt.journal.Text(), Lines: pt.journal.Len(), Sections: []SectionInfo{}, SectionTexts: sectionTexts}
+	for _, n := range pt.nodes {
+		if cm, ok := madeModule(n).(*chordmodel.Module); ok {
+			st.Chords = &ChordsInfo{Live: cm.State().Live}
+			break
+		}
+	}
 	if tr := SongOf(pt.p.Env()).Transport(); tr != nil {
 		for _, s := range tr.Form().Sections {
 			st.Sections = append(st.Sections, SectionInfo{Name: s.Name, Bars: s.Bars})
@@ -1561,4 +1579,12 @@ func (pt *Patcher) SettingsOf(id string) Settings {
 		return n.settings
 	}
 	return nil
+}
+
+// madeModule is the module of a node (nil for one without)
+func madeModule(n *node) psalm.Modular {
+	if n.made == nil {
+		return nil
+	}
+	return n.made.Module
 }

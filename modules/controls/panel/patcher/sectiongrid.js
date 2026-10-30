@@ -142,6 +142,12 @@ psalm.sectionGrid = function (send) {
 				if (!rt && !(r.n.outs || []).some(p => p.type === "notes")) { pick.disabled = true; pick.title = "no notes come out of this module: add a notes module after it first"; }
 				pick.addEventListener("change", () => { if (pick.value === "") return; playOn(r.n, state, pick.value === "-" ? "" : pick.value); });
 				label.append(pick);
+			} else {
+				const live = el("label", "pt-grid-live"), box = el("input"); box.type = "checkbox"; box.checked = !!(state.chords && state.chords.live);
+				live.title = "draw new chords by the chord model every time the song leaves a section";
+				box.addEventListener("change", () => send({chords: {action: "live", on: box.checked}}));
+				live.append(box, document.createTextNode(" new chords every section"));
+				label.append(live);
 			}
 			table.append(label);
 			const lines = parse(r.text), others = othersText(lines);
@@ -167,6 +173,19 @@ psalm.sectionGrid = function (send) {
 		}
 		body.append(table);
 		if (editing) body.append(editor());
+		body.append(addBar());
+	}
+	// a voice is added from here: a rhythm (a clock and a notes module), a melody (a part) or a melodist, with a name and the instrument it plays on
+	function addBar() {
+		const bar = el("div", "pt-grid-add");
+		const kind = el("select"); for (const [v, t] of [["rhythm", "Rhythm"], ["melody", "Melody (notes)"], ["melodist", "Melodist (made while it plays)"]]) kind.append(new Option(t, v));
+		const name = el("input"); name.placeholder = "name"; name.addEventListener("keydown", e => e.stopPropagation());
+		const on = el("select"); on.append(new Option("plays on\u2026", ""));
+		for (const t of instruments(state)) on.append(new Option(instLabel(t), t.id));
+		const add = el("button", "", "Add voice");
+		add.addEventListener("click", () => { send({voice: {kind: kind.value, name: name.value, to: on.value}}); name.value = ""; });
+		bar.append(el("b", "", "New"), kind, name, on, add);
+		return bar;
 	}
 	function editor() {
 		const r = rows().find(x => x.n.id === editing.row.n.id && x.key === editing.row.key);
@@ -193,9 +212,11 @@ psalm.sectionGrid = function (send) {
 			for (const s of state.sections) if (s.name !== editing.section && (copy.value === "*" || copy.value === s.name)) t = withCell(t, s.name, v);
 			setText(r, t); copy.value = "";
 		});
+		const drawB = el("button", "", "Draw chords"); drawB.title = "the chord model draws a progression for this section and writes it here (it is made when the patch has none)";
+		drawB.addEventListener("click", () => send({chords: {action: "draw", section: editing.section}}));
 		const done = el("button", "", "Done"); done.addEventListener("click", closeEditor);
 		const err = el("div", "pt-grid-err", r.error || "");
-		const row = el("div", "pt-grid-edit-row"); row.append(saveB, varyB, clearB, copy, done);
+		const row = el("div", "pt-grid-edit-row"); row.append(saveB, varyB, clearB, copy); if (r.n.kind === "harmony") row.append(drawB); row.append(done);
 		box.append(el("div", "pt-grid-edit-title", r.n.kind + " \u00b7 " + editing.section), area, row, err);
 		setTimeout(() => area.focus(), 0);
 		return box;
@@ -211,12 +232,12 @@ psalm.sectionGrid = function (send) {
 			if (root.hidden) return;
 			if (editing && document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("pt-grid-text")) { // being typed: the cells under it follow, the box stays
 				const keep = document.activeElement, v = keep.value, s = keep.selectionStart;
-				const sig = JSON.stringify([st.sections, rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))])]);
+				const sig = JSON.stringify([st.sections, st.chords, rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))])]);
 				if (sig === api._sig) return;
 				api._sig = sig; build(); const k = body.querySelector(".pt-grid-text"); if (k) { k.value = v; k.focus(); k.setSelectionRange(s, s); }
 				return;
 			}
-			const sig = JSON.stringify([st.sections, rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))]), editing && [editing.row.n.id, editing.section]]);
+			const sig = JSON.stringify([st.sections, st.chords, rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))]), editing && [editing.row.n.id, editing.section]]);
 			if (sig === api._sig) return;
 			api._sig = sig; build();
 		},
