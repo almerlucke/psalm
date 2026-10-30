@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/almerlucke/psalm/modules/controls/panel/chordmodel"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/tools/rhythm"
 )
@@ -147,21 +146,18 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 	}
 	pt.Tempo().Set(bpm)
 
-	// the song, its chords and the model that draws more
+	// the song, with its chords and the model that draws more inside it
 	song := add("song", "", 20, 20)
-	harm := add("harmony", "", 20, 130)
-	model := add("chordmodel", "", 20, 260)
 	nameIt(song, "song")
-	nameIt(harm, "chords")
-	nameIt(model, "chord model")
 	text(song, "sections", sectionsText())
-	text(harm, "chords", harmonyText)
+	text(song, "chords", harmonyText)
 	phrygian := float64(slices.Index(patcher.Scales, "phrygian"))
-	apply(harm, map[string]float64{"key": 0, "scale": phrygian}) // C phrygian
-	out.harmony = harm
-	out.chords = model
+	apply(song, map[string]float64{"key": 0, "scale": phrygian}) // C phrygian
+	out.harmony = song
+	out.chords = song
 	if err == nil {
-		if m, ok := pt.Module(model).(*chordmodel.Module); ok {
+		if sf, ok := pt.Module(song).(*patcher.SongForm); ok {
+			m := sf.Model()
 			m.SetKey(0, 5) // C, phrygian
 			m.Preset("minor")
 			m.SetTarget("")        // the lines that are no section's (none of the sections has to go without its own)
@@ -233,43 +229,35 @@ func buildPatch(pt *patcher.Patcher, seed int) (out ids, err error) {
 		err = pt.SetRange(id, "", 0.25, 0.9)
 	}
 
-	// the rhythm parts: a clock, a notes module and, for the ones that play different sounds, a sequence that says which
+	// the rhythm parts: a voice each (a clock, the notes that play it and, for the ones that play different sounds, the pitches that say which)
 	division := map[string]float64{"1/16": 3, "1/32": 5}
 	dilla := float64(slices.Index(rhythm.GrooveNames(), "dilla"))
 	rhythmPart := func(name, to string, y float64, div, pattern, lanes string, keys []int, order float64, settings map[string]float64, velocity float64) {
-		clock := add("clock", "", 300, y)
-		notes := add("notes", "", 780, y)
-		nameIt(notes, name+" "+to+" notes")
-		nameIt(clock, name+" "+to)
-		text(clock, "pattern", pattern)
+		voice := add("voice", "", 300, y)
+		nameIt(voice, name+" "+to)
+		text(voice, "pattern", pattern)
 		if lanes != "" {
-			text(clock, "lanes", lanes)
+			text(voice, "lanes", lanes)
 		}
-		set := map[string]float64{"division": division[div], "seed": float64(seed % 1000)}
+		set := map[string]float64{"division": division[div], "seed": float64(seed % 1000), "velocity": velocity, "length": 0.8}
 		for k, v := range settings {
 			set[k] = v
 		}
-		apply(clock, set)
-		apply(notes, map[string]float64{"velocity": velocity, "length": 0.8})
-		connect(patcher.Cable{From: clock, To: notes})
 		if len(keys) > 1 {
-			seq := add("sequence", "", 540, y)
-			nameIt(seq, name+" "+to+" order")
 			vals := make([]string, len(keys))
 			for i, k := range keys {
 				vals[i] = fmt.Sprint(k)
 			}
-			text(seq, "values", strings.Join(vals, " "))
-			apply(seq, map[string]float64{"order": order})
-			connect(patcher.Cable{From: clock, To: seq})
-			connect(patcher.Cable{From: seq, To: notes, In: 1})
+			text(voice, "values", strings.Join(vals, " "))
+			set["order"] = order
 		} else if len(keys) == 1 {
-			apply(notes, map[string]float64{"pitch": float64(keys[0])})
+			set["pitch"] = float64(keys[0])
 		}
-		connect(patcher.Cable{From: notes, To: synth[name]})
-		out.clocks[name+" "+to] = clock
-		out.notes[name+" "+to] = notes
-		out.musicOnly = append(out.musicOnly, clock, notes)
+		apply(voice, set)
+		connect(patcher.Cable{From: voice, To: synth[name]})
+		out.clocks[name+" "+to] = voice
+		out.notes[name+" "+to] = voice
+		out.musicOnly = append(out.musicOnly, voice)
 	}
 	const shuffled, random = 1, 2
 	// the kick: a heart in the Static, a euclidean rhythm that turns a step every pass in the Fracture, a floor of four that mutates (what has a ! stays) in the Machine, an
@@ -387,11 +375,11 @@ Bare: 0.2 → 0.65 smooth
 Collapse: 0.2 → 0.65 smooth`)
 	mpc58 := float64(slices.Index(rhythm.GrooveNames(), "mpc 58"))
 	grow := func(part string, chanceLo, chanceHi float64) {
-		clock, notes := out.clocks[part], out.notes[part]
-		if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: clock, In: 0, Key: "chance"}); id != "" && err == nil {
+		voice := out.clocks[part]
+		if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: voice, In: 0, Key: "chance"}); id != "" && err == nil {
 			err = pt.SetRange(id, "", chanceLo, chanceHi)
 		}
-		if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: notes, In: 4, Key: "velocity"}); id != "" && err == nil {
+		if id := connect(patcher.Cable{Type: patcher.Mod, From: build, Out: 1, To: voice, In: 0, Key: "velocity"}); id != "" && err == nil {
 			err = pt.SetRange(id, "", 0.25, 0.8)
 		}
 	}

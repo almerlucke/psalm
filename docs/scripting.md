@@ -164,7 +164,7 @@ These follow the form of a song. One song a patch (the last made).
 
 | Module | Text | |
 |---|---|---|
-| song | `Intro 4, Verse 8, Chorus 8, Outro 4` (default) | sections with a number of bars; outputs: a trigger every bar and at every section, the section's number, and how far through it (mod). Its tiles play a section next, switch one off, repeat or loop |
+| song | `Intro 4, Verse 8, Chorus 8, Outro 4` (default) | sections with a number of bars; outputs: a trigger every bar and at every section, the section's number, and how far through it (mod). Its tiles play a section next, switch one off, repeat or loop. With `chords` it has the harmony inside it and the chord model of its window (see [controls](controls.md#panel)) |
 | lane | a curve a line: `Intro: 0 → 1`, `Chorus: 0.2 → 0.8 smooth` (`lin`, `exp`, `smooth`); default `0 → 1` | a value per section, moving through it as it plays; mod output (0-1) to any setting, or a value output |
 | automation | a line a lane: `Cutoff: 0 0.2, 6 0.8 smooth, 12 0.5 step` (a position in bars from the start, a value 0-1, then `lin`, `smooth`, `step` or `exp`); `bars` for the round without a song | lanes of points over the bars of the song, drawn on the page (the Lanes button) or typed, or recorded from a knob moved while the song plays (the ● of a lane); a mod output (0-1) for every lane (the preset says how many) |
 | gate | the sections it plays in: `Verse, Chorus`, `not Intro`, `all` | sound, notes and triggers pass in those sections only, and when it is on. Its name is a tile in the song's window. A note let go always goes through |

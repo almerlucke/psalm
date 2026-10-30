@@ -65,14 +65,31 @@ const DefaultChords = "Dm7 G7 Cmaj7 Fmaj7"
 
 // NewHarmony returns a harmony of four chords in C major, voiced from C3
 func NewHarmony() *Harmony {
+	h := newHarmony()
+	h.claim()
+	_ = h.SetChords(DefaultChords)
+	return h
+}
+
+// newHarmony is a harmony with no chords that the patch does not ask yet (a song that has one inside claims it when it has chords)
+func newHarmony() *Harmony {
 	h := &Harmony{Module: psalm.NewControl(), Low: 48}
 	h.Scale = indexOf(Scales, "major")
 	h.SetSelf(h)
 	h.song = SongOf(h.Env())
-	harmonyTracks.Store(h.Env(), h)
-	_ = h.SetChords(DefaultChords)
+	h.prog.Store(&harmonies{each: map[string]*progression{}})
 	return h
 }
+
+// clear takes the chords away
+func (h *Harmony) clear() {
+	h.text.Store("")
+	h.prog.Store(&harmonies{each: map[string]*progression{}})
+}
+
+// claim makes it the harmony of the patch (parts, melodists and rolls ask it); release gives that up
+func (h *Harmony) claim()   { harmonyTracks.Store(h.Env(), h) }
+func (h *Harmony) release() { harmonyTracks.CompareAndDelete(h.Env(), h) }
 
 func indexOf(list []string, name string) int {
 	for i, n := range list {

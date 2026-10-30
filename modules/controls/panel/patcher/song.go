@@ -1,6 +1,7 @@
 package patcher
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"regexp"
@@ -13,6 +14,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/controls/arrange"
 	"github.com/almerlucke/psalm/modules/controls/panel"
+	"github.com/almerlucke/psalm/modules/controls/panel/chordmodel"
 )
 
 // --- the song of a patch ---
@@ -168,6 +170,8 @@ type SongForm struct {
 	mu    sync.Mutex // building a form
 	text  string
 	loop  bool
+	harm  *Harmony           // the harmony inside a song made by the patcher (nil: none)
+	model *chordmodel.Module // the chord model inside it
 	tr    *arrange.Transport // the one it made
 	last  [2]int             // the section passing, the bar: sent once
 	lastB int
@@ -351,15 +355,29 @@ func (c songCues) EnableCue(i int, on bool) {
 
 // songSettings are the settings of a song module kept with a patch: repeat, jump, loop
 type songSettings struct {
-	repeat, jump, loop *panel.Param
+	repeat, jump, loop, key, scale, low *panel.Param
+}
+
+func (st songSettings) params() map[string]*panel.Param {
+	all := map[string]*panel.Param{"repeat": st.repeat, "jump": st.jump, "loop": st.loop, "key": st.key, "scale": st.scale, "low": st.low}
+	for k, p := range all {
+		if p == nil {
+			delete(all, k)
+		}
+	}
+	return all
 }
 
 func (st songSettings) Values() map[string]float64 {
-	return map[string]float64{"repeat": st.repeat.Value(), "jump": st.jump.Value(), "loop": st.loop.Value()}
+	out := map[string]float64{}
+	for k, p := range st.params() {
+		out[k] = p.Value()
+	}
+	return out
 }
 
 func (st songSettings) Apply(values map[string]float64) {
-	for key, p := range map[string]*panel.Param{"repeat": st.repeat, "jump": st.jump, "loop": st.loop} {
+	for key, p := range st.params() {
 		if v, ok := values[key]; ok {
 			p.Set(v)
 		}
@@ -374,23 +392,62 @@ const SongHelp = "a name and a number of bars a section, by commas or lines: `In
 	"its parts below the sections: the gates of the patch (sound, notes, triggers through in some sections), a tap switches one; a lane is a curve per section\n" +
 	"Ctrl+Enter (or Run) takes them; a restart starts the song again"
 
-// SongKind is the kind of song modules: the song of the patch (one at a time: the last made)
+// SongChordsHelp is what to know to type the chords of a song: the harmony inside it
+const SongChordsHelp = ChordsHelp + "\nthe chord model below draws chords for a section (Draw chords in the grid of the sections, or the buttons of its window) and writes them here"
+
+// SongKind is the kind of song modules: the song of the patch (one at a time: the last made), with its harmony (the chords per section, which the parts, melodists and rolls follow)
+// and the chord model that draws them inside it. Without chords it has no harmony; the chords the others follow are the first ones typed
 func SongKind() Kind {
 	trig := func(name string, i int) Port { return Port{Name: name, Type: Trigger, Index: i} }
 	return Kind{Name: "song", Group: "Song",
-		Outs: []Port{trig("bar", 0), trig("section", 1), {Name: "number", Type: Value, Index: 2}, {Name: "progress", Type: Mod}},
+		Outs: []Port{trig("bar", 0), trig("section", 1), {Name: "number", Type: Value, Index: 2}, {Name: "progress", Type: Mod}, {Name: "hear chords", Type: Notes, Index: 4}},
 		Make: func(string) (*Made, error) {
 			s := NewSongForm()
+			h, m := newHarmony(), newChordModel()
+			s.harm, s.model = h, m
+			var st songSettings
 			return &Made{Module: s,
-				Texts:   []Text{{Key: "sections", Label: "sections", Value: DefaultSections, Help: SongHelp}},
-				SetText: func(_, v string) error { return s.SetSections(v) },
-				Mod:     func(int) func() float64 { return s.progress },
-				Close:   s.close,
+				Texts: []Text{{Key: "sections", Label: "sections", Value: DefaultSections, Help: SongHelp}, {Key: "chords", Label: "chords", Value: "", Help: SongChordsHelp}},
+				SetText: func(k, v string) error {
+					if k != "chords" {
+						return s.SetSections(v)
+					}
+					if strings.TrimSpace(v) == "" {
+						h.release()
+						h.clear()
+						return nil
+					}
+					if err := h.SetChords(v); err != nil {
+						return err
+					}
+					h.claim()
+					return nil
+				},
+				Added: func() []psalm.Modular { return []psalm.Modular{h, m} },
+				Notes: func(targets []psalm.Receiver) { m.SetTargets(targets...) },
+				Mod:   func(int) func() float64 { return s.progress },
+				Close: func() { s.close(); h.release() },
+				// the chord model is the state of a song (a patch keeps it, and the settings of the editor with it: a module with a state does not have them set again)
+				State: func() (string, error) {
+					b, err := json.Marshal(map[string]any{"model": m.StateText(), "settings": st.Values()})
+					return string(b), err
+				},
+				SetState: func(text string) error {
+					var v struct {
+						Model    string             `json:"model"`
+						Settings map[string]float64 `json:"settings"`
+					}
+					if err := json.Unmarshal([]byte(text), &v); err != nil {
+						return err
+					}
+					st.Apply(v.Settings)
+					return m.SetStateText(v.Model)
+				},
 				Edit: func(page *panel.Panel, name, _ string) Settings {
 					page.Section("Song")
 					page.Cues(name+" sections", songCues{s}, panel.CueSlots(32))
 					page.Cues(name+" parts", partCues{s.song}, panel.CueSlots(32), panel.CueToggles()) // its gates: a tap switches one
-					st := songSettings{
+					st = songSettings{
 						repeat: page.Toggle(name+" repeat", panel.Func(func(v float64) {
 							if tr := (songCues{s}).transport(); tr != nil {
 								tr.SetRepeat(v >= 0.5)
@@ -403,8 +460,18 @@ func SongKind() Kind {
 						}, panel.Label("Jump at")),
 						loop: page.Toggle(name+" loop", panel.Func(func(v float64) { s.SetLoop(v >= 0.5) }), panel.Label("Loop"), panel.Default(1)),
 					}
+					page.Section("Harmony")
+					st.key = page.Select(name+" key", Keys, func(i int) { h.ReceiveMessage(psalm.Message{"key": i}) }, panel.Label("Key (of the numerals)"))
+					st.scale = page.Select(name+" scale", Scales, func(i int) { h.ReceiveMessage(psalm.Message{"scale": i}) }, panel.Label("Scale (of the numerals)"), panel.Default(float64(indexOf(Scales, "major"))))
+					st.low = page.Knob(name+" low", 24, 84, panel.Linear, panel.Func(func(v float64) { h.ReceiveMessage(psalm.Message{"low": v}) }), panel.Label("Lowest note"), panel.Step(1), panel.Default(48))
+					page.Section("Chords")
+					chordmodel.Add(page, name+" chords", m)
 					return st
 				},
 			}, nil
 		}}
 }
+
+// Harmony and Model are the harmony and the chord model inside a song made by the patcher (nil: the song has none)
+func (s *SongForm) Harmony() *Harmony         { return s.harm }
+func (s *SongForm) Model() *chordmodel.Module { return s.model }

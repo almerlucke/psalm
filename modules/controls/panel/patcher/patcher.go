@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/almerlucke/psalm/modules/controls/panel/chordmodel"
 	"maps"
 	"math"
 	"os"
@@ -1103,7 +1102,7 @@ type SectionInfo struct {
 }
 
 // sectionTexts are the texts that can say something per section ("Chorus: x . x x"), by the kind that has them: the rows of the grid of the sections
-var sectionTexts = map[string][]string{"clock": {"pattern"}, "part": {"notes"}, "sequence": {"values"}, "harmony": {"chords"}}
+var sectionTexts = map[string][]string{"clock": {"pattern"}, "voice": {"pattern", "values"}, "part": {"notes"}, "sequence": {"values"}, "harmony": {"chords"}, "song": {"chords"}}
 
 type state struct {
 	Nodes        []nodeState          `json:"nodes"`
@@ -1130,7 +1129,7 @@ func (pt *Patcher) state() any {
 	st := state{Cables: []*Cable{}, Selected: pt.selected, Patches: patches, Current: pt.current, Keeps: pt.dir != "", Note: pt.note,
 		Pasted: pt.pasted, PasteN: pt.pasteN, Journal: pt.journal.Text(), Lines: pt.journal.Len(), Sections: []SectionInfo{}, SectionTexts: sectionTexts}
 	for _, n := range pt.nodes {
-		if cm, ok := madeModule(n).(*chordmodel.Module); ok {
+		if cm := chordModelOf(madeModule(n)); cm != nil {
 			st.Chords = &ChordsInfo{Live: cm.State().Live}
 			break
 		}

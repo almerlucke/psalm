@@ -6,7 +6,7 @@ psalm.sectionGrid = function (send) {
 	"use strict";
 	const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 	const LABEL = /^\s*([A-Za-z][\w ]*?)\s*:(.*)$/;
-	const RANK = {harmony: 0, clock: 2, part: 3, sequence: 4};
+	const RANK = {song: 0, harmony: 0, clock: 2, voice: 2, part: 3, sequence: 4};
 
 	const root = el("div", "pt-grid"); root.hidden = true;
 	const head = el("div", "pt-grid-head");
@@ -19,6 +19,7 @@ psalm.sectionGrid = function (send) {
 	root.append(head, body, empty);
 
 	let state = null, editing = null, drag = null;
+	const pitchRows = new Set(); // the voices whose pitches are shown though they have none yet
 
 	// what a text says: its lines, each a section's or no section's
 	const parse = text => (text || "").split("\n").map(l => { const m = LABEL.exec(l); return m ? {label: m[1], text: m[2].trim()} : {label: null, text: l}; });
@@ -103,6 +104,7 @@ psalm.sectionGrid = function (send) {
 		const out = [];
 		for (const n of state.nodes) for (const key of (state.sectionTexts[n.kind] || [])) {
 			const t = (n.texts || []).find(t => t.key === key);
+			if (t && n.kind === "voice" && key === "values" && !t.value.trim() && !pitchRows.has(n.id)) continue; // a voice on its one pitch: the row is there when asked for
 			if (t) out.push({n, key, text: t.value, error: n.errors && n.errors[key] || ""});
 		}
 		out.sort((a, b) => (a.n.kind in RANK ? RANK[a.n.kind] : 9) - (b.n.kind in RANK ? RANK[b.n.kind] : 9) || Number(a.n.id.replace(/\D/g, "")) - Number(b.n.id.replace(/\D/g, "")));
@@ -128,11 +130,12 @@ psalm.sectionGrid = function (send) {
 		for (const s of sections) { const h = el("div", "pt-grid-col", s.name); h.append(el("small", "", s.bars + " bars")); table.append(h); }
 		for (const r of rows()) {
 			const label = el("div", "pt-grid-row");
-			label.append(el("b", "", (r.n.name ? r.n.name : r.n.kind) + (r.n.name ? "" : r.key === "pattern" || r.key === "notes" || r.key === "values" || r.key === "chords" || r.key === "curves" ? "" : " " + r.key)), el("small", "", (r.n.name ? r.n.kind + " " : "") + r.n.id));
+			const what = r.n.kind === "song" ? " chords" : r.n.kind === "voice" && r.key === "values" ? " pitches" : "";
+			label.append(el("b", "", (r.n.name ? r.n.name : r.n.kind) + what), el("small", "", (r.n.name ? r.n.kind + " " : "") + r.n.id));
 			label.title = "double-click to give it a name";
 			label.addEventListener("dblclick", () => { const name = window.prompt("A name for this module (empty: none)", r.n.name || ""); if (name !== null) send({name: {id: r.n.id, value: name}}); });
 			if (r.error) { label.classList.add("bad"); label.title = r.error; }
-			if (r.n.kind !== "harmony") {
+			if (r.key !== "chords" && r.key !== "values") {
 				const rt = route(r.n, state), pick = el("select", "pt-grid-on");
 				pick.title = "plays on: the instrument these notes go to";
 				pick.dataset.on = rt ? rt.inst.id : "";
@@ -142,7 +145,12 @@ psalm.sectionGrid = function (send) {
 				if (!rt && !(r.n.outs || []).some(p => p.type === "notes")) { pick.disabled = true; pick.title = "no notes come out of this module: add a notes module after it first"; }
 				pick.addEventListener("change", () => { if (pick.value === "") return; playOn(r.n, state, pick.value === "-" ? "" : pick.value); });
 				label.append(pick);
-			} else {
+				if (r.n.kind === "voice" && !pitchRows.has(r.n.id) && !(r.n.texts || []).some(t => t.key === "values" && t.value.trim())) {
+					const more = el("button", "pt-grid-more", "+ pitches"); more.title = "give it pitches to play (a note name or number a hit, in an order: C3 Eb3 G3), else it plays the pitch setting";
+					more.addEventListener("click", () => { pitchRows.add(r.n.id); build(); });
+					label.append(more);
+				}
+			} else if (r.key === "chords") {
 				const live = el("label", "pt-grid-live"), box = el("input"); box.type = "checkbox"; box.checked = !!(state.chords && state.chords.live);
 				live.title = "draw new chords by the chord model every time the song leaves a section";
 				box.addEventListener("change", () => send({chords: {action: "live", on: box.checked}}));
@@ -216,7 +224,7 @@ psalm.sectionGrid = function (send) {
 		drawB.addEventListener("click", () => send({chords: {action: "draw", section: editing.section}}));
 		const done = el("button", "", "Done"); done.addEventListener("click", closeEditor);
 		const err = el("div", "pt-grid-err", r.error || "");
-		const row = el("div", "pt-grid-edit-row"); row.append(saveB, varyB, clearB, copy); if (r.n.kind === "harmony") row.append(drawB); row.append(done);
+		const row = el("div", "pt-grid-edit-row"); row.append(saveB, varyB, clearB, copy); if (r.key === "chords") row.append(drawB); row.append(done);
 		box.append(el("div", "pt-grid-edit-title", r.n.kind + " \u00b7 " + editing.section), area, row, err);
 		setTimeout(() => area.focus(), 0);
 		return box;
@@ -232,12 +240,12 @@ psalm.sectionGrid = function (send) {
 			if (root.hidden) return;
 			if (editing && document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("pt-grid-text")) { // being typed: the cells under it follow, the box stays
 				const keep = document.activeElement, v = keep.value, s = keep.selectionStart;
-				const sig = JSON.stringify([st.sections, st.chords, rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))])]);
+				const sig = JSON.stringify([st.sections, st.chords, [...pitchRows], rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))])]);
 				if (sig === api._sig) return;
 				api._sig = sig; build(); const k = body.querySelector(".pt-grid-text"); if (k) { k.value = v; k.focus(); k.setSelectionRange(s, s); }
 				return;
 			}
-			const sig = JSON.stringify([st.sections, st.chords, rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))]), editing && [editing.row.n.id, editing.section]]);
+			const sig = JSON.stringify([st.sections, st.chords, [...pitchRows], rows().map(r => [r.n.id, r.n.name, r.key, r.text, r.error, (route(r.n, st) || {inst: {id: ""}}).inst.id, instruments(st).map(t => t.id + (t.name || "") + (t.preset || ""))]), editing && [editing.row.n.id, editing.section]]);
 			if (sig === api._sig) return;
 			api._sig = sig; build();
 		},

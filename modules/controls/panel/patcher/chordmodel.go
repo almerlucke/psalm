@@ -18,28 +18,7 @@ var patchers sync.Map // *psalm.Env -> *Patcher
 func ChordModelKind() Kind {
 	return Kind{Name: "chordmodel", Group: "Song", Outs: []Port{{Name: "notes", Type: Notes}},
 		Make: func(string) (*Made, error) {
-			m := chordmodel.New()
-			m.SetLink(chordmodel.Link{
-				Sections: func() []chordmodel.Section {
-					tr := SongOf(m.Env()).Transport()
-					if tr == nil {
-						return nil
-					}
-					var out []chordmodel.Section
-					for _, s := range tr.Form().Sections {
-						out = append(out, chordmodel.Section{Name: s.Name, Bars: s.Bars})
-					}
-					return out
-				},
-				Bake: func(section, chords string) error { return bakeChords(m.Env(), section, chords) },
-				Where: func(tick psalm.CtrlTick) (string, bool) {
-					pos, ok := SongOf(m.Env()).At(tick, m.Config().PPQ)
-					if !ok || pos.Ended {
-						return "", false
-					}
-					return pos.Section.Name, true
-				},
-			})
+			m := newChordModel()
 			return &Made{Module: m,
 				State:    func() (string, error) { return m.StateText(), nil },
 				SetState: m.SetStateText,
@@ -50,6 +29,33 @@ func ChordModelKind() Kind {
 					return noSettings{}
 				}}, nil
 		}}
+}
+
+// newChordModel is a chord model that knows the song of its patch and writes into its harmony
+func newChordModel() *chordmodel.Module {
+	m := chordmodel.New()
+	m.SetLink(chordmodel.Link{
+		Sections: func() []chordmodel.Section {
+			tr := SongOf(m.Env()).Transport()
+			if tr == nil {
+				return nil
+			}
+			var out []chordmodel.Section
+			for _, s := range tr.Form().Sections {
+				out = append(out, chordmodel.Section{Name: s.Name, Bars: s.Bars})
+			}
+			return out
+		},
+		Bake: func(section, chords string) error { return bakeChords(m.Env(), section, chords) },
+		Where: func(tick psalm.CtrlTick) (string, bool) {
+			pos, ok := SongOf(m.Env()).At(tick, m.Config().PPQ)
+			if !ok || pos.Ended {
+				return "", false
+			}
+			return pos.Section.Name, true
+		},
+	})
+	return m
 }
 
 // noSettings is the settings of a module that keeps its sound as a state
@@ -67,15 +73,23 @@ func bakeChords(env *psalm.Env, section, chords string) error {
 	pt := v.(*Patcher)
 	pt.mu.Lock()
 	id, text := "", ""
-	for _, n := range pt.nodes {
-		if n.Kind == "harmony" {
+	for _, n := range pt.nodes { // a harmony of its own first, else the chords of the song
+		if _, has := n.texts["chords"]; has && n.Kind == "harmony" {
 			id, text = n.ID, n.texts["chords"]
 			break
 		}
 	}
+	if id == "" {
+		for _, n := range pt.nodes {
+			if _, has := n.texts["chords"]; has && n.Kind == "song" {
+				id, text = n.ID, n.texts["chords"]
+				break
+			}
+		}
+	}
 	pt.mu.Unlock()
 	if id == "" {
-		return fmt.Errorf("the patch has no harmony module to write the chords to: add one")
+		return fmt.Errorf("the patch has no song or harmony to write the chords to: add one")
 	}
 	if err := pt.SetText(id, "chords", mergeChords(text, section, chords)); err != nil {
 		return err

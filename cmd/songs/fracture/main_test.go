@@ -176,7 +176,13 @@ func TestPieceNeverRepeats(t *testing.T) {
 
 	}
 	// the chords of the sections that have none of their own were drawn again as the song left the sections: the harmony has another line than it began with
-	if got := pt.Texts(ids.harmony)[0].Value; got == harmonyText {
+	got := ""
+	for _, x := range pt.Texts(ids.harmony) {
+		if x.Key == "chords" {
+			got = x.Value
+		}
+	}
+	if got == harmonyText {
 		t.Error("the chord model wrote nothing to the harmony")
 	}
 }

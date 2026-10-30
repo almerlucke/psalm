@@ -300,9 +300,9 @@ func TestPageSectionGrid(t *testing.T) {
 	tb := b.Open(t, base, `document.querySelectorAll(".pt-node").length >= 2`)
 	tb.Size(1300, 1000)
 	tb.Eval(`document.querySelector(".pt-grid-btn").click()`)
-	tb.WaitFor(`document.querySelectorAll(".pt-grid-cell").length === 2 && document.querySelectorAll(".pt-grid-col").length === 2`, "a row with a cell for each section")
+	tb.WaitFor(`document.querySelectorAll(".pt-grid-cell").length === 4 && document.querySelectorAll(".pt-grid-col").length === 2`, "the chords of the song and the row of the clock, a cell for each section")
 	cell := func(i int) string {
-		return `document.querySelectorAll(".pt-grid-cell")[` + strconv.Itoa(i) + `]`
+		return `document.querySelectorAll(".pt-grid-cell")[` + strconv.Itoa(i+2) + `]` // the chords of the song come first
 	}
 	text := func(id, key string) string {
 		for _, x := range pt.Texts(id) {
@@ -316,7 +316,7 @@ func TestPageSectionGrid(t *testing.T) {
 	if err := pt.SetName(clk, "kick"); err != nil {
 		t.Fatal(err)
 	}
-	tb.WaitFor(`document.querySelector(".pt-grid-row b")?.textContent === "kick" && /^clock/.test(document.querySelector(".pt-grid-row small").textContent)`, "the name on the row")
+	tb.WaitFor(`[...document.querySelectorAll(".pt-grid-row")].some(r => r.querySelector("b").textContent === "kick" && /^clock/.test(r.querySelector("small").textContent))`, "the name on the row")
 	// edit the verse
 	tb.Eval(cell(0) + `.click()`)
 	tb.WaitFor(`!!document.querySelector(".pt-grid-text")`, "the editor of the cell")
@@ -401,25 +401,23 @@ func TestPageSectionGridAddsAVoiceAndChords(t *testing.T) {
 		const on = bar.querySelectorAll("select")[1]; on.value = "` + inst + `"; on.dispatchEvent(ev("change"));
 		[...bar.querySelectorAll("button")].find(b => b.textContent === "Add voice").click();
 	})()`)
-	paneltest.Eventually(t, "a clock and a notes module named hats, playing on the instrument", func() bool {
-		var clock, notes string
+	paneltest.Eventually(t, "a voice named hats, playing on the instrument", func() bool {
+		voice := ""
 		for _, n := range pt.Nodes() {
-			switch {
-			case n.Kind == "clock" && n.Name == "hats":
-				clock = n.ID
-			case n.Kind == "notes" && n.Name == "hats notes":
-				notes = n.ID
+			if n.Kind == "voice" && n.Name == "hats" {
+				voice = n.ID
 			}
 		}
-		cabled := map[string]bool{}
 		for _, c := range pt.Cables() {
-			cabled[c.From+">"+c.To] = true
+			if voice != "" && c.From == voice && c.To == inst {
+				return true
+			}
 		}
-		return clock != "" && notes != "" && cabled[clock+">"+notes] && cabled[notes+">"+inst]
+		return false
 	})
 	tb.WaitFor(`[...document.querySelectorAll(".pt-grid-row b")].some(b => b.textContent === "hats")`, "the voice a row of the grid")
 	// the chords: drawn for the Chorus, which had none
-	tb.Eval(`(() => { const rows = [...document.querySelectorAll(".pt-grid-cell")]; rows[1].click(); })()`)
+	tb.Eval(`(() => { const rows = [...document.querySelectorAll(".pt-grid-cell")]; rows[3].click(); })()`)
 	tb.WaitFor(`document.querySelector(".pt-grid-edit-title")?.textContent.endsWith("Chorus")`, "the Chorus of the harmony in the editor")
 	tb.Eval(`[...document.querySelectorAll(".pt-grid-edit-row button")].find(b => b.textContent === "Draw chords").click()`)
 	paneltest.Eventually(t, "chords for the Chorus", func() bool {
@@ -430,11 +428,4 @@ func TestPageSectionGridAddsAVoiceAndChords(t *testing.T) {
 		}
 		return false
 	})
-	hasModel := false
-	for _, n := range pt.Nodes() {
-		hasModel = hasModel || n.Kind == "chordmodel"
-	}
-	if !hasModel {
-		t.Error("the chord model was not made")
-	}
 }

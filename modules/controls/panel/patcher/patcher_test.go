@@ -312,8 +312,8 @@ func TestChordsLiveFromTheGrid(t *testing.T) {
 	for _, n := range pt.Nodes() {
 		kinds[n.Kind] = true
 	}
-	if !kinds["chordmodel"] || !kinds["harmony"] {
-		t.Errorf("the model and the harmony are made: %v", kinds)
+	if !kinds["song"] || kinds["chordmodel"] || kinds["harmony"] {
+		t.Errorf("a song with the model and the harmony inside it is made: %v", kinds)
 	}
 	if err := pt.Chords("nope", "", false); err == nil {
 		t.Error("an action it does not know")
@@ -324,5 +324,62 @@ func TestChordsLiveFromTheGrid(t *testing.T) {
 	ids, err := pt.AddVoice("melody", "lead", "")
 	if err != nil || len(ids) != 1 {
 		t.Errorf("a melody: %v %v", ids, err)
+	}
+}
+
+// a song has the harmony and the chord model inside it: its chords are the harmony of the patch, and a patch kept has them, the model and the key
+func TestSongHasTheHarmonyInside(t *testing.T) {
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}), patcher.Keep(t.TempDir()))
+	song, _ := pt.Add("song", "", 0, 0)
+	if patcher.HarmonyOf(p.Env()) != nil {
+		t.Error("a song without chords claims the harmony of the patch")
+	}
+	if err := pt.SetText(song, "sections", "A 2, B 2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := pt.SetText(song, "chords", "A: Dm7 G7\nB: Cmaj7"); err != nil || pt.TextError(song, "chords") != "" {
+		t.Fatal(err, pt.TextError(song, "chords"))
+	}
+	h := patcher.HarmonyOf(p.Env())
+	if h == nil || len(h.Spans("A", 8, 4)) == 0 {
+		t.Fatalf("the chords of the song are not the harmony of the patch: %v", h)
+	}
+	sf := pt.Module(song).(*patcher.SongForm)
+	if sf.Model() == nil || sf.Harmony() != h {
+		t.Fatal("the song has no model or harmony inside")
+	}
+	sf.Model().Preset("minor")
+	pt.SettingsOf(song).Apply(map[string]float64{"key": 5, "low": 40})
+	if err := pt.Save("with chords"); err != nil {
+		t.Fatal(err)
+	}
+	pt.Clear()
+	if err := pt.Load("with chords"); err != nil {
+		t.Fatal(err)
+	}
+	var back string
+	for _, n := range pt.Nodes() {
+		if n.Kind == "song" {
+			back = n.ID
+		}
+	}
+	if back == "" {
+		t.Fatal("no song after loading")
+	}
+	text := ""
+	for _, x := range pt.Texts(back) {
+		if x.Key == "chords" {
+			text = x.Value
+		}
+	}
+	if text != "A: Dm7 G7\nB: Cmaj7" {
+		t.Errorf("the chords after loading: %q", text)
+	}
+	if got := pt.Module(back).(*patcher.SongForm).Model().State().Preset; got != "minor" {
+		t.Errorf("the model after loading is %q", got)
+	}
+	if v := pt.SettingsOf(back).Values(); v["key"] != 5 || v["low"] != 40 {
+		t.Errorf("the settings after loading: %v", v)
 	}
 }

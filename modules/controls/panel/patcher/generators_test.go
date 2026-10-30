@@ -324,3 +324,38 @@ func TestClockPatterns(t *testing.T) {
 		}
 	}
 }
+
+// a voice plays what the clock, the sequence and the notes play with the cables between them: the same notes on the same samples, per section of the song
+func TestVoiceIsTheThreeInOne(t *testing.T) {
+	run := func(voice bool) *played {
+		r := newHarmonyRig(t, "A 1, B 1", "A: Dm7\nB: G7")
+		pattern := "A: x . x x . x . .\nB: x x . x"
+		values := "A: C3 E3 G3\nB: D3 F3"
+		if voice {
+			v := r.add("voice")
+			for k, text := range map[string]string{"pattern": pattern, "values": values} {
+				if err := r.pt.SetText(v, k, text); err != nil || r.pt.TextError(v, k) != "" {
+					t.Fatal(k, err, r.pt.TextError(v, k))
+				}
+			}
+			r.connect(patcher.Cable{From: v, To: r.add("rec")})
+		} else {
+			clock, seq, notes := r.add("clock"), r.add("sequence"), r.add("notes")
+			_ = r.pt.SetText(clock, "pattern", pattern)
+			_ = r.pt.SetText(seq, "values", values)
+			r.connect(patcher.Cable{From: clock, To: seq})
+			r.connect(patcher.Cable{From: clock, To: notes})
+			r.connect(patcher.Cable{From: seq, To: notes, In: 1})
+			r.connect(patcher.Cable{From: notes, To: r.add("rec")})
+		}
+		r.run(4.1)
+		return r.rec
+	}
+	trio, one := run(false), run(true)
+	if len(trio.pitches) < 8 {
+		t.Fatalf("the three play %d notes", len(trio.pitches))
+	}
+	if !slices.Equal(trio.pitches, one.pitches) || !slices.Equal(trio.at, one.at) {
+		t.Errorf("the voice plays %v on %v, the three %v on %v", one.pitches, one.at, trio.pitches, trio.at)
+	}
+}
