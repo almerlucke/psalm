@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"math"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/almerlucke/psalm"
@@ -163,6 +165,15 @@ func TestPieceNeverRepeats(t *testing.T) {
 		if n := pt.Module(id).(*patcher.Melodist).Passes(); n < 2 {
 			t.Errorf("the toy box layer %d made %d passes", i, n)
 		}
+		var v struct {
+			Plays []string `json:"plays"`
+		}
+		raw, _ := json.Marshal(pt.Module(id).(*patcher.Melodist).View())
+		_ = json.Unmarshal(raw, &v)
+		if len(v.Plays) == 0 || slices.Contains(v.Plays, "Collapse") || slices.Contains(v.Plays, "Bare") {
+			t.Errorf("the toy box layer %d plays in %v: not in the Bare and the Collapse", i, v.Plays)
+		}
+
 	}
 	// the chords of the sections that have none of their own were drawn again as the song left the sections: the harmony has another line than it began with
 	if got := pt.Texts(ids.harmony)[0].Value; got == harmonyText {

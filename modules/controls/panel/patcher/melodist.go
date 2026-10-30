@@ -637,6 +637,16 @@ func (m *Melodist) Message(raw json.RawMessage) {
 	}
 }
 
+// SetPlays sets the sections it plays in (none: all of them); a pass is made for every section all the same, so the tune is there when it comes in
+func (m *Melodist) SetPlays(sections ...string) {
+	if len(sections) == 0 {
+		m.plays.Store(nil)
+		return
+	}
+	pl := slices.Clone(sections)
+	m.plays.Store(&pl)
+}
+
 // melodistState is what a patch keeps of a melodist: the settings, the grammar and the sections it plays in
 type melodistState struct {
 	Config  map[string]float64 `json:"cfg"`

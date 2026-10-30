@@ -356,18 +356,19 @@ Collapse: @v*16`)
 	layer := func(name, voice string, y float64, sections string, set map[string]float64) {
 		m := add("melodist", "", 300, y)
 		nameIt(m, "melodist "+name)
-		g := add("gate", "", 540, y)
-		text(g, "name", name)
-		text(g, "sections", sections)
 		base := map[string]float64{"form": 3, "contour": 1, "rhythm": 0, "phrase": 2, "steps": 0.85, "chord": 0.85, "velocity": 0.5, "key": 0, "scale": 0}
 		for k, v := range set {
 			base[k] = v
 		}
 		apply(m, base)
-		connect(patcher.Cable{From: m, To: g, In: 1})
-		connect(patcher.Cable{From: g, Out: 1, To: synth[voice]})
+		connect(patcher.Cable{From: m, To: synth[voice]})
+		if err == nil {
+			if mm, ok := pt.Module(m).(*patcher.Melodist); ok {
+				mm.SetPlays(strings.Split(sections, ", ")...) // the sections it plays in
+			}
+		}
 		out.toybox = append(out.toybox, m)
-		out.musicOnly = append(out.musicOnly, m, g)
+		out.musicOnly = append(out.musicOnly, m)
 	}
 	layer("tune", "toybox", 640, "Static, Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 3, "steps": 0.92, "velocity": 0.42, "rhythm": 1, "grid": 1.5, "density": 0.1, "rest": 0.4, "low": 70, "high": 88, "mutate": 0.12, "seed": float64(seed % 10000)})
 	layer("answer", "toybox", 700, "Fracture, Ridge, Rift", map[string]float64{"dynamics": 0.8, "form": 4, "contour": 2, "steps": 0.92, "rhythm": 1, "grid": 2, "density": 0.1, "rest": 0.55, "low": 60, "high": 79, "mutate": 0.3, "velocity": 0.36, "seed": float64(seed%10000 + 17)})
