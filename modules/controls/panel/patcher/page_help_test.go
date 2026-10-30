@@ -67,7 +67,7 @@ func helpExamples(t *testing.T, text string) []helpExample {
 	return out
 }
 
-// every module of the Song, Generators, Synths and Effects groups has a help page, and every example of a page loads into a module of its kind: its texts are read and its
+// every module of the Song, Generators, Synths, Effects, Modulation, Mix and Sources groups has a help page, and every example of a page loads into a module of its kind: its texts are read and its
 // settings are the module's
 func TestHelpPages(t *testing.T) {
 	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
@@ -76,7 +76,8 @@ func TestHelpPages(t *testing.T) {
 	pt := patcher.New(p, panel.New(p, "Help"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
 	need := map[string]bool{"clock": true, "sequence": true, "notes": true, "melodist": true}
 	for _, k := range catalog.Kinds(catalog.Config{Input: midi.NewQueue()}) {
-		if k.Group == "Song" || k.Group == "Generators" || k.Group == "Synths" || k.Group == "Effects" {
+		if k.Group == "Song" || k.Group == "Generators" || k.Group == "Synths" || k.Group == "Effects" ||
+			k.Group == "Modulation" || k.Group == "Mix" || k.Group == "Sources" {
 			need[k.Name] = true
 		}
 	}
