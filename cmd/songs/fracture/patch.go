@@ -80,14 +80,19 @@ func strips() []strip {
 		{name: "metal", kind: "modal", preset: "anvil", level: 0.35, pan: -0.35, reverb: 0.3, echo: 0.35, air: 0.2},
 	}
 	// the samplers: a blurry vocal cut into pieces that stutter and fall over each other, and the strokes of a tabla loop cut up and played in any order, both through the crusher
-	for _, c := range []*cutSound{&vocalCut, &tablaCut} {
+	for _, c := range []*cutSound{&vocalCut, &tablaCut, &rivetCut, &modemCut} {
 		if !c.there() {
 			continue
 		}
 		s := strip{name: c.name, kind: "sampler", cut: c, level: 0.7, reverb: 0.2, echo: 0.35, grit: 0.4, insert: "crusher", insertSet: map[string]float64{"bits": 9, "rate": 18000, "mix": 0.5}}
-		if c == &tablaCut {
+		switch c {
+		case &tablaCut:
 			s.pan, s.level = -0.15, 0.6
-		} else {
+		case &rivetCut:
+			s.pan, s.level, s.insertSet = -0.4, 0.8, map[string]float64{"bits": 10, "rate": 22050, "mix": 0.35}
+		case &modemCut:
+			s.pan, s.level = 0.5, 0.6
+		default:
 			s.pan, s.level = 0.3, 1.1 // the vocal chops, louder
 		}
 		all = append(all, s)
@@ -315,6 +320,28 @@ Bare: M(. . x . . x . . . x . . x . . .;16;14/2)
 Collapse: M(. . x . . x . . . x . . x . . .;16;30/2)`, "prob: 100 50 80\nvel: 100 70 85 60\nshift: 0 10 -8 0 6", keys, random, map[string]float64{"mutate": 0.3, "groove": dilla, "drift": 0.05}, 0.65)
 	} else if kerr != nil {
 		err = kerr
+	}
+	// the chirps of a dial-up modem as the glitch of the Static and the Rift
+	if rivetCut.there() {
+		if keys, kerr := rivetCut.keys(); kerr == nil && len(keys) > 1 {
+			// the pieces are long (up to a second): few hits, so that they ring into each other
+			rhythmPart("rivets", "strikes", 580, "1/16", `Fracture: E(3,16,+1)%2/3
+Ridge: E(4,16,+1)%2/3
+Rift: E(3,16,+1)
+Bare: E(3,16,+1)
+Collapse: E(5,16,+1)%2/3`, "prob: 100 70 90\nvel: 100 60 80 50", keys, random, map[string]float64{"mutate": 0.3, "groove": dilla, "drift": 0.05}, 0.6)
+		} else if kerr != nil {
+			err = kerr
+		}
+	}
+	if modemCut.there() {
+		if keys, kerr := modemCut.keys(); kerr == nil && len(keys) > 1 {
+			rhythmPart("modem", "chirps", 650, "1/32", `Static: M(. . . x . . . . . x . . . . x .;16;5/2)
+Rift: M(. . . x . . . . . x . . . . x .;16;13/2)
+Bare: M(. . . x . . . . . x . . . . x .;16;13/2)`, "prob: 100 40 70\nvel: 100 60 80", keys, shuffled, map[string]float64{"mutate": 0.3, "drift": 0.05}, 0.5)
+		} else if kerr != nil {
+			err = kerr
+		}
 	}
 
 	// the bass and the pad play the chords: notes written relative to them (@b the bass, @1 the root, @5 the fifth), a figure that mutates; the pad holds the chord voice led from the
