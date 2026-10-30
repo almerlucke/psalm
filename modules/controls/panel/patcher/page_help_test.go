@@ -67,7 +67,7 @@ func helpExamples(t *testing.T, text string) []helpExample {
 	return out
 }
 
-// every module of the Song group (and the generators it is made of) has a help page, and every example of a page loads into a module of its kind: its texts are read and its
+// every module of the Song and Generators groups has a help page, and every example of a page loads into a module of its kind: its texts are read and its
 // settings are the module's
 func TestHelpPages(t *testing.T) {
 	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: 256})
@@ -76,7 +76,7 @@ func TestHelpPages(t *testing.T) {
 	pt := patcher.New(p, panel.New(p, "Help"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
 	need := map[string]bool{"clock": true, "sequence": true, "notes": true, "melodist": true}
 	for _, k := range catalog.Kinds(catalog.Config{Input: midi.NewQueue()}) {
-		if k.Group == "Song" {
+		if k.Group == "Song" || k.Group == "Generators" {
 			need[k.Name] = true
 		}
 	}
