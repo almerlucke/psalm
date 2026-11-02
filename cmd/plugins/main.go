@@ -1,11 +1,16 @@
-// clap lists the CLAP plugins on this computer and plays a chord on one, to a WAV file:
+// plugins lists the CLAP and VST3 plugins on this computer and plays a chord on one, to a WAV file:
 //
-//	go run ./cmd/clap                                          list the plugins (the places searched are in the doc of modules/clap)
-//	go run ./cmd/clap -plugin "Surge XT" -params               and the parameters of one
-//	go run ./cmd/clap -plugin "Surge XT" -render chord.wav     a chord (-notes 60,64,67.02 -seconds 4); pitches may lie between the keys
-//	go run ./cmd/clap -plugin "Surge XT" -preset pluck.txt -save editors-presets/clap   make a preset of a text (lines "a osc 1 type = Sine", "a amp eg attack = 5 ms")
-//	go run ./cmd/clap -plugin "Surge XT" -presets              the plugin's own presets (Surge XT needs its data: see docs/clap.md); -load "Name" -render x.wav plays one
-//	go run ./cmd/clap -dir ~/plugins                           search another directory
+//	go run ./cmd/plugins                                         list the plugins of both formats (the places searched are in the doc of modules/clap and modules/vst3)
+//	go run ./cmd/plugins -format vst3                            only those of one format (clap or vst3)
+//	go run ./cmd/plugins -plugin "Surge XT" -params              the parameters of one
+//	go run ./cmd/plugins -plugin "Surge XT" -render chord.wav    a chord (-notes 60,64,67.02 -seconds 4); pitches may lie between the keys
+//	go run ./cmd/plugins -plugin "Surge XT" -preset pluck.txt -save editors-presets/clap   make a preset of a text (lines "a osc 1 type = Sine", "a amp eg attack = 5 ms")
+//	go run ./cmd/plugins -plugin "Surge XT" -presets             the plugin's own presets (Surge XT needs its data: see docs/clap.md); -load "Name" -render x.wav plays one
+//	go run ./cmd/plugins -plugin "Surge XT" -explore "a osc 1 type"   what a parameter shows over its range
+//	go run ./cmd/plugins -plugin "Name" -window 10               show the window of the plugin for ten seconds
+//	go run ./cmd/plugins -dir ~/plugins                          search another directory
+//
+// A plugin is found by its name or its id (a class id for VST3); one that is in both formats is the CLAP one, unless -format says vst3.
 package main
 
 import (
@@ -23,9 +28,76 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/clap"
+	"github.com/almerlucke/psalm/modules/vst3"
+	"github.com/almerlucke/psalm/params"
 )
 
+// plugin is what the two hosts have in common
+type plugin interface {
+	Free()
+	Describe() params.Set
+	LoadPreset(i int) error
+	HasWindow() bool
+	ShowWindow() error
+	WindowOpen() bool
+	ReceiveMessage(msg psalm.Message)
+	ResetRun()
+	Synthesize()
+	Output(index int) *psalm.Socket
+	Text(key string, value float64) string
+	Resolve(key, text string) (full string, value float64, err error)
+}
+
+// found is a plugin on this computer: how to list it and how to make it
+type found struct {
+	format, name, id, vendor, kind, path string
+	make                                 func() (plugin, error)
+}
+
+// presetInfo is a preset the plugin has of its own
+type presetInfo struct{ category, name, creator string }
+
+// presetsOf lists the presets of a plugin of either format
+func presetsOf(pl plugin) []presetInfo {
+	var out []presetInfo
+	switch p := pl.(type) {
+	case *clap.Plugin:
+		for _, x := range p.Presets() {
+			out = append(out, presetInfo{x.Category, x.Name, x.Creator})
+		}
+	case *vst3.Plugin:
+		for _, x := range p.Presets() {
+			out = append(out, presetInfo{x.Category, x.Name, ""})
+		}
+	}
+	return out
+}
+
+// scan lists the plugins of the formats asked for ("": both)
+func scan(format, dir string) (list []found, searched []string) {
+	var dirs []string
+	if dir != "" {
+		dirs = []string{dir}
+	}
+	if format == "" || format == "clap" {
+		for _, d := range clap.Scan(dirs...) {
+			list = append(list, found{"clap", d.Name, d.ID, d.Vendor, strings.Join(d.Features, ","), d.Path,
+				func() (plugin, error) { return clap.New(d) }})
+		}
+		searched = append(searched, clap.SearchPath()...)
+	}
+	if format == "" || format == "vst3" {
+		for _, d := range vst3.Scan(dirs...) {
+			list = append(list, found{"vst3", d.Name, d.CID, d.Vendor, d.Categories, d.Path,
+				func() (plugin, error) { return vst3.New(d) }})
+		}
+		searched = append(searched, vst3.SearchPath()...)
+	}
+	return list, searched
+}
+
 func main() {
+	format := flag.String("format", "", "only the plugins of this format: clap or vst3 (default: both)")
 	dir := flag.String("dir", "", "search this directory instead of the usual ones")
 	name := flag.String("plugin", "", "the plugin to use (its name or id)")
 	showPresets := flag.Bool("presets", false, "list the presets the plugin has of its own")
@@ -42,33 +114,36 @@ func main() {
 	set := flag.String("set", "", "parameters to set before it plays: key=value, separated by a semicolon")
 	flag.Parse()
 
-	var dirs []string
-	if *dir != "" {
-		dirs = []string{*dir}
+	if *format != "" && *format != "clap" && *format != "vst3" {
+		log.Fatalf("no format %q: clap or vst3", *format)
 	}
-	found := clap.Scan(dirs...)
+	list, searched := scan(*format, *dir)
 	if *name == "" {
-		for _, d := range found {
-			fmt.Printf("%-28s %-12s %-14s %s\n", d.Name, d.Vendor, strings.Join(d.Features, ","), d.Path)
+		for _, d := range list {
+			fmt.Printf("%-5s %-28s %-14s %-22s %s\n", d.format, d.name, d.vendor, d.kind, d.path)
 		}
-		if len(found) == 0 {
-			fmt.Println("no plugins in", clap.SearchPath())
+		if len(list) == 0 {
+			fmt.Println("no plugins in", strings.Join(searched, ", "))
 		}
 		return
 	}
-	var d *clap.Descriptor
-	for i := range found {
-		if found[i].Name == *name || found[i].ID == *name {
-			d = &found[i]
-			break
+	var d *found
+	for i := range list {
+		if list[i].name != *name && list[i].id != *name {
+			continue
 		}
+		if d != nil {
+			fmt.Fprintf(os.Stderr, "%q is in both formats: using %s (-format %s for the other)\n", *name, d.format, list[i].format)
+			continue
+		}
+		d = &list[i]
 	}
 	if d == nil {
 		log.Fatalf("no plugin %q", *name)
 	}
 
 	psalm.PushConfig(psalm.Config{BPM: 120, PPQ: 240, SampleRate: 44100, BufferSize: *buffer})
-	pl, err := clap.New(*d)
+	pl, err := d.make()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,29 +157,30 @@ func main() {
 		fmt.Println("the window is open:", pl.WindowOpen())
 		return
 	}
+	presets := presetsOf(pl)
 	if *showPresets {
-		for i, p := range pl.Presets() {
-			fmt.Printf("%4d  %-16s %-36s %s\n", i, p.Category, p.Name, p.Creator)
+		for i, p := range presets {
+			fmt.Printf("%4d  %-16s %-36s %s\n", i, p.category, p.name, p.creator)
 		}
-		fmt.Println(len(pl.Presets()), "presets")
+		fmt.Println(len(presets), "presets")
 	}
 	if *loadPreset != "" {
-		found := -1
-		for i, p := range pl.Presets() {
-			if p.Name == *loadPreset || (found < 0 && strings.HasPrefix(strings.ToLower(p.Name), strings.ToLower(*loadPreset))) {
-				found = i
-				if p.Name == *loadPreset {
+		at := -1
+		for i, p := range presets {
+			if p.name == *loadPreset || (at < 0 && strings.HasPrefix(strings.ToLower(p.name), strings.ToLower(*loadPreset))) {
+				at = i
+				if p.name == *loadPreset {
 					break
 				}
 			}
 		}
-		if found < 0 {
+		if at < 0 {
 			log.Fatalf("no preset %q", *loadPreset)
 		}
-		if err := pl.LoadPreset(found); err != nil {
+		if err := pl.LoadPreset(at); err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println("loaded", pl.Presets()[found].Name)
+		fmt.Println("loaded", presets[at].name)
 	}
 	if *showParams {
 		for _, p := range pl.Describe().Params {
@@ -196,7 +272,7 @@ func main() {
 
 // readPreset reads a text of settings: a line "key = what the plugin shows" (the key may be the end of one), # starts a comment, "# name: Pluck" names the preset
 // (else the file does)
-func readPreset(pl *clap.Plugin, file string) (name string, settings map[string]float64, err error) {
+func readPreset(pl plugin, file string) (name string, settings map[string]float64, err error) {
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return "", nil, err

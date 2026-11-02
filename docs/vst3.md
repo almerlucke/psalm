@@ -1,6 +1,6 @@
 # VST3 plugins
 
-Psalm hosts [VST3](https://steinbergmedia.github.io/vst3_dev_portal) plugins (a prototype, on Linux), next to the [CLAP plugins](clap.md): an instrument or an effect from a `.vst3` bundle is a module like any other. The host is `modules/vst3` (a C++ layer over the interface headers of the VST3 SDK, which are MIT licensed and kept in `modules/vst3/include/pluginterfaces`), the patcher has two kinds for what it finds, and `cmd/vst3` lists and tries plugins. **Building it needs a C++ compiler** (`g++`) as well as a C compiler.
+Psalm hosts [VST3](https://steinbergmedia.github.io/vst3_dev_portal) plugins (a prototype, on Linux), next to the [CLAP plugins](clap.md): an instrument or an effect from a `.vst3` bundle is a module like any other. The host is `modules/vst3` (a C++ layer over the interface headers of the VST3 SDK, which are MIT licensed and kept in `modules/vst3/include/pluginterfaces`), the patcher has two kinds for what it finds, and `cmd/plugins` lists and tries plugins. **Building it needs a C++ compiler** (`g++`) as well as a C compiler.
 
 It does what the CLAP host does, in the same way: what carries over is described in [CLAP](clap.md#what-the-host-does-for-a-plugin) (state in the patch, the knobs following the plugin, ports and a side chain, tempo and position, the plugin's own window by a double click, crash containment, one main thread for the plugins). This page is about what is different.
 
@@ -11,7 +11,7 @@ It does what the CLAP host does, in the same way: what carries over is described
 ## In the patcher
 
 - **vst3** (Synths): the instruments, each a preset of the kind; **vst3 fx** (Effects): the effects.
-- The parameters of a plugin are its settings (a message moves one by the lower case name of the parameter: `set({"filter cutoff": 0.4})`; `go run ./cmd/vst3 -plugin "Name" -params` lists them). A plugin with more than forty parameters gets a **Main** group at the top, as CLAP plugins do, and the parameters of a plugin are grouped by its units.
+- The parameters of a plugin are its settings (a message moves one by the lower case name of the parameter: `set({"filter cutoff": 0.4})`; `go run ./cmd/plugins -format vst3 -plugin "Name" -params` lists them). A plugin with more than forty parameters gets a **Main** group at the top, as CLAP plugins do, and the parameters of a plugin are grouped by its units.
 - **Presets**: a plugin's programs (its list of sounds, selected by a parameter) and the files made for it (`presets/<vendor>/<plugin>/*.vstpreset` in `~/.vst3`, `/usr/share/vst3` and `/usr/local/share/vst3`, and `$VST3_PRESET_PATH`) are in a **Preset** list at the top of its settings. Many plugins have neither: Surge XT keeps its patches in its own folders and offers them to a host as CLAP presets, not as VST3 ones.
 
 ## What is different from CLAP

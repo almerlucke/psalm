@@ -1,6 +1,6 @@
 # CLAP plugins
 
-Psalm hosts [CLAP](https://cleveraudio.org) plugins (a prototype, on Linux): an instrument or an effect from a `.clap` file is a module like any other. The host is `modules/clap` (C glue over the CLAP headers in `modules/clap/include`, which are MIT licensed), the patcher has two kinds for what it finds, and `cmd/clap` lists and tries plugins.
+Psalm hosts [CLAP](https://cleveraudio.org) plugins (a prototype, on Linux): an instrument or an effect from a `.clap` file is a module like any other. The host is `modules/clap` (C glue over the CLAP headers in `modules/clap/include`, which are MIT licensed), the patcher has two kinds for what it finds, and `cmd/plugins` lists and tries plugins.
 
 ## Where plugins are searched for
 
@@ -11,30 +11,32 @@ Psalm hosts [CLAP](https://cleveraudio.org) plugins (a prototype, on Linux): an 
 - **clap** (Synths): the instruments, each a preset of the kind. It takes the notes of the patcher like any synth, so a keyboard, a sequence or a script can play it. A pitch between the keys (just intonation, a bend) goes to the plugin as the *tuning* note expression of the note, so a plugin that supports it sounds as tuned (Surge XT does).
 - **clap fx** (Effects): the effects, with the audio on their input.
 
-A plugin with more than forty parameters gets a group "Main" at the top of its settings (the first parameter with volume, gain, cutoff, resonance, attack, decay, sustain, release, drive, mix, reverb, delay or width in its name, the ones of its filter, amplifier or master first); in the editor the groups of a synth with more than a hundred settings are closed, a click on a title opens one. The parameters of a plugin are its settings, described like those of any synth (the editor draws a knob for each, a mod cable can move one). A message moves one by the key, the lower case name of the parameter with the group in front: `set({"filter 1 cutoff": 0.4})` from a script. `go run ./cmd/clap -plugin "Surge XT" -params` lists the keys. Surge XT has 775 of them.
+A plugin with more than forty parameters gets a group "Main" at the top of its settings (the first parameter with volume, gain, cutoff, resonance, attack, decay, sustain, release, drive, mix, reverb, delay or width in its name, the ones of its filter, amplifier or master first); in the editor the groups of a synth with more than a hundred settings are closed, a click on a title opens one. The parameters of a plugin are its settings, described like those of any synth (the editor draws a knob for each, a mod cable can move one). A message moves one by the key, the lower case name of the parameter with the group in front: `set({"filter 1 cutoff": 0.4})` from a script. `go run ./cmd/plugins -plugin "Surge XT" -params` lists the keys. Surge XT has 775 of them.
 
-## cmd/clap
+## cmd/plugins
+
+One tool for CLAP and VST3 plugins (`-format clap` or `-format vst3` to look at one format; a plugin that is in both is the CLAP one unless the format says otherwise; see also [VST3](vst3.md)):
 
 ```
-go run ./cmd/clap                                        list the plugins
-go run ./cmd/clap -plugin "Surge XT" -params             and its parameters
-go run ./cmd/clap -plugin "Surge XT" -render chord.wav -notes 60,64,67.02 -seconds 4 -set "key=value;..."
+go run ./cmd/plugins                                        list the plugins
+go run ./cmd/plugins -plugin "Surge XT" -params             and its parameters
+go run ./cmd/plugins -plugin "Surge XT" -render chord.wav -notes 60,64,67.02 -seconds 4 -set "key=value;..."
 ```
 
 ## The plugin's own presets
 
-A plugin that has presets (CLAP's preset discovery: the places it keeps them, and ones inside it) gets a **Preset** group at the top of its settings with a list to choose from: the kind of sound (its category, or the folder the file is in) and the name, sorted ("Plucks / Taped Plucks"). The list has "—" (none) first: what the editor is told after a state is loaded, or when the plugin got its sound some other way (its own window). Choosing one loads it into the plugin on a thread of its own. The knobs of the editor keep the values they had: they do not follow what a preset sets inside the plugin. `go run ./cmd/clap -plugin "Surge XT" -presets` lists them, `-load "Taped Plucks" -notes 60,64,67 -render x.wav` plays one.
+A plugin that has presets (CLAP's preset discovery: the places it keeps them, and ones inside it) gets a **Preset** group at the top of its settings with a list to choose from: the kind of sound (its category, or the folder the file is in) and the name, sorted ("Plucks / Taped Plucks"). The list has "—" (none) first: what the editor is told after a state is loaded, or when the plugin got its sound some other way (its own window). Choosing one loads it into the plugin on a thread of its own. The knobs of the editor keep the values they had: they do not follow what a preset sets inside the plugin. `go run ./cmd/plugins -plugin "Surge XT" -presets` lists them, `-load "Taped Plucks" -notes 60,64,67 -render x.wav` plays one.
 
 Surge XT keeps its presets (about 3000 of them, and the wavetables they use) in its data folder, which the plugins-only download does not have. Take the full download (`surge-xt-linux-x86_64-*.tar.gz` of the [Surge XT releases](https://github.com/surge-synthesizer/releases-xt/releases)): its `lib/clap/*.clap` go in `~/.clap` and its `share/surge-xt` in `~/.local/share/surge-xt`, or leave them where they are and run with `CLAP_PATH=<where>/lib/clap SURGE_DATA_HOME=<where>/share/surge-xt`.
 
 ## Presets of your own, made from text
 
-The presets of the plugins on this page are in `modules/clap/presets/` as text, a line a setting, written the way the plugin shows its values: `a osc 1 type = Wavetable`, `a amp eg decay = 450 ms`, `a common a volume = -2 dB` (`@0.7` for a parameter that shows nothing: its value from 0 to 1; a key may be the end of a key). `go run ./cmd/clap` looks the values up (it asks the plugin what text each value shows), and saves a preset of the editor:
+The presets of the plugins on this page are in `modules/clap/presets/` as text, a line a setting, written the way the plugin shows its values: `a osc 1 type = Wavetable`, `a amp eg decay = 450 ms`, `a common a volume = -2 dB` (`@0.7` for a parameter that shows nothing: its value from 0 to 1; a key may be the end of a key). `go run ./cmd/plugins` looks the values up (it asks the plugin what text each value shows), and saves a preset of the editor:
 
 ```
-go run ./cmd/clap -plugin "Surge XT" -preset modules/clap/presets/surge-xt/pluck.txt -save editors-presets/clap
-go run ./cmd/clap -plugin "Surge XT" -preset modules/clap/presets/surge-xt/pluck.txt -notes 60,64,67 -render pluck.wav
-go run ./cmd/clap -plugin "Surge XT" -explore "a osc 1 type;a amp eg attack"     what a parameter shows over its range
+go run ./cmd/plugins -plugin "Surge XT" -preset modules/clap/presets/surge-xt/pluck.txt -save editors-presets/clap
+go run ./cmd/plugins -plugin "Surge XT" -preset modules/clap/presets/surge-xt/pluck.txt -notes 60,64,67 -render pluck.wav
+go run ./cmd/plugins -plugin "Surge XT" -explore "a osc 1 type;a amp eg attack"     what a parameter shows over its range
 ```
 
 Surge XT: Soft Pluck, Island Pluck, Kalimba, Plucked String, Glass Bell, Warm Pad, Sub Bass, Hawaiian Lead, set to about the same loudness (-18 dB). OB-Xf (Surge Synth Team's virtual analog polysynth, free; `modules/clap/presets/ob-xf/`, about -18 dB, the pluck quieter since its master volume is at the top): Warm Pad, Analog Bass, Brass Stab, Pulse Pluck, Slide Lead. Its filter works from the start (Surge XT's needs the state round trip below). Surge XT Effects is one effect at a time, its type chosen by the `fx type` setting (Delay, Reverb 1 and 2, Spring Reverb, Phaser, Flanger, Chorus, Ensemble, Rotary Speaker, Distortion, Tape, EQ and more than twenty others); a preset sets the type and the mix, and the knobs that follow it are named as for the delay whatever the type is (the host does not follow the plugin renaming them).
