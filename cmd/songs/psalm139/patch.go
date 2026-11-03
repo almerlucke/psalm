@@ -207,13 +207,28 @@ func parts() []strip {
 	return ps
 }
 
-// voicePath is the recording of the psalm that is played once from the start of the Knit (a streamer reads it from the disk: it is long); voiceGain is how much louder than it was
+// voicePath is the recording of the psalm that is played once from the start of the Wonder (a streamer reads it from the disk: it is long); voiceGain is how much louder than it was
 // recorded it plays (dB)
 const (
-	voicePath = "assets/sounds/psalm139_voice.wav"
 	voiceGain = 7.0
 	voiceWet  = 0.06 // how much of the voice goes through the church
 )
+
+// voicePath is the file the voice is read from: the recording tuned to the music (made by -tune) when it is there, else the recording as it was spoken; -voice names another
+var voicePath = spokenVoicePath
+
+const (
+	spokenVoicePath = "assets/sounds/psalm139_voice.wav"
+	tunedVoicePath  = "local/psalm139_voice_tuned.wav"
+)
+
+// defaultVoice is the voice the piece plays without -voice
+func defaultVoice() string {
+	if _, err := os.Stat(tunedVoicePath); err == nil {
+		return tunedVoicePath
+	}
+	return spokenVoicePath
+}
 
 // real is the strip played by a recording of the orchestra: a sampler with the sfz of the part, in place of its model
 func (s strip) real() strip {

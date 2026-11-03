@@ -26,7 +26,7 @@ package main
 // the Light and the Sand (a question and its answer over the chord of the bar, a little different each time through a section, in just intonation), hand drum ghosts of three hits in
 // twelve that turn a step every pass, and in the Sand eggs of a cellular automaton (rule 30, a new row every pass): the grains more in number than the sand.
 //
-// The voice (assets/sounds/psalm139_voice.wav, when it is there) is read from the disk by a streamer and begins with the Knit. It goes through a compressor and a church of its own, round the
+// The voice (local/psalm139_voice_tuned.wav, the recording brought to the notes of the music by -tune, else assets/sounds/psalm139_voice.wav, when it is there) is read from the disk by a streamer and begins with the Wonder. It goes through a compressor and a church of its own, round the
 // mixer, and turns the music down a few decibels while it speaks (a compressor of which the sidechain is the voice: the duck of the patch), so it is always on top.
 //
 //	go run ./cmd/songs/psalm139                                      play it (the page is at http://localhost:8087)
@@ -34,6 +34,7 @@ package main
 //	go run ./cmd/songs/psalm139 -orchestra=false                     the models of the instruments instead of the recordings
 //	go run ./cmd/songs/psalm139 -human=false                         exactly on the grid
 //	go run ./cmd/songs/psalm139 -render woven.wav -stems -seed 7     render it, a stem per part
+//	go run ./cmd/songs/psalm139 -tune local/psalm139_voice_tuned.wav    bring the voice to the notes of the music (the piece plays that file from then on; -tune-mode, -tune-strength...)
 //	go run ./cmd/songs/psalm139 -profile                             the time every module takes
 
 import (
@@ -69,7 +70,28 @@ func main() {
 	human := flag.Bool("human", true, "the parts play like players: a little off the beat, a chord not quite together, a little different in loudness (off: exactly on the grid)")
 	orch := flag.Bool("orchestra", true, "the instruments the Virtual Playing Orchestra has recorded play its recordings (if it is in assets), off: models of them")
 	a4 := flag.Float64("a4", 440, "the reference pitch of A4 in Hz")
+	voice := flag.String("voice", "", "the recording of the psalm that is spoken over the music (default: local/psalm139_voice_tuned.wav, made by -tune, when it is there, else psalm139_voice.wav)")
+	tuneTo := flag.String("tune", "", "bring the pitch of the voice to the notes of the music and write it to this WAV file (play it with -voice), instead of playing the piece")
+	tuneMode := flag.String("tune-mode", "snap", "with -tune: snap (every moment toward the nearest note of the scale) or chant (a word on one note of the chord, some of the rise and fall kept)")
+	tuneSpeed := flag.Float64("tune-speed", 150, "with -tune: milliseconds the voice takes to move to a note (0: at once, the hard effect)")
+	tuneKeep := flag.Float64("tune-keep", 0.5, "with -tune-mode chant: how much of the rise and fall of the voice stays, 0 to 1")
+	tuneStrength := flag.Float64("tune-strength", 0.6, "with -tune: how far toward the notes, 0 to 1 (0.5: half way)")
+	tuneOffset := flag.Float64("tune-offset", 0, "with -tune: semitones added to the notes (the voice may sound better a few semitones from where it speaks)")
 	flag.Parse()
+	switch {
+	case *voice != "":
+		voicePath = *voice
+	case *tuneTo != "":
+		voicePath = spokenVoicePath // the voice as it was spoken, never one already tuned
+	default:
+		voicePath = defaultVoice()
+	}
+	if *tuneTo != "" {
+		if err := tuneVoice(voicePath, *tuneTo, tuneOptions{mode: *tuneMode, speed: *tuneSpeed, keep: *tuneKeep, strength: *tuneStrength, offset: *tuneOffset}); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if *tuning != "just" && *tuning != "equal" {
 		log.Fatalf("tuning %q: just or equal", *tuning)
 	}

@@ -68,3 +68,6 @@ recordings/
 
 # free samples downloaded for glitch sampler patches (see CREDITS.txt inside)
 assets/glitch-sources/
+
+# everything made or kept locally that does not belong in the repository (large or generated files, like the tuned voice of psalm139): one folder
+local/
