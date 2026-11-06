@@ -33,6 +33,18 @@ mix = 0.7
 
 7. **side cut** is a high pass on the detector (Hz): the low end then does not set the compressor to work, so a kick does not pump the rest. A mod cable from an lfo or a [lane](lane.md) to a setting makes it move.
 
+8. **sidechain.** The second input is a sidechain: cable a sound there (a kick) and it, not the sound in `in`, decides when the compressor works. Cable a pad to `in` and the kick to `sidechain`, and every kick pulls the pad down and lets it back over the **release**: the pump of dance music. Set **side cut** low (20 Hz), so the low end of the kick counts, a low threshold and a fast attack, a **release** of 100 to 250 ms, and a ratio of 3 to 6.
+
+```example Ducked by a kick
+[set]
+threshold = -30
+ratio = 4
+knee = 6
+attack = 2
+release = 180
+sideCut = 20
+```
+
 ## Settings
 
 | Setting | Range | What it does |

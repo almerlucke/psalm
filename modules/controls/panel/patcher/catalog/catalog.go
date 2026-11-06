@@ -259,10 +259,6 @@ func Kinds(cfg Config) []patcher.Kind {
 			m := shimmer.New(shimmer.DefaultConfig())
 			return m, func() params.Set { return shimmer.Describe(m.Settings()) }
 		}),
-		effect("compressor", func() (psalm.Modular, func() params.Set) {
-			m := compressor.New(compressor.DefaultConfig())
-			return m, func() params.Set { return compressor.Describe(m.Settings()) }
-		}),
 		effect("gate fx", func() (psalm.Modular, func() params.Set) {
 			m := gate.New(gate.DefaultConfig())
 			return m, func() params.Set { return gate.Describe(m.Settings()) }
@@ -280,7 +276,7 @@ func Kinds(cfg Config) []patcher.Kind {
 			return m, func() params.Set { return widener.Describe(m.Settings()) }
 		}),
 	)
-	kinds = append(kinds, vocoderKind())
+	kinds = append(kinds, vocoderKind(), compressorKind())
 	if cfg.IR != nil {
 		kinds = append(kinds, effect("hall", func() (psalm.Modular, func() params.Set) {
 			m := convolver.New(cfg.IR, convolver.Config{PartitionSize: 512, Mix: 0.35, Gain: 0.7})
@@ -291,6 +287,17 @@ func Kinds(cfg Config) []patcher.Kind {
 		kinds = append(kinds, k)
 	}
 	return kinds
+}
+
+// compressorKind is the compressor: the sound on its first input and, if something is cabled to the second (a kick),
+// that sound drives the compression instead, so the kick ducks the sound (the pump of dance music)
+func compressorKind() patcher.Kind {
+	return patcher.Kind{Name: "compressor", Group: "Effects", Outs: outs,
+		Ins: []patcher.Port{{Name: "in", Type: patcher.Audio, Index: 0}, {Name: "sidechain", Type: patcher.Audio, Index: 1}},
+		Make: func(string) (*patcher.Made, error) {
+			m := compressor.New(compressor.DefaultConfig())
+			return &patcher.Made{Module: m, Describe: func(string) params.Set { return compressor.Describe(m.Settings()) }}, nil
+		}}
 }
 
 // vocoderKind is the vocoder: a voice (the modulator) on its first input and a synth (the carrier) on its second. What comes
