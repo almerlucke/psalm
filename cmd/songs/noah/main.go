@@ -1,6 +1,6 @@
 // Noah: a score for a soundscape, local/HeavenlyNoah.wav (six minutes and twenty-four seconds: Noah's ark on the water, rain, thunder, the animals, bells in D and at the
 // end a voice). A streamer plays the recording from its first second to its last, and under it a sparse, light music plays that follows what the recording does: a
-// piano (the melody, gentle phrases with long rests), a kalimba, a bell marimba, a koto, a soft handbell, a small frame drum, wood and high bowls, nothing bowed, nothing heavy. Six sections at 60 bpm in 4/4, 96 bars of four
+// piano (the melody, gentle phrases with long rests), a kalimba, a bell marimba, a carillon, a soft handbell, a soft chime and a vibe bell, high bowls, nothing bowed, nothing heavy. Six sections at 60 bpm in 4/4, 96 bars of four
 // seconds: Water (the ark creaks), Rain (a drop of music in the rain), Bells (the music answers the bells, in D), Beasts (the animals walk; the scale has no
 // third), Storm (the music stands back for the thunder and moves down to C) and Voice (almost nothing; the music is a third of a semitone sharp, as the voice is).
 //

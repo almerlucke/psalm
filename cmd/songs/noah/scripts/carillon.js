@@ -1,4 +1,4 @@
-// KOTO: a plucked string. While the bells ring, an open fifth (D and A) strummed softly every sixteen bars; for the animals an ostinato that does not repeat with the
+// CARILLON: a soft set of small bells, where the piece first had a plucked string. While the bells ring, an open fifth (D and A) strummed softly every sixteen bars; for the animals an ostinato that does not repeat with the
 // bar: 4 hits in 7 eighths, walking up and down the scale (so the pattern comes back to the same place of the bar every seven bars).
 clock("1/8")
 const rand = shared.rng(31)
@@ -10,7 +10,7 @@ function trigger() {
   if (k === last) return
   last = k
   const t = k / 2
-  const lv = shared.lv("koto", t) * shared.hush(t)
+  const lv = shared.lv("carillon", t) * shared.hush(t)
   if (lv <= 0.02) return
   if (t < 190) {
     if (k % 64 === 0) { note(62, 0.3 * lv, 8); note(69, 0.26 * lv, 8, 0.5) }

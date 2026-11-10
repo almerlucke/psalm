@@ -51,7 +51,7 @@ func songText() string {
 }
 
 // gains are how much louder than its preset every part plays: the recording is dense (water, rain, bells), a music at the level of the presets is not heard in it
-var gains = map[string]float64{"kalimba": 2, "marimba": 2, "koto": 1, "bell": 7, "wood": 1, "frame": 12, "bowl": 2.5, "piano": 4}
+var gains = map[string]float64{"kalimba": 2, "marimba": 2, "carillon": 3, "bell": 7, "chime": 1.5, "vibe": 3, "bowl": 2.5, "piano": 4}
 
 // patchIDs are the modules of the patch to look at: the scripts, and the synths by their part
 type patchIDs struct {
@@ -112,10 +112,10 @@ func buildPatch(pt *patcher.Patcher, once bool, seed uint64) (ids patchIDs, err 
 	parts := []part{
 		{"kalimba", "modal", "kalimbaSoft", map[string]float64{"drift": 0.35, "spread": 0.2, "cutoff": 7000, "hardness": 0.25}, 1.0, 0.25, 0.35, 0.3},
 		{"marimba", "modal", "bellMarimba", map[string]float64{"drift": 0.2, "hardness": 0.1, "cutoff": 4500}, 1.0, -0.3, 0.3, 0.1},
-		{"koto", "waveguide", "koto", map[string]float64{"brightness": 0.45, "damping": 0.35, "plectrum": 0.5}, 1.0, 0.35, 0.3, 0.25},
+		{"carillon", "modal", "carillon", map[string]float64{"drift": 0.3, "spread": 0.25, "hardness": 0.25, "cutoff": 6500}, 1.0, 0.35, 0.5, 0.3},
 		{"bell", "modal", "handbellSoft", map[string]float64{"drift": 0.3, "spread": 0.3, "hardness": 0.3, "cutoff": 8000}, 1.0, -0.25, 0.5, 0.35},
-		{"wood", "modal", "woodBlock", map[string]float64{"drift": 0.3, "hardness": 0.5, "noise": 0.2, "cutoff": 5000}, 1.0, -0.1, 0.3, 0.15},
-		{"frame", "waveguide", "frameDrum", map[string]float64{"tension": 0.7, "hardness": 0.3, "damping": 0.6}, 1.0, 0.15, 0.35, 0.1},
+		{"chime", "modal", "tubularSoft", map[string]float64{"drift": 0.3, "spread": 0.3, "hardness": 0.3, "cutoff": 6500}, 1.0, -0.1, 0.5, 0.3},
+		{"vibe", "modal", "vibeBell", map[string]float64{"drift": 0.25, "spread": 0.25, "hardness": 0.25, "cutoff": 6500}, 1.0, 0.15, 0.5, 0.3},
 		{"bowl", "modal", "tunedBowlHigh", map[string]float64{"hardness": 0.4, "spread": 0.35}, 1.0, 0, 0.5, 0.4},
 		{"piano", "piano", "satie", nil, 1.0, 0.05, 0.4, 0.2},
 	}
