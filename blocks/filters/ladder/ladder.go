@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/almerlucke/psalm/blocks/oversample"
+	"github.com/almerlucke/psalm/blocks/tanh"
 )
 
 // Mode selects the output of the ladder, the band and high pass modes are mixed from the stage
@@ -72,25 +73,25 @@ func (l *Ladder) Set(fc float64, res float64) {
 // SetStageLevel sets the level the clip of the stages carries up to at a drive of 1 (4 by default, where only a hot signal feels it; about 1 clips a signal of normal
 // level, which is the sound of an overdriven ladder)
 func (l *Ladder) SetStageLevel(level float64) {
-	l.stageAt = math.Max(0.1, level)
+	l.stageAt = max(0.1, level)
 	l.update()
 }
 
 // SetDrive sets the input saturation, 1 is mild, higher values distort more
 func (l *Ladder) SetDrive(drive float64) {
-	l.drive = math.Max(0.1, drive)
+	l.drive = max(0.1, drive)
 	l.update()
 }
 
 func (l *Ladder) update() {
 	sr := l.sr * float64(l.factor)
-	fc := math.Max(1.0, math.Min(l.fc, l.sr*0.45))
+	fc := max(1.0, min(l.fc, l.sr*0.45))
 	g := math.Tan(math.Pi * fc / sr)
 
 	l.g = g / (1.0 + g)
 	// the feedback of 4 is where the ladder would oscillate, but the saturation takes a little of the loop's gain away: the last part of the range goes over 4, so that
 	// a resonance of 1 sings on by itself (a sine at the cutoff) and 0.95 does not yet
-	res := math.Max(0.0, math.Min(l.res, 1.0))
+	res := max(0.0, min(l.res, 1.0))
 	l.k = 4.0*res + 0.2*math.Pow(res, 6)
 
 	// the ladder loses passband level as the feedback rises, partly compensate it
@@ -146,7 +147,7 @@ func (l *Ladder) process(x float64, mode Mode) float64 {
 
 	// saturating the ladder input keeps high resonance musical and bounded, dividing by the drive
 	// keeps unity gain for small signals
-	u := math.Tanh((x-l.k*y4)*l.drive) / l.drive
+	u := tanh.Tanh((x-l.k*y4)*l.drive) / l.drive
 
 	// every stage after the first gets what the one before it gives through a soft clip, as the transistor pairs of a real ladder do: a loud signal and a high
 	// resonance compress and grow harmonics where a linear ladder would only get louder

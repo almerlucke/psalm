@@ -51,7 +51,7 @@ func (c *Crusher) SetRate(hz float64)   { c.cfg.Rate = hz }
 func (c *Crusher) SetMix(m float64)     { c.cfg.Mix = m }
 func (c *Crusher) SetOutput(db float64) { c.cfg.Output = db }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 
 func (c *Crusher) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
@@ -81,7 +81,7 @@ func quantize(x, bits float64) float64 {
 	if bits <= 0 || bits >= 24 {
 		return x
 	}
-	bits = math.Max(1, bits)
+	bits = max(1, bits)
 	steps := math.Pow(2, bits-1)
 	return clamp(math.Round(x*steps)/steps, -1, 1)
 }

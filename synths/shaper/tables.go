@@ -177,7 +177,7 @@ func (v *Voice) fill(t *waveTable, chains *[NumChains]*shapechain.Chain, num, bw
 		if y != y {
 			y = 0
 		}
-		y = math.Max(-2, math.Min(y, 2))
+		y = max(-2, min(y, 2))
 		x[i] = y
 		mean += y
 	}

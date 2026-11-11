@@ -133,13 +133,13 @@ func (m *Melodist) ReceiveMessage(msg psalm.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	c := &m.cfg
-	f01 := func(dst *float64) func(float64) { return func(v float64) { *dst = math.Max(0, math.Min(v, 1)) } }
+	f01 := func(dst *float64) func(float64) { return func(v float64) { *dst = max(0, min(v, 1)) } }
 	msg.IfFltVal("density", f01(&c.Density))
 	msg.IfFltVal("rest", f01(&c.Rest))
 	msg.IfFltVal("steps", f01(&c.Steps))
 	msg.IfFltVal("chord", f01(&c.Chord))
 	msg.IfFltVal("mutate", f01(&c.Mutate))
-	msg.IfFltVal("velocity", func(v float64) { c.Velocity = math.Max(0.05, math.Min(v, 1)) })
+	msg.IfFltVal("velocity", func(v float64) { c.Velocity = max(0.05, min(v, 1)) })
 	msg.IfFltVal("dynamics", f01(&c.Dynamics))
 	msg.IfIntVal("contour", func(i int) { c.Contour = max(0, min(i, len(MelodyContours)-1)) })
 	msg.IfIntVal("rhythm", func(i int) { c.Rhythm = max(0, min(i, len(MelodyRhythms)-1)) })
@@ -147,11 +147,11 @@ func (m *Melodist) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("phrase", func(i int) { c.Phrase = max(0, min(i, len(MelodyPhrases)-1)) })
 	msg.IfIntVal("key", func(i int) { c.Key = max(0, min(i, len(Keys)-1)) })
 	msg.IfIntVal("scale", func(i int) { c.Scale = max(0, min(i, len(Scales))) })
-	msg.IfFltVal("low", func(v float64) { c.Low = math.Max(0, math.Min(v, 120)) })
-	msg.IfFltVal("high", func(v float64) { c.High = math.Max(0, math.Min(v, 127)) })
-	msg.IfFltVal("seed", func(v float64) { c.Seed = int(math.Max(0, math.Min(v, 9999))) })
-	msg.IfFltVal("length", func(v float64) { c.Length = math.Max(2, math.Min(v, 128)) })
-	msg.IfFltVal("grid", func(v float64) { c.Grid = math.Max(0.25, math.Min(v, 4)) })
+	msg.IfFltVal("low", func(v float64) { c.Low = max(0, min(v, 120)) })
+	msg.IfFltVal("high", func(v float64) { c.High = max(0, min(v, 127)) })
+	msg.IfFltVal("seed", func(v float64) { c.Seed = int(max(0, min(v, 9999))) })
+	msg.IfFltVal("length", func(v float64) { c.Length = max(2, min(v, 128)) })
+	msg.IfFltVal("grid", func(v float64) { c.Grid = max(0.25, min(v, 4)) })
 	msg.IfBoolVal("freeze", func(b bool) { c.Freeze = b })
 	msg.IfBoolVal("counter", func(b bool) { c.Counter = b })
 	msg.IfBoolVal("just", func(b bool) { c.Just = b })
@@ -255,7 +255,7 @@ func (m *Melodist) makePass(c MelodistConfig, grammar string, r melodyReq, befor
 	if tr := m.song.Transport(); tr != nil {
 		bpb = tr.Form().BeatsPerBar
 	}
-	p := melody.Params{Scale: scale, Beats: r.beats, Low: int(c.Low), High: int(math.Max(c.High, c.Low+4)), Density: c.Density, Rest: c.Rest, Steps: c.Steps, Chord: c.Chord,
+	p := melody.Params{Scale: scale, Beats: r.beats, Low: int(c.Low), High: int(max(c.High, c.Low+4)), Density: c.Density, Rest: c.Rest, Steps: c.Steps, Chord: c.Chord,
 		Grid: c.Grid, Rhythm: MelodyRhythms[c.Rhythm], Contour: MelodyContours[c.Contour], Form: MelodyForms[c.Form], Phrase: MelodyPhrases[c.Phrase], Velocity: c.Velocity, Dynamics: c.Dynamics}
 	if p.Form == "grammar" {
 		p.Grammar = grammar
@@ -379,7 +379,7 @@ func (m *Melodist) CtrlTick(tick psalm.CtrlTick) {
 			if pass.just {
 				pitch += justCents[((n.Key-pass.tonic)%12+12)%12] / 100
 			}
-			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.005, n.Length*second), "amplitude": n.Velocity,
+			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": max(0.005, n.Length*second), "amplitude": n.Velocity,
 				"message": psalm.Message{"pitch": pitch, "velocity": n.Velocity}}
 			for _, target := range m.targets {
 				target.ReceiveMessage(msg)

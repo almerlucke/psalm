@@ -2,9 +2,10 @@ package dx
 
 import (
 	"fmt"
+	"math"
+
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm/blocks/sine"
-	"math"
 
 	"github.com/almerlucke/psalm"
 	msgenv "github.com/almerlucke/psalm/blocks/envelope"
@@ -195,7 +196,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	for i := range v.patch.Ext {
 		v.patch.Ext[i] = v.mods.Ext(i)
 	}
-	msg.IfFltVal("lfo2Rate", func(x float64) { v.patch.LFO2Rate = math.Max(0, x) })
+	msg.IfFltVal("lfo2Rate", func(x float64) { v.patch.LFO2Rate = max(0, x) })
 	msg.IfFltVal("modDepth", func(x float64) { v.patch.ModDepth = x })
 	msg.IfFltVal("freeFeedback", func(x float64) { v.patch.FreeFeedback = x })
 	msg.IfFltVal("glide", func(x float64) { v.patch.Glide = x })
@@ -210,7 +211,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	if changed {
 		v.SetPatch(v.patch)
 	}
-	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0.0, math.Min(f, 1.0)) })
+	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0.0, min(f, 1.0)) })
 	msg.IfFltVal("modScale", func(f float64) { v.modScale = f })
 	msg.IfFltVal("pitch", func(f float64) { v.note = f })
 	msg.IfFltVal("frequency", func(f float64) { v.note = 69.0 + 12.0*math.Log2(f/440.0) })
@@ -268,7 +269,7 @@ func (v *Voice) start(duration float64, amplitude float64, message psalm.Message
 
 		// static level: output level, keyboard level scaling and velocity
 		level := float64(op.OutputLevel) + keyboardScaling(op, note) - float64(op.VelocitySens)*(1.0-v.velocity)*6.0
-		v.opLevel[i] = levelToAmp(math.Min(level, 99.0))
+		v.opLevel[i] = levelToAmp(min(level, 99.0))
 
 		// frequency
 		detune := math.Pow(2.0, float64(op.Detune-7)*1.5/1200.0)
@@ -284,7 +285,7 @@ func (v *Voice) start(duration float64, amplitude float64, message psalm.Message
 		}
 
 		// envelopes, rate scaling makes higher notes faster
-		rateAdd := float64(op.RateScaling) * math.Max(0.0, note-21.0) / 24.0
+		rateAdd := float64(op.RateScaling) * max(0.0, note-21.0) / 24.0
 		v.envs[i].keyOn(op.EGRates, op.EGLevels, rateAdd, sr)
 
 		// a free operator: its own frequency, level and envelope instead
@@ -295,7 +296,7 @@ func (v *Voice) start(duration float64, amplitude float64, message psalm.Message
 				v.fixed[i] = f.Fixed * detune
 			} else {
 				v.fixed[i] = 0.0
-				v.freqMult[i] = math.Max(f.Ratio, 0.0) * detune
+				v.freqMult[i] = max(f.Ratio, 0.0) * detune
 				if f.Ratio <= 0.0 {
 					v.freqMult[i] = detune
 				}
@@ -332,7 +333,7 @@ func (v *Voice) start(duration float64, amplitude float64, message psalm.Message
 		carrierSum += v.opLevel[c]
 		v.free = v.free || p.Ops[c].FreeOn
 	}
-	v.outScale = amplitude / math.Max(1.0, carrierSum)
+	v.outScale = amplitude / max(1.0, carrierSum)
 	if v.patch.Level > 0 {
 		v.outScale *= v.patch.Level
 	}
@@ -441,7 +442,7 @@ func (v *Voice) Synthesize() {
 		fbAmount = feedbackAmount(p.Feedback)
 		lfoInc   = lfoSpeedToHz(p.LFOSpeed) / sr
 		lfoDelay = lfoDelayToSeconds(p.LFODelay)
-		lfoRamp  = math.Max(0.05, lfoDelay*0.5)
+		lfoRamp  = max(0.05, lfoDelay*0.5)
 		pmDepth  = float64(p.LFOPitchDepth) / 99.0 * pitchModSemitones[max(0, min(p.PitchModSens, 7))]
 		amDepth  = float64(p.LFOAmpDepth) / 99.0
 		modInc   = (v.modScale - v.curModScale) / float64(bufSize-v.waitSamps)
@@ -458,7 +459,7 @@ func (v *Voice) Synthesize() {
 	if modded {
 		mods.Values[modmatrix.Velocity] = v.velocity
 		mods.Values[modmatrix.Random] = v.random
-		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(baseFreq/261.6255653005986)/5, 1))
+		mods.Values[modmatrix.Key] = max(-1, min(math.Log2(baseFreq/261.6255653005986)/5, 1))
 	}
 	filtered := v.filter.On()
 	over, factor := v.over, 1
@@ -477,7 +478,7 @@ func (v *Voice) Synthesize() {
 
 		// LFO with delay and fade in
 		lfo := v.lfo()
-		fade := math.Max(0.0, math.Min(1.0, (v.lfoTime-lfoDelay)/lfoRamp))
+		fade := max(0.0, min(1.0, (v.lfoTime-lfoDelay)/lfoRamp))
 		lfo *= fade
 		v.lfoTime += 1.0 / sr
 		v.lfoPhase += lfoInc
@@ -513,7 +514,7 @@ func (v *Voice) Synthesize() {
 			freq *= math.Exp2(p.VibratoDepth * v.vibFade * sine.Cycle(v.vibPhase) / 12.0)
 			v.vibPhase += p.VibratoRate / sr
 			v.vibPhase -= math.Floor(v.vibPhase)
-			v.vibFade = math.Min(1.0, v.vibFade+v.vibInc)
+			v.vibFade = min(1.0, v.vibFade+v.vibInc)
 		}
 
 		// what every operator is this sample, apart from the wave it plays: the envelopes move once a sample, however often the operators are played
@@ -523,12 +524,12 @@ func (v *Voice) Synthesize() {
 			free := p.Ops[op].FreeOn
 			if free { // an envelope and a level of its own, in the sound's units
 				env := v.freeEnv[op].Generate()
-				level := env * math.Max(0, v.freeLevel[op]+mods.Mod(dOp1Gain+op))
+				level := env * max(0, v.freeLevel[op]+mods.Mod(dOp1Gain+op))
 				fbMul[op] = env
 				outMul[op] = level
 				if v.isCarrier[op] {
 					carMul[op] = level
-					ampNow = math.Max(ampNow, env)
+					ampNow = max(ampNow, env)
 				} else {
 					outMul[op] *= v.curModScale
 				}
@@ -545,22 +546,22 @@ func (v *Voice) Synthesize() {
 				amp *= 1.0 - amDepth*ampModDepth[ams]*(0.5+0.5*lfo)
 			}
 
-			amp = math.Max(0, amp+mods.Mod(dOp1Gain+op))
+			amp = max(0, amp+mods.Mod(dOp1Gain+op))
 			fbMul[op] = amp
 			// what it modulates with (an algorithm of your own can have a carrier modulate too), what it adds to the sound
 			outMul[op] = amp * modIndex * v.curModScale
 			if v.isCarrier[op] {
 				carMul[op] = amp
-				ampNow = math.Max(ampNow, amp)
+				ampNow = max(ampNow, amp)
 			}
 		}
-		pmScale := math.Max(0, 1+mods.Mod(dModDepth))
+		pmScale := max(0, 1+mods.Mod(dModDepth))
 		fbPM := 0.0
 		if fbOp := v.alg.FeedbackTo; p.Ops[fbOp].FreeOn {
-			if fb := math.Max(0, p.FreeFeedback+mods.Mod(dFeedback)); fb > 0.0 {
+			if fb := max(0, p.FreeFeedback+mods.Mod(dFeedback)); fb > 0.0 {
 				fbPM = fb
 			}
-		} else if fb := math.Max(0, fbAmount+mods.Mod(dFeedback)); fb > 0.0 {
+		} else if fb := max(0, fbAmount+mods.Mod(dFeedback)); fb > 0.0 {
 			fbPM = fb
 		}
 		var inc [NumOperators]float64 // the phase an operator moves a play, a play being a sample over the factor
@@ -613,7 +614,7 @@ func (v *Voice) Synthesize() {
 
 		// remove the DC offset
 		v.ampLast = ampNow
-		x := sample * v.outScale * math.Max(0, 1+mods.Mod(dLevel))
+		x := sample * v.outScale * max(0, 1+mods.Mod(dLevel))
 		if v.free { // the free operators are the FM synth's, which has no DC blocker
 			v.dcY = x
 		} else {

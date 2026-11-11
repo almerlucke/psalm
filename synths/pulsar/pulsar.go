@@ -340,7 +340,7 @@ func (v *Voice) IsActive() bool {
 // tailSamples is how long a filter that is on rings on after the amp envelope: its release, to
 // at most 5 seconds
 func (v *Voice) tailSamples() int {
-	rel := math.Max(0, math.Min(v.cfg.Filter.Env.ReleaseDuration, 5000))
+	rel := max(0, min(v.cfg.Filter.Env.ReleaseDuration, 5000))
 	return int(rel * 0.001 * v.Config().SampleRate)
 }
 
@@ -403,7 +403,7 @@ func (v *Voice) pulse(t float64, seconds float64) float64 {
 // shape returns the second pulsaret at a time into the pulse: a few harmonics of the first formant,
 // below the Nyquist frequency, so a saw or a square doesn't alias
 func (v *Voice) shape(seconds float64) float64 {
-	n := min(maxShapeHarmonics, int(maxFormant*v.Config().SampleRate/math.Max(1, v.formant1)))
+	n := min(maxShapeHarmonics, int(maxFormant*v.Config().SampleRate/max(1, v.formant1)))
 	x := 0.0
 	for k := 1; k <= n; k++ {
 		a := 2.0 * math.Pi * float64(k) * v.formant1 * seconds
@@ -449,7 +449,7 @@ func (v *Voice) compensation(freq float64) float64 {
 	if energy <= 1e-12 {
 		return 0
 	}
-	return math.Min(maxCompensation, 1.0/math.Sqrt(2.0*energy))
+	return min(maxCompensation, 1.0/math.Sqrt(2.0*energy))
 }
 
 // startPulse sets up the next pulse: masking, pan, the formants at this moment and the level
@@ -457,14 +457,14 @@ func (v *Voice) startPulse(formantMod float64, freq float64) {
 	cfg := &v.cfg
 	mods := v.mods
 
-	masking := math.Max(0, math.Min(cfg.Masking+mods.Mod(dMasking), 1))
+	masking := max(0, min(cfg.Masking+mods.Mod(dMasking), 1))
 	v.masked = masking > 0 && v.Rand().Float64() < masking
 	if cfg.Burst > 0 && v.pulses%(cfg.Burst+cfg.BurstRest) >= cfg.Burst {
 		v.masked = true
 	}
 	v.pulses++
-	v.duty = math.Max(0.01, math.Min(cfg.Duty+mods.Mod(dDuty), 1.0))
-	v.mix = math.Max(0, math.Min(cfg.ShapeMix+mods.Mod(dShapeMix), 1))
+	v.duty = max(0.01, min(cfg.Duty+mods.Mod(dDuty), 1.0))
+	v.mix = max(0, min(cfg.ShapeMix+mods.Mod(dShapeMix), 1))
 
 	tracking := math.Pow(v.glideFreq/middleC, cfg.FormantTracking)
 	octaves := math.Exp2(formantMod + mods.Mod(dFormant))
@@ -472,20 +472,20 @@ func (v *Voice) startPulse(formantMod float64, freq float64) {
 	// first formant stays below it, a second formant past it is left out (high notes with full
 	// formant tracking get there)
 	ceiling := maxFormant * v.Config().SampleRate
-	v.formant1 = math.Min(cfg.Formant*tracking*octaves, ceiling)
+	v.formant1 = min(cfg.Formant*tracking*octaves, ceiling)
 	v.formant2 = cfg.Formant2 * tracking * octaves * math.Exp2(mods.Mod(dFormant2))
 	if v.formant2 > ceiling {
 		v.formant2 = 0
 	}
 
-	spread := math.Max(0, math.Min(cfg.StereoSpread+mods.Mod(dSpread), 1))
-	pan := math.Max(0, math.Min(v.notePan+spread*(v.Rand().Float64()-0.5), 1))
+	spread := max(0, min(cfg.StereoSpread+mods.Mod(dSpread), 1))
+	pan := max(0, min(v.notePan+spread*(v.Rand().Float64()-0.5), 1))
 	v.gainL = math.Cos(pan * math.Pi / 2)
 	v.gainR = math.Sin(pan * math.Pi / 2)
 
 	v.compGain = v.compensation(freq)
 
-	jitter := math.Max(0, math.Min(cfg.Jitter+mods.Mod(dJitter), 1))
+	jitter := max(0, min(cfg.Jitter+mods.Mod(dJitter), 1))
 	v.period = 1.0 + jitter*(v.Rand().Float64()*2.0-1.0)*0.5
 }
 
@@ -552,7 +552,7 @@ func (v *Voice) Synthesize() {
 			mv[modmatrix.FilterEnv], mv[modmatrix.AmpEnv] = fenv, amp
 			mv[modmatrix.LFO1], mv[modmatrix.LFO2] = unitLFO, lfo2
 			mv[modmatrix.Wheel] = v.expr.Wheel()
-			mv[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.glideFreq/middleC)/5, 1))
+			mv[modmatrix.Key] = max(-1, min(math.Log2(v.glideFreq/middleC)/5, 1))
 			mods.Eval(sr)
 		}
 
@@ -591,7 +591,7 @@ func (v *Voice) Synthesize() {
 		}
 		lv := level
 		if modded {
-			lv = math.Max(0, level+mods.Mod(dLevel))
+			lv = max(0, level+mods.Mod(dLevel))
 		}
 		// the amplitude goes in ahead of the filter when there is one, so what it rings with after
 		// the envelope has fallen is heard, for the filter's release

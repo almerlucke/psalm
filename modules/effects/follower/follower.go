@@ -72,7 +72,7 @@ func (f *Follower) Value() float64 {
 	if lo == 0 && hi == 0 {
 		hi = 1
 	}
-	x := math.Min(1, f.env.value*math.Pow(10, f.cfg.Gain/20))
+	x := min(1, f.env.value*math.Pow(10, f.cfg.Gain/20))
 	return lo + (hi-lo)*x
 }
 
@@ -99,7 +99,7 @@ func (f *Follower) Synthesize() {
 	in, out := f.Input(0).Channels, f.Output(0).Channels
 	for i := range out[0] {
 		l, r := float64(in[0][i]), float64(in[len(in)-1][i])
-		f.env.next(math.Max(math.Abs(l), math.Abs(r)), attack, release)
+		f.env.next(max(math.Abs(l), math.Abs(r)), attack, release)
 		out[0][i], out[len(out)-1][i] = in[0][i], in[len(in)-1][i]
 	}
 }
@@ -148,11 +148,11 @@ func NewWah(cfg WahConfig) *Wah {
 	w := &Wah{
 		Module: psalm.NewModule([]int{psalm.Stereo}, []int{psalm.Stereo}),
 		cfg:    cfg,
-		mix:    mix.NewSmoother(math.Max(0, math.Min(cfg.Mix, 1)), mix.SmoothMs, sr),
+		mix:    mix.NewSmoother(max(0, min(cfg.Mix, 1)), mix.SmoothMs, sr),
 	}
 	for c := range w.filters {
 		w.filters[c] = svf.New(cfg.Min, 0, sr)
-		w.filters[c].SetFrequencyQ(math.Max(cfg.Min, 20), cfg.Q)
+		w.filters[c].SetFrequencyQ(max(cfg.Min, 20), cfg.Q)
 	}
 	w.SetSelf(w)
 	return w
@@ -165,8 +165,8 @@ func (w *Wah) Settings() WahConfig { return w.cfg }
 func (w *Wah) Frequency() float64 { return w.freq() }
 
 func (w *Wah) freq() float64 {
-	lo, hi := math.Max(w.cfg.Min, 20), math.Max(w.cfg.Max, 20)
-	x := math.Min(1, w.env.value*math.Pow(10, w.cfg.Gain/20))
+	lo, hi := max(w.cfg.Min, 20), max(w.cfg.Max, 20)
+	x := min(1, w.env.value*math.Pow(10, w.cfg.Gain/20))
 	if w.cfg.Down {
 		x = 1 - x
 	}
@@ -208,7 +208,7 @@ func (w *Wah) Synthesize() {
 		attack  = coef(cfg.Attack, sr)
 		release = coef(cfg.Release, sr)
 		mode    = svf.BandPass
-		mixTo   = math.Max(0, math.Min(cfg.Mix, 1))
+		mixTo   = max(0, min(cfg.Mix, 1))
 		q       = cfg.Q
 	)
 	if cfg.Kind == LowPass {
@@ -219,7 +219,7 @@ func (w *Wah) Synthesize() {
 	}
 	for i := range out[0] {
 		l, r := float64(in[0][i]), float64(in[len(in)-1][i])
-		w.env.next(math.Max(math.Abs(l), math.Abs(r)), attack, release)
+		w.env.next(max(math.Abs(l), math.Abs(r)), attack, release)
 		if w.count%16 == 0 { // the filter follows every 16 samples
 			f := w.freq()
 			for _, flt := range w.filters {

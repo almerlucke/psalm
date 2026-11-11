@@ -49,7 +49,7 @@ func TestClapKinds(t *testing.T) {
 	m.Synthesize()
 	peak := 0.0
 	for _, s := range m.Output(0).Channels[0] {
-		peak = math.Max(peak, math.Abs(float64(s)))
+		peak = max(peak, math.Abs(float64(s)))
 	}
 	if peak < 0.4 {
 		t.Errorf("the note does not sound: %v", peak)
@@ -106,10 +106,10 @@ func TestClapRealPlugins(t *testing.T) {
 		synth.Module.ResetRun()
 		fx.Module.Run()
 		for _, s := range fx.Module.Output(0).Channels[0] {
-			peak = math.Max(peak, math.Abs(float64(s)))
+			peak = max(peak, math.Abs(float64(s)))
 		}
 		for _, s := range synth.Module.Output(0).Channels[0] {
-			dry = math.Max(dry, math.Abs(float64(s)))
+			dry = max(dry, math.Abs(float64(s)))
 		}
 	}
 	// its own presets, chosen by number as the editor does

@@ -80,13 +80,13 @@ func New(cfg Config) *Flanger {
 // Settings returns the settings
 func (f *Flanger) Settings() Config { return f.cfg }
 
-func (f *Flanger) SetRate(rate float64)     { f.cfg.Rate = math.Max(0, rate); f.cfg.Beats = 0 }
-func (f *Flanger) SetBeats(beats float64)   { f.cfg.Beats = math.Max(0, beats) }
-func (f *Flanger) SetManual(ms float64)     { f.cfg.Manual = math.Max(0.1, math.Min(ms, 10)) }
-func (f *Flanger) SetDepth(ms float64)      { f.cfg.Depth = math.Max(0, math.Min(ms, 20)) }
-func (f *Flanger) SetFeedback(fb float64)   { f.cfg.Feedback = math.Max(-0.95, math.Min(fb, 0.95)) }
-func (f *Flanger) SetStereo(stereo float64) { f.cfg.Stereo = math.Max(0, math.Min(stereo, 1)) }
-func (f *Flanger) SetMix(mix float64)       { f.cfg.Mix = math.Max(0, math.Min(mix, 1)) }
+func (f *Flanger) SetRate(rate float64)     { f.cfg.Rate = max(0, rate); f.cfg.Beats = 0 }
+func (f *Flanger) SetBeats(beats float64)   { f.cfg.Beats = max(0, beats) }
+func (f *Flanger) SetManual(ms float64)     { f.cfg.Manual = max(0.1, min(ms, 10)) }
+func (f *Flanger) SetDepth(ms float64)      { f.cfg.Depth = max(0, min(ms, 20)) }
+func (f *Flanger) SetFeedback(fb float64)   { f.cfg.Feedback = max(-0.95, min(fb, 0.95)) }
+func (f *Flanger) SetStereo(stereo float64) { f.cfg.Stereo = max(0, min(stereo, 1)) }
+func (f *Flanger) SetMix(mix float64)       { f.cfg.Mix = max(0, min(mix, 1)) }
 
 func (f *Flanger) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
@@ -134,9 +134,9 @@ func (f *Flanger) Synthesize() {
 		out    = f.Output(0).Channels
 		smooth = 1 - math.Exp(-1/(smoothMs*0.001*sr))
 		msToS  = 0.001 * sr
-		fb     = math.Max(-0.95, math.Min(cfg.Feedback, 0.95))
+		fb     = max(-0.95, min(cfg.Feedback, 0.95))
 		rate   = cfg.Rate
-		offset = 0.5 * math.Max(0, math.Min(cfg.Stereo, 1))
+		offset = 0.5 * max(0, min(cfg.Stereo, 1))
 	)
 	if cfg.Beats > 0 {
 		rate = f.BPM() / 60 / cfg.Beats
@@ -157,7 +157,7 @@ func (f *Flanger) Synthesize() {
 			}
 			d := (f.manual + f.depth*f.sweep(p)) * msToS
 			x := float64(in[ch][i])
-			delayed := f.lines[ch].ReadHermite(math.Max(1, d))
+			delayed := f.lines[ch].ReadHermite(max(1, d))
 			f.lines[ch].Write(x + fb*delayed)
 			out[ch][i] = float32(x*(1-f.mix) + delayed*f.mix)
 		}

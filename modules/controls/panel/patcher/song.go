@@ -3,7 +3,6 @@ package patcher
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -64,7 +63,7 @@ func (s *Song) Clock() string {
 		return ""
 	}
 	mmss := func(sec float64) string {
-		t := int(math.Max(0, sec))
+		t := int(max(0, sec))
 		return fmt.Sprintf("%d:%02d", t/60, t%60)
 	}
 	if now.Ended {
@@ -294,7 +293,7 @@ func (s *SongForm) Restart() { s.begun = false }
 // progress is how far the song is through its section (mod), 0-1
 func (s *SongForm) progress() float64 {
 	if now := s.song.Now(); now != nil && !now.Ended {
-		return math.Max(0, math.Min(now.Progress, 1))
+		return max(0, min(now.Progress, 1))
 	}
 	return 0
 }

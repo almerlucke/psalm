@@ -50,7 +50,7 @@ func measure(v voice, msg psalm.Message) (float64, float64) {
 		for i := range ch[0] {
 			a, b := float64(ch[0][i]), float64(ch[len(ch)-1][i])
 			l.Add(a, b)
-			peak = math.Max(peak, math.Max(math.Abs(a), math.Abs(b)))
+			peak = max(peak, max(math.Abs(a), math.Abs(b)))
 		}
 	}
 	return l.Integrated(), 20 * math.Log10(peak)

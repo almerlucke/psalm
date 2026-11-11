@@ -235,7 +235,7 @@ func (v *Voice) hit(amplitude float64, msg psalm.Message, tick psalm.CtrlTick) {
 		}
 	})
 	v.amp = amplitude
-	msg.IfFltVal("velocity", func(f float64) { v.amp *= math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("velocity", func(f float64) { v.amp *= max(0, min(f, 1)) })
 	v.waitSamps = tick.SampleOffset
 	v.t = 0
 	v.env = 1
@@ -251,30 +251,30 @@ func (v *Voice) hit(amplitude float64, msg psalm.Message, tick psalm.CtrlTick) {
 	v.filt[0].Clear()
 	v.filt[1].Clear()
 	pitch := v.pitch()
-	tone := math.Max(0, math.Min(snd.Tone, 1))
+	tone := max(0, min(snd.Tone, 1))
 	switch snd.Kind {
 	case Snare:
-		v.filt[0].SetFrequencyQ(math.Min(1500+tone*6000, sr*0.45), 0.7)
+		v.filt[0].SetFrequencyQ(min(1500+tone*6000, sr*0.45), 0.7)
 	case Hat, Cymbal:
 		base := 7000.0
 		if snd.Kind == Cymbal {
 			base = 4000
 		}
-		v.filt[0].SetFrequencyQ(math.Min((base+3000*tone)*math.Sqrt(pitch), sr*0.45), 1.2)
-		v.filt[1].SetFrequencyQ(math.Min(base*0.8, sr*0.45), 0.7)
+		v.filt[0].SetFrequencyQ(min((base+3000*tone)*math.Sqrt(pitch), sr*0.45), 1.2)
+		v.filt[1].SetFrequencyQ(min(base*0.8, sr*0.45), 0.7)
 	case Clap:
-		v.filt[0].SetFrequencyQ(math.Min(900+tone*1500, sr*0.45), 1.5)
+		v.filt[0].SetFrequencyQ(min(900+tone*1500, sr*0.45), 1.5)
 	case Rim:
-		v.filt[0].SetFrequencyQ(math.Min(400, sr*0.45), 0.7)
+		v.filt[0].SetFrequencyQ(min(400, sr*0.45), 0.7)
 	case Cowbell:
-		v.filt[0].SetFrequencyQ(math.Min(pitch*4.8, sr*0.45), 1.5)
+		v.filt[0].SetFrequencyQ(min(pitch*4.8, sr*0.45), 1.5)
 	case Shaker:
-		v.filt[0].SetFrequencyQ(math.Min(3000+6000*tone, sr*0.45), 0.9)
-		v.filt[1].SetFrequencyQ(math.Min(6000*math.Sqrt(pitch), sr*0.45), 2)
+		v.filt[0].SetFrequencyQ(min(3000+6000*tone, sr*0.45), 0.9)
+		v.filt[1].SetFrequencyQ(min(6000*math.Sqrt(pitch), sr*0.45), 2)
 	case Tom, Kick:
-		v.filt[0].SetFrequencyQ(math.Min(2000+tone*6000, sr*0.45), 0.7)
+		v.filt[0].SetFrequencyQ(min(2000+tone*6000, sr*0.45), 0.7)
 	}
-	a := (math.Max(-1, math.Min(snd.Pan, 1)) + 1) * math.Pi / 4
+	a := (max(-1, min(snd.Pan, 1)) + 1) * math.Pi / 4
 	v.gainL, v.gainR = math.Cos(a)*math.Sqrt2, math.Sin(a)*math.Sqrt2
 	v.active = true
 }
@@ -295,7 +295,7 @@ func (v *Voice) pitch() float64 {
 
 // fall returns the gain per sample that dies 60 dB in seconds
 func fall(seconds, sr float64) float64 {
-	return math.Pow(10, -3/(math.Max(0.002, seconds)*sr))
+	return math.Pow(10, -3/(max(0.002, seconds)*sr))
 }
 
 // NoteOff chokes the sound
@@ -340,9 +340,9 @@ func (v *Voice) Synthesize() {
 	gain := level * v.amp
 	v.expr.Settle()
 	pitch := v.pitch() * v.expr.Ratio()
-	snap := math.Max(0, math.Min(snd.Snap, 1))
-	drive := 1 + math.Max(0, snd.Drive)*6
-	sweepTime := math.Max(0.001, snd.SweepTime) * sr
+	snap := max(0, min(snd.Snap, 1))
+	drive := 1 + max(0, snd.Drive)*6
+	sweepTime := max(0.001, snd.SweepTime) * sr
 	click := math.Exp(-1 / (0.0015 * sr))
 	channels := out.Channels
 	stereo := len(channels) > 1

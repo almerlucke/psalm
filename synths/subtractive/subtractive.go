@@ -348,8 +348,8 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("fmAmount", func(f float64) { v.cfg.FMAmount = f })
 	msg.IfFltVal("drive", func(f float64) { v.cfg.Drive = f })
 	msg.IfIntVal("unison", func(n int) { v.cfg.Unison = max(1, min(n, maxUnison)) })
-	msg.IfFltVal("unisonDetune", func(f float64) { v.cfg.UnisonDetune = math.Max(0, f) })
-	msg.IfFltVal("drift", func(f float64) { v.cfg.Drift = math.Max(0, f) })
+	msg.IfFltVal("unisonDetune", func(f float64) { v.cfg.UnisonDetune = max(0, f) })
+	msg.IfFltVal("drift", func(f float64) { v.cfg.Drift = max(0, f) })
 	msg.IfFltVal("glide", func(f float64) { v.cfg.Glide = f })
 	msg.IfFltVal("filterEnvToPitch", func(f float64) { v.cfg.FilterEnvToPitch = f })
 	receiveLFOMessage(msg, "lfo1", &v.cfg.LFO1)
@@ -366,8 +366,8 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("filterEnvAmount", func(f float64) { v.cfg.FilterEnvAmount = f })
 	msg.IfFltVal("keyTrack", func(f float64) { v.cfg.KeyTrack = f })
 	msg.IfIntVal("filter2Mode", func(m int) { v.cfg.Filter2Mode = Filter2Mode(max(0, min(m, int(Filter2Notch)))) })
-	msg.IfFltVal("filter2Cutoff", func(f float64) { v.cfg.Filter2Cutoff = math.Max(20, f) })
-	msg.IfFltVal("filter2Resonance", func(f float64) { v.cfg.Filter2Resonance = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("filter2Cutoff", func(f float64) { v.cfg.Filter2Cutoff = max(20, f) })
+	msg.IfFltVal("filter2Resonance", func(f float64) { v.cfg.Filter2Resonance = max(0, min(f, 1)) })
 	msg.IfFltVal("filter2EnvAmount", func(f float64) { v.cfg.Filter2EnvAmount = f })
 	msg.IfFltVal("filter2KeyTrack", func(f float64) { v.cfg.Filter2KeyTrack = f })
 	msg.IfFltVal("filter2Parallel", func(f float64) { v.cfg.Filter2Parallel = f > 0.5 })
@@ -510,7 +510,7 @@ func (v *Voice) Synthesize() {
 	unison := max(1, min(cfg.Unison, maxUnison))
 	uniDetune := cfg.UnisonDetune
 	if modded {
-		uniDetune = math.Max(0, uniDetune+mods.Mod(dUnisonDetune))
+		uniDetune = max(0, uniDetune+mods.Mod(dUnisonDetune))
 	}
 	var uniMul [maxUnison - 1]float64
 	for k := range unison - 1 { // alternately above and below, evenly over the detune
@@ -533,7 +533,7 @@ func (v *Voice) Synthesize() {
 	if modded {
 		mods.Values[modmatrix.Velocity] = v.velocity
 		mods.Values[modmatrix.Random] = v.random
-		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.glideFreq/middleC)/5, 1))
+		mods.Values[modmatrix.Key] = max(-1, min(math.Log2(v.glideFreq/middleC)/5, 1))
 	}
 
 	glideCoef := 1.0
@@ -579,7 +579,7 @@ func (v *Voice) Synthesize() {
 
 		// Pulse width modulation
 		if lfo1Active || lfo2Active || pwModded {
-			pw := math.Max(0.02, math.Min(0.98, cfg.PulseWidth+cfg.LFO1.PulseWidth*l1+cfg.LFO2.PulseWidth*l2+mods.Mod(dPulseWidth)))
+			pw := max(0.02, min(0.98, cfg.PulseWidth+cfg.LFO1.PulseWidth*l1+cfg.LFO2.PulseWidth*l2+mods.Mod(dPulseWidth)))
 			v.osc1.SetPulseWidth(pw)
 			v.osc2.SetPulseWidth(pw)
 			for k := range unison - 1 {
@@ -619,7 +619,7 @@ func (v *Voice) Synthesize() {
 			m1, m2 = m1*uniGain, m2*uniGain
 		}
 
-		s := m1*math.Max(0, cfg.Osc1Level+mods.Mod(dOsc1Level)) + m2*math.Max(0, cfg.Osc2Level+mods.Mod(dOsc2Level))
+		s := m1*max(0, cfg.Osc1Level+mods.Mod(dOsc1Level)) + m2*max(0, cfg.Osc2Level+mods.Mod(dOsc2Level))
 
 		if sub := cfg.SubLevel + mods.Mod(dSubLevel); sub > 0.0 {
 			v.sub.SetFrequency(freq*0.5, sr)
@@ -654,10 +654,10 @@ func (v *Voice) Synthesize() {
 		v.vowel += vowelInc
 		if v.formCount == 0 {
 			mod := cfg.FilterEnvAmount*fenv + cfg.LFO1.Cutoff*l1 + cfg.LFO2.Cutoff*l2 + 2*v.expr.Wheel() + mods.Mod(dCutoff)
-			v.setFilter(v.cutoff*keyTrackMult*math.Exp2(mod), mod, math.Max(0, math.Min(v.res+mods.Mod(dResonance), 1)), v.vowel+mods.Mod(dVowel))
+			v.setFilter(v.cutoff*keyTrackMult*math.Exp2(mod), mod, max(0, min(v.res+mods.Mod(dResonance), 1)), v.vowel+mods.Mod(dVowel))
 			if filter2 {
-				c2 := math.Max(20, cfg.Filter2Cutoff) * math.Pow(v.glideFreq/middleC, cfg.Filter2KeyTrack) * math.Exp2(cfg.Filter2EnvAmount*fenv+mods.Mod(dCutoff2))
-				v.svf2.Set(math.Max(20, math.Min(c2, 0.45*sr)), cfg.Filter2Resonance)
+				c2 := max(20, cfg.Filter2Cutoff) * math.Pow(v.glideFreq/middleC, cfg.Filter2KeyTrack) * math.Exp2(cfg.Filter2EnvAmount*fenv+mods.Mod(dCutoff2))
+				v.svf2.Set(max(20, min(c2, 0.45*sr)), cfg.Filter2Resonance)
 			}
 		}
 		v.formCount = (v.formCount + 1) % filterUpdate
@@ -681,7 +681,7 @@ func (v *Voice) Synthesize() {
 			amp *= 1.0 - cfg.LFO2.Amp*(1.0-l2)*0.5
 		}
 
-		val := float32(s * amp * math.Max(0, level+mods.Mod(dLevel)))
+		val := float32(s * amp * max(0, level+mods.Mod(dLevel)))
 		for _, channel := range outChannels {
 			channel[i] = val
 		}
@@ -721,7 +721,7 @@ func (v *Voice) resetSmoothing() {
 
 // formantQ maps resonance 0-1 to the formant sharpness
 func formantQ(res float64) float64 {
-	return 4.0 + math.Max(0.0, math.Min(res, 1.0))*16.0
+	return 4.0 + max(0.0, min(res, 1.0))*16.0
 }
 
 // filterUpdate is the interval in samples at which the filter coefficients are recalculated

@@ -110,7 +110,7 @@ var offsets7 = [7]float64{-0.11002313, -0.06288439, -0.01952356, 0, 0.01991221, 
 
 // detuneCurve is the JP-8000's response of the detune knob (Szabo)
 func detuneCurve(d float64) float64 {
-	d = math.Max(0, math.Min(d, 1))
+	d = max(0, min(d, 1))
 	c := []float64{10028.7312891634, -50818.8652045924, 111363.4808729368, -138150.6761080548, 106649.6679158292,
 		-53046.9642751875, 17019.9518580080, -3425.0836591318, 404.2703938388, -24.1878824391, 0.6717417634, 0.0030115596}
 	y := 0.0
@@ -122,7 +122,7 @@ func detuneCurve(d float64) float64 {
 
 // mixLevels returns the level of the center saw and of the others (Szabo)
 func mixLevels(m float64) (center, side float64) {
-	m = math.Max(0, math.Min(m, 1))
+	m = max(0, min(m, 1))
 	return -0.55366*m + 0.99785, -0.73764*m*m + 1.2841*m + 0.044372
 }
 
@@ -204,7 +204,7 @@ func (v *Voice) layout() {
 	}
 	n = min(n, maxSaws)
 	v.n = n
-	stereo := math.Max(0, math.Min(v.cfg.Stereo, 1))
+	stereo := max(0, min(v.cfg.Stereo, 1))
 	for i := range n {
 		s := &v.saws[i]
 		if n == 7 {
@@ -230,7 +230,7 @@ func (v *Voice) layout() {
 
 // spread sets the left and right gains of the saws for a stereo width
 func (v *Voice) spread(stereo float64) {
-	stereo = math.Max(0, math.Min(stereo, 1))
+	stereo = max(0, min(stereo, 1))
 	for i := range v.n {
 		s := &v.saws[i]
 		a := (s.pos*stereo + 1) * math.Pi / 4
@@ -251,7 +251,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	envelope.Receive(msg, "filter", &v.cfg.FilterEnv)
 	msg.IfFltVal("frequency", func(f float64) { v.setFrequency(f) })
 	msg.IfFltVal("pitch", func(p float64) { v.setFrequency(440 * math.Exp2((p-69)/12)) })
-	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0, min(f, 1)) })
 	msg.IfFltVal("detune", func(f float64) { v.cfg.Detune = f })
 	msg.IfFltVal("mix", func(f float64) { v.cfg.Mix = f })
 	msg.IfFltVal("stereo", func(f float64) { v.cfg.Stereo = f; v.layout() })
@@ -267,7 +267,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("lfoDetune", func(f float64) { v.cfg.LFODetune = f })
 	msg.IfFltVal("lfo2Rate", func(f float64) { v.cfg.LFO2Rate = f })
 	msg.IfIntVal("lfo2Shape", func(n int) { v.cfg.LFO2Shape = max(0, min(n, 1)) })
-	msg.IfFltVal("ensemble", func(f float64) { v.cfg.Ensemble = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("ensemble", func(f float64) { v.cfg.Ensemble = max(0, min(f, 1)) })
 	msg.IfFltVal("ensembleRate", func(f float64) { v.cfg.EnsembleRate = f })
 	v.mods.Receive(msg)
 	for i := range v.cfg.Mods {
@@ -396,9 +396,9 @@ func (v *Voice) Synthesize() {
 	if cfg.Glide > 0 {
 		glide = 1 - math.Exp(-1/(cfg.Glide*sr))
 	}
-	resonance := math.Max(0, math.Min(cfg.Resonance, 1))
+	resonance := max(0, min(cfg.Resonance, 1))
 	q := 0.5 + 9.5*resonance
-	keyTrack := math.Max(0, math.Min(cfg.KeyTrack, 1))
+	keyTrack := max(0, min(cfg.KeyTrack, 1))
 	vel := cfg.Velocity * (v.velocity - 0.5)
 	hpFixed := cfg.HPCutoff > 20
 	hpOn := cfg.HighPass || hpFixed
@@ -454,7 +454,7 @@ func (v *Voice) Synthesize() {
 			mv[modmatrix.LFO1], mv[modmatrix.LFO2] = lfo, lfo2
 			mv[modmatrix.Wheel] = v.expr.Wheel()
 			if v.count == 0 {
-				mv[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.glideFreq/middleC)/5, 1))
+				mv[modmatrix.Key] = max(-1, min(math.Log2(v.glideFreq/middleC)/5, 1))
 			}
 			mods.Eval(sr)
 		}
@@ -477,7 +477,7 @@ func (v *Voice) Synthesize() {
 				subLevel = cfg.Sub + mods.Mod(dSub)
 			}
 			if resModded {
-				q = 0.5 + 9.5*math.Max(0, math.Min(resonance+mods.Mod(dResonance), 1))
+				q = 0.5 + 9.5*max(0, min(resonance+mods.Mod(dResonance), 1))
 			}
 		}
 		var y [2]float64
@@ -507,18 +507,18 @@ func (v *Voice) Synthesize() {
 		}
 		if v.count == 0 {
 			cutoff := cfg.Cutoff * math.Pow(f/261.63, keyTrack) * math.Exp2(cfg.FilterEnvAmount*fenv+vel+cfg.LFOCutoff*lfo+3*v.expr.Wheel()+mods.Mod(dCutoff))
-			cutoff = math.Max(20, math.Min(cutoff, sr*0.45))
+			cutoff = max(20, min(cutoff, sr*0.45))
 			for c := range v.filters {
 				v.filters[c].SetFrequencyQ(cutoff, q)
 				if hpFixed {
-					v.hp[c].SetFrequencyQ(math.Min(cfg.HPCutoff, sr*0.45), 0.7)
+					v.hp[c].SetFrequencyQ(min(cfg.HPCutoff, sr*0.45), 0.7)
 				} else if cfg.HighPass {
-					v.hp[c].SetFrequencyQ(math.Min(f, sr*0.45), 0.7)
+					v.hp[c].SetFrequencyQ(min(f, sr*0.45), 0.7)
 				}
 			}
 		}
 		v.count = (v.count + 1) % 4
-		amp *= math.Max(0, level+mods.Mod(dLevel))
+		amp *= max(0, level+mods.Mod(dLevel))
 		chans := 1
 		if stereo {
 			chans = 2
@@ -535,7 +535,7 @@ func (v *Voice) Synthesize() {
 			o[c] = s * amp
 		}
 		if ensOn {
-			a := math.Max(0, math.Min(cfg.Ensemble+mods.Mod(dEnsemble), 1))
+			a := max(0, min(cfg.Ensemble+mods.Mod(dEnsemble), 1))
 			for c := range chans {
 				o[c] = v.ens[c].process(o[c], a, v.ensPhase+0.17*float64(c), sr)
 			}

@@ -49,7 +49,7 @@ func TestFourBeastsFollowTheKey(t *testing.T) {
 	// the instrument changes: the centroids (in harmonics of each pitch) are not all alike
 	lo, hi := b[0], b[0]
 	for _, v := range b {
-		lo, hi = math.Min(lo, v), math.Max(hi, v)
+		lo, hi = min(lo, v), max(hi, v)
 	}
 	if hi < lo*1.4 {
 		t.Errorf("the register does not change the timbre: %v", b)
@@ -97,7 +97,7 @@ func TestSlowWanderDoesNotRepeat(t *testing.T) {
 		}
 		lo, hi := b[0], b[0]
 		for _, v := range b {
-			lo, hi = math.Min(lo, v), math.Max(hi, v)
+			lo, hi = min(lo, v), max(hi, v)
 		}
 		t.Logf("%s: %.2f", name, b)
 		if hi < lo*1.1 {
@@ -116,7 +116,7 @@ func TestManyEyesDrawsEveryNote(t *testing.T) {
 	}
 	lo, hi := b[0], b[0]
 	for _, v := range b {
-		lo, hi = math.Min(lo, v), math.Max(hi, v)
+		lo, hi = min(lo, v), max(hi, v)
 	}
 	t.Logf("many eyes: %.2f", b)
 	if hi < lo*1.2 {

@@ -393,8 +393,8 @@ func (r *Region) check() error {
 		}
 		// the crossfade reads before the loop start, and can't be longer than the loop
 		xf := r.LoopCrossfade * r.Sound.SampleRate()
-		xf = math.Min(xf, math.Min(float64(r.LoopStart), float64(r.LoopEnd-r.LoopStart)))
-		r.LoopCrossfade = math.Max(0, xf/r.Sound.SampleRate())
+		xf = min(xf, min(float64(r.LoopStart), float64(r.LoopEnd-r.LoopStart)))
+		r.LoopCrossfade = max(0, xf/r.Sound.SampleRate())
 	}
 	if r.SeqLength > 0 && (r.SeqPosition < 1 || r.SeqPosition > r.SeqLength) {
 		return fmt.Errorf("sampler: %s has round robin turn %d of %d", name, r.SeqPosition, r.SeqLength)

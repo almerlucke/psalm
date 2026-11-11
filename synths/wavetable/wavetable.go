@@ -312,7 +312,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("oscBSemi", func(f float64) { cfg.OscBSemi = f })
 	msg.IfFltVal("oscBDetune", func(f float64) { cfg.OscBDetune = f })
 	msg.IfIntVal("oscBUnison", func(n int) { cfg.OscBUnison = max(1, min(n, MaxUnison)) })
-	msg.IfFltVal("oscBSpread", func(f float64) { cfg.OscBSpread = math.Max(0, f) })
+	msg.IfFltVal("oscBSpread", func(f float64) { cfg.OscBSpread = max(0, f) })
 	msg.IfFltVal("lfo1Rate", func(f float64) { cfg.LFO1Rate = f })
 	msg.IfFltVal("lfo2Rate", func(f float64) { cfg.LFO2Rate = f })
 	msg.IfFltVal("normalize", func(f float64) { cfg.Normalize = f >= 0.5 })
@@ -528,7 +528,7 @@ func (v *Voice) Synthesize() {
 	if modded {
 		mods.Values[modmatrix.Velocity] = v.velocity
 		mods.Values[modmatrix.Random] = v.random
-		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.glideFreq/middleC)/5, 1))
+		mods.Values[modmatrix.Key] = max(-1, min(math.Log2(v.glideFreq/middleC)/5, 1))
 	}
 
 	glideCoef := 1.0
@@ -593,7 +593,7 @@ func (v *Voice) Synthesize() {
 		}
 
 		if unisonModded {
-			unison(n, math.Max(0, cfg.Detune+mods.Mod(dDetune)), math.Max(0, math.Min(cfg.Spread+mods.Mod(dSpread), 1)), stereo, &ratios, &gainL, &gainR)
+			unison(n, max(0, cfg.Detune+mods.Mod(dDetune)), max(0, min(cfg.Spread+mods.Mod(dSpread), 1)), stereo, &ratios, &gainL, &gainR)
 		}
 
 		// oscillator B (also the modulator of the FM warp)
@@ -607,7 +607,7 @@ func (v *Voice) Synthesize() {
 		if warpModded {
 			wamt += mods.Mod(dWarp)
 		}
-		wamt = math.Max(0, math.Min(wamt, 1))
+		wamt = max(0, min(wamt, 1))
 		if wamt == 0 {
 			wmode = WarpOff
 		}
@@ -732,7 +732,7 @@ func (v *Voice) Synthesize() {
 				fc := v.cutoff * keyTrack * math.Exp2(cfg.FilterEnvAmount*fenv+1.5*v.expr.Wheel()+mods.Mod(dCutoff))
 				res := v.res
 				if modded {
-					res = math.Max(0, math.Min(res+mods.Mod(dResonance), 1))
+					res = max(0, min(res+mods.Mod(dResonance), 1))
 				}
 				for _, f := range v.filters {
 					f.Set(fc, res)
@@ -752,7 +752,7 @@ func (v *Voice) Synthesize() {
 			}
 		}
 
-		g := amp * math.Max(0, level+mods.Mod(dLevel))
+		g := amp * max(0, level+mods.Mod(dLevel))
 		outs[0][i] = float32(l * g)
 		if stereo {
 			outs[1][i] = float32(r * g)

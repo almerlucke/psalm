@@ -70,7 +70,7 @@ func frequency(x []float64) float64 {
 func peak(x []float64) float64 {
 	p := 0.0
 	for _, s := range x {
-		p = math.Max(p, math.Abs(s))
+		p = max(p, math.Abs(s))
 	}
 	return p
 }
@@ -267,7 +267,7 @@ func TestLoopCrossfade(t *testing.T) {
 		x := play(voice(r), psalm.Message{"pitch": 60.0}, buffers(1))
 		j := 0.0
 		for i := 1; i < len(x); i++ {
-			j = math.Max(j, math.Abs(x[i]-x[i-1]))
+			j = max(j, math.Abs(x[i]-x[i-1]))
 		}
 		return j
 	}
@@ -641,7 +641,7 @@ func TestRandomAndDelay(t *testing.T) {
 	lo, hi := math.Inf(1), 0.0
 	for range 100 {
 		got := level(v, psalm.Message{"pitch": 60.0})
-		lo, hi = math.Min(lo, got), math.Max(hi, got)
+		lo, hi = min(lo, got), max(hi, got)
 	}
 	// 6 dB of spread around the level: 3 dB louder at most, 3 softer
 	if d := 20 * math.Log10(hi/lo); d < 4.5 || d > 6.01 || hi > 0.5*math.Pow(10, 3.01/20) || lo < 0.5*math.Pow(10, -3.01/20) {
@@ -654,7 +654,7 @@ func TestRandomAndDelay(t *testing.T) {
 	flo, fhi := math.Inf(1), 0.0
 	for range 30 {
 		f := preciseFrequency(play(v, psalm.Message{"pitch": 69.0}, buffers(0.3))[:int(0.25*sr)])
-		flo, fhi = math.Min(flo, f), math.Max(fhi, f)
+		flo, fhi = min(flo, f), max(fhi, f)
 	}
 	if c := 1200 * math.Log2(fhi/flo); c < 50 || c > 101 {
 		t.Errorf("pitch_random 100: the notes spread %.0f cents", c)
@@ -693,7 +693,7 @@ func TestLFOs(t *testing.T) {
 	lo, hi := math.Inf(1), 0.0
 	for at := 0.1; at < 1.3; at += 0.01 {
 		f := preciseFrequency(x[int(at*sr) : int(at*sr)+int(0.02*sr)])
-		lo, hi = math.Min(lo, f), math.Max(hi, f)
+		lo, hi = min(lo, f), max(hi, f)
 	}
 	if c := 1200 * math.Log2(hi/lo); c < 70 || c > 130 {
 		t.Errorf("a vibrato of 50 cents swings %.0f cents", c)

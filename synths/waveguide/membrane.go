@@ -52,8 +52,8 @@ func (m *membrane) clear() { *m = membrane{} }
 // setLoss sets how fast each mode dies, for a damping and the seconds of the lowest mode
 func (m *membrane) setLoss(v *Voice, damping, decay float64) {
 	sr := v.Config().SampleRate
-	damping = math.Max(0, math.Min(damping, 1))
-	decay = math.Max(0.01, decay)
+	damping = max(0, min(damping, 1))
+	decay = max(0.01, decay)
 	for k := range numModes {
 		t60 := decay / (1 + damping*4*(modeRatio(k)-1))
 		m.decay[k] = math.Pow(10, -3/(sr*t60))
@@ -82,8 +82,8 @@ func (v *Voice) strike() {
 	if !v.active {
 		m.clear()
 	}
-	hard := math.Max(0, math.Min(cfg.Hardness+0.4*(v.velocity-0.5), 1))
-	place := math.Max(0, math.Min(cfg.Strike, 1))
+	hard := max(0, min(cfg.Hardness+0.4*(v.velocity-0.5), 1))
+	place := max(0, min(cfg.Strike, 1))
 	m.setLoss(v, cfg.Damping+v.mods.Mod(dDamping), cfg.Decay*math.Exp2(v.mods.Mod(dDecay)))
 	m.ratio = 0 // retuned at the first sample
 	sum := 0.0
@@ -107,13 +107,13 @@ func (v *Voice) strike() {
 		// the stick presses for a time: a hard, fast stick for a fraction of a millisecond, a soft
 		// one for several. A mode that turns over in less than that hardly feels it (the soft stick
 		// leaves the highs out), and the sound doesn't start with a step
-		ms := (0.4 + 7*math.Pow(1-hard, 1.5)) * (1.15 - 0.3*math.Max(0, math.Min(v.velocity, 1)))
+		ms := (0.4 + 7*math.Pow(1-hard, 1.5)) * (1.15 - 0.3*max(0, min(v.velocity, 1)))
 		m.pnN = max(2, int(ms*0.001*sr))
 		m.pn = 0
 	}
-	m.glide = math.Max(0, math.Min(cfg.Tension, 1)) * 0.35 * (0.4 + 0.6*v.velocity)
+	m.glide = max(0, min(cfg.Tension, 1)) * 0.35 * (0.4 + 0.6*v.velocity)
 	m.step = math.Exp(-1 / (0.07 * sr))
-	m.rel = math.Pow(10, -3/(sr*math.Max(0.01, cfg.Release)))
+	m.rel = math.Pow(10, -3/(sr*max(0.01, cfg.Release)))
 	m.count = 0
 }
 
@@ -172,12 +172,12 @@ func (m *membrane) tick(v *Voice, bend float64) float64 {
 	s := sum * membraneGain
 	if sn := v.cfg.Snare; sn > 0 {
 		// the wires buzz as loud as the skin is moving
-		m.snare = math.Max(math.Abs(sum), m.snare*0.9993)
+		m.snare = max(math.Abs(sum), m.snare*0.9993)
 		v.rng = v.rng*1664525 + 1013904223
 		n := float64(int32(v.rng)) / 2147483648
 		hp := n - m.prev
 		m.prev = n
-		s += math.Min(sn, 1) * 0.9 * math.Sqrt(m.snare) * 0.5 * hp
+		s += min(sn, 1) * 0.9 * math.Sqrt(m.snare) * 0.5 * hp
 	}
 	return s
 }

@@ -36,7 +36,7 @@ func burst(n int) float64 {
 func peakAround(x []float64, at, width int) float64 {
 	m := 0.0
 	for i := max(0, at-width); i < min(len(x), at+width); i++ {
-		m = math.Max(m, math.Abs(x[i]))
+		m = max(m, math.Abs(x[i]))
 	}
 	return m
 }
@@ -76,7 +76,7 @@ func TestWaver(t *testing.T) {
 	}
 	lo, hi := math.Inf(1), 0.0
 	for _, g := range gaps {
-		lo, hi = math.Min(lo, g), math.Max(hi, g)
+		lo, hi = min(lo, g), max(hi, g)
 	}
 	if hi-lo < 0.05 {
 		t.Fatalf("wow and flutter should waver the pitch: periods from %.3f to %.3f samples", lo, hi)
@@ -89,7 +89,7 @@ func TestSelfOscillationStaysInBounds(t *testing.T) {
 	out := run(tp, 5, burst)
 	peak := 0.0
 	for _, x := range out {
-		peak = math.Max(peak, math.Abs(x))
+		peak = max(peak, math.Abs(x))
 	}
 	if peak > 1.5 || math.IsNaN(peak) {
 		t.Fatalf("feedback above 1 builds up, the saturation keeps it in bounds: %.2f", peak)

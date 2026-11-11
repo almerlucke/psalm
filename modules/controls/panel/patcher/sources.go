@@ -34,8 +34,8 @@ func NewLFO(rate float64) *LFO {
 }
 
 func (l *LFO) ReceiveMessage(msg psalm.Message) {
-	msg.IfFltVal("rate", func(f float64) { l.Rate = math.Max(0, f) })
-	msg.IfFltVal("beats", func(f float64) { l.Beats = math.Max(0, f) })
+	msg.IfFltVal("rate", func(f float64) { l.Rate = max(0, f) })
+	msg.IfFltVal("beats", func(f float64) { l.Beats = max(0, f) })
 	msg.IfFltVal("phase", func(f float64) { l.Phase = f - math.Floor(f) })
 	msg.IfIntVal("wave", func(w int) { l.Wave = max(0, min(w, len(LFOWaves)-1)) })
 }
@@ -86,7 +86,7 @@ func (l *LFO) Value() float64 { return l.value.Load() }
 // Describe describes an LFO's settings
 func (l *LFO) Describe() params.Set {
 	return params.Set{Name: "lfo", Params: []params.Param{
-		params.K("LFO", "rate", 0.01, 40, math.Max(0.01, l.Rate), params.Exp(), params.Unit("Hz")),
+		params.K("LFO", "rate", 0.01, 40, max(0.01, l.Rate), params.Exp(), params.Unit("Hz")),
 		params.K("LFO", "beats", 0, 32, l.Beats, params.Label("beats (0: the rate)")),
 		params.C("LFO", "wave", LFOWaves, l.Wave),
 		params.K("LFO", "phase", 0, 1, l.Phase),
@@ -114,9 +114,9 @@ func NewRandom(rate float64) *Random {
 }
 
 func (r *Random) ReceiveMessage(msg psalm.Message) {
-	msg.IfFltVal("rate", func(f float64) { r.Rate = math.Max(0, f) })
-	msg.IfFltVal("beats", func(f float64) { r.Beats = math.Max(0, f) })
-	msg.IfFltVal("smooth", func(f float64) { r.Smooth = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("rate", func(f float64) { r.Rate = max(0, f) })
+	msg.IfFltVal("beats", func(f float64) { r.Beats = max(0, f) })
+	msg.IfFltVal("smooth", func(f float64) { r.Smooth = max(0, min(f, 1)) })
 }
 
 func (r *Random) Receive(v any, _ int) {
@@ -145,7 +145,7 @@ func (r *Random) CtrlTick(tick psalm.CtrlTick) {
 	}
 	glide := 1.0
 	if period > 0 && r.Smooth > 0 {
-		glide = math.Min(1, r.since/(period*r.Smooth))
+		glide = min(1, r.since/(period*r.Smooth))
 	}
 	r.at = r.from + (r.to-r.from)*glide
 	r.value.Store(r.at)
@@ -157,7 +157,7 @@ func (r *Random) Value() float64 { return r.value.Load() }
 // Describe describes the random source's settings
 func (r *Random) Describe() params.Set {
 	return params.Set{Name: "random", Params: []params.Param{
-		params.K("Random", "rate", 0.01, 40, math.Max(0.01, r.Rate), params.Exp(), params.Unit("Hz")),
+		params.K("Random", "rate", 0.01, 40, max(0.01, r.Rate), params.Exp(), params.Unit("Hz")),
 		params.K("Random", "beats", 0, 32, r.Beats, params.Label("beats (0: the rate)")),
 		params.K("Random", "smooth", 0, 1, r.Smooth),
 	}}
@@ -211,7 +211,7 @@ func NewMixer(channels int) *Mixer {
 func busName(i int) string { return string(rune('A' + i)) }
 
 func (m *Mixer) ReceiveMessage(msg psalm.Message) {
-	clamp := func(v, lo, hi float64) float64 { return math.Max(lo, math.Min(v, hi)) }
+	clamp := func(v, lo, hi float64) float64 { return max(lo, min(v, hi)) }
 	for i := range m.Channels {
 		n := strconv.Itoa(i + 1)
 		msg.IfFltVal("level"+n, func(f float64) { m.Level[i] = clamp(f, 0, 2) })

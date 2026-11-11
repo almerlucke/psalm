@@ -30,7 +30,7 @@ func run(p *Piano, seconds float64) []float64 {
 func peakOf(x []float64) float64 {
 	m := 0.0
 	for _, v := range x {
-		m = math.Max(m, math.Abs(v))
+		m = max(m, math.Abs(v))
 	}
 	return m
 }

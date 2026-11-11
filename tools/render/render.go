@@ -128,7 +128,7 @@ func Run(p *psalm.Psalm, opts Options, each func(out psalm.Channels)) Stats {
 			peak := 0.0
 			for _, ch := range out {
 				for _, x := range ch {
-					peak = math.Max(peak, math.Abs(float64(x)))
+					peak = max(peak, math.Abs(float64(x)))
 				}
 			}
 			if peak < threshold {

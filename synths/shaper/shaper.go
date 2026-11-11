@@ -382,7 +382,7 @@ func (v *Voice) pickFactor() {
 		sr := v.Config().SampleRate
 		top := v.freq * 1.12 * math.Exp2(v.cfg.Spread/1200)
 		for k := range 2 {
-			top = math.Max(top, v.freq*1.12*math.Exp2(float64(v.line(k).Octave)+(v.line(k).Detune+v.cfg.Spread)/1200))
+			top = max(top, v.freq*1.12*math.Exp2(float64(v.line(k).Octave)+(v.line(k).Detune+v.cfg.Spread)/1200))
 		}
 		f = 1
 		for i := 0; i < v.numChains; i++ {
@@ -531,37 +531,37 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	}
 	msg.IfFltVal("frequency", func(f float64) { v.setFreq(f) })
 	msg.IfFltVal("pitch", func(p float64) { v.setFreq(440 * math.Exp2((p-69)/12)) })
-	msg.IfFltVal("pitchAmount", func(f float64) { v.cfg.PitchAmount = math.Max(-60, math.Min(f, 60)) })
-	msg.IfFltVal("glide", func(f float64) { v.cfg.Glide = math.Max(0, math.Min(f, 3000)) })
-	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("morph", func(f float64) { v.cfg.Morph = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("pitchAmount", func(f float64) { v.cfg.PitchAmount = max(-60, min(f, 60)) })
+	msg.IfFltVal("glide", func(f float64) { v.cfg.Glide = max(0, min(f, 3000)) })
+	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0, min(f, 1)) })
+	msg.IfFltVal("morph", func(f float64) { v.cfg.Morph = max(0, min(f, 1)) })
 	for i := range v.cfg.Macros {
-		msg.IfFltVal([]string{"macro1", "macro2", "macro3", "macro4"}[i], func(f float64) { v.cfg.Macros[i] = math.Max(0, math.Min(f, 1)) })
+		msg.IfFltVal([]string{"macro1", "macro2", "macro3", "macro4"}[i], func(f float64) { v.cfg.Macros[i] = max(0, min(f, 1)) })
 	}
 	for i, n := range []string{"1", "2"} {
 		l := v.line(i)
 		msg.IfIntVal("octave"+n, func(o int) { l.Octave = max(-4, min(o, 4)) })
 		msg.IfFltVal("detune"+n, func(f float64) { l.Detune = f })
-		msg.IfFltVal("level"+n, func(f float64) { l.Level = math.Max(0, f) })
-		msg.IfFltVal("morph"+n, func(f float64) { l.Morph = math.Max(-1, math.Min(f, 1)) })
+		msg.IfFltVal("level"+n, func(f float64) { l.Level = max(0, f) })
+		msg.IfFltVal("morph"+n, func(f float64) { l.Morph = max(-1, min(f, 1)) })
 	}
 	msg.IfFltVal("detune", func(f float64) { v.cfg.Line2.Detune = f }) // line 2, as on the other synths with two
 	msg.IfIntVal("oversample", func(o int) { v.cfg.Oversample = Oversamples[max(0, min(o, len(Oversamples)-1))] })
 	msg.IfIntVal("unison", func(n int) { v.cfg.Unison = max(1, min(n, MaxUnison)) })
-	msg.IfFltVal("spread", func(f float64) { v.cfg.Spread = math.Max(0, math.Min(f, 100)) })
+	msg.IfFltVal("spread", func(f float64) { v.cfg.Spread = max(0, min(f, 100)) })
 	msg.IfFltVal("uniStereo", func(f float64) { v.cfg.UniStereo = clamp01(f) })
 	msg.IfFltVal("drift", func(f float64) { v.cfg.Drift = clamp01(f) })
 	msg.IfFltVal("sub", func(f float64) { v.cfg.Sub = clamp01(f) })
 	msg.IfFltVal("noise", func(f float64) { v.cfg.Noise = clamp01(f) })
-	msg.IfFltVal("noiseColor", func(f float64) { v.cfg.NoiseColor = math.Max(-1, math.Min(f, 1)) })
+	msg.IfFltVal("noiseColor", func(f float64) { v.cfg.NoiseColor = max(-1, min(f, 1)) })
 	msg.IfFltVal("xmod", func(f float64) { v.cfg.XMod = clamp01(f) })
 	msg.IfIntVal("xmodType", func(n int) { v.cfg.XModType = max(0, min(n, 1)) })
 	msg.IfBoolVal("xmodSilent", func(b bool) { v.cfg.XModSilent = b })
 	msg.IfFltVal("width", func(f float64) { v.cfg.Width = f })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
-	msg.IfFltVal("trim", func(f float64) { v.cfg.Trim = math.Max(-48, math.Min(f, 24)) })
-	msg.IfFltVal("morphAmount", func(f float64) { v.cfg.MorphAmount = math.Max(-1, math.Min(f, 1)) })
-	msg.IfFltVal("shapeAmount", func(f float64) { v.cfg.ShapeAmount = math.Max(-1, math.Min(f, 1)) })
+	msg.IfFltVal("trim", func(f float64) { v.cfg.Trim = max(-48, min(f, 24)) })
+	msg.IfFltVal("morphAmount", func(f float64) { v.cfg.MorphAmount = max(-1, min(f, 1)) })
+	msg.IfFltVal("shapeAmount", func(f float64) { v.cfg.ShapeAmount = max(-1, min(f, 1)) })
 	msg.IfFltVal("vibratoRate", func(f float64) { v.cfg.VibratoRate = f })
 	msg.IfFltVal("vibratoDepth", func(f float64) { v.cfg.VibratoDepth = f })
 	msg.IfFltVal("lfo1Rate", func(f float64) { v.cfg.LFO1Rate = f })
@@ -586,7 +586,7 @@ func (v *Voice) Receive(value any, index int) {
 	}
 	switch index {
 	case InMorph:
-		v.cfg.Morph = math.Max(0, math.Min(psalm.FltVal[float64](value), 1))
+		v.cfg.Morph = max(0, min(psalm.FltVal[float64](value), 1))
 	case InExt1, InExt1 + 1, InExt1 + 2, InExt1 + 3:
 		v.mods.SetExt(index-InExt1, psalm.FltVal[float64](value))
 		v.cfg.Ext[index-InExt1] = v.mods.Ext(index - InExt1)
@@ -845,7 +845,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 				base = -width
 			}
 			for j := range uni {
-				v.gL[k*MaxUnison+j], v.gR[k*MaxUnison+j] = pan(math.Max(-1, math.Min(base+offs[j]*spread, 1)))
+				v.gL[k*MaxUnison+j], v.gR[k*MaxUnison+j] = pan(max(-1, min(base+offs[j]*spread, 1)))
 			}
 		}
 	}
@@ -879,7 +879,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 		fc := 20000.0
 		if cfg.NoiseColor < 0 {
 			fc = 250 * math.Pow(80, 1+cfg.NoiseColor)
-			noiseDark = math.Min(6, math.Pow(20000/fc, 0.35))
+			noiseDark = min(6, math.Pow(20000/fc, 0.35))
 		} else if cfg.NoiseColor > 0 {
 			fc = 250 * math.Pow(32, cfg.NoiseColor)
 		}
@@ -902,7 +902,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 	if modded {
 		mods.Values[modmatrix.Velocity] = v.amp
 		mods.Values[modmatrix.Random] = v.random
-		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.freq/130.81/2)/5, 1))
+		mods.Values[modmatrix.Key] = max(-1, min(math.Log2(v.freq/130.81/2)/5, 1))
 	}
 	factor := v.osFactor
 	invFactor := 1 / float64(factor)
@@ -972,15 +972,15 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 		// the targets for this sample, and the sound gliding to them
 		gainT := gain
 		if levelModded {
-			gainT = math.Max(0, level+mods.Mod(dLevel)) * v.amp
+			gainT = max(0, level+mods.Mod(dLevel)) * v.amp
 		}
-		widthT := math.Max(0, math.Min(cfg.Width+mods.Mod(dWidth), 1))
+		widthT := max(0, min(cfg.Width+mods.Mod(dWidth), 1))
 		xmodT := cfg.XMod
 		if xmodModded {
 			xmodT += mods.Mod(dXmod)
 		}
 		xmodT = clamp01(xmodT)
-		lvlT := [2]float64{orOne(cfg.Line1.Level), math.Max(0, cfg.Line2.Level)}
+		lvlT := [2]float64{orOne(cfg.Line1.Level), max(0, cfg.Line2.Level)}
 		if cfg.XModSilent && xmodT > 1e-4 {
 			lvlT[0] = 0 // line 1 is heard only in line 2
 		}
@@ -996,7 +996,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 				pos := clamp01(v.smMorph + v.line(k).Morph)
 				sum := 0.0
 				for j := 0; j < dcPoints; j++ {
-					sum += math.Max(-2, math.Min(v.wave(float64(j)/dcPoints, pos, &v.smMacros), 2))
+					sum += max(-2, min(v.wave(float64(j)/dcPoints, pos, &v.smMacros), 2))
 				}
 				v.dcEst[k] = sum / dcPoints
 			}
@@ -1087,7 +1087,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 					v.rebuildTable(lt, pos, &v.smMacros, fTop, false)
 				}
 				if lt.blend < 1 {
-					lt.blend = math.Min(1, lt.blend+lt.blendInc)
+					lt.blend = min(1, lt.blend+lt.blendInc)
 					w = lt.blend
 					tprev = &lt.buf[lt.prev]
 				}
@@ -1152,7 +1152,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 				v.dcEst[k] += (mean/float64(uni) - v.dcEst[k]) * dcTrack // the mean moves with the macros, slowly
 			}
 			if k == 0 && xmodOn {
-				modSig = math.Max(-1.5, math.Min((mean/float64(uni))-v.dcEst[0], 1.5))
+				modSig = max(-1.5, min((mean/float64(uni))-v.dcEst[0], 1.5))
 			}
 			amp := dca * lvl * uniNorm
 			ring := k == 1 && xmodOn && cfg.XModType == 1
@@ -1224,7 +1224,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 			channels[c][i] = float32(val)
 		}
 		if filtered && v.fBlend < 1 {
-			v.fBlend = math.Min(1, v.fBlend+1/(filterFade*sr))
+			v.fBlend = min(1, v.fBlend+1/(filterFade*sr))
 		} else if !filtered {
 			v.fBlend = 0
 		}

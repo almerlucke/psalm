@@ -93,7 +93,7 @@ func tempoAt(index int, bar float64) float64 {
 		return bpm
 	}
 	from := float64(sections[index].bars - slowBars)
-	p := math.Max(0, math.Min((bar-from)/slowBars, 1))
+	p := max(0, min((bar-from)/slowBars, 1))
 	return bpm + (endBPM-bpm)*(0.5-0.5*math.Cos(math.Pi*p))
 }
 

@@ -121,7 +121,7 @@ func chordsBetween(timeline []TimedChord, length, start, end float64) []segment 
 			if ce <= start || cs >= end {
 				continue
 			}
-			from := math.Max(cs, start)
+			from := max(cs, start)
 			if from > start && end-from <= tolerance {
 				continue
 			}

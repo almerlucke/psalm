@@ -85,10 +85,10 @@ func (p *Params) defaults() {
 	if p.Rhythm == "triplet" && p.Grid > 1.0/3 {
 		p.Grid = 1.0 / 3
 	}
-	p.Density = math.Max(0, math.Min(p.Density, 1))
-	p.Rest = math.Max(0, math.Min(p.Rest, 0.8))
-	p.Steps = math.Max(0, math.Min(p.Steps, 1))
-	p.Chord = math.Max(0, math.Min(p.Chord, 1))
+	p.Density = max(0, min(p.Density, 1))
+	p.Rest = max(0, min(p.Rest, 0.8))
+	p.Steps = max(0, min(p.Steps, 1))
+	p.Chord = max(0, min(p.Chord, 1))
 }
 
 // slot is a note to be: its place in a phrase, how long, and whether it is a rest
@@ -113,7 +113,7 @@ func Generate(p Params) []Note {
 	if len(g.pool) < 3 {
 		return nil
 	}
-	phrase := math.Min(p.Phrase, p.Beats)
+	phrase := min(p.Phrase, p.Beats)
 	count := int(math.Ceil(p.Beats/phrase - 1e-9))
 	var toks []Token
 	if strings.TrimSpace(p.Grammar) != "" {
@@ -138,7 +138,7 @@ func Generate(p Params) []Note {
 	prevEnd := -1
 	for i, kind := range kinds {
 		off := float64(i) * phrase
-		length := math.Min(phrase, p.Beats-off)
+		length := min(phrase, p.Beats-off)
 		if length < p.Grid-1e-9 {
 			break
 		}
@@ -174,7 +174,7 @@ func Generate(p Params) []Note {
 	// the notes inside the stretch, in order
 	out = slices.DeleteFunc(out, func(n Note) bool { return n.Start >= p.Beats-1e-9 })
 	for i := range out {
-		out[i].Length = math.Max(0.05, math.Min(out[i].Length, p.Beats-out[i].Start))
+		out[i].Length = max(0.05, min(out[i].Length, p.Beats-out[i].Start))
 		out[i].Start = math.Round(out[i].Start*1000) / 1000
 		out[i].Length = math.Round(out[i].Length*1000) / 1000
 	}
@@ -247,7 +247,7 @@ func (g *gen) rhythm(length float64) []slot {
 	}
 	cs = slices.DeleteFunc(cs, func(c choice) bool { return c.w <= 0 || c.len < p.Grid-1e-9 })
 	if len(cs) == 0 {
-		cs = []choice{{math.Max(p.Grid, 0.5), 1}}
+		cs = []choice{{max(p.Grid, 0.5), 1}}
 	}
 	total := 0.0
 	for _, c := range cs {
@@ -264,7 +264,7 @@ func (g *gen) rhythm(length float64) []slot {
 			}
 			x -= c.w
 		}
-		l = math.Min(l, length-at)
+		l = min(l, length-at)
 		if l < p.Grid-1e-9 && len(slots) > 0 { // what is left is too short for a note: the one before takes it
 			slots[len(slots)-1].len += l
 			break
@@ -371,10 +371,10 @@ func (g *gen) line(slots []slot, off, length float64, prevKey int, end string) [
 						w += 0
 					}
 				case str:
-					w *= math.Max(0.04, 1-0.9*p.Chord)
+					w *= max(0.04, 1-0.9*p.Chord)
 				}
 			}
-			if t := contourAt(p.Contour, (s.at+s.len/2)/math.Max(length, 1e-6)); t >= 0 {
+			if t := contourAt(p.Contour, (s.at+s.len/2)/max(length, 1e-6)); t >= 0 {
 				d := (height(pool[j]) - t) * float64(p.High-p.Low)
 				w *= math.Exp(-d * d / (2 * 6 * 6))
 			}
@@ -444,11 +444,11 @@ func (g *gen) stepWeight(step, lastDir, lastStep int) float64 {
 	if ls := lastStep; (ls >= 3 || ls <= -3) && step*ls < 0 && a <= 2 {
 		w *= 2.2 // after a leap it comes back
 	}
-	return math.Max(w, 0)
+	return max(w, 0)
 }
 
 func (g *gen) velocity(s slot, first bool) float64 {
-	d := math.Max(0, math.Min(g.p.Dynamics, 1))
+	d := max(0, min(g.p.Dynamics, 1))
 	v := g.p.Velocity
 	if strong(s.at, s.len) {
 		v += 0.06 + 0.2*d
@@ -463,7 +463,7 @@ func (g *gen) velocity(s slot, first bool) float64 {
 		v -= 0.1 * d
 	}
 	v += (g.rng.Float64() - 0.5) * (0.08 + 0.4*d)
-	return math.Max(0.1, math.Min(v, 1))
+	return max(0.1, min(v, 1))
 }
 
 // nearest is the place in the pool of the key nearest to a key

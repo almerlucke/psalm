@@ -27,7 +27,7 @@ func run(w *Widener, freq float64) ([]float32, []float32) {
 func sideLevel(l, r []float32) float64 {
 	m := 0.0
 	for i := range l {
-		m = math.Max(m, math.Abs(float64(l[i]-r[i])/2))
+		m = max(m, math.Abs(float64(l[i]-r[i])/2))
 	}
 	return m
 }

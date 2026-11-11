@@ -90,7 +90,7 @@ func (in *Input) Describe() params.Set {
 	return set
 }
 
-func db(x float64) float64 { return math.Pow(10, math.Max(-60, math.Min(x, 24))/20) }
+func db(x float64) float64 { return math.Pow(10, max(-60, min(x, 24))/20) }
 
 // Settings returns the settings
 func (in *Input) Settings() Config { return in.cfg }

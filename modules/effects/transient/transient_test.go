@@ -24,9 +24,9 @@ func hit(s *Shaper) (start, tail float64) {
 			t := float64(n-bs+i) / sr
 			switch {
 			case t < 0.01:
-				start = math.Max(start, math.Abs(float64(x)))
+				start = max(start, math.Abs(float64(x)))
 			case t > 0.15 && t < 0.25:
-				tail = math.Max(tail, math.Abs(float64(x)))
+				tail = max(tail, math.Abs(float64(x)))
 			}
 		}
 	}

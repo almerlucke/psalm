@@ -113,7 +113,7 @@ func Target(t Track, o Options) Track {
 				want = nearest(m+o.Offset, classes)
 			}
 			d := (want - m) * o.Strength
-			d = math.Max(-o.MaxShift, math.Min(o.MaxShift, d))
+			d = max(-o.MaxShift, min(o.MaxShift, d))
 			if f == r.from || o.Speed <= 0 {
 				shift = d
 			} else {
@@ -121,8 +121,8 @@ func Target(t Track, o Options) Track {
 				shift += a * (d - shift)
 			}
 			// the start and the end of the word: the shift grows from nothing and falls back to nothing
-			edge := math.Min(float64(f-r.from)+1, float64(r.to-f)) * hopSec * 1000 / o.Ramp
-			edge = math.Min(edge, 1)
+			edge := min(float64(f-r.from)+1, float64(r.to-f)) * hopSec * 1000 / o.Ramp
+			edge = min(edge, 1)
 			edge = edge * edge * (3 - 2*edge)
 			out.F0[f] = t.F0[f] * math.Pow(2, shift*edge/12)
 		}

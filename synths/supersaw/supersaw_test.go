@@ -157,7 +157,7 @@ func TestNotes(t *testing.T) {
 		_, l, _ := play(f(), psalm.Message{"pitch": 57.0}, 1)
 		p := 0.0
 		for _, s := range l {
-			p = math.Max(p, math.Abs(s))
+			p = max(p, math.Abs(s))
 		}
 		if p < 0.01 || p > 4 || math.IsNaN(p) {
 			t.Errorf("%s peaks at %g", name, p)

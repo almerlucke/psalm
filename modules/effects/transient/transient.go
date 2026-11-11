@@ -47,7 +47,7 @@ func (s *Shaper) Settings() Config { return s.cfg }
 func (s *Shaper) SetAttack(db float64)  { s.cfg.Attack = clamp(db, -24, 24) }
 func (s *Shaper) SetSustain(db float64) { s.cfg.Sustain = clamp(db, -24, 24) }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 
 func (s *Shaper) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
@@ -97,7 +97,7 @@ func (s *Shaper) Synthesize() {
 	)
 	for i := range out[0] {
 		l, r := float64(in[0][i]), float64(in[len(in)-1][i])
-		x := math.Max(math.Abs(l), math.Abs(r))
+		x := max(math.Abs(l), math.Abs(r))
 		follow(&s.fast, x, fastUp, fastDn)
 		follow(&s.slow, x, slowUp, slowDn)
 		target := 0.0

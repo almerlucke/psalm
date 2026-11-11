@@ -122,7 +122,7 @@ func (s safeTable) Shape(x float64) float64 {
 	if s.open && x >= 1 {
 		return s.t[len(s.t)-1]
 	}
-	return s.t.Shape(math.Max(0, math.Min(x, math.Nextafter(1, 0))))
+	return s.t.Shape(max(0, min(x, math.Nextafter(1, 0))))
 }
 
 // tables are the waves a table of shapers can be: a shaper reading one over 0 to 1
@@ -232,7 +232,7 @@ func (r *Runtime) shapersObject() *goja.Object {
 		if a := c.Argument(1); !goja.IsUndefined(a) && !goja.IsNull(a) {
 			for i, x := range r.values(a) {
 				if i < len(m) {
-					m[i] = math.Max(0, math.Min(x.ToFloat(), 1))
+					m[i] = max(0, min(x.ToFloat(), 1))
 				}
 			}
 		}
@@ -287,7 +287,7 @@ func (r *Runtime) shapersObject() *goja.Object {
 	// interp(index, ...shapers): between two neighbours, index 0 (the first) to 1 (the last)
 	set("interp", func(c goja.FunctionCall) shape.Shaper {
 		ip := interp.New(list(c, 1, "interp")...)
-		ip.Index = math.Max(0, math.Min(num(c, 0, 0), 1))
+		ip.Index = max(0, min(num(c, 0, 0), 1))
 		return ip
 	})
 	// route(index, ...shapers): the shaper at an index

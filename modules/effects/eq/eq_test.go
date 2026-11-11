@@ -20,7 +20,7 @@ func gain(e *EQ, freq float64) float64 {
 		e.Synthesize()
 		if b > int(0.5*sr/float64(bs)) {
 			for _, x := range e.Output(0).Channels[0] {
-				peak = math.Max(peak, math.Abs(float64(x)))
+				peak = max(peak, math.Abs(float64(x)))
 			}
 		}
 	}

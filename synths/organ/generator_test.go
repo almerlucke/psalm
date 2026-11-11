@@ -49,7 +49,7 @@ func TestGearRatioFrequencies(t *testing.T) {
 	// so that the semitones are not all 100 cents, the octaves are
 	worst, uneven := 0.0, 0
 	for w := range numWheels {
-		worst = math.Max(worst, math.Abs(wheelCents(w)))
+		worst = max(worst, math.Abs(wheelCents(w)))
 		if w > 0 && math.Abs(cents(wheelHz(w), wheelHz(w-1))-100) > 0.3 {
 			uneven++
 		}
@@ -142,7 +142,7 @@ func attackMs(cfg Config) float64 {
 	}
 	final := 0.0
 	for _, e := range env[len(env)-20:] {
-		final = math.Max(final, e)
+		final = max(final, e)
 	}
 	t10, t90 := -1, -1
 	for i, e := range env {

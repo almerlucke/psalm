@@ -44,7 +44,7 @@ func TestTremoloDepth(t *testing.T) {
 	l, _, _ := play(Config{Rate: 5, Depth: 1}, 1)
 	lo, hi := 1.0, 0.0
 	for _, x := range l {
-		lo, hi = math.Min(lo, x), math.Max(hi, x)
+		lo, hi = min(lo, x), max(hi, x)
 	}
 	if lo > 0.01 || hi < 0.99 {
 		t.Fatalf("a full depth tremolo goes from silence to full: %.3f to %.3f", lo, hi)
@@ -52,7 +52,7 @@ func TestTremoloDepth(t *testing.T) {
 	l, _, _ = play(Config{Rate: 5, Depth: 0.5}, 1)
 	lo = 1
 	for _, x := range l {
-		lo = math.Min(lo, x)
+		lo = min(lo, x)
 	}
 	if math.Abs(lo-0.5) > 0.01 {
 		t.Fatalf("half depth goes down to half: %.3f", lo)

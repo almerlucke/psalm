@@ -1,7 +1,6 @@
 package patcher
 
 import (
-	"math"
 	"slices"
 
 	"github.com/almerlucke/psalm"
@@ -57,7 +56,7 @@ func (a *Arp) ReceiveMessage(msg psalm.Message) {
 	if !ok {
 		msg.IfIntVal("mode", func(m int) { a.Mode = max(0, min(m, len(ArpModes)-1)) })
 		msg.IfIntVal("octaves", func(o int) { a.Octaves = max(1, min(o, 4)) })
-		msg.IfFltVal("gate", func(f float64) { a.Gate = math.Max(0.05, math.Min(f, 1)) })
+		msg.IfFltVal("gate", func(f float64) { a.Gate = max(0.05, min(f, 1)) })
 		msg.IfFltVal("hold", func(f float64) {
 			a.Hold = f > 0.5
 			if !a.Hold {
@@ -203,7 +202,7 @@ func (a *Arp) late(tick psalm.CtrlTick) {
 		}
 		pool := a.pool()
 		play := a.next(pool)
-		seconds := math.Max(0.005, a.Gate*ev.Seconds)
+		seconds := max(0.005, a.Gate*ev.Seconds)
 		for _, n := range play {
 			msg := psalm.Message{"command": "trigger", "tick": ev.Tick, "duration": seconds, "amplitude": n.velocity,
 				"message": psalm.Message{"pitch": n.pitch + a.Transpose, "velocity": n.velocity}}

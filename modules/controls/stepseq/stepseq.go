@@ -269,13 +269,13 @@ func (s *Sequencer) SetSwing(swing float64) {
 	if swing <= 0 {
 		swing = 0.5
 	}
-	s.swing.Store(math.Float64bits(math.Max(0.5, math.Min(swing, 0.75))))
+	s.swing.Store(math.Float64bits(max(0.5, min(swing, 0.75))))
 }
 
 // SetHumanize sets the random timing (± milliseconds) and velocity (± part) of every hit
 func (s *Sequencer) SetHumanize(ms, velocity float64) {
-	s.humanize.Store(math.Float64bits(math.Max(0, ms)))
-	s.humanizeVel.Store(math.Float64bits(math.Max(0, math.Min(velocity, 1))))
+	s.humanize.Store(math.Float64bits(max(0, ms)))
+	s.humanizeVel.Store(math.Float64bits(max(0, min(velocity, 1))))
 }
 
 // SetFill switches the fill on or off: steps with the condition "fill" play only with it on,
@@ -453,7 +453,7 @@ func (s *Sequencer) schedule(k int64) {
 		base += (math.Float64frombits(s.swing.Load()) - 0.5) * 2 * tps
 	}
 	humanize := math.Float64frombits(s.humanize.Load()) / 1000 / s.Env().TickDuration() // in ticks
-	humanize = math.Min(humanize, 0.25*tps)
+	humanize = min(humanize, 0.25*tps)
 	humanizeVel := math.Float64frombits(s.humanizeVel.Load())
 
 	for _, r := range s.rows {
@@ -487,7 +487,7 @@ func (s *Sequencer) schedule(k int64) {
 			s.pending = append(s.pending, hit{
 				tick:      at + float64(i)*tps/float64(hits),
 				row:       r,
-				amp:       math.Max(0, math.Min(v, 1)) * level,
+				amp:       max(0, min(v, 1)) * level,
 				pitch:     value(Pitch),
 				condition: condition,
 			})

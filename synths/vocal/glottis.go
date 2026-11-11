@@ -53,7 +53,7 @@ func (g *glottis) tick(inc, oq, sq, jitter, shimmer float64) (dv, flow float64) 
 	if g.mul == 0 {
 		g.mul, g.amp = 1, 1
 	}
-	dt := math.Min(inc/g.mul, 0.45)
+	dt := min(inc/g.mul, 0.45)
 	tp := oq * sq / (1 + sq)
 	tn := oq - tp
 	p := g.phase
@@ -100,12 +100,12 @@ func (g *glottis) advance(dt, inc, jitter, shimmer float64) {
 		g.fl = 0
 		g.mul, g.amp = 1, 1
 		if jitter > 0 {
-			g.mul = math.Max(0.5, math.Min(1+jitter*math.Sqrt(3)*(g.rng.float()*2-1), 1.5))
+			g.mul = max(0.5, min(1+jitter*math.Sqrt(3)*(g.rng.float()*2-1), 1.5))
 		}
 		if shimmer > 0 {
-			g.amp = math.Max(0.3, 1+shimmer*math.Sqrt(3)*(g.rng.float()*2-1))
+			g.amp = max(0.3, 1+shimmer*math.Sqrt(3)*(g.rng.float()*2-1))
 		}
-		g.cycle = g.mul / math.Max(inc, 1e-9)
+		g.cycle = g.mul / max(inc, 1e-9)
 	}
 }
 
@@ -114,10 +114,10 @@ func (g *glottis) tickLF(inc float64, p *lfPulse, jitter, shimmer float64) (dv, 
 	if g.mul == 0 {
 		g.mul, g.amp = 1, 1
 	}
-	dt := math.Min(inc/g.mul, 0.45)
+	dt := min(inc/g.mul, 0.45)
 	d := p.at(g.phase) + p.corners(g.phase, dt)
 	g.fl += d * dt
-	flow = math.Max(0, math.Min(g.fl, 1))
+	flow = max(0, min(g.fl, 1))
 	dv = d * p.out * g.amp
 	g.advance(dt, inc, jitter, shimmer)
 	return dv, flow
@@ -143,7 +143,7 @@ type lfPulse struct {
 // lfRd derives tp, te and ta (in periods) from the single voice-quality parameter Rd (0.3 pressed to
 // 2.7 breathy), by Fant's regression of Ra, Rk and Rg on Rd
 func lfRd(rd float64) (tp, te, ta float64) {
-	rd = math.Max(0.3, math.Min(rd, 2.7))
+	rd = max(0.3, min(rd, 2.7))
 	ra := (-1 + 4.8*rd) / 100
 	rk := (22.4 + 11.8*rd) / 100
 	rg := rk / (4 * (0.11*rd/(0.5+1.2*rk) - ra))
@@ -153,10 +153,10 @@ func lfRd(rd float64) (tp, te, ta float64) {
 
 // lfSolve solves the pulse of the times tp < te < 1 and the return time ta
 func lfSolve(tp, te, ta float64) lfPulse {
-	tp = math.Max(0.05, math.Min(tp, 0.9))
-	te = math.Max(tp+0.02, math.Min(te, 0.98))
+	tp = max(0.05, min(tp, 0.9))
+	te = max(tp+0.02, min(te, 0.98))
 	tb := 1 - te
-	ta = math.Max(1e-4, math.Min(ta, 0.9*tb))
+	ta = max(1e-4, min(ta, 0.9*tb))
 	p := lfPulse{tp: tp, te: te, ta: ta, tb: tb}
 	// eps: eps ta = 1 - exp(-eps tb), by Newton from 1/ta
 	eps := 1 / ta
@@ -196,7 +196,7 @@ func lfSolve(tp, te, ta float64) lfPulse {
 			ok = true
 			break
 		}
-		h := 1e-5 * math.Max(1, math.Abs(a))
+		h := 1e-5 * max(1, math.Abs(a))
 		df := (g(a+h) - g(a-h)) / (2 * h)
 		if df == 0 || math.IsNaN(df) {
 			break

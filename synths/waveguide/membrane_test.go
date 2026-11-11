@@ -14,7 +14,7 @@ var drums = []string{"tom", "floorTom", "conga", "tabla", "frameDrum", "snareDru
 func peakOf(x []float64) float64 {
 	p := 0.0
 	for _, s := range x {
-		p = math.Max(p, math.Abs(s))
+		p = max(p, math.Abs(s))
 	}
 	return p
 }

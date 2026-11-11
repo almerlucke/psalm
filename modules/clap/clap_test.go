@@ -109,7 +109,7 @@ func TestInstrument(t *testing.T) {
 	peak := func(bs ...[]float32) (m float64) {
 		for _, b := range bs {
 			for _, s := range b {
-				m = math.Max(m, math.Abs(float64(s)))
+				m = max(m, math.Abs(float64(s)))
 			}
 		}
 		return
@@ -216,7 +216,7 @@ func TestPresets(t *testing.T) {
 		var peak float64
 		for range 8 {
 			for _, s := range block(p) {
-				peak = math.Max(peak, math.Abs(float64(s)))
+				peak = max(peak, math.Abs(float64(s)))
 			}
 		}
 		return peak
@@ -269,9 +269,9 @@ func TestPorts(t *testing.T) {
 		p.ResetRun()
 		p.Synthesize()
 		for i := range p.Output(0).Channels[1] {
-			peak0 = math.Max(peak0, math.Abs(float64(p.Output(0).Channels[1][i])))
-			peak1 = math.Max(peak1, math.Abs(float64(p.Output(1).Channels[0][i])))
-			peak2 = math.Max(peak2, math.Abs(float64(p.Output(2).Channels[0][i])))
+			peak0 = max(peak0, math.Abs(float64(p.Output(0).Channels[1][i])))
+			peak1 = max(peak1, math.Abs(float64(p.Output(1).Channels[0][i])))
+			peak2 = max(peak2, math.Abs(float64(p.Output(2).Channels[0][i])))
 		}
 	}
 	if peak0 < 0.4 || math.Abs(peak1-peak0/2) > 0.02 || peak2 != 0 {
@@ -342,7 +342,7 @@ func TestCrash(t *testing.T) {
 	}
 	peak := 0.0
 	for _, s := range good.Output(0).Channels[0] {
-		peak = math.Max(peak, math.Abs(float64(s)))
+		peak = max(peak, math.Abs(float64(s)))
 	}
 	if good.Crashed() != 0 || peak < 0.3 {
 		t.Errorf("the other plugin: crashed %d, peak %v", good.Crashed(), peak)

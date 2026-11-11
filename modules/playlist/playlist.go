@@ -498,7 +498,7 @@ func (pl *Playlist) Synthesize() {
 				pl.onBar = false
 				pl.start(b) // the tempo is set (MatchTempo)
 				if onBar {  // its first tick comes a tick after it starts: wait the rest
-					b.sub.DelayStart(math.Max(0, delay-b.sub.SamplesPerTick()))
+					b.sub.DelayStart(max(0, delay-b.sub.SamplesPerTick()))
 				}
 			}
 		}
@@ -573,12 +573,12 @@ func (pl *Playlist) progress(v *voice) float64 {
 	if v.Transport != nil {
 		if beats, known := v.Transport.BeatsLeft(); known {
 			left := beats * 60 / v.sub.Env().BPM() * pl.Config().SampleRate
-			v.progress = float64(v.elapsed) / math.Max(1, float64(v.elapsed)+left)
+			v.progress = float64(v.elapsed) / max(1, float64(v.elapsed)+left)
 		}
 		return v.progress
 	}
 	if v.length > 0 {
-		return math.Min(1, float64(v.elapsed)/float64(v.length))
+		return min(1, float64(v.elapsed)/float64(v.length))
 	}
 	return 0
 }
@@ -690,9 +690,9 @@ func (pl *Playlist) sound(v *voice, out psalm.Channels) {
 	if b != nil && v.fade.pos >= b.at && b.pos != b.target { // the swap: over a quarter of a second
 		step := float64(buffer) / float64(pl.seconds(0.25))
 		if b.target > b.pos {
-			b.pos = math.Min(b.target, b.pos+step)
+			b.pos = min(b.target, b.pos+step)
 		} else {
-			b.pos = math.Max(b.target, b.pos-step)
+			b.pos = max(b.target, b.pos-step)
 		}
 		for _, f := range b.filters {
 			f.SetFrequency(b.cutoff())

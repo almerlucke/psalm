@@ -47,7 +47,7 @@ const leslieLine = 2048
 
 // speed returns the turns per second for a speed setting: 0 stopped, 0.5 slow, 1 fast
 func (r *rotor) speed(s float64) float64 {
-	s = math.Max(0, math.Min(s, 1))
+	s = max(0, min(s, 1))
 	if s <= 0.5 {
 		return r.slow * s * 2
 	}

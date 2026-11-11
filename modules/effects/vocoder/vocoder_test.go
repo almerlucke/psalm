@@ -47,7 +47,7 @@ func TestIdentityWhenModulatorEqualsCarrier(t *testing.T) {
 	lat := v.Latency()
 	maxErr := 0.0
 	for i := 4 * lat; i < len(out); i++ {
-		maxErr = math.Max(maxErr, math.Abs(out[i]-sig(i-lat)))
+		maxErr = max(maxErr, math.Abs(out[i]-sig(i-lat)))
 	}
 
 	if maxErr > 1e-3 {

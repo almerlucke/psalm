@@ -91,7 +91,7 @@ func TestDelayKeepsItsEchoes(t *testing.T) {
 	for _, at := range []float64{0.9, 1.8} {
 		peak := 0.0
 		for i := int(at*44100) - 5; i < int(at*44100)+5; i++ {
-			peak = math.Max(peak, math.Abs(out[i]))
+			peak = max(peak, math.Abs(out[i]))
 		}
 		if peak < 0.2 {
 			t.Fatalf("expected an echo at %v s, peak %v", at, peak)
@@ -116,7 +116,7 @@ func TestFrozenGranulatorKeepsPlaying(t *testing.T) {
 	out := renderLeft(p, 3)
 	late := 0.0
 	for _, x := range out[2*44100:] {
-		late = math.Max(late, math.Abs(x))
+		late = max(late, math.Abs(x))
 	}
 	if late < 1e-3 {
 		t.Fatalf("a frozen granulator should keep playing, peak %v", late)

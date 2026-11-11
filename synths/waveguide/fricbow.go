@@ -128,7 +128,7 @@ func fricEstimate(k fricKey) fricFit {
 		return fricFit{0, 1, true}
 	}
 	// near the bridge the bow plays a good half sample sharp, in the middle hardly
-	d := 0.1 + 0.4*math.Max(0, math.Min((0.4-k.pos)/0.273, 1))
+	d := 0.1 + 0.4*max(0, min((0.4-k.pos)/0.273, 1))
 	return fricFit{d, 1, k.sr/k.freq >= 32}
 }
 
@@ -180,7 +180,7 @@ func (v *Voice) warmBow() {
 }
 
 func warmBow(cfg *Config, sr float64) {
-	pos := math.Max(0.02, math.Min(cfg.BowPosition, 0.5))
+	pos := max(0.02, min(cfg.BowPosition, 0.5))
 	speed := tableSpeedOf(1, 0.8)
 	if cfg.BowSpeed > 0 {
 		speed = bowSpeedOf(cfg.BowSpeed)
@@ -212,7 +212,7 @@ func warmBow(cfg *Config, sr float64) {
 }
 
 // bowSlope is the slope of the friction of the bow of the table for a pressure
-func bowSlope(pressure float64) float64 { return 5 - 4*math.Max(0, math.Min(pressure, 1)) }
+func bowSlope(pressure float64) float64 { return 5 - 4*max(0, min(pressure, 1)) }
 
 // fricCalibrate runs the bow of a key on a string of its own and makes its calibration: the samples to
 // add to the lines, and the share of its force the bow needs to hold the string in the motion of its
@@ -226,7 +226,7 @@ func fricCalibrate(k fricKey) fricFit {
 		d, found := tuneLines(target, func(try float64) (float64, bool) {
 			return linePeriod(base+try, k.pos, 0, k.speed, k.attack, false, k.force, k.sr, target)
 		})
-		if found > math.Max(0.1, 0.003*target) {
+		if found > max(0.1, 0.003*target) {
 			d = 0
 		}
 		return fricFit{d, 1, true}
@@ -244,9 +244,9 @@ func fricCalibrate(k fricKey) fricFit {
 			break // a bow with a speed of its own, set to be too heavy or too light, is left so
 		}
 		if found < bestErr {
-			best, bestErr = fricFit{d, scale, found < math.Max(0.03, 0.002*target)}, found
+			best, bestErr = fricFit{d, scale, found < max(0.03, 0.002*target)}, found
 		}
-		if found < math.Max(0.03, 0.0015*target) {
+		if found < max(0.03, 0.0015*target) {
 			break
 		}
 	}
@@ -267,10 +267,10 @@ func tuneLines(target float64, period func(float64) (float64, bool)) (d, found f
 		if math.Abs(e) < found {
 			d, found = try, math.Abs(e)
 		}
-		if found < math.Max(0.02, 0.0005*target) {
+		if found < max(0.02, 0.0005*target) {
 			break
 		}
-		try = math.Max(-1.5, math.Min(try+e, 3))
+		try = max(-1.5, min(try+e, 3))
 	}
 	return d, found
 }
@@ -286,10 +286,10 @@ func linePeriod(total, pos, force, speed, attack float64, follow bool, slope, sr
 	size := int(total) + 8
 	neck := delay{buf: make([]float64, size)}
 	bridge := delay{buf: make([]float64, size)}
-	bridge.len = math.Max(total*pos, minBridge)
+	bridge.len = max(total*pos, minBridge)
 	neck.len = total - bridge.len
 	v := &Voice{heatRate: 1 / (frictionCool * sr)}
-	ramp := math.Max(0.005, math.Min(attack, 1.5)) * sr
+	ramp := max(0.005, min(attack, 1.5)) * sr
 	settle := int(ramp + 0.1*sr)
 	k := max(1, int(0.03*sr/target))
 	window := max(int(0.04*sr), int(3*target))
@@ -297,10 +297,10 @@ func linePeriod(total, pos, force, speed, attack float64, follow bool, slope, sr
 	x := make([]float64, n)
 	p := bowPole(sr)
 	var filt, env float64
-	step := 1 / math.Max(1, math.Max(0.005, attack)*sr)
+	step := 1 / max(1, max(0.005, attack)*sr)
 	for i := range n {
 		// the bow speeds up as the voice's does (to the end of the attack the sample counts are the same)
-		env = math.Min(1, env+step)
+		env = min(1, env+step)
 		nut := -neck.out
 		filt = (1-p)*bridge.out*0.95 + p*filt
 		br := -filt
@@ -353,7 +353,7 @@ func linePeriod(total, pos, force, speed, attack float64, follow bool, slope, sr
 	// a motion of half the period (the string jumped to its octave) matches itself at the period too
 	half := -2.0
 	for l := int(coarse/2) - 2; l <= int(coarse/2)+2; l++ {
-		half = math.Max(half, corr(l))
+		half = max(half, corr(l))
 	}
 	if half > 0.8 {
 		return target, false

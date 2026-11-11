@@ -265,7 +265,7 @@ func (o *Organ) sounding() bool {
 // retune sets the speeds of the wheels: the gears' frequencies, or equal temperament, or between
 func (o *Organ) retune() {
 	sr := o.Config().SampleRate
-	o.tw = math.Max(0, math.Min(o.cfg.Tonewheel, 1))
+	o.tw = max(0, min(o.cfg.Tonewheel, 1))
 	for w := range numWheels {
 		o.inc[w] = tempered(w) * math.Exp2(wheelCents(w)*o.tw/1200) / sr
 	}
@@ -275,7 +275,7 @@ func (o *Organ) retune() {
 func (o *Organ) barGains() [9]float64 {
 	var g [9]float64
 	for i, b := range o.cfg.Drawbars {
-		b = math.Max(0, math.Min(b, 8))
+		b = max(0, min(b, 8))
 		if b > 0 {
 			g[i] = math.Pow(10, -3*(8-b)/20)
 		}
@@ -484,7 +484,7 @@ func (o *Organ) apply(e event) {
 // close in the order of the bus bars, a little scattered, a few milliseconds from the first to the last
 func (o *Organ) contactDelay(pitch, contact int) int {
 	d := 0.6*float64(contact)/8 + 0.4*contactHash(pitch, contact)
-	return int(d * math.Max(0, o.cfg.ContactSpread) * 0.001 * o.Config().SampleRate)
+	return int(d * max(0, o.cfg.ContactSpread) * 0.001 * o.Config().SampleRate)
 }
 
 // crosstalk is what leaks into the bus from the wheels around a wheel w: the neighbours on the
@@ -519,7 +519,7 @@ func (o *Organ) held() bool {
 
 // clickLevel is the size of the click of a key contact: the setting, and what the matrix adds
 func (o *Organ) clickLevel() float64 {
-	return math.Max(0, o.cfg.Click+o.mods.Mod(dClick))
+	return max(0, o.cfg.Click+o.mods.Mod(dClick))
 }
 
 func (o *Organ) Synthesize() {
@@ -593,7 +593,7 @@ func (o *Organ) synthesize() {
 	if modded {
 		mods.Values[modmatrix.Velocity] = o.velocity
 		mods.Values[modmatrix.Random] = o.random
-		mods.Values[modmatrix.Key] = math.Max(-1, math.Min(float64(o.lastPitch-60)/60, 1))
+		mods.Values[modmatrix.Key] = max(-1, min(float64(o.lastPitch-60)/60, 1))
 	}
 	lastFreq := 440 * math.Exp2(float64(o.lastPitch-69)/12)
 	decay := 1.0
@@ -606,19 +606,19 @@ func (o *Organ) synthesize() {
 	if level <= 0 {
 		level = 1
 	}
-	drive := math.Max(0, cfg.Drive)
+	drive := max(0, cfg.Drive)
 	tone := cfg.Tone
 	toneCoef := 1 - math.Exp(-2*math.Pi*1200/sr)
 	dcCoef := 2 * math.Pi * 20 / sr
 	// the contacts: how fast they close and open (sharp with the click up), and whether they bounce
-	click := math.Max(0, math.Min(o.clickLevel(), 1))
+	click := max(0, min(o.clickLevel(), 1))
 	atk := 1 - math.Exp(-1/((0.00005+0.0006*(1-click)*(1-click))*sr))
 	rel := 1 - math.Exp(-1/(0.003*(1-0.6*click)*sr))
 	bounceIn, bounceOut := 0, 0
 	if click > 0.6 {
 		bounceIn, bounceOut = int(0.0002*sr), int(0.00012*sr)
 	}
-	angle := 0.5 * math.Max(0, math.Min(cfg.LesliePosition, 1))
+	angle := 0.5 * max(0, min(cfg.LesliePosition, 1))
 
 	// the vibrato scanner: a line of nine LC sections, V1 to V3 (and C1 to C3) using three, six and
 	// nine of them; the scanner sweeps along the line and back at 6.87 Hz, so the delay is a triangle
@@ -666,10 +666,10 @@ func (o *Organ) synthesize() {
 		if modded {
 			loud := 0.0
 			for _, k := range o.keys {
-				loud = math.Max(loud, k.gain*k.amp)
+				loud = max(loud, k.gain*k.amp)
 			}
 			mv := &mods.Values
-			mv[modmatrix.FilterEnv], mv[modmatrix.AmpEnv] = o.filter.Env(), math.Min(loud, 1)
+			mv[modmatrix.FilterEnv], mv[modmatrix.AmpEnv] = o.filter.Env(), min(loud, 1)
 			mv[modmatrix.LFO1] = math.Sin(2 * math.Pi * o.lfoPhase)
 			if lfo2Used {
 				mv[modmatrix.LFO2] = math.Sin(2 * math.Pi * o.lfo2Phase)
@@ -682,9 +682,9 @@ func (o *Organ) synthesize() {
 			bend *= math.Exp2(mods.Mod(dPitch) / 12)
 			leakage, vibMod, levelMod = mods.Mod(dLeakage), mods.Mod(dVibrato), mods.Mod(dLevel)
 			cutMod, resMod = mods.Mod(dCutoff), mods.Mod(dResonance)
-			percLevel = math.Max(0, percBase+mods.Mod(dPerc))
-			drive = math.Max(0, cfg.Drive+mods.Mod(dDrive))
-			tone = math.Max(0, math.Min(cfg.Tone+mods.Mod(dTone), 1))
+			percLevel = max(0, percBase+mods.Mod(dPerc))
+			drive = max(0, cfg.Drive+mods.Mod(dDrive))
+			tone = max(0, min(cfg.Tone+mods.Mod(dTone), 1))
 			leslieMod, speedMod = mods.Mod(dLeslie), mods.Mod(dLeslieSpeed)
 		}
 		leakage += cfg.Leakage
@@ -705,7 +705,7 @@ func (o *Organ) synthesize() {
 			for b := range k.c {
 				c := &k.c[b]
 				c.step(bounceIn, bounceOut, atk, rel)
-				gmax = math.Max(gmax, c.env)
+				gmax = max(gmax, c.env)
 				if c.env < 1e-7 {
 					continue
 				}
@@ -743,7 +743,7 @@ func (o *Organ) synthesize() {
 		// the scanner: a delay swept along its line, mixed with the dry sound for the chorus
 		depthNow := depth
 		if vibMod != 0 {
-			depthNow = math.Max(0, depth+vibMod*9*secs)
+			depthNow = max(0, depth+vibMod*9*secs)
 		}
 		if depthNow <= 0 && lfoUsed { // the matrix's LFO is the scanner's, running without its vibrato
 			if o.lfoPhase += lfoInc; o.lfoPhase >= 1 {
@@ -782,10 +782,10 @@ func (o *Organ) synthesize() {
 		}
 		lv := level
 		if levelMod != 0 {
-			lv = math.Max(0, level+levelMod)
+			lv = max(0, level+levelMod)
 		}
 		o.les.turn(cfg.LeslieSpeed + speedMod)
-		l, r := o.les.process(s, math.Max(0, math.Min(cfg.Leslie+leslieMod, 1)), angle)
+		l, r := o.les.process(s, max(0, min(cfg.Leslie+leslieMod, 1)), angle)
 		switch len(out) {
 		case 1:
 			out[0][i] = float32((l + r) * 0.5 * lv)
@@ -856,7 +856,7 @@ func (o *Organ) wheel(w int) float64 {
 func (cfg Config) Registration() string {
 	var b strings.Builder
 	for _, d := range cfg.Drawbars {
-		b.WriteByte(byte('0' + int(math.Round(math.Max(0, math.Min(d, 8))))))
+		b.WriteByte(byte('0' + int(math.Round(max(0, min(d, 8))))))
 	}
 	return b.String()
 }

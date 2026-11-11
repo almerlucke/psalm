@@ -61,8 +61,8 @@ func TestMatchesDirectConvolution(t *testing.T) {
 	lat := c.Latency()
 	maxErr := 0.0
 	for n := lat; n < len(outL); n++ {
-		maxErr = math.Max(maxErr, math.Abs(outL[n]-want[n-lat]))
-		maxErr = math.Max(maxErr, math.Abs(outR[n]-want[n-lat]))
+		maxErr = max(maxErr, math.Abs(outL[n]-want[n-lat]))
+		maxErr = max(maxErr, math.Abs(outR[n]-want[n-lat]))
 	}
 
 	if maxErr > 1e-4 {
@@ -167,7 +167,7 @@ func TestLongResponseMatchesDirectConvolution(t *testing.T) {
 	lat := c.Latency()
 	maxErr := 0.0
 	for n := lat; n < len(outL); n++ {
-		maxErr = math.Max(maxErr, math.Abs(outL[n]-want[n-lat]))
+		maxErr = max(maxErr, math.Abs(outL[n]-want[n-lat]))
 	}
 	if maxErr > 1e-4 {
 		t.Fatalf("max error vs direct convolution %v", maxErr)

@@ -64,14 +64,14 @@ func TestSlicesPlayTheirPieces(t *testing.T) {
 	want := int(cuts[3] - cuts[2])
 	peak := 0.0
 	for _, y := range x[:600] {
-		peak = math.Max(peak, math.Abs(y))
+		peak = max(peak, math.Abs(y))
 	}
 	if peak < 0.05 {
 		t.Errorf("the piece does not begin with its hit: %g", peak)
 	}
 	tail := 0.0
 	for _, y := range x[want+500 : want+3000] {
-		tail = math.Max(tail, math.Abs(y))
+		tail = max(tail, math.Abs(y))
 	}
 	if tail > 1e-6 {
 		t.Errorf("sound after the end of the piece: %g", tail)
@@ -114,7 +114,7 @@ func TestSlicesDoNotClick(t *testing.T) {
 	x := play(v, psalm.Message{"pitch": 36.0}, buffers(1))
 	biggest := 0.0
 	for i := 100; i < 40000; i++ {
-		biggest = math.Max(biggest, math.Abs(x[i]-x[i-1]))
+		biggest = max(biggest, math.Abs(x[i]-x[i-1]))
 	}
 	// the step of a sine of 330 Hz is 0.047; a jump from the wave to nothing would be as big as the wave
 	if biggest > 0.06 {
@@ -136,7 +136,7 @@ func TestSlicesInOrderAreTheRecording(t *testing.T) {
 		if j := i - int(cuts[1]); j >= 0 {
 			got += b[j]
 		}
-		worst = math.Max(worst, math.Abs(got-float64(orig[i])))
+		worst = max(worst, math.Abs(got-float64(orig[i])))
 	}
 	if worst > 0.01 {
 		t.Errorf("the pieces in order differ from the recording by %g", worst)

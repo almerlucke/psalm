@@ -65,7 +65,7 @@ func (p *Phaser) SetSync(beats float64) { p.cfg.Sync = beats }
 func (p *Phaser) SetFeedback(f float64) { p.cfg.Feedback = f }
 func (p *Phaser) SetMix(m float64)      { p.cfg.Mix = m }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 
 func (p *Phaser) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
@@ -128,8 +128,8 @@ func (p *Phaser) Synthesize() {
 		in    = p.Input(0).Channels
 		out   = p.Output(0).Channels
 		inc   = p.rate() / sr
-		lo    = math.Max(10, math.Min(cfg.Min, cfg.Max))
-		hi    = math.Max(lo, math.Max(cfg.Min, cfg.Max))
+		lo    = max(10, min(cfg.Min, cfg.Max))
+		hi    = max(lo, max(cfg.Min, cfg.Max))
 		mixTo = clamp(cfg.Mix, 0, 1)
 		fbTo  = clamp(cfg.Feedback, -0.95, 0.95)
 	)

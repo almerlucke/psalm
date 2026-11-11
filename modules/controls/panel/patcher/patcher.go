@@ -899,7 +899,7 @@ func (pt *Patcher) remod() {
 		}
 		lo, hi := c.Lo, c.Hi
 		at := func(v float64) float64 {
-			x := lo + (hi-lo)*math.Max(0, math.Min(v, 1)) // along the travel
+			x := lo + (hi-lo)*max(0, min(v, 1)) // along the travel
 			if p.Exp && p.Min > 0 {
 				return p.Clamp(p.Min * math.Pow(p.Max/p.Min, x))
 			}
@@ -949,7 +949,7 @@ func (pt *Patcher) SetRange(id, key string, lo, hi float64) error {
 		}
 		c.Key = key
 	}
-	c.Lo, c.Hi = math.Max(0, math.Min(lo, 1)), math.Max(0, math.Min(hi, 1))
+	c.Lo, c.Hi = max(0, min(lo, 1)), max(0, min(hi, 1))
 	pt.mu.Unlock()
 	pt.remod()
 	return nil

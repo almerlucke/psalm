@@ -58,7 +58,7 @@ func TestPieceSounds(t *testing.T) {
 				p.ResetRun()
 				p.Run()
 				for _, v := range pt.Out().Output(0).Channels[0] {
-					peak = math.Max(peak, math.Abs(float64(v)))
+					peak = max(peak, math.Abs(float64(v)))
 					energy += float64(v) * float64(v)
 				}
 			}

@@ -19,8 +19,8 @@ func TestTransparent(t *testing.T) {
 		lat := o.Latency()
 		peak, errMax := 0.0, 0.0
 		for n := 2000; n < 8000; n++ {
-			peak = math.Max(peak, math.Abs(out[n]))
-			errMax = math.Max(errMax, math.Abs(out[n]-in[n-lat]))
+			peak = max(peak, math.Abs(out[n]))
+			errMax = max(errMax, math.Abs(out[n]-in[n-lat]))
 		}
 		if math.Abs(20*math.Log10(peak)) > 0.5 {
 			t.Errorf("%v Hz: the level should stay, %.2f dB", f, 20*math.Log10(peak))
@@ -46,7 +46,7 @@ func TestDown(t *testing.T) {
 	for i := range 2000 {
 		y := o.Down(func(k int) float64 { return math.Sin(2 * math.Pi * 0.4 * (float64(i*4 + k))) }) // 0.4 of the oversampled rate: 70 kHz at 44.1
 		if i > 200 {
-			peak = math.Max(peak, math.Abs(y))
+			peak = max(peak, math.Abs(y))
 		}
 	}
 	if peak > 0.01 {

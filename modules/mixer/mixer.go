@@ -462,7 +462,7 @@ func (ms *Master) Synthesize() {
 		// the gain this sample needs to stay below the ceiling, and the lowest need until it
 		// leaves the lookahead
 		g := 1.0
-		if peak := math.Max(math.Abs(l), math.Abs(r)); peak > ceiling {
+		if peak := max(math.Abs(l), math.Abs(r)); peak > ceiling {
 			g = ceiling / peak
 		}
 		minNeed := ms.push(g, n)
@@ -482,14 +482,14 @@ func (ms *Master) Synthesize() {
 
 		ol, or := dl*ms.gain, dr*ms.gain
 		// whatever the smoothing still lets through is clipped at the ceiling
-		ol = math.Max(-ceiling, math.Min(ol, ceiling))
-		or = math.Max(-ceiling, math.Min(or, ceiling))
+		ol = max(-ceiling, min(ol, ceiling))
+		or = max(-ceiling, min(or, ceiling))
 
 		out[0][i] = float32(ol)
 		out[1][i] = float32(or)
 		ms.meter.add(ol, or)
 		ms.loud.Add(ol, or)
-		ms.reduction = math.Max(ms.reduction, 1-ms.gain)
+		ms.reduction = max(ms.reduction, 1-ms.gain)
 	}
 }
 

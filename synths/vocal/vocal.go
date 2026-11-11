@@ -413,12 +413,12 @@ func (s *singer) wander(r *randSource, amount, key, sr float64, step bool) {
 		k = dt / 3.0
 		s.extDev += -s.extDev*k + 0.15*math.Sqrt(2*k)*r.gauss()
 	}
-	rate := math.Max(5, math.Min(5.75+0.35*key+s.rateDev, 6.5))
+	rate := max(5, min(5.75+0.35*key+s.rateDev, 6.5))
 	s.natRate = s.vibRate*(1-amount) + rate*amount
 	if s.vibRate == 0 {
 		s.natRate = rate
 	}
-	s.natExt = math.Max(0.4, math.Min(1+amount*(0.3*key+s.extDev), 1.8))
+	s.natExt = max(0.4, min(1+amount*(0.3*key+s.extDev), 1.8))
 }
 
 // randSource is a small fast random generator
@@ -474,8 +474,8 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 		v.cfg.Ext[i] = v.mods.Ext(i)
 	}
 	cfg := &v.cfg
-	msg.IfFltVal("formantShift", func(f float64) { cfg.FormantShift = math.Max(0.25, math.Min(f, 4)) })
-	msg.IfFltVal("wordSync", func(f float64) { cfg.WordSync = math.Max(0, f) })
+	msg.IfFltVal("formantShift", func(f float64) { cfg.FormantShift = max(0.25, min(f, 4)) })
+	msg.IfFltVal("wordSync", func(f float64) { cfg.WordSync = max(0, f) })
 	msg.IfStrVal("word", func(s string) {
 		if w, err := ParseWord(s); err == nil {
 			cfg.Word = w
@@ -486,7 +486,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 		msg.IfIntVal(k, func(i int) { v.place.next = max(0, i) })
 	}
 	msg.IfIntVal("consonant", func(c int) { cfg.Consonant = Consonant(max(0, min(c, int(numConsonants)-1))) })
-	msg.IfFltVal("consonantLevel", func(f float64) { cfg.ConsonantLevel = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("consonantLevel", func(f float64) { cfg.ConsonantLevel = max(0, min(f, 1)) })
 	msg.IfIntVal("phoneme", func(i int) { cfg.Phoneme = max(0, min(i, len(Vowels))) })
 	msg.IfIntVal("phonemeTo", func(i int) { cfg.PhonemeTo = max(0, min(i, len(Vowels))) })
 	// a named diphthong sets both vowels
@@ -498,27 +498,27 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 		}
 		cfg.Phoneme, cfg.PhonemeTo = diphthongs[i][0], diphthongs[i][1]
 	})
-	msg.IfFltVal("diphthongTime", func(f float64) { cfg.DiphthongTime = math.Max(0, math.Min(f, 4)) })
-	msg.IfFltVal("diphthongHold", func(f float64) { cfg.DiphthongHold = math.Max(0, math.Min(f, 4)) })
+	msg.IfFltVal("diphthongTime", func(f float64) { cfg.DiphthongTime = max(0, min(f, 4)) })
+	msg.IfFltVal("diphthongHold", func(f float64) { cfg.DiphthongHold = max(0, min(f, 4)) })
 	msg.IfFltVal("openQuotient", func(f float64) { cfg.OpenQuotient = zeroOr(f, 0.2, 0.95) })
 	msg.IfFltVal("speedQuotient", func(f float64) { cfg.SpeedQuotient = zeroOr(f, 0.8, 4) })
 	msg.IfFltVal("returnPhase", func(f float64) { cfg.ReturnPhase = zeroOr(f, 0.02, 1) })
 	msg.IfIntVal("source", func(i int) { cfg.Source = max(0, min(i, 1)) })
 	msg.IfFltVal("rd", func(f float64) { cfg.Rd = zeroOr(f, 0.3, 2.7) })
-	msg.IfFltVal("whisper", func(f float64) { cfg.Whisper = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("naturalVibrato", func(f float64) { cfg.NaturalVibrato = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("subglottal", func(f float64) { cfg.Subglottal = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("jitter", func(f float64) { cfg.Jitter = math.Max(0, math.Min(f, 0.05)) })
-	msg.IfFltVal("shimmer", func(f float64) { cfg.Shimmer = math.Max(0, math.Min(f, 0.3)) })
+	msg.IfFltVal("whisper", func(f float64) { cfg.Whisper = max(0, min(f, 1)) })
+	msg.IfFltVal("naturalVibrato", func(f float64) { cfg.NaturalVibrato = max(0, min(f, 1)) })
+	msg.IfFltVal("subglottal", func(f float64) { cfg.Subglottal = max(0, min(f, 1)) })
+	msg.IfFltVal("jitter", func(f float64) { cfg.Jitter = max(0, min(f, 0.05)) })
+	msg.IfFltVal("shimmer", func(f float64) { cfg.Shimmer = max(0, min(f, 0.3)) })
 	msg.IfFltVal("formantTuning", func(f float64) {
-		cfg.Tuning = math.Max(0, math.Min(f, 1))
+		cfg.Tuning = max(0, min(f, 1))
 		if cfg.Tuning == 0 {
 			cfg.Tuning = -1
 		}
 	})
-	msg.IfFltVal("training", func(f float64) { cfg.Training = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("nasal", func(f float64) { cfg.Nasal = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("coarticulation", func(f float64) { cfg.Coarticulation = math.Max(0.005, math.Min(f, 0.2)) })
+	msg.IfFltVal("training", func(f float64) { cfg.Training = max(0, min(f, 1)) })
+	msg.IfFltVal("nasal", func(f float64) { cfg.Nasal = max(0, min(f, 1)) })
+	msg.IfFltVal("coarticulation", func(f float64) { cfg.Coarticulation = max(0.005, min(f, 0.2)) })
 	envelope.Seconds(msg, "amp", &cfg.Attack, nil, &cfg.Release)
 	msg.IfFltVal("frequency", func(f float64) {
 		if f > 0 {
@@ -526,7 +526,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 		}
 	})
 	msg.IfFltVal("pitch", func(p float64) { v.pitch = p })
-	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0, min(f, 1)) })
 	msg.IfFltVal("vowel", func(f float64) { cfg.Vowel = f })
 	msg.IfFltVal("vowelGlide", func(f float64) { cfg.VowelGlide = f })
 	msg.IfFltVal("brightness", func(f float64) { cfg.Brightness = f })
@@ -542,7 +542,7 @@ func zeroOr(f, lo, hi float64) float64 {
 	if f <= 0 {
 		return 0
 	}
-	return math.Max(lo, math.Min(f, hi))
+	return max(lo, min(f, hi))
 }
 
 // Receive takes messages, or the vowel on input 1 and the vibrato depth on input 2, and on 3 to 6
@@ -616,7 +616,7 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 		}
 	}
 	v.n = max(1, min(cfg.Singers, maxSingers))
-	spread := math.Max(0, math.Min(cfg.Spread, 1))
+	spread := max(0, min(cfg.Spread, 1))
 	for i := range v.n {
 		s := &v.singers[i]
 		// the singers stand apart, detuned over the spread of cents, each with a vibrato of its own
@@ -629,12 +629,12 @@ func (v *Voice) sing(duration, amplitude float64, message psalm.Message, tick ps
 			s.jitter = (v.rng.float() - 0.5) * 0.3
 		}
 		s.detune = math.Exp2(s.cents(cfg.Detune) / 1200)
-		s.vibRate = math.Max(0, cfg.VibratoRate) * (1 + (v.rng.float()-0.5)*0.15)
+		s.vibRate = max(0, cfg.VibratoRate) * (1 + (v.rng.float()-0.5)*0.15)
 		s.vibPh = v.rng.float()
 		s.drift, s.driftTo = 0, 0
 		if nat := cfg.NaturalVibrato; nat > 0 {
 			s.rateDev, s.extDev = 0.3*v.nrng.gauss(), 0.15*v.nrng.gauss()
-			s.wander(&v.nrng, nat, math.Max(-1, math.Min(math.Log2(pitchHz(v.pitch)/middleC)/2, 1)), sr, false)
+			s.wander(&v.nrng, nat, max(-1, min(math.Log2(pitchHz(v.pitch)/middleC)/2, 1)), sr, false)
 		}
 		s.delay = 0
 		if v.n > 1 {
@@ -720,7 +720,7 @@ func (v *Voice) setFormants(f0, wh float64) {
 		bw[k] *= shift
 	}
 	// the singer's formant: the third to fifth formants gather
-	if tr := math.Max(0, math.Min(cfg.Training, 1)); tr > 0 {
+	if tr := max(0, min(cfg.Training, 1)); tr > 0 {
 		fs := voiceTypes[v.rangeNow].singerForm * shift
 		f[2] += tr * 0.6 * (fs*0.97 - f[2])
 		f[3] += tr * (fs*1.05 - f[3])
@@ -734,16 +734,16 @@ func (v *Voice) setFormants(f0, wh float64) {
 	if tn := tuningOf(cfg.Tuning); tn > 0 {
 		const p = 6.0
 		f[0] = math.Pow(math.Pow(f[0], p)+math.Pow(tn*f0*1.08, p), 1/p)
-		bw[0] = math.Max(bw[0], 0.07*f[0]) // a high first formant is not a narrow one
+		bw[0] = max(bw[0], 0.07*f[0]) // a high first formant is not a narrow one
 		// it never climbs past the second formant (it would pile its gain on it): the upper ones make room
 		for k := 1; k < 5; k++ {
 			if f[k] < f[k-1]*1.12 {
 				f[k] = f[k-1] * 1.12
-				bw[k] = math.Max(bw[k], 0.07*f[k])
+				bw[k] = max(bw[k], 0.07*f[k])
 			}
 		}
 	}
-	nasal := math.Max(0, math.Min(cfg.Nasal, 1))
+	nasal := max(0, min(cfg.Nasal, 1))
 	zero := 1000 * shift
 	v.artTarget = 1
 	if v.artT >= 0 {
@@ -754,7 +754,7 @@ func (v *Voice) setFormants(f0, wh float64) {
 		}
 		trans := l.trans * coart / 0.045
 		el := float64(v.artT) / sr
-		u := math.Max(0, math.Min((el-l.hold)/trans, 1))
+		u := max(0, min((el-l.hold)/trans, 1))
 		if u >= 1 {
 			v.artT = -1
 		}
@@ -783,7 +783,7 @@ func (v *Voice) setFormants(f0, wh float64) {
 	t.np.set(270*shift, 100*shift, sr)
 	t.nz.set(zero, 120*shift, sr)
 	t.nasal = nasal
-	t.sub = math.Max(0, math.Min(cfg.Subglottal, 1))
+	t.sub = max(0, min(cfg.Subglottal, 1))
 	if t.sub > 0 {
 		t.sp.set(600, 160, sr)
 		t.sz.set(1500, 250, sr)
@@ -838,7 +838,7 @@ func tuningOf(t float64) float64 {
 	case t == 0:
 		return 1
 	}
-	return math.Min(t, 1)
+	return min(t, 1)
 }
 
 // shape sets the glottal pulse and the tilt from the brightness of the voice: a soft voice is breathy
@@ -853,9 +853,9 @@ func (v *Voice) shape(bright, f0 float64) {
 		if rd <= 0 {
 			rd = 0.3 + 2.4*math.Pow(1-bright, 1.6)
 		}
-		rd = math.Max(0.3, math.Min(rd, 2.7))
+		rd = max(0.3, min(rd, 2.7))
 		tp, te, ta := lfRd(rd)
-		ta = math.Max(ta, 2*f0/sr)
+		ta = max(ta, 2*f0/sr)
 		if !v.lf.ok || math.Abs(rd-v.lfRd) > 1e-3 || math.Abs(ta-v.lfTa) > 0.02*ta {
 			v.lf = lfSolve(tp, te, ta)
 			v.lfRd, v.lfTa = rd, ta
@@ -871,7 +871,7 @@ func (v *Voice) shape(bright, f0 float64) {
 	if sq <= 0 {
 		sq = 1 + 0.8*bright
 	}
-	v.oq, v.sq = math.Max(0.2, math.Min(oq, 0.95)), math.Max(0.8, math.Min(sq, 4))
+	v.oq, v.sq = max(0.2, min(oq, 0.95)), max(0.8, min(sq, 4))
 	b := bright
 	if cfg.ReturnPhase > 0 {
 		b = 1 - cfg.ReturnPhase
@@ -883,7 +883,7 @@ func (v *Voice) shape(bright, f0 float64) {
 func (v *Voice) reshape() {
 	cfg := &v.cfg
 	detune := cfg.Detune + v.mods.Mod(dDetune)
-	spread := math.Max(0, math.Min(cfg.Spread+v.mods.Mod(dSpread), 1))
+	spread := max(0, min(cfg.Spread+v.mods.Mod(dSpread), 1))
 	for i := range v.n {
 		s := &v.singers[i]
 		s.detune = math.Exp2(s.cents(detune) / 1200)
@@ -908,13 +908,13 @@ func (v *Voice) startConsonant() {
 	sh := consonants[c]
 	v.gateEnd = 0
 	if sh.vot > 0 || sh.bar > 0 {
-		v.gateEnd = int((math.Max(sh.vot+0.08, sh.dur+0.01)) * v.Config().SampleRate)
+		v.gateEnd = int((max(sh.vot+0.08, sh.dur+0.01)) * v.Config().SampleRate)
 	}
 	if sh.gain == 0 {
 		return
 	}
 	v.cons.Clear()
-	v.cons.SetFrequencyQ(math.Min(sh.freq, v.Config().SampleRate*0.45), sh.q)
+	v.cons.SetFrequencyQ(min(sh.freq, v.Config().SampleRate*0.45), sh.q)
 	v.consT = 0
 }
 
@@ -942,14 +942,14 @@ func (v *Voice) gate(sr float64) (voicing, bar, asp float64) {
 	if sh.vot > 0 {
 		voicing = smooth01((t - sh.vot) / 0.008)
 		if sh.asp > 0 {
-			asp = sh.asp * math.Min(1, t/0.006)
+			asp = sh.asp * min(1, t/0.006)
 			if t > sh.vot {
 				asp *= math.Exp(-(t - sh.vot) / 0.02)
 			}
 		}
 	}
 	if sh.bar > 0 && t < sh.dur {
-		bar = sh.bar * math.Min(1, t/0.01) * math.Min(1, (sh.dur-t)/0.03)
+		bar = sh.bar * min(1, t/0.01) * min(1, (sh.dur-t)/0.03)
 	}
 	return
 }
@@ -968,7 +968,7 @@ func (v *Voice) consonant(sr float64) float64 {
 	}
 	var env float64
 	if sh.plosive {
-		env = math.Exp(-t/sh.tau) * math.Min(1, t/0.0008)
+		env = math.Exp(-t/sh.tau) * min(1, t/0.0008)
 	} else {
 		env = math.Sin(math.Pi * t / sh.dur)
 	}
@@ -1012,10 +1012,10 @@ func (v *Voice) Synthesize() {
 		level = 1
 	}
 	gain := level * v.amp
-	bright := math.Max(0, math.Min(cfg.Brightness+0.4*(v.velocity-0.5), 1))
-	breath := math.Max(0, cfg.Breath)
-	attack := 1 / math.Max(1, cfg.Attack*sr)
-	release := math.Pow(10, -3/(math.Max(0.01, cfg.Release)*sr))
+	bright := max(0, min(cfg.Brightness+0.4*(v.velocity-0.5), 1))
+	breath := max(0, cfg.Breath)
+	attack := 1 / max(1, cfg.Attack*sr)
+	release := math.Pow(10, -3/(max(0.01, cfg.Release)*sr))
 	glide := 1.0
 	if cfg.VowelGlide > 0 {
 		glide = 1 - math.Exp(-1/(cfg.VowelGlide*sr))
@@ -1046,7 +1046,7 @@ func (v *Voice) Synthesize() {
 		mv := &mods.Values
 		mv[modmatrix.Velocity] = v.velocity
 		mv[modmatrix.Random] = v.random
-		mv[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(f0/middleC)/5, 1))
+		mv[modmatrix.Key] = max(-1, min(math.Log2(f0/middleC)/5, 1))
 	}
 	chans := 1
 	if stereo {
@@ -1055,7 +1055,7 @@ func (v *Voice) Synthesize() {
 	jitter, shimmer := cfg.Jitter, cfg.Shimmer
 	// the natural vibrato, the whisper (voice and noise cross-fade with equal power), the voice bar
 	nat := cfg.NaturalVibrato
-	natKey := math.Max(-1, math.Min(math.Log2(f0/middleC)/2, 1))
+	natKey := max(-1, min(math.Log2(f0/middleC)/2, 1))
 	depth0 := cfg.VibratoDepth
 	vibDelay2, vibRamp := vibDelay, 0.5*sr
 	if nat > 0 {
@@ -1068,7 +1068,7 @@ func (v *Voice) Synthesize() {
 		vibRamp = (0.5 + 0.5*nat) * sr
 	}
 	whisperModded := modded && mods.Targets(dWhisper)
-	wh := math.Max(0, math.Min(cfg.Whisper, 1))
+	wh := max(0, min(cfg.Whisper, 1))
 	whPrev := -1.0
 	gv, gn := 1.0, 0.0
 	barK := 1 - math.Exp(-2*math.Pi*350/sr)
@@ -1110,13 +1110,13 @@ func (v *Voice) Synthesize() {
 			mods.Eval(sr)
 			off += mods.Mod(dVowel)
 			if whisperModded {
-				wh = math.Max(0, math.Min(cfg.Whisper+mods.Mod(dWhisper), 1))
+				wh = max(0, min(cfg.Whisper+mods.Mod(dWhisper), 1))
 			}
 			vib0 += mods.Mod(dVibratoDepth)
-			breathNow = math.Max(0, breath+mods.Mod(dBreath))
+			breathNow = max(0, breath+mods.Mod(dBreath))
 			pitchMul = math.Exp2(mods.Mod(dPitch) / 12)
 			if brightModded {
-				bnow = math.Max(0, math.Min(cfg.Brightness+mods.Mod(dBrightness)+0.4*(v.velocity-0.5), 1))
+				bnow = max(0, min(cfg.Brightness+mods.Mod(dBrightness)+0.4*(v.velocity-0.5), 1))
 			}
 		}
 		if moving {
@@ -1132,7 +1132,7 @@ func (v *Voice) Synthesize() {
 		}
 		target := base + off
 		if ph > 0 {
-			target = math.Max(0, math.Min(target, float64(len(Vowels)-1)))
+			target = max(0, min(target, float64(len(Vowels)-1)))
 		}
 		if ph != v.mode {
 			v.mode, v.vowel = ph, target
@@ -1164,7 +1164,7 @@ func (v *Voice) Synthesize() {
 		// the vibrato comes in gently after its delay
 		vib := 0.0
 		if v.t > vibDelay2 {
-			vib = vib0 * math.Min(1, float64(v.t-vibDelay2)/vibRamp)
+			vib = vib0 * min(1, float64(v.t-vibDelay2)/vibRamp)
 		}
 		var src [2]float64
 		flow, sung := 0.0, 0
@@ -1215,7 +1215,7 @@ func (v *Voice) Synthesize() {
 		}
 		// the envelope
 		if !v.released {
-			v.env = math.Min(1, v.env+attack)
+			v.env = min(1, v.env+attack)
 		} else {
 			v.env *= release
 		}
@@ -1255,7 +1255,7 @@ func (v *Voice) Synthesize() {
 		}
 		g := gain
 		if modded && mods.Targets(dLevel) {
-			g = gain / level * math.Max(0, level+mods.Mod(dLevel))
+			g = gain / level * max(0, level+mods.Mod(dLevel))
 		}
 		if tickFilter {
 			extra := 0.0

@@ -134,7 +134,7 @@ func NewPoly(cfg Config, numVoices int) *Piano {
 func (p *Piano) buildBank() {
 	cfg := &p.cfg
 	sr := p.Config().SampleRate / 2
-	disp := dispersion(sr, math.Max(0, cfg.Stiffness), math.Max(0, math.Min(cfg.Wound, 1)))
+	disp := dispersion(sr, max(0, cfg.Stiffness), max(0, min(cfg.Wound, 1)))
 	p.bank = p.bank[:0]
 	for key := 21; key <= 108; key++ {
 		pitch := float64(key)
@@ -151,9 +151,9 @@ func (p *Piano) buildBank() {
 			ad:     disp[key].ad,
 			// its own losses and part of what the bridge takes (the strings of a key move together
 			// as the bridge drives them, a part ends up in the motions that last)
-			t60:        1 / (1/(ringTime(pitch)*ringF*math.Max(0.05, cfg.Decay)) + drain*massF*bridgeDrain(pitch)/6.91),
-			damping:    highDamping * dampF * math.Max(0, cfg.Damping),
-			damperTime: math.Max(0.02, cfg.DamperTime) * (1 + math.Max(0, (48-pitch)/24)),
+			t60:        1 / (1/(ringTime(pitch)*ringF*max(0.05, cfg.Decay)) + drain*massF*bridgeDrain(pitch)/6.91),
+			damping:    highDamping * dampF * max(0, cfg.Damping),
+			damperTime: max(0.02, cfg.DamperTime) * (1 + max(0, (48-pitch)/24)),
 		}
 		s := &sympathetic{pitch: pitch}
 		s.reset(designString(d))
@@ -240,11 +240,11 @@ func (p *Piano) ReceiveMessage(msg psalm.Message) {
 		p.sostenuto = down
 	})
 	msg.IfFltVal("sustain", func(f float64) {
-		f = math.Max(0, math.Min(f, 1))
+		f = max(0, min(f, 1))
 		down, was := f > 0.5, p.sustain > 0.5
 		if down != was {
 			// all dampers lift with a soft swish, and land with a thud
-			mech := math.Max(0, math.Min(p.cfg.Mechanics, 1)) * math.Max(p.cfg.Level, 1e-9)
+			mech := max(0, min(p.cfg.Mechanics, 1)) * max(p.cfg.Level, 1e-9)
 			if down {
 				p.pedal.noise += mech * pedalSwish
 			} else {
@@ -427,8 +427,8 @@ func (p *Piano) synthesize() {
 	if level <= 0 {
 		level = 1
 	}
-	coupling := resonanceCoupling * math.Max(0, math.Min(cfg.Resonance, 1)) / level
-	body := math.Max(0, math.Min(cfg.Body, 1))
+	coupling := resonanceCoupling * max(0, min(cfg.Resonance, 1)) / level
+	body := max(0, min(cfg.Body, 1))
 	direct := 1 - 0.7*body
 	pedalLP := 1 - math.Exp(-2*math.Pi*800/sr)
 	pedalHP := 1 - math.Exp(-2*math.Pi*150/sr)

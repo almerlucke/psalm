@@ -99,7 +99,7 @@ func burst(x []float64) float64 {
 	w := int(0.005 * sr())
 	best := 0.0
 	for i := 0; i+w <= len(x); i += w / 2 {
-		best = math.Max(best, rms(x[i:i+w]))
+		best = max(best, rms(x[i:i+w]))
 	}
 	return best
 }

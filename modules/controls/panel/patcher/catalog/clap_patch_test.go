@@ -35,7 +35,7 @@ func TestClapDemoPatch(t *testing.T) {
 		p.ResetRun()
 		p.Run()
 		for _, s := range pt.Out().Output(0).Channels[0] {
-			peak = math.Max(peak, math.Abs(float64(s)))
+			peak = max(peak, math.Abs(float64(s)))
 		}
 	}
 	t.Logf("peak %.3f", peak)

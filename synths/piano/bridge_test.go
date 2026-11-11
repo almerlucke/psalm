@@ -54,7 +54,7 @@ func TestChordIsNotTheSum(t *testing.T) {
 	for k := int(100 * size / sr); k < int(3000*size/sr); k++ {
 		if sa[k] > 1e-3*maxOf(sa) && ss[k] > 1e-3*maxOf(ss) {
 			d := math.Abs(20 * math.Log10(sa[k]/ss[k]))
-			worst = math.Max(worst, d)
+			worst = max(worst, d)
 			if d > 3 {
 				moved++
 			}
@@ -73,7 +73,7 @@ func TestChordIsNotTheSum(t *testing.T) {
 func maxOf(x []float64) float64 {
 	m := 0.0
 	for _, v := range x {
-		m = math.Max(m, v)
+		m = max(m, v)
 	}
 	return m
 }
@@ -127,7 +127,7 @@ func TestBridgeStable(t *testing.T) {
 				if math.IsNaN(float64(x)) || math.IsInf(float64(x), 0) {
 					t.Fatal("not a number")
 				}
-				peak = math.Max(peak, math.Abs(float64(x)))
+				peak = max(peak, math.Abs(float64(x)))
 			}
 		}
 	}

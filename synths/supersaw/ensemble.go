@@ -20,7 +20,7 @@ func (e *ensemble) process(x, amount, phase, sr float64) float64 {
 	for k := range 3 {
 		ph := phase + float64(k)/3
 		delay := (7 + 2.5*math.Sin(2*math.Pi*ph)) * 0.001 * sr
-		delay = math.Min(delay, float64(len(e.buf)-2))
+		delay = min(delay, float64(len(e.buf)-2))
 		pos := float64(e.w) - delay
 		if pos < 0 {
 			pos += float64(len(e.buf))

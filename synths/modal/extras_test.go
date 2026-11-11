@@ -208,7 +208,7 @@ func TestMaterialPresets(t *testing.T) {
 		finite(t, name, x)
 		p := 0.0
 		for _, s := range x {
-			p = math.Max(p, math.Abs(s))
+			p = max(p, math.Abs(s))
 		}
 		if p < 0.05 || p > 3 {
 			t.Errorf("%s peaks at %g", name, p)
@@ -231,7 +231,7 @@ func TestLFO2MovesLevel(t *testing.T) {
 	lo, hi := math.Inf(1), 0.0
 	for i := 0; i+win <= len(x); i += win {
 		r := rms(x[i : i+win])
-		lo, hi = math.Min(lo, r), math.Max(hi, r)
+		lo, hi = min(lo, r), max(hi, r)
 	}
 	if hi == 0 || lo > hi*0.7 {
 		t.Errorf("level swings %g to %g under a 4 Hz LFO 2", lo, hi)

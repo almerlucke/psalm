@@ -135,13 +135,13 @@ func (r *Roll) Link(l Link) { r.link.Store(&l) }
 
 // makeClip puts notes in order, within the loop, and made to fit its limits
 func makeClip(notes []Note, length float64) *Clip {
-	length = math.Max(1, math.Min(math.Round(length*1000)/1000, MaxBeats))
+	length = max(1, min(math.Round(length*1000)/1000, MaxBeats))
 	ns := make([]Note, 0, len(notes))
 	for _, n := range notes {
 		n.Key = max(0, min(n.Key, 127))
-		n.Velocity = math.Max(0, math.Min(n.Velocity, 1))
-		n.Start = math.Max(0, math.Round(n.Start*1000)/1000)
-		n.Length = math.Max(0.01, math.Round(n.Length*1000)/1000)
+		n.Velocity = max(0, min(n.Velocity, 1))
+		n.Start = max(0, math.Round(n.Start*1000)/1000)
+		n.Length = max(0.01, math.Round(n.Length*1000)/1000)
 		if n.Start >= length {
 			continue
 		}
@@ -312,7 +312,7 @@ func (r *Roll) GenerateSections(seed uint64, gp GenParams) int {
 // melodies makes count melodies for a stretch of a clip of a section (nil when it can't)
 func (r *Roll) melodies(section string, length, from, to float64, count int, seed uint64, gp GenParams) [][][4]float64 {
 	l := r.link.Load()
-	from, to = math.Max(0, from), math.Min(to, length)
+	from, to = max(0, from), min(to, length)
 	if to-from < 0.25 {
 		return nil
 	}
@@ -324,7 +324,7 @@ func (r *Roll) melodies(section string, length, from, to float64, count int, see
 		Rhythm: gp.Rhythm, Contour: gp.Contour, Form: gp.Form, Grammar: grammarOf(gp), Phrase: gp.Phrase, Grid: gp.Grid, Velocity: gp.Velocity}
 	if l != nil && l.Chords != nil {
 		for _, sp := range l.Chords(section, length) {
-			at, end := math.Max(sp.At, from), math.Min(sp.At+sp.Len, to)
+			at, end := max(sp.At, from), min(sp.At+sp.Len, to)
 			if end-at > 1e-9 {
 				root := 0
 				if len(sp.Pcs) > 0 {
@@ -372,7 +372,7 @@ func (r *Roll) Counter(id int, from, to float64, melodyNotes [][4]float64, every
 	cp.High = max(cp.High, cp.Low+7)
 	if l != nil && l.Chords != nil {
 		for _, sp := range l.Chords(view, c.Length) {
-			at, end := math.Max(sp.At, from), math.Min(sp.At+sp.Len, to)
+			at, end := max(sp.At, from), min(sp.At+sp.Len, to)
 			if end-at > 1e-9 {
 				root := 0
 				if len(sp.Pcs) > 0 {
@@ -422,7 +422,7 @@ func (r *Roll) Preview(notes []Note, length float64) {
 func (r *Roll) Audition(key int, velocity, beats float64) {
 	r.heard.Lock()
 	if len(r.waiting) < 16 {
-		r.waiting = append(r.waiting, Note{Key: max(0, min(key, 127)), Velocity: math.Max(0, math.Min(velocity, 1)), Length: math.Max(0.05, math.Min(beats, 8))})
+		r.waiting = append(r.waiting, Note{Key: max(0, min(key, 127)), Velocity: max(0, min(velocity, 1)), Length: max(0.05, min(beats, 8))})
 		r.hearing.Store(int32(len(r.waiting)))
 	}
 	r.heard.Unlock()
@@ -437,7 +437,7 @@ func (r *Roll) hear(tick psalm.CtrlTick) {
 	r.heard.Unlock()
 	second := r.Env().TickDuration() * float64(r.Config().PPQ)
 	for _, n := range ns {
-		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.05, n.Length*second), "amplitude": n.Velocity,
+		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": max(0.05, n.Length*second), "amplitude": n.Velocity,
 			"message": psalm.Message{"pitch": float64(n.Key), "velocity": n.Velocity}}
 		for _, target := range r.targets {
 			target.ReceiveMessage(msg)
@@ -487,7 +487,7 @@ func (r *Roll) CtrlTick(tick psalm.CtrlTick) {
 			if start != at {
 				continue
 			}
-			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.005, n.Length*second), "amplitude": n.Velocity,
+			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": max(0.005, n.Length*second), "amplitude": n.Velocity,
 				"message": psalm.Message{"pitch": float64(n.Key), "velocity": n.Velocity}}
 			for _, target := range r.targets {
 				target.ReceiveMessage(msg)
@@ -512,7 +512,7 @@ func (r *Roll) playPreview(tick psalm.CtrlTick) {
 		if t <= r.pvLast || t > rel {
 			continue
 		}
-		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.005, n.Length*second), "amplitude": n.Velocity,
+		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": max(0.005, n.Length*second), "amplitude": n.Velocity,
 			"message": psalm.Message{"pitch": float64(n.Key), "velocity": n.Velocity}}
 		for _, target := range r.targets {
 			target.ReceiveMessage(msg)
@@ -561,7 +561,7 @@ func (r *Roll) state() state {
 		c.Length = r.Length()
 		for _, s := range st.Sections {
 			if s.Name == view && s.Beats > 0 {
-				c.Length = math.Min(s.Beats, MaxBeats)
+				c.Length = min(s.Beats, MaxBeats)
 			}
 		}
 	}

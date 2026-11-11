@@ -203,7 +203,7 @@ func TestVibrato(t *testing.T) {
 	lo, hi := math.Inf(1), 0.0
 	for s := 0.5; s < 1.4; s += 0.025 {
 		f := pitchOf(x[int(s*sr()) : int(s*sr())+int(0.03*sr())+int(sr()/30)+4])
-		lo, hi = math.Min(lo, f), math.Max(hi, f)
+		lo, hi = min(lo, f), max(hi, f)
 	}
 	if spread := cents(hi, lo); spread < 30 || spread > 90 {
 		t.Errorf("a vibrato of 0.3 semitones swings %.0f cents", spread)
@@ -244,7 +244,7 @@ func TestNotes(t *testing.T) {
 		_, x := play(f(), 57, 1)
 		p := 0.0
 		for _, s := range x {
-			p = math.Max(p, math.Abs(s))
+			p = max(p, math.Abs(s))
 		}
 		if p < 0.01 || p > 4 || math.IsNaN(p) {
 			t.Errorf("%s peaks at %g", name, p)
@@ -272,7 +272,7 @@ func TestBowReleaseHasNoRing(t *testing.T) {
 			for i := 0; i+win <= len(x); i += win {
 				pk := 0.0
 				for _, s := range x[i : i+win] {
-					pk = math.Max(pk, math.Abs(s))
+					pk = max(pk, math.Abs(s))
 				}
 				level := 20 * math.Log10(pk+1e-12)
 				if math.IsInf(top, -1) {
@@ -285,7 +285,7 @@ func TestBowReleaseHasNoRing(t *testing.T) {
 					t.Errorf("%s %g: %.0f ms after the release it swells from %.1f to %.1f dB", name, p, float64(i)/sr()*1000, lowest, level)
 					break
 				}
-				lowest = math.Min(lowest, level)
+				lowest = min(lowest, level)
 			}
 		}
 	}

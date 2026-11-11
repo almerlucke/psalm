@@ -35,7 +35,7 @@ func (s Span) Between(from, to float64, c Curve) Curve {
 			}
 			return c(1)
 		}
-		return c(math.Max(0, math.Min((s.bar(progress)-from)/(to-from), 1)))
+		return c(max(0, min((s.bar(progress)-from)/(to-from), 1)))
 	}
 }
 
@@ -77,17 +77,17 @@ const Silent = -120.0
 // section (from -1, to Span+1) leaves out the fade at that edge, for a sound that carries on into
 // the section before or after it
 func (s Span) Fade(db, from, to float64) Curve {
-	edge := math.Min(1, (to-from)/4)
+	edge := min(1, (to-from)/4)
 	return func(progress float64) float64 {
 		b := s.bar(progress)
 		if b < from || b > to || edge <= 0 {
 			return Silent
 		}
-		g := math.Min(math.Min((b-from)/edge, (to-b)/edge), 1)
+		g := min(min((b-from)/edge, (to-b)/edge), 1)
 		if g <= 0 {
 			return Silent
 		}
-		return math.Max(Silent, db+20*math.Log10(g))
+		return max(Silent, db+20*math.Log10(g))
 	}
 }
 

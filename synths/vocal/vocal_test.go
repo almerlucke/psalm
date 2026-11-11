@@ -154,7 +154,7 @@ func TestVibrato(t *testing.T) {
 				best, bestF = a, f
 			}
 		}
-		lo, hi = math.Min(lo, bestF), math.Max(hi, bestF)
+		lo, hi = min(lo, bestF), max(hi, bestF)
 	}
 	if c := 1200 * math.Log2(hi/lo); c < 40 || c > 160 {
 		t.Errorf("a vibrato of half a semitone swings %.0f cents", c)
@@ -178,7 +178,7 @@ func TestNotes(t *testing.T) {
 		_, x, _ := sing(f(), psalm.Message{"pitch": 57.0}, 1)
 		p := 0.0
 		for _, s := range x {
-			p = math.Max(p, math.Abs(s))
+			p = max(p, math.Abs(s))
 		}
 		if p < 0.01 || p > 4 || math.IsNaN(p) {
 			t.Errorf("%s peaks at %g", name, p)

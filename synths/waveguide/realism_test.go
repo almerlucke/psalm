@@ -130,7 +130,7 @@ func TestTwoPolarizations(t *testing.T) {
 		}
 		r := 0.0
 		for i := 1; i < len(env); i++ {
-			r = math.Max(r, env[i]-env[i-1])
+			r = max(r, env[i]-env[i-1])
 		}
 		return r
 	}
@@ -398,7 +398,7 @@ func periodicity(x []float64, f float64) float64 {
 			b += x[i] * x[i]
 			c += x[i+lag] * x[i+lag]
 		}
-		best = math.Max(best, a/math.Sqrt(b*c+1e-30))
+		best = max(best, a/math.Sqrt(b*c+1e-30))
 	}
 	return best
 }
@@ -484,7 +484,7 @@ func TestBowRosinAndReversal(t *testing.T) {
 	at := func(s float64) float64 { return rms(x[int(s*sr()):int((s+0.02)*sr())]) }
 	dip := math.Inf(1)
 	for s := 0.44; s < 0.54; s += 0.01 {
-		dip = math.Min(dip, at(s))
+		dip = min(dip, at(s))
 	}
 	if before := at(0.3); dip > 0.85*before {
 		t.Errorf("the reversal doesn't dip: %.3f against %.3f", dip, before)

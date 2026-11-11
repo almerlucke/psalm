@@ -193,7 +193,7 @@ func TestLFO2MovesLevel(t *testing.T) {
 	lo, hi := math.Inf(1), 0.0
 	for i := 0; i+win <= len(x); i += win {
 		r := rms(x[i : i+win])
-		lo, hi = math.Min(lo, r), math.Max(hi, r)
+		lo, hi = min(lo, r), max(hi, r)
 	}
 	if hi == 0 || lo > hi*0.6 {
 		t.Errorf("level swings %g to %g under a 2 Hz LFO 2", lo, hi)

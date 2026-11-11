@@ -108,7 +108,7 @@ func (g *Gate) target(db float64) float64 {
 	if g.cfg.Ratio <= 0 || g.cfg.Ratio >= 100 {
 		return -r // a gate: closed
 	}
-	return -math.Min(under*(g.cfg.Ratio-1), r)
+	return -min(under*(g.cfg.Ratio-1), r)
 }
 
 func (g *Gate) Synthesize() {
@@ -136,7 +136,7 @@ func (g *Gate) Synthesize() {
 			g.hpR += hp * (r - g.hpR)
 			l, r = l-g.hpL, r-g.hpR
 		}
-		g.env = math.Max(math.Max(math.Abs(l), math.Abs(r)), g.env*decay) // the level, not every wave
+		g.env = max(max(math.Abs(l), math.Abs(r)), g.env*decay) // the level, not every wave
 		db := -120.0
 		if g.env > 1e-6 {
 			db = 20 * math.Log10(g.env)

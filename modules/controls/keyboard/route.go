@@ -25,7 +25,7 @@ type Route struct {
 
 // Value returns the setting for a controller's position (0-1)
 func (r Route) Value(v float64) float64 {
-	v = math.Max(0, math.Min(v, 1))
+	v = max(0, min(v, 1))
 	var x float64
 	if r.Exp && r.Min > 0 && r.Max > 0 {
 		x = r.Min * math.Pow(r.Max/r.Min, v)

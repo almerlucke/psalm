@@ -139,7 +139,7 @@ func (p *Player) Loop() bool {
 // SetSpeed sets how fast the file plays: 1 at its tempo, 0.5 at half of it (0.05 to 8)
 func (p *Player) SetSpeed(speed float64) {
 	p.mu.Lock()
-	p.speed = math.Max(0.05, math.Min(speed, 8))
+	p.speed = max(0.05, min(speed, 8))
 	p.mu.Unlock()
 }
 
@@ -191,7 +191,7 @@ func (p *Player) fileTempo(seconds float64) float64 {
 func (p *Player) PlayTime(from float64) float64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	from = math.Max(0, math.Min(from, p.length))
+	from = max(0, min(from, p.length))
 	bpm := 0.0
 	if p.tempo != nil {
 		bpm = p.tempo()
@@ -203,9 +203,9 @@ func (p *Player) PlayTime(from float64) float64 {
 	for i, c := range p.tempoMap {
 		end := p.length
 		if i+1 < len(p.tempoMap) {
-			end = math.Min(end, p.tempoMap[i+1].seconds)
+			end = min(end, p.tempoMap[i+1].seconds)
 		}
-		if seg := end - math.Max(from, c.seconds); seg > 0 {
+		if seg := end - max(from, c.seconds); seg > 0 {
 			total += seg * (60 / (c.perTick * float64(p.division))) / bpm
 		}
 	}
@@ -246,7 +246,7 @@ func (p *Player) rate() float64 {
 	if bpm, own := p.tempo(), p.fileTempo(p.pos); bpm > 0 && own > 0 {
 		r *= bpm / own
 	}
-	return math.Max(0.01, r)
+	return max(0.01, r)
 }
 
 // Speed returns how fast the file plays
@@ -405,7 +405,7 @@ func (p *Player) release(pick func(ch, track int) bool) []Message {
 // seek moves to a time: the notes let go, the controllers back to rest, then every channel set as
 // the file has it there
 func (p *Player) seek(seconds float64) []Message {
-	seconds = math.Max(0, math.Min(seconds, p.length))
+	seconds = max(0, min(seconds, p.length))
 	msgs := p.release(func(int, int) bool { return true })
 	p.pos = seconds
 	p.next, _ = slices.BinarySearchFunc(p.events, seconds, func(e playEvent, s float64) int {

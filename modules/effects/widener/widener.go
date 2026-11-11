@@ -4,8 +4,6 @@
 package widener
 
 import (
-	"math"
-
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/filters/biquad"
 	"github.com/almerlucke/psalm/blocks/mix"
@@ -37,7 +35,7 @@ func New(cfg Config) *Widener {
 		width:  mix.NewSmoother(clamp(cfg.Width, 0, 3), mix.SmoothMs, sr),
 	}
 	for i := range w.hp {
-		w.hp[i] = biquad.New(biquad.HighPass, math.Max(cfg.MonoBelow, 10), 0.707, 0, sr)
+		w.hp[i] = biquad.New(biquad.HighPass, max(cfg.MonoBelow, 10), 0.707, 0, sr)
 	}
 	w.SetSelf(w)
 	return w
@@ -52,11 +50,11 @@ func (w *Widener) SetWidth(width float64) { w.cfg.Width = width }
 func (w *Widener) SetMonoBelow(hz float64) {
 	w.cfg.MonoBelow = hz
 	for _, f := range w.hp {
-		f.SetFrequency(math.Max(hz, 10))
+		f.SetFrequency(max(hz, 10))
 	}
 }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 
 func (w *Widener) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {

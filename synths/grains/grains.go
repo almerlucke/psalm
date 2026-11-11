@@ -86,7 +86,7 @@ func sampleLoudness(s sndfile.SoundFiler[float32]) float64 {
 		}
 		rms := math.Sqrt(sum / float64((end-start)*s.NumChannels()))
 		blocks = append(blocks, rms)
-		top = math.Max(top, rms)
+		top = max(top, rms)
 	}
 
 	sum, count := 0.0, 0
@@ -217,7 +217,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("reverse", func(f float64) { cfg.Reverse = f })
 	msg.IfFltVal("jitter", func(f float64) { cfg.Jitter = f })
 	msg.IfFltVal("level", func(f float64) { cfg.Level = f })
-	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0.0, math.Min(f, 1.0)) })
+	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0.0, min(f, 1.0)) })
 	msg.IfFltVal("pitch", func(f float64) { v.pitch = f })
 	msg.IfFltVal("frequency", func(f float64) { v.pitch = 69.0 + 12.0*math.Log2(f/440.0) })
 }
@@ -248,7 +248,7 @@ func (v *Voice) positionFrames() float64 {
 	if v.sample == nil {
 		return 0
 	}
-	return math.Max(0.0, math.Min(v.cfg.Position, 1.0)) * float64(v.sample.NumFrames()-1)
+	return max(0.0, min(v.cfg.Position, 1.0)) * float64(v.sample.NumFrames()-1)
 }
 
 func (v *Voice) NoteOn(amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
@@ -296,7 +296,7 @@ var smoothTable = func() []float64 {
 }()
 
 func smoothWindow(t float64) float64 {
-	pos := math.Max(0, math.Min(t, 1)) * float64(len(smoothTable)-2)
+	pos := max(0, min(t, 1)) * float64(len(smoothTable)-2)
 	i := int(pos)
 	a := smoothTable[i]
 	return a + (smoothTable[i+1]-a)*(pos-float64(i))
@@ -385,7 +385,7 @@ func (v *Voice) Synthesize() {
 		frames  = float64(v.sample.NumFrames())
 		scanInc = cfg.Scan * v.sample.SampleRate() / sr
 		vel     = 1.0 - cfg.VelocityDensity + cfg.VelocityDensity*v.velocity
-		density = math.Max(0.1, cfg.Density*vel)
+		density = max(0.1, cfg.Density*vel)
 		level   = cfg.Level
 	)
 
@@ -395,7 +395,7 @@ func (v *Voice) Synthesize() {
 
 	// overlapping grains add up: scale by the square root of the average overlap so the level
 	// stays about the same when the density or grain size changes
-	overlap := math.Max(1.0, density*cfg.GrainSize*0.001)
+	overlap := max(1.0, density*cfg.GrainSize*0.001)
 	norm := level / math.Sqrt(overlap)
 
 	norm *= windowCompensation(cfg.Shape)

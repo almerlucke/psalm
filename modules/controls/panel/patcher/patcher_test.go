@@ -26,7 +26,7 @@ func TestPatch(t *testing.T) {
 			p.Run()
 			for _, ch := range pt.Out().Output(0).Channels {
 				for _, x := range ch {
-					peak = math.Max(peak, math.Abs(float64(x)))
+					peak = max(peak, math.Abs(float64(x)))
 				}
 			}
 		}
@@ -150,7 +150,7 @@ func TestMixerSends(t *testing.T) {
 		peak := 0.0
 		for _, c := range ch {
 			for _, x := range c {
-				peak = math.Max(peak, math.Abs(float64(x)))
+				peak = max(peak, math.Abs(float64(x)))
 			}
 		}
 		return peak
@@ -159,8 +159,8 @@ func TestMixerSends(t *testing.T) {
 	for range 120 {
 		p.ResetRun()
 		p.Run()
-		main = math.Max(main, peakOf(m.Output(0).Channels))
-		send = math.Max(send, peakOf(m.Output(1).Channels))
+		main = max(main, peakOf(m.Output(0).Channels))
+		send = max(send, peakOf(m.Output(1).Channels))
 	}
 	if send != 0 {
 		t.Errorf("a channel at level 0 sends (post fader): %g", send)
@@ -169,8 +169,8 @@ func TestMixerSends(t *testing.T) {
 	for range 120 {
 		p.ResetRun()
 		p.Run()
-		main = math.Max(main, peakOf(m.Output(0).Channels))
-		send = math.Max(send, peakOf(m.Output(1).Channels))
+		main = max(main, peakOf(m.Output(0).Channels))
+		send = max(send, peakOf(m.Output(1).Channels))
 	}
 	if send < 0.01 || main < 0.01 {
 		t.Errorf("the send %g, the main out (with the reverb's return) %g", send, main)

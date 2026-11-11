@@ -16,7 +16,7 @@ func levelToAmp(level float64) float64 {
 // rateToSpeed converts an envelope rate (0-99) to level units per sample: a full 0-99 sweep takes
 // about 38 seconds at rate 0 and about 1 millisecond at rate 99
 func rateToSpeed(rate float64, sr float64) float64 {
-	rate = math.Max(0.0, math.Min(rate, 99.0))
+	rate = max(0.0, min(rate, 99.0))
 	seconds := 38.0 * math.Pow(2.0, -rate/6.5)
 	return 99.0 / (seconds * sr)
 }
@@ -155,9 +155,9 @@ func (e *envelope) next() float64 {
 	}
 
 	if e.level < target {
-		e.level = math.Min(target, e.level+speed*attackSpeedup(e.level))
+		e.level = min(target, e.level+speed*attackSpeedup(e.level))
 	} else {
-		e.level = math.Max(target, e.level-speed)
+		e.level = max(target, e.level-speed)
 	}
 
 	if e.level == target {

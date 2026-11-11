@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -167,7 +166,7 @@ func (p *Plugin) loadPresetMain(i int) error {
 	if pr.program >= 0 { // a program: the parameter that selects it is set
 		v := 0.0
 		if p.progSteps > 0 {
-			v = math.Min(1, float64(pr.program)/float64(p.progSteps))
+			v = min(1, float64(pr.program)/float64(p.progSteps))
 		}
 		C.v3_param(p.inst, C.uint32_t(p.progParam), C.double(v), 0)
 		C.v3_param_set_now(p.inst, C.uint32_t(p.progParam), C.double(v))

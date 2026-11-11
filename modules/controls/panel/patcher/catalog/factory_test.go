@@ -164,7 +164,7 @@ func TestFactoryPresetsAreThePresetsMade(t *testing.T) {
 				want0 := rendered(want.Module, want.Module.Synthesize, 57, 1.5)
 				var worst float64
 				for _, w := range windows {
-					worst = math.Max(worst, math.Abs(dB(rmsWin(got, w[0], w[1]), rmsWin(want0, w[0], w[1]))))
+					worst = max(worst, math.Abs(dB(rmsWin(got, w[0], w[1]), rmsWin(want0, w[0], w[1]))))
 				}
 				// every synth is held to the preset made: the same level in the windows, the same pitch
 				tol, slack := 1.0, 0.03

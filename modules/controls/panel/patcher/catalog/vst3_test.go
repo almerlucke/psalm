@@ -163,10 +163,10 @@ func TestVST3RealPlugins(t *testing.T) {
 		synth.Module.ResetRun()
 		fx.Module.Run()
 		for _, s := range fx.Module.Output(0).Channels[0] {
-			wet = math.Max(wet, math.Abs(float64(s)))
+			wet = max(wet, math.Abs(float64(s)))
 		}
 		for _, s := range synth.Module.Output(0).Channels[0] {
-			dry = math.Max(dry, math.Abs(float64(s)))
+			dry = max(dry, math.Abs(float64(s)))
 		}
 	}
 	t.Logf("Surge XT %d settings, Surge XT Effects %d; the synth peaks at %.3f, through the effect %.3f", len(synth.Describe("").Params), len(fx.Describe("").Params), dry, wet)

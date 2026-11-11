@@ -118,7 +118,7 @@ func (m *Matrix) Set(i int, s Slot) {
 	if s.Dest != "" {
 		d = m.Index(s.Dest)
 	}
-	m.slots[i] = slot{src: s.Src, dest: d, amount: math.Max(-1, math.Min(s.Amount, 1))}
+	m.slots[i] = slot{src: s.Src, dest: d, amount: max(-1, min(s.Amount, 1))}
 	m.refresh()
 }
 
@@ -163,7 +163,7 @@ func (m *Matrix) Targets(dest int) bool {
 // SetExt sets a value cabled in from outside (0 to 1), n from 0
 func (m *Matrix) SetExt(n int, v float64) {
 	if n >= 0 && n < Exts {
-		m.ext[n] = math.Max(0, math.Min(v, 1))
+		m.ext[n] = max(0, min(v, 1))
 	}
 }
 

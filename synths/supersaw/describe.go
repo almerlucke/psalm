@@ -1,8 +1,6 @@
 package supersaw
 
 import (
-	"math"
-
 	"github.com/almerlucke/psalm/blocks/modmatrix"
 	"github.com/almerlucke/psalm/params"
 )
@@ -23,7 +21,7 @@ func Describe(cfg Config) params.Set {
 
 		params.K("Filter", "cutoff", 20, 18000, max(20, cfg.Cutoff), params.Exp(), params.Unit("Hz")),
 		params.K("Filter", "resonance", 0, 1, cfg.Resonance),
-		params.K("Filter", "hpCutoff", 20, 2000, math.Max(20, math.Min(cfg.HPCutoff, 2000)), params.Exp(), params.Unit("Hz"), params.Label("high pass (20 = off)")),
+		params.K("Filter", "hpCutoff", 20, 2000, max(20, min(cfg.HPCutoff, 2000)), params.Exp(), params.Unit("Hz"), params.Label("high pass (20 = off)")),
 		params.K("Filter", "filterEnvAmount", -6, 6, cfg.FilterEnvAmount, params.Unit("oct"), params.Label("env amount")),
 
 		params.K("LFO", "lfoRate", 0, 20, cfg.LFORate, params.Unit("Hz"), params.Label("rate")),

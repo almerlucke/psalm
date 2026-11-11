@@ -23,7 +23,7 @@ type Curve struct {
 
 // At is the value of the curve at a progress through the section, 0-1
 func (c Curve) At(progress float64) float64 {
-	x := math.Max(0, math.Min(progress, 1))
+	x := max(0, min(progress, 1))
 	switch c.Shape {
 	case "exp":
 		return c.From * math.Pow(c.To/c.From, x)
@@ -120,7 +120,7 @@ func (l *Lane) SetCurves(text string) error {
 }
 
 // Value is the lane's value now, 0-1 (mod)
-func (l *Lane) Value() float64 { return math.Max(0, math.Min(l.mod.Load(), 1)) }
+func (l *Lane) Value() float64 { return max(0, min(l.mod.Load(), 1)) }
 
 // CtrlTick moves the lane through the section of the song
 func (l *Lane) CtrlTick(tick psalm.CtrlTick) {

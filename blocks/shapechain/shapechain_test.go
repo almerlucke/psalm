@@ -143,7 +143,7 @@ func TestMirrorFar(t *testing.T) {
 func TestSinTurns(t *testing.T) {
 	worst := 0.0
 	for x := -7.3; x < 9; x += 0.000731 {
-		worst = math.Max(worst, math.Abs(sinTurns(x)-math.Sin(2*math.Pi*x)))
+		worst = max(worst, math.Abs(sinTurns(x)-math.Sin(2*math.Pi*x)))
 	}
 	if worst > 4e-7 {
 		t.Errorf("the table sine is %v from the sine", worst)

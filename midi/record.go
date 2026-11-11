@@ -81,7 +81,7 @@ func (r *Recorder) File(bpm float64) *File {
 	}
 	r.mu.Lock()
 	taken := append([]recorded(nil), r.taken...)
-	end := float64(r.frames) / math.Max(1, r.rate)
+	end := float64(r.frames) / max(1, r.rate)
 	r.mu.Unlock()
 
 	first := end
@@ -93,7 +93,7 @@ func (r *Recorder) File(bpm float64) *File {
 	}
 	const division = 480
 	tick := func(seconds float64) int64 {
-		return int64(math.Round(math.Max(0, seconds-first) * bpm / 60 * division))
+		return int64(math.Round(max(0, seconds-first) * bpm / 60 * division))
 	}
 	var tr Track
 	tr.AddMeta(0, MetaTempo, TempoData(bpm))

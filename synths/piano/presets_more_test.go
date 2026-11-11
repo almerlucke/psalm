@@ -45,7 +45,7 @@ func TestMorePresetsRender(t *testing.T) {
 					if math.IsNaN(l[i]) || math.IsInf(l[i], 0) || math.IsNaN(r[i]) || math.IsInf(r[i], 0) {
 						t.Fatalf("%s key %v velocity %v: not finite", name, key, vel)
 					}
-					peak = math.Max(peak, math.Max(math.Abs(l[i]), math.Abs(r[i])))
+					peak = max(peak, max(math.Abs(l[i]), math.Abs(r[i])))
 				}
 				if peak < 1e-3 {
 					t.Errorf("%s key %v velocity %v: silent, peak %g", name, key, vel, peak)

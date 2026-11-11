@@ -65,8 +65,8 @@ func init() {
 				x.f[k] = vowelBase[i][t.base][k] * t.scale
 				x.bw[k] = vowelBW[i][k] * t.bw
 			}
-			x.f[3] = math.Max(t.f4*t.scale, x.f[2]+450)
-			x.f[4] = math.Max(t.f5*t.scale, x.f[3]+500)
+			x.f[3] = max(t.f4*t.scale, x.f[2]+450)
+			x.f[4] = max(t.f5*t.scale, x.f[3]+500)
 			x.bw[3], x.bw[4] = 150*t.bw, 250*t.bw
 			table[r][i] = x
 		}
@@ -89,12 +89,12 @@ func tractAt(r Range, phoneme int, pos float64) (f, bw [5]float64) {
 	var ia, ib int
 	var frac float64
 	if phoneme == 0 {
-		pos = math.Max(0, math.Min(pos, 4))
+		pos = max(0, min(pos, 4))
 		i := min(int(pos), 3)
 		frac = pos - float64(i)
 		ia, ib = scaleRows[i], scaleRows[i+1]
 	} else {
-		pos = math.Max(0, math.Min(pos, 11))
+		pos = max(0, min(pos, 11))
 		i := min(int(pos), 10)
 		frac = pos - float64(i)
 		ia, ib = i, i+1
@@ -114,8 +114,8 @@ func tractAt(r Range, phoneme int, pos float64) (f, bw [5]float64) {
 type reson struct{ a, b, c, y1, y2 float64 }
 
 func (r *reson) set(f, bw, sr float64) {
-	f = math.Max(20, math.Min(f, sr*0.45))
-	bw = math.Max(10, bw)
+	f = max(20, min(f, sr*0.45))
+	bw = max(10, bw)
 	r.c = -math.Exp(-2 * math.Pi * bw / sr)
 	r.b = 2 * math.Exp(-math.Pi*bw/sr) * math.Cos(2*math.Pi*f/sr)
 	r.a = 1 - r.b - r.c
@@ -251,7 +251,7 @@ func (c *cascade) level(f0, sr float64) float64 {
 			hz := float64(h) * f
 			sum += c.gainSq(hz, sr) * c.source(h, hz)
 		}
-		worst = math.Max(worst, sum)
+		worst = max(worst, sum)
 		total += sum / 5
 	}
 	if c.nasal > 0.3 {
@@ -290,15 +290,15 @@ func levelCompensation(ref, tuned *cascade, f0, sr, wh, breath float64) float64 
 		boost = 40
 	}
 	voiced, noise := 1.0, 1.0
-	wh = math.Max(wh, math.Min(0.5, breath)) // the breath is noise through the tract too
+	wh = max(wh, min(0.5, breath)) // the breath is noise through the tract too
 	if wh < 1 {
 		if l := tuned.level(f0, sr); l > 1e-9 {
-			voiced = math.Max(0.01, math.Min(ref.level(refPitch, sr)/l, boost))
+			voiced = max(0.01, min(ref.level(refPitch, sr)/l, boost))
 		}
 	}
 	if wh > 0 {
 		if l := tuned.level(0, sr); l > 1e-9 {
-			noise = math.Max(0.01, math.Min(ref.level(0, sr)/l, 10))
+			noise = max(0.01, min(ref.level(0, sr)/l, 10))
 		}
 	}
 	return voiced*(1-wh) + noise*wh

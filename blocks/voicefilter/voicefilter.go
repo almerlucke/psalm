@@ -114,8 +114,8 @@ func (f *Filter) On() bool { return f.cfg.Type != Off }
 func (f *Filter) Receive(msg psalm.Message) {
 	envelope.Receive(msg, "filter", &f.cfg.Env)
 	msg.IfIntVal("filterType", func(t int) { f.cfg.Type = Type(max(0, min(t, int(Ladder12)))) })
-	msg.IfFltVal("cutoff", func(v float64) { f.cfg.Cutoff = math.Max(20, v) })
-	msg.IfFltVal("resonance", func(v float64) { f.cfg.Resonance = math.Max(0, math.Min(v, 1)) })
+	msg.IfFltVal("cutoff", func(v float64) { f.cfg.Cutoff = max(20, v) })
+	msg.IfFltVal("resonance", func(v float64) { f.cfg.Resonance = max(0, min(v, 1)) })
 	msg.IfFltVal("filterEnvAmount", func(v float64) { f.cfg.EnvAmount = v })
 	msg.IfFltVal("keyTrack", func(v float64) { f.cfg.KeyTrack = v })
 	msg.IfFltVal("filterDrive", func(v float64) { f.cfg.Drive = v })
@@ -170,8 +170,8 @@ func (f *Filter) Tick(freq, extra, resMod float64) {
 		f.cutoff += (f.cfg.Cutoff - f.cutoff) * f.glideC
 		f.res += (f.cfg.Resonance - f.res) * f.glideC
 		cut := f.cutoff * math.Pow(freq/middleC, f.cfg.KeyTrack) * math.Exp2(f.cfg.EnvAmount*f.lastEnv+extra)
-		cut = math.Max(20, math.Min(cut, 0.45*f.sr))
-		res := math.Max(0, math.Min(f.res+resMod, 1))
+		cut = max(20, min(cut, 0.45*f.sr))
+		res := max(0, min(f.res+resMod, 1))
 		switch f.cfg.Type {
 		case Ladder24, Ladder12:
 			drive := f.cfg.Drive
@@ -228,10 +228,10 @@ func Describe(c Config, group string) ([]params.Param, params.Envelope) {
 	}
 	return []params.Param{
 		params.C(group, "filterType", TypeNames, int(c.Type), params.Label("type")),
-		params.K(group, "cutoff", 20, 18000, math.Max(20, c.Cutoff), params.Exp(), params.Unit("Hz")),
+		params.K(group, "cutoff", 20, 18000, max(20, c.Cutoff), params.Exp(), params.Unit("Hz")),
 		params.K(group, "resonance", 0, 1, c.Resonance),
 		params.K(group, "filterEnvAmount", -6, 6, c.EnvAmount, params.Unit("oct"), params.Label("env amount")),
 		params.K(group, "keyTrack", 0, 1, c.KeyTrack, params.Label("key track")),
-		params.K(group, "filterDrive", 1, 8, math.Max(1, c.Drive), params.Exp(), params.Label("drive")),
+		params.K(group, "filterDrive", 1, 8, max(1, c.Drive), params.Exp(), params.Label("drive")),
 	}, params.E(group, "filter", "filter", c.Env.AttackDuration, c.Env.DecayDuration, c.Env.DecayLevel, c.Env.ReleaseDuration)
 }

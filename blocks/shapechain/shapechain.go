@@ -528,7 +528,7 @@ func (p *parser) stage() (stage, error) {
 			if lo > hi {
 				lo, hi = hi, lo
 			}
-			return math.Max(lo, math.Min(x, hi))
+			return max(lo, min(x, hi))
 		})
 	case "softclip":
 		a, err := one(2)
@@ -752,6 +752,6 @@ func (p *parser) table(t token) (stage, error) {
 		if !periodic && x >= 1 {
 			return tab[last]
 		}
-		return tab.Shape(math.Max(0, math.Min(x, math.Nextafter(1, 0))))
+		return tab.Shape(max(0, min(x, math.Nextafter(1, 0))))
 	}}, nil
 }

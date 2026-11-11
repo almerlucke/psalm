@@ -77,7 +77,7 @@ func (t *Tape) SetTimeMs(ms float64)  { t.cfg.TimeMs = ms }
 func (t *Tape) SetFeedback(f float64) { t.cfg.Feedback = f }
 func (t *Tape) SetMix(m float64)      { t.cfg.Mix = m }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 
 func (t *Tape) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
@@ -143,7 +143,7 @@ func (t *Tape) Synthesize() {
 		drive = math.Pow(10, 3.0/20)
 	}
 	if cfg.HighCut > 0 {
-		lp = 1 - math.Exp(-2*math.Pi*math.Min(cfg.HighCut, sr*0.45)/sr)
+		lp = 1 - math.Exp(-2*math.Pi*min(cfg.HighCut, sr*0.45)/sr)
 	}
 	if cfg.LowCut > 0 {
 		hp = 1 - math.Exp(-2*math.Pi*cfg.LowCut/sr)

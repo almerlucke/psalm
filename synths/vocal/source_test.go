@@ -30,8 +30,8 @@ func TestLFPulseIntegratesToZero(t *testing.T) {
 			d := p.at(float64(i) / n)
 			sum += d / n
 			flow += d / n
-			peak = math.Max(peak, flow)
-			neg = math.Min(neg, d*p.out)
+			peak = max(peak, flow)
+			neg = min(neg, d*p.out)
 		}
 		if math.Abs(sum) > 1e-4 || math.Abs(peak-1) > 0.01 || math.Abs(neg+1) > 0.01 {
 			t.Errorf("Rd %g: mean of the derivative %g, flow peak %g, closing peak %g", rd, sum, peak, neg)
@@ -59,7 +59,7 @@ func TestLFPulseIntegratesToZero(t *testing.T) {
 	for range 200 * 100 {
 		d, f := g.tickLF(0.01, &pl, 0.01, 0.02)
 		total += d
-		fl = math.Max(fl, f)
+		fl = max(fl, f)
 	}
 	if math.Abs(total)/200 > 0.02 || fl < 0.9 || fl > 1.01 {
 		t.Errorf("glottis: mean %g, flow peak %g", total/200, fl)
@@ -183,7 +183,7 @@ func TestWhisperHasNoPitch(t *testing.T) {
 		t.Errorf("harmonic structure: voice %g, whisper %g", vh, wh)
 	}
 	// no periodic peak at f0
-	if p := psd(w[int(0.5*sr()):], []float64{f0, 0.8 * f0, 1.2 * f0}); p[0] > 3*math.Max(p[1], p[2]) {
+	if p := psd(w[int(0.5*sr()):], []float64{f0, 0.8 * f0, 1.2 * f0}); p[0] > 3*max(p[1], p[2]) {
 		t.Errorf("a peak at the pitch in the whisper: %g against %g and %g", p[0], p[1], p[2])
 	}
 	// the throat shapes the noise: the formants of a and of i stay where they are
@@ -396,7 +396,7 @@ func TestNaturalVibrato(t *testing.T) {
 	for _, r := range [][]float64{rl, rh} {
 		lo, hi := math.Inf(1), 0.0
 		for _, x := range r {
-			lo, hi = math.Min(lo, x), math.Max(hi, x)
+			lo, hi = min(lo, x), max(hi, x)
 		}
 		if lo < 5-1e-9 || hi > 6.5+1e-9 {
 			t.Errorf("rate %g to %g Hz, expected 5 to 6.5", lo, hi)
@@ -443,7 +443,7 @@ func TestNaturalVibrato(t *testing.T) {
 				best, bestF = a, f
 			}
 		}
-		lo, hi = math.Min(lo, bestF), math.Max(hi, bestF)
+		lo, hi = min(lo, bestF), max(hi, bestF)
 	}
 	if c := 1200 * math.Log2(hi/lo); c < 30 || c > 250 {
 		t.Errorf("a natural vibrato swings %.0f cents", c)

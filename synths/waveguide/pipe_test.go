@@ -130,7 +130,7 @@ func TestPipeVibrato(t *testing.T) {
 	for s := 0.6; s < 1.6; s += 0.025 {
 		f := pitchOf(x[int(s*sr()) : int(s*sr())+int(0.03*sr())+int(sr()/30)+4])
 		if f > 0 {
-			lo, hi = math.Min(lo, f), math.Max(hi, f)
+			lo, hi = min(lo, f), max(hi, f)
 		}
 	}
 	if spread := cents(hi, lo); spread < 25 || spread > 110 {

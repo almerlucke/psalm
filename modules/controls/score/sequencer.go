@@ -61,7 +61,7 @@ func (f Feel) warp(beat float64) float64 {
 	pair := 2 * u
 	base := math.Floor(beat/pair) * pair
 	x := beat - base
-	split := pair * math.Max(0.01, math.Min(f.Swing, 0.99))
+	split := pair * max(0.01, min(f.Swing, 0.99))
 	if x < u {
 		return base + x*split/u
 	}
@@ -240,7 +240,7 @@ func (s *Sequencer) build() {
 			v := 1 + s.tri()*f.Velocity
 			amp *= v
 			if vel > 0 {
-				vel = math.Max(0.01, math.Min(vel*v, 1))
+				vel = max(0.01, min(vel*v, 1))
 			}
 		}
 

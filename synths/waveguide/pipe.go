@@ -1,6 +1,10 @@
 package waveguide
 
-import "math"
+import (
+	"math"
+
+	"github.com/almerlucke/psalm/blocks/tanh"
+)
 
 // The pipe is a tube that is blown. The tube is a delay line the sound goes up and down, closed
 // by a filter that takes the high partials and the steady pressure out of what comes back.
@@ -83,8 +87,8 @@ const fluteJet = 2.6
 // of the tube is darker the higher the damping, and the higher the pitch the less of its partials are
 // left in the loop (the cutoff is a multiple of the pitch)
 func fluteCut(f, damping, sr float64) float64 {
-	fc := f * (1.6 + 4*(1-math.Max(0, math.Min(damping, 1))))
-	return math.Exp(-2 * math.Pi * math.Min(fc, sr*0.4) / sr)
+	fc := f * (1.6 + 4*(1-max(0, min(damping, 1))))
+	return math.Exp(-2 * math.Pi * min(fc, sr*0.4) / sr)
 }
 
 // onePoleDelay is the phase delay in samples of y = (1-a) x + a y[-1] at a pitch w (radians per sample)
@@ -105,7 +109,7 @@ func dcBlockDelay(p, w float64) float64 {
 }
 
 // jetTable is the curve of the air jet at the edge: it drives the tube until it saturates
-func jetTable(x float64) float64 { return math.Tanh(x) }
+func jetTable(x float64) float64 { return tanh.Tanh(x) }
 
 // pipeNote sets the length of the tube
 func (v *Voice) pipeNote() {
@@ -119,7 +123,7 @@ func (v *Voice) pipeNote() {
 	}
 	if v.cfg.Reed {
 		// a closed tube: the sound goes up and down in a period, the delay line is half of it
-		s := 0.05 + 0.45*math.Max(0, math.Min(v.cfg.Damping, 1))
+		s := 0.05 + 0.45*max(0, min(v.cfg.Damping, 1))
 		v.baseDelay = sr/v.freq/2 - s - pipeReedExtra
 	} else {
 		a := fluteCut(v.freq, v.cfg.Damping, sr)
@@ -128,7 +132,7 @@ func (v *Voice) pipeNote() {
 		v.pipe.dc = dcPole(v.freq, sr)
 		v.baseDelay = sr/v.freq - 2*onePoleDelay(a, w) - dcBlockDelay(v.pipe.dc, w) - pipeFluteExtra
 	}
-	v.baseDelay = math.Max(v.baseDelay, 4)
+	v.baseDelay = max(v.baseDelay, 4)
 	v.vibWait = int(v.cfg.VibratoDelay * sr)
 	if v.cfg.Reed && !v.active {
 		// the tube starts with a puff in it: the line holds a wave that the closed end turns upside
@@ -147,13 +151,13 @@ func (v *Voice) pipeTick(ratio, breath, noise, emb, sr float64) float64 {
 	p := &v.pipe
 	v.rng = v.rng*1664525 + 1013904223
 	n := float64(int32(v.rng)) / 2147483648
-	b := math.Max(0, math.Min(breath, 1.5)) * v.bowEnv
-	noise = math.Max(0, math.Min(noise, 1))
-	emb = math.Max(0, math.Min(emb, 1))
+	b := max(0, min(breath, 1.5)) * v.bowEnv
+	noise = max(0, min(noise, 1))
+	emb = max(0, min(emb, 1))
 	// the trim moves the length a little at a time (about 0.004 samples a sample, a few cents of pitch
 	// a period at the most), never in a jump
 	if d := p.trim - p.trimNow; d != 0 {
-		p.trimNow += math.Max(-trimSlew, math.Min(d, trimSlew))
+		p.trimNow += max(-trimSlew, min(d, trimSlew))
 	}
 	L := v.baseDelay*ratio + p.trimNow
 	// a note speaks quickly: while the tone is weaker than speakAmp the loop gain is higher than its own
@@ -170,7 +174,7 @@ func (v *Voice) pipeTick(ratio, breath, noise, emb, sr float64) float64 {
 	// rings with at its own period, which the loop then grows from instead of from nothing
 	kick := 0.0
 	if p.clock < 1 {
-		kick = speakKick * math.Min(1, math.Max(0.3, breath))
+		kick = speakKick * min(1, max(0.3, breath))
 	}
 	var out float64
 	if v.cfg.Reed {
@@ -178,18 +182,18 @@ func (v *Voice) pipeTick(ratio, breath, noise, emb, sr float64) float64 {
 		// the player leans on the reed at the start, up to the pressure where it grows fastest (any more
 		// and it closes: the tone dies), for a number of periods: the tone is up by then and the
 		// pressure is the preset's own
-		if nominal := 0.9 * math.Min(breath, 1.5); nominal > 0 && nominal < reedBest {
+		if nominal := 0.9 * min(breath, 1.5); nominal > 0 && nominal < reedBest {
 			if age := p.clock / (reedLeanPeriods * pt0); age < 1 {
 				press *= 1 + (reedBest/nominal-1)*(1-age)
 			}
 		}
 		v.neck.len = L
-		s := 0.05 + 0.45*math.Max(0, math.Min(v.cfg.Damping, 1))
+		s := 0.05 + 0.45*max(0, min(v.cfg.Damping, 1))
 		p.lp = (1-s)*v.neck.out + s*p.lp
 		t := -0.95 * p.lp
 		pd := t - press
 		slope := -(0.25 + 0.35*emb)
-		reed := math.Max(-1, math.Min(0.7+slope*pd, 1))
+		reed := max(-1, min(0.7+slope*pd, 1))
 		v.neck.tick(press + pd*reed + kick)
 		out = v.neck.out
 	} else {
@@ -214,7 +218,7 @@ func (v *Voice) pipeTick(ratio, breath, noise, emb, sr float64) float64 {
 	// keep the pitch: the period of the sound against the pitch's, a rising crossing to the next
 	// (a reed's line is half the period)
 	p.clock++
-	p.amp = math.Max(math.Abs(y), p.amp*0.999)
+	p.amp = max(math.Abs(y), p.amp*0.999)
 	if p.prevT < 0 && y >= 0 {
 		cross := p.clock - y/(y-p.prevT)
 		pt := sr / v.freq * ratio
@@ -223,7 +227,7 @@ func (v *Voice) pipeTick(ratio, breath, noise, emb, sr float64) float64 {
 			// half period apart (noise, or a partial, gives crossings that are not)
 			if gap := cross - p.lastAny; p.lastAny > 0 && p.amp > 0.1 && math.Abs(gap-0.5*pt) < 0.06*pt {
 				if p.short++; p.short > 12 {
-					p.ease = math.Max(easeFloor, p.easeNow()*0.98)
+					p.ease = max(easeFloor, p.easeNow()*0.98)
 				}
 			} else {
 				p.short = 0
@@ -240,8 +244,8 @@ func (v *Voice) pipeTick(ratio, breath, noise, emb, sr float64) float64 {
 				if v.cfg.Reed {
 					k = 0.15
 				}
-				step := math.Max(-0.01*pt, math.Min(k*(pt-pm), 0.01*pt)) // a period moves it by a hundredth at the most
-				p.trim = math.Max(-0.06*pt, math.Min(p.trim+step, 0.06*pt))
+				step := max(-0.01*pt, min(k*(pt-pm), 0.01*pt)) // a period moves it by a hundredth at the most
+				p.trim = max(-0.06*pt, min(p.trim+step, 0.06*pt))
 			}
 			p.lastCross = cross
 		}
@@ -249,7 +253,7 @@ func (v *Voice) pipeTick(ratio, breath, noise, emb, sr float64) float64 {
 	p.prevT = y
 	// what is heard comes up over the preset's attack (the tube is already ringing, from the puff it
 	// started with, so the sound would begin with a step)
-	if fadeN := math.Min(math.Max(v.cfg.BowAttack, 0.01), 0.2) * sr; p.clock < fadeN {
+	if fadeN := min(max(v.cfg.BowAttack, 0.01), 0.2) * sr; p.clock < fadeN {
 		y *= 0.5 - 0.5*math.Cos(math.Pi*p.clock/fadeN)
 	}
 	if math.IsNaN(y) || math.Abs(y) > 50 {

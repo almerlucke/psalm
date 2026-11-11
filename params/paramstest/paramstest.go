@@ -65,7 +65,7 @@ func Check(t *testing.T, describe func() params.Set, send func(psalm.Message)) {
 			t.Errorf("%s %s: gone from the description", set.Name, p.Key)
 			continue
 		}
-		if math.Abs(got.Value-want) > 1e-6*math.Max(1, math.Abs(want)) {
+		if math.Abs(got.Value-want) > 1e-6*max(1, math.Abs(want)) {
 			t.Errorf("%s %s: sent %g, it is at %g", set.Name, p.Key, want, got.Value)
 		}
 	}

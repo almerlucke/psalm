@@ -16,7 +16,7 @@ func run(f *Filter, hz float64) float64 {
 		f.Tick(261.6, 0, 0)
 		y := f.Process(0, math.Sin(2*math.Pi*hz*float64(i)/44100))
 		if i > 15000 {
-			peak = math.Max(peak, math.Abs(y))
+			peak = max(peak, math.Abs(y))
 		}
 	}
 	return peak

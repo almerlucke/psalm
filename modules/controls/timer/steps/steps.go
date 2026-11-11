@@ -1,7 +1,6 @@
 package steps
 
 import (
-	"math"
 	"math/rand/v2"
 
 	"github.com/almerlucke/genny"
@@ -21,8 +20,8 @@ type Step struct {
 }
 
 func (s *Step) shuffleDelay(ticks float64, rng *rand.Rand) float64 {
-	shuffleRandBandwidth := math.Min(s.Shuffle, 1.0-s.Shuffle)
-	shuffleAmount := s.Shuffle + (rng.Float64()*2.0-1.0)*math.Min(s.ShuffleRand, shuffleRandBandwidth)
+	shuffleRandBandwidth := min(s.Shuffle, 1.0-s.Shuffle)
+	shuffleAmount := s.Shuffle + (rng.Float64()*2.0-1.0)*min(s.ShuffleRand, shuffleRandBandwidth)
 
 	return _shuffleMultiplier * shuffleAmount * ticks
 }

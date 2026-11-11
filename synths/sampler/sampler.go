@@ -126,7 +126,7 @@ func (l *lfoRun) value() float64 {
 		l.wait--
 		return 0
 	}
-	l.depth = math.Min(1, l.depth+l.fade)
+	l.depth = min(1, l.depth+l.fade)
 	p := l.phase
 	l.phase += l.inc
 	l.phase -= math.Floor(l.phase)
@@ -168,8 +168,8 @@ type biquad struct {
 // peaking sets a peaking filter: gain dB around freq, over a bandwidth in octaves (RBJ)
 func (b *biquad) peaking(freq, octaves, gain, sr float64) {
 	a := math.Pow(10, gain/40)
-	w := 2 * math.Pi * math.Min(freq, sr*0.45) / sr
-	alpha := math.Sin(w) * math.Sinh(math.Ln2/2*math.Max(0.01, octaves)*w/math.Sin(w))
+	w := 2 * math.Pi * min(freq, sr*0.45) / sr
+	alpha := math.Sin(w) * math.Sinh(math.Ln2/2*max(0.01, octaves)*w/math.Sin(w))
 	a0 := 1 + alpha/a
 	*b = biquad{
 		b0: (1 + alpha*a) / a0, b1: -2 * math.Cos(w) / a0, b2: (1 - alpha*a) / a0,
@@ -244,16 +244,16 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 			v.pitch = 69 + 12*math.Log2(f/440)
 		}
 	})
-	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0, min(f, 1)) })
 	msg.IfFltVal("level", func(f float64) { v.cfg.Level = f })
 	// the pitch bend, and the mod wheel as controller 1 (what SFZ instruments listen to)
 	v.expr.Receive(msg)
-	msg.IfFltVal("modWheel", func(f float64) { v.shared.cc[1] = math.Max(0, math.Min(f, 1)) * 127 })
+	msg.IfFltVal("modWheel", func(f float64) { v.shared.cc[1] = max(0, min(f, 1)) * 127 })
 	// the sustain pedal, 0 up to 1 down: its controller
 	if inst := v.cfg.Instrument; inst != nil {
 		msg.IfFltVal("sustain", func(f float64) {
 			cc, _ := inst.pedal()
-			v.shared.cc[cc] = math.Max(0, math.Min(f, 1)) * 127
+			v.shared.cc[cc] = max(0, min(f, 1)) * 127
 		})
 	}
 	defer func() {
@@ -265,7 +265,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	for key := range msg {
 		if n, ok := strings.CutPrefix(key, "cc"); ok {
 			if cc, err := strconv.Atoi(n); err == nil && cc >= 0 && cc < len(v.shared.cc) {
-				msg.IfFltVal(key, func(f float64) { v.shared.cc[cc] = math.Max(0, math.Min(f, 1)) * 127 })
+				msg.IfFltVal(key, func(f float64) { v.shared.cc[cc] = max(0, min(f, 1)) * 127 })
 			}
 		}
 	}
@@ -478,10 +478,10 @@ func (v *Voice) play(r *Region, index int) {
 		top += math.Abs(r.LFOs[i].Pitch)
 	}
 	l.depth = min(depthFor(l.step*math.Exp2(top/1200)), r.Sound.Depth()-1)
-	l.wait = int((math.Max(0, r.Delay) + rng.Float64()*math.Max(0, r.DelayRandom)) * sr)
+	l.wait = int((max(0, r.Delay) + rng.Float64()*max(0, r.DelayRandom)) * sr)
 	for i := range r.LFOs {
 		f := &r.LFOs[i]
-		run := lfoRun{set: f, inc: math.Max(0, f.Freq) / sr, wait: int(math.Max(0, f.Delay) * sr), depth: 1}
+		run := lfoRun{set: f, inc: max(0, f.Freq) / sr, wait: int(max(0, f.Delay) * sr), depth: 1}
 		if f.Fade > 0 {
 			run.depth, run.fade = 0, 1/(f.Fade*sr)
 		}
@@ -507,19 +507,19 @@ func (v *Voice) play(r *Region, index int) {
 	if r.AmpRandom != 0 {
 		gain *= math.Pow(10, spread(r.AmpRandom)/20)
 	}
-	pan := math.Max(-1, math.Min(r.Pan, 1))
+	pan := max(-1, min(r.Pan, 1))
 	if r.Sound.NumChannels() == 1 {
 		a := (pan + 1) * math.Pi / 4
 		l.gainL, l.gainR = gain*math.Cos(a)*math.Sqrt2, gain*math.Sin(a)*math.Sqrt2
 	} else { // balance
-		l.gainL, l.gainR = gain*math.Min(1, 1-pan), gain*math.Min(1, 1+pan)
+		l.gainL, l.gainR = gain*min(1, 1-pan), gain*min(1, 1+pan)
 	}
 	if r.Cutoff > 0 {
 		fc := r.Cutoff * math.Exp2(r.FilVelTrack*vel/1200)
-		fc = math.Min(fc, sr*0.45)
+		fc = min(fc, sr*0.45)
 		for _, f := range l.filters {
 			f.Clear()
-			f.SetFrequencyQ(fc, math.Max(math.Sqrt2/2, math.Pow(10, r.Resonance/20)))
+			f.SetFrequencyQ(fc, max(math.Sqrt2/2, math.Pow(10, r.Resonance/20)))
 		}
 		l.filterOn = true
 		l.filterMod = map[FilterType]svf.Mode{LowPass: svf.LowPass, HighPass: svf.HighPass, BandPass: svf.BandPass}[r.Filter]
@@ -568,13 +568,13 @@ func (o *envOverride) receive(msg psalm.Message) {
 			o.set[i] = true
 			switch i {
 			case 0:
-				o.attack = math.Max(0, f) / 1000
+				o.attack = max(0, f) / 1000
 			case 1:
-				o.decay = math.Max(0, f) / 1000
+				o.decay = max(0, f) / 1000
 			case 2:
-				o.sustain = math.Max(0, math.Min(f, 1))
+				o.sustain = max(0, min(f, 1))
 			case 3:
-				o.release = math.Max(0.1, f) / 1000
+				o.release = max(0.1, f) / 1000
 			}
 		})
 	}
@@ -793,7 +793,7 @@ func (l *layer) render(channels psalm.Channels, from, to int, released bool, cc,
 		if r.EndFade > 0 && !l.looping {
 			// the last frames of the piece fade out in a straight line, as the attack of a piece that follows rises, so the two add up to the recording
 			if left := (end - l.pos) / (r.EndFade * snd.SampleRate()); left < 1 {
-				e *= math.Max(0, left)
+				e *= max(0, left)
 			}
 		}
 		l.cc += ccInc

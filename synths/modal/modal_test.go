@@ -130,7 +130,7 @@ func TestReleaseAndTremolo(t *testing.T) {
 	env := func(at float64) float64 { return amplitude(window(x, at, 0.02), 440) }
 	lo, hi := math.Inf(1), 0.0
 	for at := 0.2; at < 1.1; at += 0.01 {
-		lo, hi = math.Min(lo, env(at)), math.Max(hi, env(at))
+		lo, hi = min(lo, env(at)), max(hi, env(at))
 	}
 	// the fans swing the resonator tube, the bar rings on: a smaller swing than the whole sound's
 	if d := db(hi / lo); d < 2 || d > 8 {
@@ -140,7 +140,7 @@ func TestReleaseAndTremolo(t *testing.T) {
 	_, x = strike(cfg, 69, 1.2)
 	lo, hi = math.Inf(1), 0.0
 	for at := 0.2; at < 1.1; at += 0.01 {
-		lo, hi = math.Min(lo, env(at)), math.Max(hi, env(at))
+		lo, hi = min(lo, env(at)), max(hi, env(at))
 	}
 	if d := db(hi / lo); d < 5 || d > 9 {
 		t.Errorf("without a tube the tremolo swings %.1f dB, want 8 (depth 0.6)", d)
@@ -153,7 +153,7 @@ func TestBeating(t *testing.T) {
 	env := func(at float64) float64 { return amplitude(window(x, at, 0.02), 440) }
 	lo, hi := math.Inf(1), 0.0
 	for at := 0.05; at < 1.1; at += 0.005 {
-		lo, hi = math.Min(lo, env(at)), math.Max(hi, env(at))
+		lo, hi = min(lo, env(at)), max(hi, env(at))
 	}
 	if hi < 10*lo {
 		t.Errorf("a split mode beats from %.3f to %.3f", lo, hi)
@@ -178,7 +178,7 @@ func TestNotes(t *testing.T) {
 		_, x := strike(f(), 69, 0.5)
 		p := 0.0
 		for _, s := range x {
-			p = math.Max(p, math.Abs(s))
+			p = max(p, math.Abs(s))
 		}
 		if p < 0.01 || p > 4 || math.IsNaN(p) {
 			t.Errorf("%s peaks at %g", name, p)

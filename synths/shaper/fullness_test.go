@@ -142,7 +142,7 @@ func TestDrift(t *testing.T) {
 		w := int(0.5 * sr())
 		for s := 4000; s+w < len(x); s += w {
 			f := crossings(x[s:s+w]) / 0.5 / 2
-			lo, hi = math.Min(lo, f), math.Max(hi, f)
+			lo, hi = min(lo, f), max(hi, f)
 		}
 		return
 	}

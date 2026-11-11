@@ -67,10 +67,10 @@ func New(cfg Config) *Compressor {
 func (c *Compressor) Settings() Config { return c.cfg }
 
 func (c *Compressor) SetThreshold(db float64) { c.cfg.Threshold = db }
-func (c *Compressor) SetRatio(r float64)      { c.cfg.Ratio = math.Max(1, r) }
-func (c *Compressor) SetKnee(db float64)      { c.cfg.Knee = math.Max(0, db) }
-func (c *Compressor) SetAttack(ms float64)    { c.cfg.Attack = math.Max(0, ms) }
-func (c *Compressor) SetRelease(ms float64)   { c.cfg.Release = math.Max(0, ms) }
+func (c *Compressor) SetRatio(r float64)      { c.cfg.Ratio = max(1, r) }
+func (c *Compressor) SetKnee(db float64)      { c.cfg.Knee = max(0, db) }
+func (c *Compressor) SetAttack(ms float64)    { c.cfg.Attack = max(0, ms) }
+func (c *Compressor) SetRelease(ms float64)   { c.cfg.Release = max(0, ms) }
 func (c *Compressor) SetMakeup(db float64)    { c.cfg.Makeup = db }
 func (c *Compressor) SetMix(m float64)        { c.cfg.Mix = m }
 
@@ -108,7 +108,7 @@ func (c *Compressor) ReceiveMessage(msg psalm.Message) {
 	msg.IfBoolVal("autoMakeup", func(b bool) { c.cfg.AutoMakeup = b })
 }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 
 // envMs is how fast the detector's level falls: a fast attack doesn't follow the waves of a bass
 const envMs = 10.0
@@ -172,18 +172,18 @@ func (c *Compressor) Synthesize() {
 			c.hpR += hp * (sr2 - c.hpR)
 			sl, sr2 = sl-c.hpL, sr2-c.hpR
 		}
-		c.env = math.Max(math.Max(math.Abs(sl), math.Abs(sr2)), c.env*decay) // the level, not every wave
+		c.env = max(max(math.Abs(sl), math.Abs(sr2)), c.env*decay) // the level, not every wave
 		db := -120.0
 		if c.env > 1e-6 {
 			db = 20 * math.Log10(c.env)
 		}
-		target := curve(db, cfg.Threshold, math.Max(1, cfg.Ratio), cfg.Knee) - db // 0 or less
+		target := curve(db, cfg.Threshold, max(1, cfg.Ratio), cfg.Knee) - db // 0 or less
 		if target < c.gr {
 			c.gr += (target - c.gr) * attack
 		} else {
 			c.gr += (target - c.gr) * release
 		}
-		most = math.Max(most, -c.gr)
+		most = max(most, -c.gr)
 		g := math.Pow(10, (c.gr+makeup)/20)
 		m := c.mix.Next(mixTo) // linear: the compressed and the dry sound are the same sound
 		for ch := range out {

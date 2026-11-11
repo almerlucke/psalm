@@ -118,10 +118,10 @@ func auditOf(name string) audit {
 	a.high = 10 * math.Log10(hi/tot+1e-12)
 	top := -1e9
 	for _, e := range bands {
-		top = math.Max(top, 10*math.Log10(e+1e-9))
+		top = max(top, 10*math.Log10(e+1e-9))
 	}
 	for _, e := range bands { // relative to the loudest band, so the level doesn't count
-		a.fp = append(a.fp, math.Max(10*math.Log10(e+1e-9)-top, -60))
+		a.fp = append(a.fp, max(10*math.Log10(e+1e-9)-top, -60))
 	}
 	v.NoteOff()
 	run(v, 12)

@@ -1,10 +1,11 @@
 package subtractive
 
 import (
-	"github.com/almerlucke/psalm"
-	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
 	"math/rand/v2"
+
+	"github.com/almerlucke/psalm"
+	"github.com/almerlucke/psalm/blocks/sine"
 )
 
 type LFOWaveform int
@@ -91,7 +92,7 @@ func (l *lfo) tick(cfg *LFOConfig, sr, rate float64) float64 {
 	}
 
 	if l.fade < 1.0 {
-		l.fade = math.Min(1.0, l.fade+l.fadeInc)
+		l.fade = min(1.0, l.fade+l.fadeInc)
 	}
 
 	return v * l.fade

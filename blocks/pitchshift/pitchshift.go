@@ -31,7 +31,7 @@ type PitchShift struct {
 // New creates a pitch shifter, window is the grain size in milliseconds (around 30-100, larger is
 // smoother for low notes, smaller has less echo)
 func New(semitones float64, windowMs float64, sr float64) *PitchShift {
-	window := math.Max(4.0, windowMs*0.001*sr)
+	window := max(4.0, windowMs*0.001*sr)
 	p := &PitchShift{
 		buf:    make([]float64, int(window)+8),
 		window: window,

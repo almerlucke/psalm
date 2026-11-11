@@ -3,7 +3,6 @@ package sampler
 import (
 	"fmt"
 	"maps"
-	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -87,7 +86,7 @@ func ParseSFZ(text string, dir string, load Loader) (*Instrument, error) {
 				if p.inst.CC == nil {
 					p.inst.CC = map[int]float64{}
 				}
-				p.inst.CC[cc] = math.Max(0, math.Min(val, 127))
+				p.inst.CC[cc] = max(0, min(val, 127))
 			}
 		}
 	}

@@ -90,7 +90,7 @@ func nearestLevel(level float64, carrier bool) int {
 	if amp <= 0 {
 		return 0
 	}
-	return max(0, min(99, int(math.Round(99+math.Log10(math.Min(amp, 1))/0.0375))))
+	return max(0, min(99, int(math.Round(99+math.Log10(min(amp, 1))/0.0375))))
 }
 
 // nearestRatio is the coarse and fine values of a ratio (0.5 to 31.99)
@@ -110,14 +110,14 @@ func nearestEnvelope(s *adsr.Setting) (rates, levels [4]int) {
 			return 99
 		}
 		seconds := ms / 1000
-		full := seconds * 99 / math.Max(steps, 1) // the time the whole 0-99 would take at this speed
+		full := seconds * 99 / max(steps, 1) // the time the whole 0-99 would take at this speed
 		return max(0, min(99, int(math.Round(6.5*math.Log2(38/full)))))
 	}
 	level := func(l float64) int {
 		if l <= 0 {
 			return 0
 		}
-		return max(0, min(99, int(math.Round(99+math.Log10(math.Min(l, 1))/0.0375))))
+		return max(0, min(99, int(math.Round(99+math.Log10(min(l, 1))/0.0375))))
 	}
 	sustain := level(s.DecayLevel)
 	levels = [4]int{99, sustain, sustain, 0}

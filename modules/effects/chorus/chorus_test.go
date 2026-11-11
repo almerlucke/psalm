@@ -87,7 +87,7 @@ func TestNoClicksWhenChanging(t *testing.T) {
 	l, _ := run(c, 10, in, silent)
 	step := 0.0
 	for i := 1; i < len(l); i++ {
-		step = math.Max(step, math.Abs(l[i]-l[i-1]))
+		step = max(step, math.Abs(l[i]-l[i-1]))
 	}
 	// a 110 Hz sine of 0.5 moves at most 0.008 per sample, the voices add up to sqrt(3) and the
 	// glide bends the pitch a little

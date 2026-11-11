@@ -56,7 +56,7 @@ func finitePeak(t *testing.T, name string, x []float64) float64 {
 		if math.IsNaN(s) || math.IsInf(s, 0) {
 			t.Fatalf("%s: sample %v", name, s)
 		}
-		peak = math.Max(peak, math.Abs(s))
+		peak = max(peak, math.Abs(s))
 	}
 	return peak
 }
@@ -146,7 +146,7 @@ func fingerprintOf(x []float64) fingerprint {
 		}
 		r := math.Sqrt(sum / float64(win))
 		env = append(env, r)
-		peak = math.Max(peak, r)
+		peak = max(peak, r)
 	}
 	for i, r := range env {
 		if r >= 0.9*peak {
@@ -229,7 +229,7 @@ func TestMorePresetsMatrix(t *testing.T) {
 			diff += d * d
 			norm += without[i] * without[i]
 		}
-		if rel := math.Sqrt(diff / math.Max(norm, 1e-12)); rel < 0.01 {
+		if rel := math.Sqrt(diff / max(norm, 1e-12)); rel < 0.01 {
 			t.Errorf("%s: the matrix changes the sound by only %.4f", name, rel)
 		}
 	}

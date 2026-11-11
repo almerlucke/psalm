@@ -29,7 +29,7 @@ func (m *meter) measure(sr float64, bufferSize int) {
 	for _, ch := range out.Channels {
 		for _, x := range ch {
 			a := math.Abs(float64(x))
-			peak = math.Max(peak, a)
+			peak = max(peak, a)
 			sum += a * a
 			n++
 		}
@@ -45,7 +45,7 @@ func (m *meter) measure(sr float64, bufferSize int) {
 		rms = db(math.Sqrt(sum / float64(n)))
 	}
 	fall := m.peakDB - meterRelease*float64(bufferSize)/sr
-	m.peakDB = math.Max(db(peak), math.Max(fall, -120))
+	m.peakDB = max(db(peak), max(fall, -120))
 	m.peak.Store(math.Float64bits(m.peakDB))
 	m.rms.Store(math.Float64bits(rms))
 }

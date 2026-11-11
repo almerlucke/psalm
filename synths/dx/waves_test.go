@@ -18,7 +18,7 @@ func TestWaves(t *testing.T) {
 			if math.IsNaN(v) || v < -1.0001 || v > 1.0001 {
 				t.Fatalf("wave %d at %d: %g", w, i, v)
 			}
-			lo, hi = math.Min(lo, v), math.Max(hi, v)
+			lo, hi = min(lo, v), max(hi, v)
 		}
 		if hi < 0.9 {
 			t.Errorf("wave %s tops at %g", WaveNames[w], hi)

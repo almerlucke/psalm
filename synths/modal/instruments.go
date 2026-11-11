@@ -215,7 +215,7 @@ func freeEdge(p *partial, free bool) {
 
 // shape is how much the strike at pos wakes the mode (a mean square of 1 over the body)
 func (p *partial) shape(pos float64) float64 {
-	pos = math.Max(0.01, math.Min(pos, 1))
+	pos = max(0.01, min(pos, 1))
 	switch p.kind {
 	case shBar:
 		return math.Abs(BarShape(p.n, pos))
@@ -228,7 +228,7 @@ func (p *partial) shape(pos float64) float64 {
 	case shDome:
 		return math.Abs(math.J0(p.k*pos) / math.J1(p.k))
 	case shRing:
-		return math.Max(0.03, math.Pow(pos, float64(p.m-1)/2))
+		return max(0.03, math.Pow(pos, float64(p.m-1)/2))
 	}
 	return 1
 }
@@ -349,7 +349,7 @@ func buildModels() {
 		m int
 		l float64
 	}{{2, 5.253}, {0, 9.084}, {3, 12.23}, {1, 20.52}, {4, 21.60}, {5, 33.0}, {2, 35.25}, {0, 38.5}, {6, 47.8}, {3, 52.9}, {1, 59.8}, {4, 70.0}} {
-		p := partial{ratio: e.l / 5.253, amp: math.Max(0.3, 1-0.06*float64(i)), decay: math.Max(0.6, 1-0.04*float64(i)), kind: shPlate, m: e.m, k: math.Sqrt(e.l)}
+		p := partial{ratio: e.l / 5.253, amp: max(0.3, 1-0.06*float64(i)), decay: max(0.6, 1-0.04*float64(i)), kind: shPlate, m: e.m, k: math.Sqrt(e.l)}
 		freeEdge(&p, true)
 		plate.parts = append(plate.parts, p)
 	}
@@ -387,8 +387,8 @@ func buildModels() {
 	// moves between them is the nonlinearity (Config.Nonlinearity). Cymbals are the same, dense
 	// (36 modes), with a stronger irregularity and every mode dying quickly.
 	models[InstGong] = disc(22, 0.12, 0.002,
-		func(i int) float64 { return math.Max(0.25, 1-0.04*float64(i)) },
-		func(i int) float64 { return math.Max(0.4, 1-0.03*float64(i)) },
+		func(i int) float64 { return max(0.25, 1-0.04*float64(i)) },
+		func(i int) float64 { return max(0.4, 1-0.03*float64(i)) },
 		func(i int) float64 {
 			if i < 6 {
 				return 0
@@ -446,18 +446,18 @@ func (v *Voice) instrument(md *model, pos, beat, highDamping, inharm, decay, tub
 	r0 := md.parts[0].ratio
 	undercut := 1.0
 	if cfg.Undercut > 0 {
-		undercut = math.Min(cfg.Undercut, 1)
+		undercut = min(cfg.Undercut, 1)
 	}
 	// the pairs lie at an angle to the blow; with the drift every note turns them, splits them by a
 	// little more or less and detunes everything a few cents (the temperature)
 	theta, splitScale, detune := 0.35, 1.0, 1.0
-	if drift := math.Max(0, math.Min(cfg.Drift, 1)); drift > 0 {
+	if drift := max(0, min(cfg.Drift, 1)); drift > 0 {
 		rn := v.Rand()
 		theta = rn.Float64() * math.Pi
 		splitScale = 1 + (rn.Float64()*2-1)*0.5*drift
 		detune = 1 + (rn.Float64()*2-1)*0.002*drift
 	}
-	spread := math.Max(0, cfg.Spread)
+	spread := max(0, cfg.Spread)
 	for k := range md.parts {
 		p := &md.parts[k]
 		ratio := p.ratio
@@ -467,7 +467,7 @@ func (v *Voice) instrument(md *model, pos, beat, highDamping, inharm, decay, tub
 		f := v.freq * ratio
 		if inharm > 0 {
 			x := ratio / r0
-			f = v.freq * r0 * x * math.Sqrt(math.Max(0.1, 1+0.02*inharm*(x*x-1)))
+			f = v.freq * r0 * x * math.Sqrt(max(0.1, 1+0.02*inharm*(x*x-1)))
 		}
 		f *= detune
 		t60 := decay * p.decay / ((1 - md.q) + md.q*ratio*ratio) * math.Pow(r0/ratio, highDamping)

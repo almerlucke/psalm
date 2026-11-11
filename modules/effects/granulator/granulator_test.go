@@ -164,7 +164,7 @@ func TestGrainsStayInValidAudio(t *testing.T) {
 				if !cfg.Freeze {
 					head += float64(k) // the write head moves on while the grain plays
 				}
-				oldest := math.Max(0, head-float64(n))
+				oldest := max(0, head-float64(n))
 				if pos > head-margin+1e-6 || pos < oldest-1e-6 {
 					t.Fatalf("trial %d (freeze %v): grain reads %v at step %d, valid is %v - %v",
 						trial, cfg.Freeze, pos, k, oldest, head-margin)

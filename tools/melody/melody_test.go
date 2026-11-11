@@ -309,23 +309,23 @@ func TestMutate(t *testing.T) {
 // dynamics: the notes differ in loudness (a spread of the velocities that grows with it), the beats louder than the notes between
 func TestMelodyDynamics(t *testing.T) {
 	scale, _ := harmony.NewScale("C", "major")
-	spread := func(d float64) (min, max, std float64) {
+	spread := func(d float64) (lo, hi, std float64) {
 		var vs []float64
 		for seed := uint64(1); seed <= 20; seed++ {
 			for _, n := range Generate(Params{Scale: scale, Beats: 32, Phrase: 8, Velocity: 0.5, Dynamics: d, Seed: seed}) {
 				vs = append(vs, n.Velocity)
 			}
 		}
-		min, max = 1, 0
+		lo, hi = 1, 0
 		mean := 0.0
 		for _, v := range vs {
-			min, max, mean = math.Min(min, v), math.Max(max, v), mean+v
+			lo, hi, mean = min(lo, v), max(hi, v), mean+v
 		}
 		mean /= float64(len(vs))
 		for _, v := range vs {
 			std += (v - mean) * (v - mean)
 		}
-		return min, max, math.Sqrt(std / float64(len(vs)))
+		return lo, hi, math.Sqrt(std / float64(len(vs)))
 	}
 	_, _, flat := spread(0)
 	lo, hi, lively := spread(1)

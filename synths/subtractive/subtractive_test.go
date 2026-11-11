@@ -236,7 +236,7 @@ func TestFormantVowelChangesSound(t *testing.T) {
 	i.Vowel = 2
 
 	ra, ri := renderRMS(a, 45), renderRMS(i, 45)
-	if ra == 0 || ri == 0 || math.Abs(ra-ri)/math.Max(ra, ri) < 0.05 {
+	if ra == 0 || ri == 0 || math.Abs(ra-ri)/max(ra, ri) < 0.05 {
 		t.Fatalf("expected vowels a and i to sound different: %v vs %v", ra, ri)
 	}
 }
@@ -305,9 +305,9 @@ func jumpRatio(cfg Config, input int, value func(t float64) float64) float64 {
 	for i := 100 * bufSize; i+3 < len(out); i++ {
 		d := math.Abs(out[i+3] - 3*out[i+2] + 3*out[i+1] - out[i])
 		if (i+2)%bufSize == 0 || (i+1)%bufSize == 0 || i%bufSize == 0 {
-			boundary = math.Max(boundary, d)
+			boundary = max(boundary, d)
 		} else {
-			inner = math.Max(inner, d)
+			inner = max(inner, d)
 		}
 	}
 	return boundary / inner

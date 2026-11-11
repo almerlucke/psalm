@@ -333,7 +333,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	// a legato: the pitch of a string that sounds changes (the next note of a mono voice) and it glides
 	// there over Slide seconds, without a new attack
 	if !v.inNote && v.active && !v.released && v.cfg.Slide > 0 && v.freq != oldFreq && (v.cfg.Model == Pluck || v.cfg.Model == Bow) {
-		v.freq = math.Max(lowest, math.Min(v.freq, v.Config().SampleRate/4))
+		v.freq = max(lowest, min(v.freq, v.Config().SampleRate/4))
 		if v.freq != oldFreq {
 			v.glide(oldFreq)
 		}
@@ -351,15 +351,15 @@ func (v *Voice) receive(msg psalm.Message) {
 	for i := range v.cfg.Ext {
 		v.cfg.Ext[i] = v.mods.Ext(i)
 	}
-	msg.IfFltVal("sympathetic", func(f float64) { v.cfg.Sympathetic = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("lfo2Rate", func(f float64) { v.cfg.LFO2Rate = math.Max(0, f) })
+	msg.IfFltVal("sympathetic", func(f float64) { v.cfg.Sympathetic = max(0, min(f, 1)) })
+	msg.IfFltVal("lfo2Rate", func(f float64) { v.cfg.LFO2Rate = max(0, f) })
 	// "ampAttack" the bow speeding up, "ampDecay" the ring of a plucked string, "ampRelease" a
 	// string let go (plucked or bowed)
 	envelope.Seconds(msg, "amp", &v.cfg.BowAttack, &v.cfg.Decay, &v.cfg.Release)
 	envelope.Seconds(msg, "amp", nil, nil, &v.cfg.BowRelease)
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
-	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0, min(f, 1)) })
 	msg.IfFltVal("decay", func(f float64) { v.cfg.Decay = f })
 	msg.IfFltVal("damping", func(f float64) { v.cfg.Damping = f })
 	msg.IfFltVal("brightness", func(f float64) { v.cfg.Brightness = f })
@@ -383,7 +383,7 @@ func (v *Voice) receive(msg psalm.Message) {
 	msg.IfFltVal("harmonic", func(f float64) { v.cfg.Harmonic = f })
 	msg.IfFltVal("slide", func(f float64) { v.cfg.Slide = f })
 	msg.IfFltVal("fretPosition", func(f float64) { v.cfg.FretPosition = f })
-	msg.IfFltVal("bowModel", func(f float64) { v.cfg.BowModel = int(math.Round(math.Max(0, math.Min(f, 1)))) })
+	msg.IfFltVal("bowModel", func(f float64) { v.cfg.BowModel = int(math.Round(max(0, min(f, 1)))) })
 	msg.IfFltVal("bowForce", func(f float64) { v.cfg.BowForce = f })
 	msg.IfFltVal("bowSpeed", func(f float64) { v.cfg.BowSpeed = f })
 	msg.IfFltVal("bowNoise", func(f float64) { v.cfg.BowNoise = f })
@@ -434,7 +434,7 @@ func (v *Voice) note(duration, amplitude float64, message psalm.Message, tick ps
 	v.inNote = true
 	v.ReceiveMessage(message)
 	v.inNote = false
-	v.freq = math.Max(lowest, math.Min(v.freq, v.Config().SampleRate/4))
+	v.freq = max(lowest, min(v.freq, v.Config().SampleRate/4))
 	v.waitSamps = tick.SampleOffset
 	v.amp = amplitude
 	v.released = false
@@ -499,7 +499,7 @@ func (v *Voice) fillStatic() {
 	mv := &v.mods.Values
 	mv[modmatrix.Velocity] = v.velocity
 	mv[modmatrix.Random] = v.random
-	mv[modmatrix.Key] = math.Max(-1, math.Min(math.Log2(v.freq/middleC)/5, 1))
+	mv[modmatrix.Key] = max(-1, min(math.Log2(v.freq/middleC)/5, 1))
 	mv[modmatrix.Wheel] = v.expr.Wheel()
 }
 
@@ -507,13 +507,13 @@ func (v *Voice) fillStatic() {
 func (v *Voice) setLoss(damping, decay float64) {
 	sr := v.Config().SampleRate
 	f := v.freq
-	v.s = 0.05 + 0.45*math.Max(0, math.Min(damping, 1))
+	v.s = 0.05 + 0.45*max(0, min(damping, 1))
 	// the gain per loop that rings Decay seconds at 220 Hz (longer below, shorter above), over what
 	// the loop filter takes at the fundamental
-	t60 := math.Max(0.01, decay) * math.Sqrt(220/f)
+	t60 := max(0.01, decay) * math.Sqrt(220/f)
 	w := math.Pi * f / sr
 	h := math.Sqrt(1 - 4*v.s*(1-v.s)*math.Sin(w)*math.Sin(w))
-	v.gain = math.Min(0.99999, math.Pow(10, -3/(f*t60))/h)
+	v.gain = min(0.99999, math.Pow(10, -3/(f*t60))/h)
 }
 
 // stiffen fits the stiffness of the string to its pitch: the allpass sections, and the delay they
@@ -551,7 +551,7 @@ func (v *Voice) pluck() {
 	v.period = sr / f
 	v.stiffen(false)
 	v.polOn = cfg.Polarization > 0
-	v.polAmt = polSideways * math.Min(cfg.Polarization, 1)
+	v.polAmt = polSideways * min(cfg.Polarization, 1)
 	v.slide, v.slideStep = 1, 1
 	old := v.str[0].n
 	v.tune(1)
@@ -568,14 +568,14 @@ func (v *Voice) pluck() {
 		v.excite = make([]float64, n+1)
 	}
 	ex := v.excite[:n+1]
-	bright := math.Max(0, math.Min(cfg.Brightness+v.mods.Mod(dBrightness)+0.4*(v.velocity-0.5)+0.4*cfg.Plectrum, 1))
-	coef := math.Exp(-2 * math.Pi * math.Min(f*(1+60*bright*bright), sr/3) / sr) // the pluck's lowpass, 12 dB/oct
-	pick := math.Max(0, math.Min(cfg.PickPosition+v.mods.Mod(dPickPosition), 0.5))
+	bright := max(0, min(cfg.Brightness+v.mods.Mod(dBrightness)+0.4*(v.velocity-0.5)+0.4*cfg.Plectrum, 1))
+	coef := math.Exp(-2 * math.Pi * min(f*(1+60*bright*bright), sr/3) / sr) // the pluck's lowpass, 12 dB/oct
+	pick := max(0, min(cfg.PickPosition+v.mods.Mod(dPickPosition), 0.5))
 	peak := 0.0
 	if cfg.PluckWidth > 0 {
 		// a string pulled aside: the triangle held at the pick, rounded by the contact, then the
 		// lowpass of the pluck; a pick clicks as it lets go
-		shapeExcite(ex, n, math.Max(pick, 0.02), math.Min(cfg.PluckWidth, 0.2), math.Max(0, math.Min(cfg.Plectrum, 1)))
+		shapeExcite(ex, n, max(pick, 0.02), min(cfg.PluckWidth, 0.2), max(0, min(cfg.Plectrum, 1)))
 		lp, lp2 := 0.0, 0.0
 		for pass := 0; pass < 2; pass++ {
 			for i := range n {
@@ -609,7 +609,7 @@ func (v *Voice) pluck() {
 		mean /= float64(len(ex))
 		for i := range ex {
 			ex[i] -= mean
-			peak = math.Max(peak, math.Abs(ex[i]))
+			peak = max(peak, math.Abs(ex[i]))
 		}
 		// the pick position: the reflection off the near end cancels the partials with a node there
 		// (around the loop: the burst circulates)
@@ -621,7 +621,7 @@ func (v *Voice) pluck() {
 			ex[n] = ex[0]
 			peak = 0
 			for _, x := range ex {
-				peak = math.Max(peak, math.Abs(x))
+				peak = max(peak, math.Abs(x))
 			}
 		}
 	}
@@ -641,7 +641,7 @@ func (v *Voice) pluck() {
 	if cfg.PluckWidth > 0 || (cfg.Harmonic > 0 && cfg.Harmonic <= 0.5) {
 		peak = 0
 		for _, x := range ex {
-			peak = math.Max(peak, math.Abs(x))
+			peak = max(peak, math.Abs(x))
 		}
 	}
 	if peak > 0 {
@@ -660,9 +660,9 @@ func (v *Voice) pluck() {
 		for _, x := range ex[:n] {
 			e += x * x
 		}
-		v.tmodE0 = math.Max(e/float64(n), 1e-9)
+		v.tmodE0 = max(e/float64(n), 1e-9)
 		v.tmodE = v.tmodE0
-		v.tmodAmt = math.Min(cfg.TensionMod, 1) * v.velocity * v.velocity
+		v.tmodAmt = min(cfg.TensionMod, 1) * v.velocity * v.velocity
 		v.tmodAlpha = 1 / (1.5*v.period + 1)
 		v.tmodRatio = math.Exp2(tensionCents / 1200 * v.tmodAmt)
 	}
@@ -676,7 +676,7 @@ func (v *Voice) pluck() {
 	}
 	v.buzzThr = 0
 	if cfg.FretBuzz > 0 {
-		v.buzzThr = (1.1 - math.Min(cfg.FretBuzz, 1)) / (0.3 + 0.7*v.velocity)
+		v.buzzThr = (1.1 - min(cfg.FretBuzz, 1)) / (0.3 + 0.7*v.velocity)
 	}
 }
 
@@ -685,7 +685,7 @@ func fretPosition(cfg Config) float64 {
 	if cfg.FretPosition <= 0 {
 		return 0.92
 	}
-	return math.Max(0.05, math.Min(cfg.FretPosition, 0.98))
+	return max(0.05, min(cfg.FretPosition, 0.98))
 }
 
 // harmonicK is the k of a finger on the node at 1/k of the string (the nearest), 0 for none
@@ -693,7 +693,7 @@ func harmonicK(h float64, n int) int {
 	if h <= 0 {
 		return 0
 	}
-	k := int(math.Round(1 / math.Max(h, 0.01)))
+	k := int(math.Round(1 / max(h, 0.01)))
 	if k < 2 || k >= n/4 {
 		return 0
 	}
@@ -710,7 +710,7 @@ func (v *Voice) legato(from float64) {
 	v.polOn = cfg.Polarization > 0
 	// the string is still tuned for the old note: the ratio from the new one to it, falling to 1
 	v.slide = from * v.slide / v.freq
-	v.slideStep = math.Pow(1/v.slide, 1/math.Max(1, cfg.Slide*sr))
+	v.slideStep = math.Pow(1/v.slide, 1/max(1, cfg.Slide*sr))
 	v.tune(v.slide * v.tmodRatio)
 }
 
@@ -739,7 +739,7 @@ const tensionCents = 35.0
 // bowNote sets the two lines of the bow
 func (v *Voice) bowNote() {
 	sr := v.Config().SampleRate
-	pos := math.Max(0.02, math.Min(v.cfg.BowPosition+v.mods.Mod(dBowPosition), 0.5))
+	pos := max(0.02, min(v.cfg.BowPosition+v.mods.Mod(dBowPosition), 0.5))
 	v.fric = v.cfg.BowModel == 1
 	v.bowSpeed = v.tableSpeed()
 	if v.fric && v.cfg.BowSpeed > 0 {
@@ -748,7 +748,7 @@ func (v *Voice) bowNote() {
 	v.baseDelay = v.tunedBowDelay(pos, 0)
 	v.bowPos = pos
 	v.bowSlide, v.bowSlideStep = 1, 1
-	v.bridge.len = math.Max(v.baseDelay*pos, minBridge)
+	v.bridge.len = max(v.baseDelay*pos, minBridge)
 	v.neck.len = v.baseDelay * (1 - pos)
 	if !v.active {
 		v.neck.clear()
@@ -813,7 +813,7 @@ func (v *Voice) samplesPerPeriod() float64 { return v.Config().SampleRate / v.fr
 func (v *Voice) tableSpeed() float64 { return tableSpeedOf(v.amp, v.velocity) }
 
 func tableSpeedOf(amp, velocity float64) float64 {
-	return 0.03 + 0.1*math.Min(amp, 1)*(0.5+0.5*velocity)
+	return 0.03 + 0.1*min(amp, 1)*(0.5+0.5*velocity)
 }
 
 // bowDelay is the length of the two lines of the bow for the pitch: the loop is the lines, a sample
@@ -827,7 +827,7 @@ func bowDelayFor(freq, sr float64) float64 {
 	// high up, the short lines' interpolation and the bow make the loop play sharp, measured: about
 	// a sixth of a sample once the period is under 45 samples, easing in from 70
 	if period := sr / freq; period < 70 {
-		d += 0.17 * math.Min(1, (70-period)/25)
+		d += 0.17 * min(1, (70-period)/25)
 	}
 	return d
 }
@@ -839,7 +839,7 @@ func (v *Voice) bowLegato(from float64) {
 	old := v.baseDelay * v.bowSlide
 	v.baseDelay = v.tunedBowDelay(v.bowPos, v.fricScale)
 	v.bowSlide = old / v.baseDelay
-	v.bowSlideStep = math.Pow(1/v.bowSlide, 1/math.Max(1, v.cfg.Slide*sr))
+	v.bowSlideStep = math.Pow(1/v.bowSlide, 1/max(1, v.cfg.Slide*sr))
 	v.bowDamp = math.Pow(10, -3/(v.freq*bowStop)/2)
 }
 
@@ -853,7 +853,7 @@ func (v *Voice) glide(from float64) {
 }
 
 // bowSpeedOf is the speed of the bow for a BowSpeed 0-1
-func bowSpeedOf(x float64) float64 { return 0.02 + 0.2*math.Max(0, math.Min(x, 1)) }
+func bowSpeedOf(x float64) float64 { return 0.02 + 0.2*max(0, min(x, 1)) }
 
 // bowForce is the force of the bow for a BowForce: with a speed of the bow's own it is the force;
 // a bow that follows the velocity has a force that follows the speed (the same weight holds at a
@@ -873,7 +873,7 @@ func (v *Voice) bowForce(x float64) float64 {
 const bowSpeedRef = 0.12
 
 // bowForceOf is the force of the bow for a BowForce 0-1
-func bowForceOf(x float64) float64 { return 0.05 + 2*math.Max(0, math.Min(x, 1)) }
+func bowForceOf(x float64) float64 { return 0.05 + 2*max(0, min(x, 1)) }
 
 // bowTune is what the friction of the bow adds to the loop, in samples
 const bowTune = -0.15
@@ -897,7 +897,7 @@ func (v *Voice) prepareBody() {
 		if !v.active {
 			v.body[i].Clear()
 		}
-		v.body[i].SetFrequencyQ(math.Min(m.freq, sr*0.45), m.q)
+		v.body[i].SetFrequencyQ(min(m.freq, sr*0.45), m.q)
 	}
 	// the bridge as the string feels it: the same modes
 	if v.cfg.BodyCoupling > 0 && v.cfg.Model == Pluck {
@@ -909,7 +909,7 @@ func (v *Voice) prepareBody() {
 			if !v.active {
 				v.cbody[i].Clear()
 			}
-			v.cbody[i].SetFrequencyQ(math.Min(m.freq, sr*0.45), m.q)
+			v.cbody[i].SetFrequencyQ(min(m.freq, sr*0.45), m.q)
 		}
 	} else {
 		v.cbody = v.cbody[:0]
@@ -988,22 +988,22 @@ func (v *Voice) Synthesize() {
 	}
 	penvStep := 1.0
 	if (cfg.Model == Pluck || cfg.Model == Membrane) && modded {
-		t60 := math.Max(0.01, cfg.Decay) * math.Sqrt(220/v.freq)
+		t60 := max(0.01, cfg.Decay) * math.Sqrt(220/v.freq)
 		if cfg.Model == Membrane {
-			t60 = math.Max(0.01, cfg.Decay)
+			t60 = max(0.01, cfg.Decay)
 		}
 		penvStep = math.Pow(10, -3/(t60*sr))
 	}
 	if modded {
 		v.fillStatic()
 	}
-	mixBase := math.Max(0, math.Min(cfg.BodyMix, 1))
+	mixBase := max(0, min(cfg.BodyMix, 1))
 	if len(v.body) == 0 {
 		mixBase = 0
 	}
 	bodyModded := modded && len(v.body) > 0 && mods.Targets(dBodyMix)
 	mix := mixBase
-	sym := math.Max(0, math.Min(cfg.Sympathetic, 1))
+	sym := max(0, min(cfg.Sympathetic, 1))
 	if sym > 0 {
 		v.prepareSym()
 	}
@@ -1014,32 +1014,32 @@ func (v *Voice) Synthesize() {
 	// letting go: the string dies in Release seconds (a pluck), or the bow stops
 	loopGain := v.gain
 	if v.released && cfg.Model == Pluck && cfg.Release > 0 {
-		loopGain = math.Min(loopGain, math.Pow(10, -3/(v.freq*cfg.Release)))
+		loopGain = min(loopGain, math.Pow(10, -3/(v.freq*cfg.Release)))
 	}
 	// a real string: the stiffness, the two polarizations, the bridge's give, the tension, the fret
 	pluck := cfg.Model == Pluck
 	stiff := pluck && v.stiff
 	polOn := pluck && v.polOn
-	polC := polCoupling(math.Min(cfg.Polarization, 1))
+	polC := polCoupling(min(cfg.Polarization, 1))
 	lgV, lgH := loopGain, loopGain
 	setPol := func() {
 		if polOn {
-			gv, gh := polGains(v.gain, math.Min(cfg.Polarization, 1))
+			gv, gh := polGains(v.gain, min(cfg.Polarization, 1))
 			if v.released && cfg.Release > 0 {
 				r := math.Pow(10, -3/(v.freq*cfg.Release))
-				gv, gh = math.Min(gv, r), math.Min(gh, r)
+				gv, gh = min(gv, r), min(gh, r)
 			}
 			lgV, lgH = gv, gh
 		}
 	}
 	setPol()
 	coupled := pluck && len(v.cbody) > 0
-	kappa := 0.03 * math.Min(cfg.BodyCoupling, 1)
+	kappa := 0.03 * min(cfg.BodyCoupling, 1)
 	tmodOn := pluck && v.tmodAmt > 0
 	buzz := pluck && v.buzzThr > 0 && v.period/v.tunedTo >= 8
 	fx := fretPosition(*cfg)
 	// the displacement where the string is at its widest is not what it is at the fret
-	fretGap := v.buzzThr * math.Max(0.2, math.Sin(math.Pi*fx))
+	fretGap := v.buzzThr * max(0.2, math.Sin(math.Pi*fx))
 	dampK := 0
 	if pluck {
 		dampK = harmonicK(cfg.Harmonic, v.str[0].n)
@@ -1052,10 +1052,10 @@ func (v *Voice) Synthesize() {
 	follow := fric && cfg.BowSpeed <= 0 && !mods.Targets(dBowSpeed)
 	reverse := fric && cfg.BowReverse > 0
 	reversePeriod := cfg.BowReverse * sr
-	bowStep := 1 / math.Max(1, math.Max(0.005, cfg.BowAttack)*sr)
-	bowFall := 1 / math.Max(1, math.Max(0.005, cfg.BowRelease)*sr)
+	bowStep := 1 / max(1, max(0.005, cfg.BowAttack)*sr)
+	bowFall := 1 / max(1, max(0.005, cfg.BowRelease)*sr)
 	pressure := cfg.Pressure
-	slope := 5 - 4*math.Max(0, math.Min(pressure, 1))
+	slope := 5 - 4*max(0, min(pressure, 1))
 	vibInc := cfg.VibratoRate / sr
 	filterPole := bowPole(sr)
 
@@ -1096,11 +1096,11 @@ func (v *Voice) Synthesize() {
 				bend *= math.Exp2(m / 12)
 			}
 			if bodyModded {
-				mix = math.Max(0, math.Min(mixBase+mods.Mod(dBodyMix), 1))
+				mix = max(0, min(mixBase+mods.Mod(dBodyMix), 1))
 			}
 			if pressModded {
 				pressure = cfg.Pressure + mods.Mod(dPressure)
-				slope = 5 - 4*math.Max(0, math.Min(pressure, 1))
+				slope = 5 - 4*max(0, min(pressure, 1))
 			}
 			if lossModded && i&15 == 0 {
 				if cfg.Model == Membrane {
@@ -1109,7 +1109,7 @@ func (v *Voice) Synthesize() {
 					v.setLoss(cfg.Damping+mods.Mod(dDamping), cfg.Decay*math.Exp2(mods.Mod(dDecay)))
 					loopGain = v.gain
 					if v.released && cfg.Release > 0 {
-						loopGain = math.Min(loopGain, math.Pow(10, -3/(v.freq*cfg.Release)))
+						loopGain = min(loopGain, math.Pow(10, -3/(v.freq*cfg.Release)))
 					}
 					setPol()
 				}
@@ -1125,8 +1125,8 @@ func (v *Voice) Synthesize() {
 				force = v.bowForce(cfg.BowForce + mods.Mod(dBowForce))
 			}
 			if posModded {
-				v.bowPos = math.Max(0.02, math.Min(cfg.BowPosition+mods.Mod(dBowPosition), 0.5))
-				v.bridge.len = math.Max(v.baseDelay*v.bowSlide*v.bowPos, minBridge)
+				v.bowPos = max(0.02, min(cfg.BowPosition+mods.Mod(dBowPosition), 0.5))
+				v.bridge.len = max(v.baseDelay*v.bowSlide*v.bowPos, minBridge)
 			}
 		}
 		if cfg.Model == Pluck {
@@ -1154,7 +1154,7 @@ func (v *Voice) Synthesize() {
 			}
 			period := v.period / v.tunedTo
 			if buzz {
-				v.str[0].contact(period, math.Max(2, fx*period/2), fretGap)
+				v.str[0].contact(period, max(2, fx*period/2), fretGap)
 			}
 			var in float64
 			if !polOn {
@@ -1171,7 +1171,7 @@ func (v *Voice) Synthesize() {
 			} else {
 				fh := v.str[1].filter(v.s, stiff)
 				if buzz {
-					v.str[1].contact(period*(1+polDetune), math.Max(2, fx*period*(1+polDetune)/2), fretGap)
+					v.str[1].contact(period*(1+polDetune), max(2, fx*period*(1+polDetune)/2), fretGap)
 				}
 				inV := lgV * ((1-polC)*f + polC*fh)
 				inH := lgH * ((1-polC)*fh + polC*f)
@@ -1194,7 +1194,7 @@ func (v *Voice) Synthesize() {
 				// a stretched string is sharp: the pitch follows the energy it has left
 				v.tmodE += (in*in - v.tmodE) * v.tmodAlpha
 				if i&7 == 0 {
-					v.tmodRatio = math.Exp2(tensionCents / 1200 * v.tmodAmt * math.Min(1, v.tmodE/v.tmodE0))
+					v.tmodRatio = math.Exp2(tensionCents / 1200 * v.tmodAmt * min(1, v.tmodE/v.tmodE0))
 				}
 			}
 			if v.fretLeft > 0 {
@@ -1216,9 +1216,9 @@ func (v *Voice) Synthesize() {
 		} else {
 			// the bow speeds up while held, and slows down when let go
 			if !v.released {
-				v.bowEnv = math.Min(1, v.bowEnv+bowStep)
+				v.bowEnv = min(1, v.bowEnv+bowStep)
 			} else {
-				v.bowEnv = math.Max(0, v.bowEnv-bowFall)
+				v.bowEnv = max(0, v.bowEnv-bowFall)
 			}
 			// the vibrato stretches the neck side
 			if v.vibWait > 0 {
@@ -1241,7 +1241,7 @@ func (v *Voice) Synthesize() {
 					if (v.bowSlideStep < 1) == (v.bowSlide < 1) || v.bowSlideStep == 1 {
 						v.bowSlide, v.bowSlideStep = 1, 1
 					}
-					v.bridge.len = math.Max(v.baseDelay*v.bowSlide*v.bowPos, minBridge)
+					v.bridge.len = max(v.baseDelay*v.bowSlide*v.bowPos, minBridge)
 				}
 				v.neck.len = v.baseDelay*v.bowSlide*ratio/bend - v.bridge.len
 				nut := -v.neck.out
@@ -1307,7 +1307,7 @@ func (v *Voice) Synthesize() {
 		}
 		g := gain
 		if modded && mods.Targets(dLevel) {
-			g = gain / level * math.Max(0, level+mods.Mod(dLevel))
+			g = gain / level * max(0, level+mods.Mod(dLevel))
 		}
 		if tickFilter {
 			extra := 0.0
@@ -1361,7 +1361,7 @@ func (v *Voice) prepareSym() {
 		v.sym = append(v.sym, svf.New(1000, 0, sr))
 	}
 	for i, r := range symRatios {
-		v.sym[i].SetFrequencyQ(math.Min(v.freq*r, sr*0.45), 40)
+		v.sym[i].SetFrequencyQ(min(v.freq*r, sr*0.45), 40)
 	}
 	v.symFreq = v.freq
 }
@@ -1375,7 +1375,7 @@ func bowTable(dv, slope float64) float64 {
 	x := math.Abs(dv*slope) + 0.75
 	x *= x
 	x = 1 / (x * x)
-	return math.Max(0.01, math.Min(x, 0.98))
+	return max(0.01, min(x, 0.98))
 }
 
 // NewPoly creates a set of strings
@@ -1399,9 +1399,9 @@ func bowReversal(t, period, ramp float64) float64 {
 	if int(stroke)%2 == 1 {
 		dir = -1
 	}
-	f := math.Min(1, (period-x)/ramp)
+	f := min(1, (period-x)/ramp)
 	if stroke > 0 {
-		f = math.Min(f, x/ramp)
+		f = min(f, x/ramp)
 	}
 	return dir * f
 }

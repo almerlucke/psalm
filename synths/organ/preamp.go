@@ -35,9 +35,9 @@ func (p *preamp) process(s, drive, tone, coef, dcCoef float64) float64 {
 		}
 		return s
 	}
-	d := math.Min(drive, 2)
+	d := min(drive, 2)
 	g1, g2 := 1+d*3, 1+d*5
-	bias := 0.12 + 0.28*math.Min(d, 1)
+	bias := 0.12 + 0.28*min(d, 1)
 	y := tube(s*g1, bias) / g1
 	p.dc1 += (y - p.dc1) * dcCoef // the coupling capacitor
 	y -= p.dc1

@@ -94,7 +94,7 @@ func NewFormant(vowel float64, q float64, shift float64) *Filter {
 }
 
 func (f *Filter) SetCutoff(cutoff float64) {
-	f.target.Cutoff = math.Max(1.0, cutoff)
+	f.target.Cutoff = max(1.0, cutoff)
 }
 
 func (f *Filter) SetResonance(res float64) {

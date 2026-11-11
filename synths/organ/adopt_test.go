@@ -10,7 +10,7 @@ import (
 func peakOf(x []float64) float64 {
 	p := 0.0
 	for _, v := range x {
-		p = math.Max(p, math.Abs(v))
+		p = max(p, math.Abs(v))
 	}
 	return p
 }

@@ -111,7 +111,7 @@ func foldBack(mk func() played, pitch float64, by int) float64 {
 	for k := 8; k < top-8; k++ {
 		near := 0.0
 		for d := -6; d <= 6; d++ {
-			near = math.Max(near, b[k+d])
+			near = max(near, b[k+d])
 		}
 		total += b[k]
 		if a[k] > 2*near {
@@ -191,7 +191,7 @@ func TestAliasScan(t *testing.T) {
 			add("pulsar/"+n, func() played { return pulsar.New(f()) })
 		}
 	}
-	sort.Slice(rows, func(i, j int) bool { return math.Max(rows[i].a, rows[i].a3) > math.Max(rows[j].a, rows[j].a3) })
+	sort.Slice(rows, func(i, j int) bool { return max(rows[i].a, rows[i].a3) > max(rows[j].a, rows[j].a3) })
 	for _, r := range rows {
 		fmt.Printf("ALIAS %-34s C5 at 44.1k %6.1f dB  at 88.2k %6.1f dB  C6 at 44.1k %6.1f dB\n", r.name, r.a, r.a2, r.a3)
 	}

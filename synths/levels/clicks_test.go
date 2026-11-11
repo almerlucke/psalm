@@ -64,11 +64,11 @@ func cuts(x []float64, alone func(n [3]float64) []float64, sr float64) []string 
 		at := int(math.Ceil(n[0]*sr/512)) * 512
 		jump, ref := 0.0, 0.0
 		for j := at - int(0.02*sr); j < at; j++ {
-			ref = math.Max(ref, math.Abs(x[j]-x[j-1]))
+			ref = max(ref, math.Abs(x[j]-x[j-1]))
 		}
 		for j := at; j < at+int(0.005*sr); j++ {
-			jump = math.Max(jump, math.Abs(x[j]-x[j-1]))
-			ref = math.Max(ref, math.Abs(a[j]-a[j-1]))
+			jump = max(jump, math.Abs(x[j]-x[j-1]))
+			ref = max(ref, math.Abs(a[j]-a[j-1]))
 		}
 		if jump > 0.3 && jump > 5*ref+0.05 {
 			out = append(out, fmt.Sprintf("note %d at %.3f: step %.3f, alone %.3f", i+2, float64(at)/sr, jump, ref))

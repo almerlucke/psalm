@@ -107,7 +107,7 @@ func tempoAt(dayIndex int, bar float64) float64 {
 		return bpm
 	}
 	from := float64(days[dayIndex].bars - 4)
-	p := math.Max(0, math.Min((bar-from)/4, 1))
+	p := max(0, min((bar-from)/4, 1))
 	return restBPM + (endBPM-restBPM)*(0.5-0.5*math.Cos(math.Pi*p))
 }
 

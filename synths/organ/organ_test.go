@@ -151,7 +151,7 @@ func spread(x []float64) float64 {
 	lo, hi := math.Inf(1), 0.0
 	for i := 1; i < len(crossings); i++ {
 		p := crossings[i] - crossings[i-1]
-		lo, hi = math.Min(lo, p), math.Max(hi, p)
+		lo, hi = min(lo, p), max(hi, p)
 	}
 	return hi/lo - 1
 }
@@ -224,7 +224,7 @@ func TestNotesAndPedal(t *testing.T) {
 func peak(x []float64) float64 {
 	p := 0.0
 	for _, v := range x {
-		p = math.Max(p, math.Abs(v))
+		p = max(p, math.Abs(v))
 	}
 	return p
 }

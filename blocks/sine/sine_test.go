@@ -11,8 +11,8 @@ func TestAccuracy(t *testing.T) {
 	worst := 0.0
 	for range 1_000_000 {
 		x := (r.Float64() - 0.5) * 2000 // also far from 0
-		worst = math.Max(worst, math.Abs(Sin(x)-math.Sin(x)))
-		worst = math.Max(worst, math.Abs(Cos(x)-math.Cos(x)))
+		worst = max(worst, math.Abs(Sin(x)-math.Sin(x)))
+		worst = max(worst, math.Abs(Cos(x)-math.Cos(x)))
 	}
 	if worst > 5e-7 {
 		t.Fatalf("worst error %v", worst)

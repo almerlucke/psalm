@@ -1,7 +1,5 @@
 package drumsynth
 
-import "math"
-
 // Kits maps kit names to their constructors
 var Kits = map[string]func() Kit{
 	"808": Kit808,
@@ -102,7 +100,7 @@ func KitIndustrial() Kit {
 // withPercussion gives a kit the rest of the General MIDI percussion, in the kit's character: how
 // driven it is, how high its drums are tuned (a factor). The sounds of the kit itself stay
 func withPercussion(kit Kit, drive, tune float64) Kit {
-	d := func(x float64) float64 { return math.Min(1, x+drive) }
+	d := func(x float64) float64 { return min(1, x+drive) }
 	more := map[string]Sound{
 		"crash":         {Kind: Cymbal, Pitch: 1.1 * tune, Decay: 2.2, Tone: 0.55, Snap: 0.5, Drive: drive, Level: 0.3, Pan: -0.3},
 		"ride":          {Kind: Cymbal, Pitch: 1.45 * tune, Decay: 1.4, Tone: 0.75, Snap: 0.15, Drive: drive, Level: 0.24, Pan: 0.3},

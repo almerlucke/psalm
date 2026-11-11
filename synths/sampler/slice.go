@@ -544,7 +544,7 @@ func DetectPitch(snd Sound, from, to int64) (float64, bool) {
 		if e1 > 0 && e2 > 0 {
 			corr[lag] = s / math.Sqrt(e1*e2)
 		}
-		best = math.Max(best, corr[lag])
+		best = max(best, corr[lag])
 	}
 	if best < 0.6 {
 		return 0, false

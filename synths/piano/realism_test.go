@@ -145,7 +145,7 @@ func TestLongitudinalSums(t *testing.T) {
 		i := int(math.Round(f * 65536 / sr))
 		best := 0.0
 		for k := i - 2; k <= i+2; k++ {
-			best = math.Max(best, s[k])
+			best = max(best, s[k])
 		}
 		return best
 	}

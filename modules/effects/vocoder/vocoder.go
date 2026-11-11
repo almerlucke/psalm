@@ -188,9 +188,9 @@ func (v *Vocoder) binPositions(shift float64) []bandPos {
 	)
 
 	for k := range pos {
-		freq := math.Max(float64(k), 0.5) * binHz / shift
+		freq := max(float64(k), 0.5) * binHz / shift
 		p := math.Log(freq/center0) / logSpan * float64(nb-1)
-		p = math.Max(0.0, math.Min(float64(nb-1), p))
+		p = max(0.0, min(float64(nb-1), p))
 
 		idx := int(p)
 		if idx >= nb-1 {
@@ -321,9 +321,9 @@ func (v *Vocoder) processFrame() {
 	// out below it, so a vocoder without a carrier is silent
 	carPeak := 0.0
 	for _, x := range v.carIn {
-		carPeak = math.Max(carPeak, math.Abs(x))
+		carPeak = max(carPeak, math.Abs(x))
 	}
-	sibilance := cfg.Sibilance * math.Min(1, carPeak/0.001)
+	sibilance := cfg.Sibilance * min(1, carPeak/0.001)
 
 	// Imprint: flatten the carrier by its own envelope and apply the modulator envelope, the result
 	// goes into the carrier buffers

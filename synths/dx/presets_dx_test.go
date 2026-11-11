@@ -52,7 +52,7 @@ func TestDXPresetsRender(t *testing.T) {
 					if math.IsNaN(s) || math.IsInf(s, 0) {
 						t.Fatalf("%s pitch %v velocity %v: %v", name, pitch, vel, s)
 					}
-					peak = math.Max(peak, math.Abs(s))
+					peak = max(peak, math.Abs(s))
 				}
 				if peak > 8 {
 					t.Errorf("%s pitch %v velocity %v: peak %v", name, pitch, vel, peak)
@@ -158,12 +158,12 @@ func fingerprintOf(p Patch) fingerprint {
 	}
 	top := 0.0
 	for _, e := range energy {
-		top = math.Max(top, e)
+		top = max(top, e)
 	}
 	for i, e := range energy {
 		fp.bands[i] = 10 * math.Log10((e+1e-12*top)/top)
 	}
-	fp.centroid = cs / math.Max(cw, 1e-30)
+	fp.centroid = cs / max(cw, 1e-30)
 	// the envelope in blocks of 5 ms
 	block := 220
 	var env []float64
@@ -175,7 +175,7 @@ func fingerprintOf(p Patch) fingerprint {
 		}
 		e = math.Sqrt(e / float64(block))
 		env = append(env, e)
-		peak = math.Max(peak, e)
+		peak = max(peak, e)
 	}
 	for i, e := range env {
 		if e >= 0.9*peak {

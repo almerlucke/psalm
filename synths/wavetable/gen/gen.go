@@ -50,7 +50,7 @@ func AdditiveMorph(from, to []float64, numFrames int) *wavetable.Table {
 	}
 	at := func(h []float64, k int) float64 {
 		if k < len(h) {
-			return math.Max(0, h[k])
+			return max(0, h[k])
 		}
 		return 0
 	}
@@ -76,7 +76,7 @@ func Brightness(numFrames int) *wavetable.Table {
 // PWM narrows a pulse from a square (width 0.5) to minWidth (for example 0.02), the classic pulse
 // width sweep from hollow to thin and nasal
 func PWM(numFrames int, minWidth float64) *wavetable.Table {
-	minWidth = math.Max(0.001, math.Min(minWidth, 0.5))
+	minWidth = max(0.001, min(minWidth, 0.5))
 	return wavetable.FromFunc(numFrames, FrameSize, func(position float64, phase float64) float64 {
 		if phase < 0.5+(minWidth-0.5)*position {
 			return 1
@@ -89,7 +89,7 @@ func PWM(numFrames int, minWidth float64) *wavetable.Table {
 // from the cycle's (ratio 1) to maxRatio times as the position rises, the tearing sound of a sync
 // sweep
 func Sync(numFrames int, maxRatio float64) *wavetable.Table {
-	maxRatio = math.Max(1, maxRatio)
+	maxRatio = max(1, maxRatio)
 	return wavetable.FromFunc(numFrames, FrameSize, func(position float64, phase float64) float64 {
 		ratio := 1 + position*(maxRatio-1)
 		x := phase * ratio
@@ -102,7 +102,7 @@ func Sync(numFrames int, maxRatio float64) *wavetable.Table {
 // Ratio 1 brightens towards a sawtooth like tone, 2 gives odd and even mixes, higher ratios bells
 // and metal
 func FM(numFrames int, ratio float64, maxIndex float64) *wavetable.Table {
-	ratio = math.Max(1, math.Round(ratio))
+	ratio = max(1, math.Round(ratio))
 	return wavetable.FromFunc(numFrames, FrameSize, func(position float64, phase float64) float64 {
 		index := position * maxIndex
 		return math.Sin(2*math.Pi*phase + index*math.Sin(2*math.Pi*ratio*phase))
@@ -113,7 +113,7 @@ func FM(numFrames int, ratio float64, maxIndex float64) *wavetable.Table {
 // passes the edge it folds back, adding harmonics in waves (west coast synthesis). Bias (-1 to 1)
 // offsets the sine before folding, which adds even harmonics
 func Fold(numFrames int, maxGain float64, bias float64) *wavetable.Table {
-	maxGain = math.Max(1, maxGain)
+	maxGain = max(1, maxGain)
 	return wavetable.FromFunc(numFrames, FrameSize, func(position float64, phase float64) float64 {
 		gain := 1 + position*(maxGain-1)
 		return fold(gain * (math.Sin(2*math.Pi*phase) + bias))
@@ -188,7 +188,7 @@ func Drawbars(numFrames int, numHarmonics int) *wavetable.Table {
 	return fromLevels(numFrames, numHarmonics, func(position float64, amps []float64) {
 		open := 1 + position*float64(numHarmonics-1) // number of harmonics sounding, fractional fades in
 		for k := 1; k <= numHarmonics; k++ {
-			amps[k-1] = math.Max(0, math.Min(1, open-float64(k)+1)) / math.Sqrt(float64(k))
+			amps[k-1] = max(0, min(1, open-float64(k)+1)) / math.Sqrt(float64(k))
 		}
 	})
 }
@@ -233,7 +233,7 @@ func saw(phase float64) float64 {
 // Filter sweeps a resonant lowpass over a sawtooth: the cutoff rises from the fundamental to the
 // 128th harmonic, q (0.7 is smooth, 4 sharp, 10 whistling) sets the resonance peak at the cutoff
 func Filter(numFrames int, q float64) *wavetable.Table {
-	q = math.Max(0.5, q)
+	q = max(0.5, q)
 	return wavetable.FromHarmonics(numFrames, FrameSize, func(position float64, amps []float64) {
 		cutoff := math.Pow(128, position) // in harmonics
 		for k := 1; k <= len(amps); k++ {
@@ -249,7 +249,7 @@ func Filter(numFrames int, q float64) *wavetable.Table {
 // times the cycle under a falling sawtooth window, the ratio rising from 1 to maxRatio. It sounds
 // like a resonant filter sweeping up, without a filter
 func Resonance(numFrames int, maxRatio float64) *wavetable.Table {
-	maxRatio = math.Max(1, maxRatio)
+	maxRatio = max(1, maxRatio)
 	return wavetable.FromFunc(numFrames, FrameSize, func(position float64, phase float64) float64 {
 		ratio := 1 + position*(maxRatio-1)
 		return (1 - phase) * math.Cos(2*math.Pi*ratio*phase)
@@ -261,8 +261,8 @@ func Resonance(numFrames int, maxRatio float64) *wavetable.Table {
 // with only even harmonics (an open, octave like tone)
 func OddEven(numFrames int) *wavetable.Table {
 	return wavetable.FromHarmonics(numFrames, FrameSize, func(position float64, amps []float64) {
-		odd := math.Min(1, 2-2*position)
-		even := math.Min(1, 2*position)
+		odd := min(1, 2-2*position)
+		even := min(1, 2*position)
 		amps[0] = 1
 		for k := 2; k <= len(amps); k++ {
 			w := odd
@@ -278,7 +278,7 @@ func OddEven(numFrames int) *wavetable.Table {
 // comb filter that cuts notches through the harmonics like a flanger. At a delay of half the cycle
 // the odd harmonics cancel and the tone jumps an octave
 func Comb(numFrames int, maxDelay float64) *wavetable.Table {
-	maxDelay = math.Max(0, math.Min(maxDelay, 0.5))
+	maxDelay = max(0, min(maxDelay, 0.5))
 	return wavetable.FromFunc(numFrames, FrameSize, func(position float64, phase float64) float64 {
 		d := position * maxDelay
 		return 0.5 * (saw(phase) + saw(phase-d))
@@ -288,7 +288,7 @@ func Comb(numFrames int, maxDelay float64) *wavetable.Table {
 // Saturate drives a sine into a soft clipper (tanh), the drive rising from 1 to maxDrive: from a
 // sine through a warm, rounded tone towards a square
 func Saturate(numFrames int, maxDrive float64) *wavetable.Table {
-	maxDrive = math.Max(1, maxDrive)
+	maxDrive = max(1, maxDrive)
 	return wavetable.FromFunc(numFrames, FrameSize, func(position float64, phase float64) float64 {
 		drive := 1 + position*(maxDrive-1)
 		return math.Tanh(drive*math.Sin(2*math.Pi*phase)) / math.Tanh(drive)
@@ -388,7 +388,7 @@ func FromSound(samples []float32, numFrames int) *wavetable.Table {
 		}
 		r := math.Sqrt(sum / float64(need))
 		candidates = append(candidates, candidate{offset, r})
-		loudest = math.Max(loudest, r)
+		loudest = max(loudest, r)
 	}
 	var sounding []int
 	for _, c := range candidates {

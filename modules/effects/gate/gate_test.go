@@ -21,7 +21,7 @@ func level(g *Gate, amp, seconds float64) float64 {
 		g.Synthesize()
 		if float64(b) >= float64(buffers)-0.05*sr/float64(bs) {
 			for _, x := range g.Output(0).Channels[0] {
-				peak = math.Max(peak, math.Abs(float64(x)))
+				peak = max(peak, math.Abs(float64(x)))
 			}
 		}
 	}

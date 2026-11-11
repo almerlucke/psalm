@@ -32,10 +32,10 @@ type Expression struct {
 
 // Receive takes "pitchBend", "bendRange" and "modWheel" from a message
 func (e *Expression) Receive(msg psalm.Message) {
-	msg.IfFltVal("pitchBend", func(f float64) { e.bend = math.Max(-1, math.Min(f, 1)) })
-	msg.IfFltVal("bendRange", func(f float64) { e.Range = math.Max(0, f) })
-	msg.IfFltVal("modWheel", func(f float64) { e.mod = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("pressure", func(f float64) { e.press = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("pitchBend", func(f float64) { e.bend = max(-1, min(f, 1)) })
+	msg.IfFltVal("bendRange", func(f float64) { e.Range = max(0, f) })
+	msg.IfFltVal("modWheel", func(f float64) { e.mod = max(0, min(f, 1)) })
+	msg.IfFltVal("pressure", func(f float64) { e.press = max(0, min(f, 1)) })
 }
 
 // Moved says whether the bend or the wheel are anywhere but at rest (or still getting there)
@@ -102,7 +102,7 @@ func (e *Expression) Ratio() float64 {
 }
 
 // Wheel returns the mod wheel now with the aftertouch added, 0 to 1
-func (e *Expression) Wheel() float64 { return math.Min(1, e.modNow+e.pressN) }
+func (e *Expression) Wheel() float64 { return min(1, e.modNow+e.pressN) }
 
 // Pressure returns the aftertouch now, 0 to 1 (also in Wheel)
 func (e *Expression) Pressure() float64 { return e.pressN }

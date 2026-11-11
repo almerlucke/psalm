@@ -83,7 +83,7 @@ func TestPresetsWhilePlaying(t *testing.T) {
 							if math.IsNaN(float64(s)) || math.IsInf(float64(s), 0) {
 								nan = true
 							}
-							peak = math.Max(peak, math.Abs(float64(s)))
+							peak = max(peak, math.Abs(float64(s)))
 						}
 					}
 				}
@@ -92,7 +92,7 @@ func TestPresetsWhilePlaying(t *testing.T) {
 			var loud float64
 			for range 60 {
 				ed.Load(made.Describe(kind.Presets[rng.IntN(len(kind.Presets))]))
-				loud = math.Max(loud, run(rng.Float64()*0.3))
+				loud = max(loud, run(rng.Float64()*0.3))
 			}
 			if loud < 0.01 {
 				t.Fatalf("it did not play: peak %.4f", loud)
@@ -133,7 +133,7 @@ func TestPresetsWhileHeld(t *testing.T) {
 			p.Run()
 			for _, ch := range pt.Out().Output(0).Channels {
 				for _, s := range ch {
-					peak = math.Max(peak, math.Abs(float64(s)))
+					peak = max(peak, math.Abs(float64(s)))
 				}
 			}
 		}
@@ -144,9 +144,9 @@ func TestPresetsWhileHeld(t *testing.T) {
 	for _, wait := range []float64{0.2, 0.02, 0.005} {
 		for _, preset := range kind.Presets {
 			keys.Push(midi.NoteOnMsg(1, note, 100))
-			loud = math.Max(loud, run(wait))
+			loud = max(loud, run(wait))
 			ed.Load(made.Describe(preset))
-			loud = math.Max(loud, run(wait))
+			loud = max(loud, run(wait))
 			keys.Push(midi.NoteOffMsg(1, note, 0))
 			run(wait)
 			note = 48 + (note-47)%24
@@ -270,7 +270,7 @@ func (l *longNotes) run(seconds float64) (peak float64) {
 		l.p.ResetRun()
 		l.p.Run()
 		for _, s := range l.pt.Out().Output(0).Channels[0] {
-			peak = math.Max(peak, math.Abs(float64(s)))
+			peak = max(peak, math.Abs(float64(s)))
 		}
 	}
 	return

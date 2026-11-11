@@ -19,7 +19,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -260,7 +259,7 @@ func main() {
 		ch := pl.Output(0).Channels
 		for i := range ch[0] {
 			for c := 0; c < 2; c++ {
-				pcm = append(pcm, int16(math.Max(-1, math.Min(1, float64(ch[c][i])))*32767))
+				pcm = append(pcm, int16(max(-1, min(1, float64(ch[c][i])))*32767))
 			}
 		}
 	}

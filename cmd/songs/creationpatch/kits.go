@@ -143,7 +143,7 @@ func kitLines(name string) (string, error) {
 				if err != nil {
 					return "", err
 				}
-				vol := math.Max(-20, math.Min(20, kitLevel-rmsDB(snd)))
+				vol := max(-20, min(20, kitLevel-rmsDB(snd)))
 				lines = append(lines, fmt.Sprintf("%d %q whole name=%s vol=%.1f", key, f, strings.ReplaceAll(strings.TrimSuffix(path.Base(f), path.Ext(f)), " ", "-"), vol))
 				key++
 			}

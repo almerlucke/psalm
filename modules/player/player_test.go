@@ -18,7 +18,7 @@ func play(p *Player, buffers int) []float64 {
 		peak := 0.0
 		for _, ch := range p.Output(0).Channels {
 			for _, x := range ch {
-				peak = math.Max(peak, math.Abs(float64(x)))
+				peak = max(peak, math.Abs(float64(x)))
 			}
 		}
 		peaks = append(peaks, peak)

@@ -1,8 +1,6 @@
 package player
 
 import (
-	"math"
-
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/tools/float"
 	"github.com/almerlucke/sndfile"
@@ -327,7 +325,7 @@ func (p *Player) Note(duration float64, amplitude float64, message psalm.Message
 func (p *Player) NoteOff() {
 	p.loop = false
 	if p.fadeOnNoteOff > 0 && !p.done {
-		p.fadeStep = 1 / math.Max(1, p.fadeOnNoteOff*p.Config().SampleRate)
+		p.fadeStep = 1 / max(1, p.fadeOnNoteOff*p.Config().SampleRate)
 	}
 }
 

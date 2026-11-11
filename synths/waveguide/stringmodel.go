@@ -53,7 +53,7 @@ func groupDelay(a, w float64) float64 {
 // stiffnessAt is the B a string has at a pitch: the thick low strings are stiffer, B at 220 Hz is
 // that of the setting
 func stiffnessAt(b, f float64) float64 {
-	return b * math.Max(0.3, math.Min(220/f, 6))
+	return b * max(0.3, min(220/f, 6))
 }
 
 // stretch is the ratio of the n-th partial of a stiff string to the n-th harmonic (the first is kept
@@ -75,7 +75,7 @@ func dispersionCents(a float64, m int, b, f0, sr float64, top int) (worst, delay
 		wn := w1 * float64(n) * stretch(b, n)
 		g := l0 + fm*groupDelay(a, wn)
 		r := wn*(l0+fm*phaseDelay(a, wn)) - 2*math.Pi*float64(n)
-		worst = math.Max(worst, math.Abs(r/(wn*g))*1200/math.Ln2)
+		worst = max(worst, math.Abs(r/(wn*g))*1200/math.Ln2)
 	}
 	return worst, fm * phaseDelay(a, w1)
 }
@@ -155,7 +155,7 @@ func fitDispersion(b, f0, sr float64) (a float64, m int, delay, worst float64) {
 			fn := float64(n)
 			want := period / stretch(b, n)
 			got := l0 + fm*phaseDelay(a, w1*fn*stretch(b, n))
-			e = math.Max(e, math.Abs(got-want)/want)
+			e = max(e, math.Abs(got-want)/want)
 		}
 		return e * 1200 / math.Ln2, fm * phaseDelay(a, w1)
 	})
@@ -317,7 +317,7 @@ func polCoupling(p float64) float64 { return 0.0004 + 0.0015*p }
 // way back, rounded by the width of what pulls it
 func shapeExcite(ex []float64, n int, pick, width, hard float64) {
 	l := float64(n) / 2
-	a := math.Max(1, math.Min(math.Round(pick*l), l-1))
+	a := max(1, min(math.Round(pick*l), l-1))
 	for i := range n {
 		x, sign := float64(i), 1.0
 		if x > l {
@@ -327,7 +327,7 @@ func shapeExcite(ex []float64, n int, pick, width, hard float64) {
 		if x > a {
 			y = (l - x) / (l - a)
 		}
-		ex[i] = sign * math.Max(0, y)
+		ex[i] = sign * max(0, y)
 	}
 	ex[n] = ex[0]
 	// the contact: a finger is soft and wide, a pick thin; two passes of a moving average round the tip
@@ -386,7 +386,7 @@ func (v *Voice) friction(dv, force, grain float64) float64 {
 		}
 		p = (lo + hi) / 2
 	}
-	heat := math.Min(1, (a-p)*force*frictionPower)
+	heat := min(1, (a-p)*force*frictionPower)
 	v.bowHeat += (heat - v.bowHeat) * v.heatRate
 	if dv < 0 {
 		return -p

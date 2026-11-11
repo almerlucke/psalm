@@ -73,7 +73,7 @@ func TestInstrumentsRingAtTheirRatios(t *testing.T) {
 		strongest := 0.0
 		for i := range md.parts {
 			p := &md.parts[i]
-			strongest = math.Max(strongest, p.amp*p.shape(0.45))
+			strongest = max(strongest, p.amp*p.shape(0.45))
 		}
 		checked := 0
 		for i := range md.parts {
@@ -289,7 +289,7 @@ func TestSplitAndDrift(t *testing.T) {
 		lo, hi := math.Inf(1), 0.0
 		for at := 0.1; at < 1.9; at += 0.01 {
 			a := amplitude(window(x, at, 0.03), 440)
-			lo, hi = math.Min(lo, a), math.Max(hi, a)
+			lo, hi = min(lo, a), max(hi, a)
 		}
 		return hi / lo
 	}

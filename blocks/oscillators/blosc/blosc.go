@@ -1,8 +1,9 @@
 package blosc
 
 import (
-	"github.com/almerlucke/psalm/blocks/sine"
 	"math"
+
+	"github.com/almerlucke/psalm/blocks/sine"
 )
 
 type Waveform int
@@ -70,7 +71,7 @@ func (b *Blosc) Phase() float64 {
 }
 
 func (b *Blosc) SetPulseWidth(pw float64) {
-	b.pw = math.Max(0.0, math.Min(1.0, pw))
+	b.pw = max(0.0, min(1.0, pw))
 }
 
 func (b *Blosc) SetWaveform(wf Waveform) {
@@ -188,7 +189,7 @@ func (b *Blosc) tri() float64 {
 }
 
 func (b *Blosc) tri2() float64 {
-	pw := math.Max(0.0001, math.Min(0.9999, b.pw))
+	pw := max(0.0001, min(0.9999, b.pw))
 
 	t1 := b.t + 0.5*pw
 	t1 -= integerPart(t1)
@@ -249,7 +250,7 @@ func (b *Blosc) trap() float64 {
 		y = 2.0 - y
 	}
 
-	y = math.Max(-1, math.Min(1.0, 2.0*y))
+	y = max(-1, min(1.0, 2.0*y))
 
 	t1 := b.t + 0.125
 	t1 -= integerPart(t1)
@@ -273,7 +274,7 @@ func (b *Blosc) trap() float64 {
 }
 
 func (b *Blosc) trap2() float64 {
-	pw := math.Min(0.9999, b.pw)
+	pw := min(0.9999, b.pw)
 	scale := 1.0 / (1.0 - pw)
 
 	y := 4.0 * b.t
@@ -283,7 +284,7 @@ func (b *Blosc) trap2() float64 {
 		y = 2.0 - y
 	}
 
-	y = math.Max(-1.0, math.Min(1.0, scale*y))
+	y = max(-1.0, min(1.0, scale*y))
 
 	t1 := b.t + 0.25 - 0.25*pw
 	t1 -= integerPart(t1)

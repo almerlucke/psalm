@@ -112,7 +112,7 @@ func lufs(energy float64) float64 {
 	if energy <= 0 {
 		return Silence
 	}
-	return math.Max(Silence, -0.691+10*math.Log10(energy))
+	return max(Silence, -0.691+10*math.Log10(energy))
 }
 
 // Momentary returns the loudness of the last 400 ms in LUFS
@@ -177,7 +177,7 @@ func (m *Meter) Synthesize() {
 	m.Output(0).Channels.Copy(in)
 	for i := range in[0] {
 		l, r := float64(in[0][i]), float64(in[1][i])
-		m.peak = math.Max(m.peak, math.Max(math.Abs(l), math.Abs(r)))
+		m.peak = max(m.peak, max(math.Abs(l), math.Abs(r)))
 		m.sum += (l*l + r*r) / 2
 		m.count++
 		m.loud.Add(l, r)
@@ -189,7 +189,7 @@ func ToDB(g float64) float64 {
 	if g <= 0 {
 		return Silence
 	}
-	return math.Max(Silence, 20*math.Log10(g))
+	return max(Silence, 20*math.Log10(g))
 }
 
 // Peak returns the highest sample in dB since the start or a reset

@@ -85,9 +85,9 @@ func TestResonancePeakAndSelfOscillation(t *testing.T) {
 		if math.IsNaN(y) || math.IsInf(y, 0) {
 			t.Fatal("unstable")
 		}
-		maxOut = math.Max(maxOut, math.Abs(y))
+		maxOut = max(maxOut, math.Abs(y))
 		if i > int(sr)-1000 {
-			tail = math.Max(tail, math.Abs(y))
+			tail = max(tail, math.Abs(y))
 		}
 	}
 	if maxOut > 10 {
@@ -112,7 +112,7 @@ func TestSelfOscillation(t *testing.T) {
 		for i := 1; i < 88200; i++ {
 			y := l.Process(0, LowPass24)
 			if i > 44100 {
-				peak = math.Max(peak, math.Abs(y))
+				peak = max(peak, math.Abs(y))
 				if last < 0 && y >= 0 {
 					crossings++
 				}
@@ -140,7 +140,7 @@ func peakGain(fc, res, f, amp, drive float64) float64 {
 	for i := 0; i < 44100; i++ {
 		y := l.Process(amp*math.Sin(2*math.Pi*f*float64(i)/44100), LowPass24)
 		if i > 30000 {
-			peak = math.Max(peak, math.Abs(y))
+			peak = max(peak, math.Abs(y))
 		}
 	}
 
@@ -190,7 +190,7 @@ func TestStageLevelSetsTheClip(t *testing.T) {
 		for i := 0; i < 44100; i++ {
 			y := l.Process(0.5*math.Sin(2*math.Pi*900*float64(i)/44100), LowPass24)
 			if i > 30000 {
-				peak = math.Max(peak, math.Abs(y))
+				peak = max(peak, math.Abs(y))
 			}
 		}
 
@@ -291,4 +291,16 @@ func TestOversamplingLowersTheAlias(t *testing.T) {
 			t.Errorf("oversampled %d times: %.1f dB an octave over the cutoff, %.1f dB for once", factor, b, a)
 		}
 	}
+}
+
+// the cost of a sample through the ladder, driven hard so that the saturation works
+func BenchmarkProcess(b *testing.B) {
+	l := New(2000, 0.6, 44100)
+	l.SetDrive(3)
+	x, s := 0.0, 0.0
+	for i := range b.N {
+		x = 0.9 * math.Sin(float64(i)*0.05)
+		s += l.Process(x, LowPass24)
+	}
+	_ = s
 }

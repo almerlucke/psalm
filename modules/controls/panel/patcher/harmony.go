@@ -230,11 +230,11 @@ func (h *Harmony) Spans(section string, beats, bpb float64) []noteroll.ChordSpan
 			in -= p.bars[i]
 		}
 		left := (p.bars[i] - in) * bpb
-		length := math.Min(left, beats-at)
+		length := min(left, beats-at)
 		if c := p.chords[i]; c != nil {
 			out = append(out, noteroll.ChordSpan{At: at, Len: length, Name: c.Name, Pcs: c.PitchClasses()})
 		}
-		at += math.Max(length, 1e-6)
+		at += max(length, 1e-6)
 	}
 	return out
 }
@@ -246,7 +246,7 @@ func (h *Harmony) ReceiveMessage(msg psalm.Message) {
 	changed := false
 	msg.IfIntVal("key", func(k int) { h.Key, changed = max(0, min(k, len(Keys)-1)), true })
 	msg.IfIntVal("scale", func(s int) { h.Scale, changed = max(0, min(s, len(Scales)-1)), true })
-	msg.IfFltVal("low", func(f float64) { h.Low = math.Max(0, math.Min(f, 96)); h.hasSent = false })
+	msg.IfFltVal("low", func(f float64) { h.Low = max(0, min(f, 96)); h.hasSent = false })
 	if changed {
 		if t, ok := h.text.Load().(string); ok {
 			_ = h.SetChords(t) // the numerals mean other chords in another key

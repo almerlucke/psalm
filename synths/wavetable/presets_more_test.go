@@ -82,7 +82,7 @@ func TestNewPresetsRender(t *testing.T) {
 						t.Fatalf("%s pitch %g velocity %g: not finite at %d", n, pitch, vel, i)
 					}
 					if i < 30*1024 {
-						peak = math.Max(peak, math.Abs(v))
+						peak = max(peak, math.Abs(v))
 					}
 				}
 				if peak < 1e-3 {
@@ -112,7 +112,7 @@ func fingerprintOf(x []float64) fingerprint {
 	env := make([]float64, len(x)/blk)
 	for i := range env {
 		env[i] = rmsOf(x[i*blk : (i+1)*blk])
-		peak = math.Max(peak, env[i])
+		peak = max(peak, env[i])
 	}
 	for i, e := range env {
 		if e >= 0.9*peak {
@@ -147,13 +147,13 @@ func fingerprintOf(x []float64) fingerprint {
 		b := int(24 * math.Log(fr/lo) / math.Log(hi/lo))
 		band[min(b, 23)] += power[k]
 	}
-	fp.centroid = wsum / math.Max(sum, 1e-30)
+	fp.centroid = wsum / max(sum, 1e-30)
 	top := 0.0
 	for _, v := range band {
-		top = math.Max(top, v)
+		top = max(top, v)
 	}
 	for i, v := range band {
-		fp.bands[i] = 10 * math.Log10(math.Max(v/top, 1e-9))
+		fp.bands[i] = 10 * math.Log10(max(v/top, 1e-9))
 	}
 	return fp
 }
@@ -228,7 +228,7 @@ func TestNewPresetsMatrixResponds(t *testing.T) {
 					diff = append(diff, x[j]-base[j])
 				}
 				if r := rmsOf(base[w*1024 : (w+20)*1024]); r > 1e-3 {
-					best = math.Max(best, rmsOf(diff)/r)
+					best = max(best, rmsOf(diff)/r)
 				}
 			}
 			if best < 0.01 {

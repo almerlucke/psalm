@@ -43,7 +43,7 @@ func prFinite(t *testing.T, name string, x []float64) float64 {
 		if math.IsNaN(s) || math.IsInf(s, 0) {
 			t.Fatalf("%s: not finite", name)
 		}
-		p = math.Max(p, math.Abs(s))
+		p = max(p, math.Abs(s))
 	}
 	return p
 }
@@ -103,7 +103,7 @@ func prFingerprint(x []float64, sr float64) ([24]float64, float64, float64) {
 			e += s * s
 		}
 		env = append(env, math.Sqrt(e/float64(win)))
-		peak = math.Max(peak, env[len(env)-1])
+		peak = max(peak, env[len(env)-1])
 	}
 	attack := 0.0
 	for i, e := range env {

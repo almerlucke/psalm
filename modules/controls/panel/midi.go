@@ -89,7 +89,7 @@ func (pn *Panel) NoteOn(channel, note, velocity int) {
 
 // receive moves the controls bound to a controller or note
 func (pn *Panel) receive(in Binding, value int) {
-	pos := math.Max(0, math.Min(float64(value)/127, 1))
+	pos := max(0, min(float64(value)/127, 1))
 	if learner := pn.learning.Load(); learner != nil && (!in.Note || learner.takesNotes()) && pn.learning.CompareAndSwap(learner, nil) {
 		code := pack(in)
 		pn.release(in, learner, pn.params) // a controller moves one control

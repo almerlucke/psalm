@@ -50,8 +50,8 @@ func (b *Biquad) SetFrequency(fc float64) {
 }
 
 func (b *Biquad) update() {
-	fc := math.Max(1.0, math.Min(b.fc, b.sr*0.49))
-	q := math.Max(0.05, b.q)
+	fc := max(1.0, min(b.fc, b.sr*0.49))
+	q := max(0.05, b.q)
 
 	w0 := 2.0 * math.Pi * fc / b.sr
 	cosW := math.Cos(w0)

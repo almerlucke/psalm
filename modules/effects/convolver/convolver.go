@@ -118,7 +118,7 @@ func New(ir [][]float64, cfg Config) *Convolver {
 	}
 
 	sr := c.Config().SampleRate
-	c.mix = mix.NewSmoother(math.Max(0, math.Min(cfg.Mix, 1)), mix.SmoothMs, sr)
+	c.mix = mix.NewSmoother(max(0, min(cfg.Mix, 1)), mix.SmoothMs, sr)
 	c.gain = mix.NewSmoother(cfg.Gain, mix.SmoothMs, sr)
 	c.SetSelf(c)
 
@@ -246,7 +246,7 @@ func (s *segment) process(ch, shared *segmentChannel) {
 func (c *Convolver) Synthesize() {
 	ins := c.Input(0).Channels
 	outs := c.Output(0).Channels
-	mixTo := math.Max(0, math.Min(c.cfg.Mix, 1))
+	mixTo := max(0, min(c.cfg.Mix, 1))
 
 	for i := range c.Config().BufferSize {
 		dry, wet := mix.EqualPower(c.mix.Next(mixTo))

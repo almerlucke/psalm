@@ -324,7 +324,7 @@ func (pt *part) use(s *sound, tick psalm.CtrlTick) {
 // gain sets the strip of the channel: the volume and the expression of the file (as General MIDI
 // has them, the square of each) and the trim of the panel
 func (pt *part) gain() {
-	db := 40*math.Log10(math.Max(pt.volume, 1e-3)) + 40*math.Log10(math.Max(pt.express, 1e-3)) + pt.trim
+	db := 40*math.Log10(max(pt.volume, 1e-3)) + 40*math.Log10(max(pt.express, 1e-3)) + pt.trim
 	pt.group.SetVolume(db)
 }
 
@@ -498,7 +498,7 @@ func main() {
 		})
 		pt.kb.OnControl(midi.CCVolume, func(v float64, _ psalm.CtrlTick) { pt.volume = v; pt.gain() })
 		pt.kb.OnControl(midi.CCExpression, func(v float64, _ psalm.CtrlTick) { pt.express = v; pt.gain() })
-		pt.kb.OnControl(midi.CCPan, func(v float64, _ psalm.CtrlTick) { pt.group.SetPan(math.Max(-1, (v*127-64)/63)) })
+		pt.kb.OnControl(midi.CCPan, func(v float64, _ psalm.CtrlTick) { pt.group.SetPan(max(-1, (v*127-64)/63)) })
 		pt.kb.OnControl(91, func(v float64, _ psalm.CtrlTick) { pt.hallSent = true; pt.group.SetSend("hall", v) })
 		if *monitor {
 			pt.kb.OnEvent(func(e midi.Event, tick psalm.CtrlTick) {
@@ -576,7 +576,7 @@ func main() {
 		ctl.Button("Stop", player.Stop)
 		ctl.Button("Back to the start", func() { player.Seek(0) })
 		// where the file is: it follows the player, dragged further than a second it jumps
-		position := ctl.Fader("Position", 0, math.Max(1, math.Ceil(player.Duration())), panel.Linear, panel.Func(func(v float64) {
+		position := ctl.Fader("Position", 0, max(1, math.Ceil(player.Duration())), panel.Linear, panel.Func(func(v float64) {
 			if math.Abs(v-player.Position()) > 1.5 {
 				player.Seek(v)
 			}

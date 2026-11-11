@@ -125,6 +125,6 @@ func (l *listener) process(left, right float64) (float64, float64) {
 // keyPan returns where a key sounds in the stereo field (0 left, 1 right): low keys on the left,
 // as wide as the Width setting and the position
 func keyPan(pitch float64, cfg *Config) float64 {
-	w := math.Max(0, math.Min(cfg.Width*perspectiveOf(cfg.Position).width, 1))
-	return 0.5 + 0.5*w*math.Max(-1, math.Min((pitch-64)/44, 1))
+	w := max(0, min(cfg.Width*perspectiveOf(cfg.Position).width, 1))
+	return 0.5 + 0.5*w*max(-1, min((pitch-64)/44, 1))
 }

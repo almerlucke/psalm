@@ -268,7 +268,7 @@ func (l *Looper) late(tick psalm.CtrlTick) {
 			if n.start != l.pos {
 				continue
 			}
-			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.005, float64(n.length)*secondsPerTick), "amplitude": n.velocity,
+			msg := psalm.Message{"command": "trigger", "tick": tick, "duration": max(0.005, float64(n.length)*secondsPerTick), "amplitude": n.velocity,
 				"message": psalm.Message{"pitch": n.pitch, "velocity": n.velocity}}
 			for _, t := range l.targets {
 				t.ReceiveMessage(msg)

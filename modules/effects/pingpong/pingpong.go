@@ -92,7 +92,7 @@ func (pp *PingPong) target() float64 {
 	} else {
 		seconds = pp.cfg.Time * 60.0 / pp.BPM()
 	}
-	return math.Max(1, math.Min(seconds*sr, float64(pp.left.Length-2)))
+	return max(1, min(seconds*sr, float64(pp.left.Length-2)))
 }
 
 // SetTime sets the echo time in beats (and leaves milliseconds)
@@ -136,7 +136,7 @@ func (pp *PingPong) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("lowCut", func(f float64) { pp.cfg.LowCut = f })
 }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 
 // onePole returns the coefficient of a one pole lowpass at fc
 func onePole(fc float64, sr float64) float64 {
@@ -160,7 +160,7 @@ func (pp *PingPong) Synthesize() {
 		hpCoef   = 0.0
 	)
 	if cfg.HighCut > 0 {
-		lpCoef = onePole(math.Min(cfg.HighCut, sr*0.45), sr)
+		lpCoef = onePole(min(cfg.HighCut, sr*0.45), sr)
 	}
 	if cfg.LowCut > 0 {
 		hpCoef = onePole(cfg.LowCut, sr)

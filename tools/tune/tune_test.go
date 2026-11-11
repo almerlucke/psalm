@@ -25,9 +25,9 @@ func voice(sr float64) []float64 {
 		for h := 1; h <= 20; h++ {
 			s += math.Sin(2*math.Pi*phase*float64(h)) / float64(h)
 		}
-		env := math.Min(1, math.Min(t, 1.2-t+0.1)*20)
+		env := min(1, min(t, 1.2-t+0.1)*20)
 		if t > 1.8 {
-			env = math.Min(1, (t-1.8)*20) * math.Min(1, (3-t)*20)
+			env = min(1, (t-1.8)*20) * min(1, (3-t)*20)
 		}
 		x[i] = 0.3 * s * env
 	}
@@ -116,8 +116,8 @@ func TestShiftIdentity(t *testing.T) {
 	y := Shift(x, tr, tr)
 	var worst, energy float64
 	for i := 4000; i < len(x)-4000; i++ {
-		worst = math.Max(worst, math.Abs(y[i]-x[i]))
-		energy = math.Max(energy, math.Abs(x[i]))
+		worst = max(worst, math.Abs(y[i]-x[i]))
+		energy = max(energy, math.Abs(x[i]))
 	}
 	if worst > 0.02*energy {
 		t.Errorf("a voice that is not moved differs by %.4f (the loudest sample is %.2f)", worst, energy)

@@ -306,7 +306,7 @@ func TestPresets(t *testing.T) {
 					if math.IsNaN(float64(s)) {
 						t.Fatal("NaN output")
 					}
-					peak = math.Max(peak, math.Abs(float64(s)))
+					peak = max(peak, math.Abs(float64(s)))
 				}
 			}
 			if peak < 0.05 || peak > 1.0 {

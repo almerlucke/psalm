@@ -406,11 +406,11 @@ func (par *Param) clamp(v float64) float64 {
 	if math.IsNaN(v) {
 		v = par.Min
 	}
-	lo, hi := math.Min(par.Min, par.Max), math.Max(par.Min, par.Max)
-	v = math.Max(lo, math.Min(v, hi))
+	lo, hi := min(par.Min, par.Max), max(par.Min, par.Max)
+	v = max(lo, min(v, hi))
 	if par.Step > 0 {
 		v = par.Min + math.Round((v-par.Min)/par.Step)*par.Step
-		v = math.Max(lo, math.Min(v, hi))
+		v = max(lo, min(v, hi))
 	}
 	return v
 }
@@ -428,7 +428,7 @@ func (par *Param) Position(v float64) float64 {
 
 // At returns the value at a position along the travel of the control, 0-1
 func (par *Param) At(pos float64) float64 {
-	pos = math.Max(0, math.Min(pos, 1))
+	pos = max(0, min(pos, 1))
 	if par.Curve == Exp {
 		return par.Min * math.Pow(par.Max/par.Min, pos)
 	}

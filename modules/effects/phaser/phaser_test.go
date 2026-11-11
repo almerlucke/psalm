@@ -20,7 +20,7 @@ func level(p *Phaser, freq float64) float64 {
 		p.Synthesize()
 		if b > int(0.5*sr/float64(bs)) {
 			for _, x := range p.Output(0).Channels[0] {
-				peak = math.Max(peak, math.Abs(float64(x)))
+				peak = max(peak, math.Abs(float64(x)))
 			}
 		}
 	}
@@ -60,9 +60,9 @@ func TestSweep(t *testing.T) {
 		p.Synthesize()
 		peak := 0.0
 		for _, x := range p.Output(0).Channels[0] {
-			peak = math.Max(peak, math.Abs(float64(x)))
+			peak = max(peak, math.Abs(float64(x)))
 		}
-		lo, hi = math.Min(lo, peak), math.Max(hi, peak)
+		lo, hi = min(lo, peak), max(hi, peak)
 	}
 	if hi < 0.45 || lo > 0.25 {
 		t.Fatalf("the sweep should move a notch over the tone: %.2f to %.2f", lo, hi)

@@ -127,7 +127,7 @@ func Shift(x []float64, t, target Track) []float64 {
 		if k+1 < len(marks) {
 			spacing = float64(marks[k+1] - marks[k])
 		}
-		ts += spacing * held.At(ts) / math.Max(goal.At(ts), 1)
+		ts += spacing * held.At(ts) / max(goal.At(ts), 1)
 	}
 	out := make([]float64, n)
 	for i := range out {

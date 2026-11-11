@@ -87,8 +87,8 @@ func New(cfg Config) *Granulator {
 	g.buf[1] = make([]float32, n)
 
 	sr := g.Config().SampleRate
-	g.mix = mix.NewSmoother(math.Max(0, math.Min(cfg.Mix, 1)), mix.SmoothMs, sr)
-	g.fb = mix.NewSmoother(math.Max(0, math.Min(cfg.Feedback, 0.98)), mix.SmoothMs, sr)
+	g.mix = mix.NewSmoother(max(0, min(cfg.Mix, 1)), mix.SmoothMs, sr)
+	g.fb = mix.NewSmoother(max(0, min(cfg.Feedback, 0.98)), mix.SmoothMs, sr)
 	g.norm = mix.NewSmoother(g.grainNorm(), mix.SmoothMs, sr)
 	g.SetSelf(g)
 
@@ -188,21 +188,21 @@ func (g *Granulator) spawn(sr float64) {
 	var minDelay, maxDelay float64
 	if cfg.Freeze {
 		// the write head stands still: stay between the oldest and newest frozen sample
-		minDelay = margin + math.Max(0, l*inc)
-		maxDelay = n - margin + math.Min(0, l*inc)
+		minDelay = margin + max(0, l*inc)
+		maxDelay = n - margin + min(0, l*inc)
 	} else {
 		// the write head moves one sample per sample
-		minDelay = margin + math.Max(0, l*(inc-1))
-		maxDelay = n - margin + math.Min(0, l*(inc-1))
+		minDelay = margin + max(0, l*(inc-1))
+		maxDelay = n - margin + min(0, l*(inc-1))
 	}
 	// only audio that has been recorded is valid
-	maxDelay = math.Min(maxDelay, float64(g.written)-margin+math.Min(0, l*inc))
+	maxDelay = min(maxDelay, float64(g.written)-margin+min(0, l*inc))
 	if minDelay > maxDelay {
 		return
 	}
 
 	delay := (cfg.Delay + cfg.Spray*(g.Rand().Float64()*2.0-1.0)) * 0.001 * sr
-	delay = math.Max(minDelay, math.Min(delay, maxDelay))
+	delay = max(minDelay, min(delay, maxDelay))
 
 	pan := 0.5 + cfg.StereoSpread*(g.Rand().Float64()-0.5)
 
@@ -218,7 +218,7 @@ func (g *Granulator) spawn(sr float64) {
 // grainNorm returns the grain level: overlapping grains add up, scaled by the square root of the
 // overlap the level stays steady
 func (g *Granulator) grainNorm() float64 {
-	return 1.0 / math.Sqrt(math.Max(1.0, math.Max(0.1, g.cfg.Density)*g.cfg.GrainSize*0.001))
+	return 1.0 / math.Sqrt(max(1.0, max(0.1, g.cfg.Density)*g.cfg.GrainSize*0.001))
 }
 
 // read returns the buffer at an absolute position with linear interpolation
@@ -239,9 +239,9 @@ func (g *Granulator) Synthesize() {
 		ins     = g.Input(0).Channels
 		outs    = g.Output(0).Channels
 		n       = int64(len(g.buf[0]))
-		density = math.Max(0.1, cfg.Density)
-		mixTo   = math.Max(0, math.Min(cfg.Mix, 1))
-		fbTo    = math.Max(0, math.Min(cfg.Feedback, 0.98))
+		density = max(0.1, cfg.Density)
+		mixTo   = max(0, min(cfg.Mix, 1))
+		fbTo    = max(0, min(cfg.Feedback, 0.98))
 		normTo  = g.grainNorm()
 	)
 	interval := sr / density
@@ -264,7 +264,7 @@ func (g *Granulator) Synthesize() {
 		if g.countdown <= 0 {
 			g.spawn(sr)
 			g.countdown += interval * (1.0 + cfg.Jitter*(g.Rand().Float64()*2.0-1.0))
-			g.countdown = math.Max(1, g.countdown)
+			g.countdown = max(1, g.countdown)
 		}
 
 		var left, right float64

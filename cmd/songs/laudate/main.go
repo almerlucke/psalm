@@ -99,7 +99,7 @@ func main() {
 		before := func(t float64) {
 			g := 1.0
 			if fadeLen > 0 && t > length-fadeLen {
-				g = 0.5 * (1 + math.Cos(math.Pi*math.Min(1, (t-(length-fadeLen))/fadeLen)))
+				g = 0.5 * (1 + math.Cos(math.Pi*min(1, (t-(length-fadeLen))/fadeLen)))
 			}
 			if g == lastGain {
 				return
@@ -113,7 +113,7 @@ func main() {
 				case strings.HasPrefix(k, "level"):
 					scaled[k] = v * g
 				default:
-					scaled[k] = math.Min(1, v*math.Pow(math.Max(g, 1e-3), -0.5))
+					scaled[k] = min(1, v*math.Pow(max(g, 1e-3), -0.5))
 				}
 			}
 			mix.Apply(scaled)

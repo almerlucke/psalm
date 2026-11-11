@@ -30,7 +30,7 @@ type envelope struct {
 var fall60 = math.Log(1e-3)
 
 func (e *envelope) start(set *Envelope, sr float64) {
-	*e = envelope{set: set, sr: sr, sustain: math.Max(0, math.Min(set.Sustain, 1))}
+	*e = envelope{set: set, sr: sr, sustain: max(0, min(set.Sustain, 1))}
 	e.enter(stageDelay)
 }
 
@@ -135,7 +135,7 @@ func (e *envelope) releaseIn(seconds float64) {
 // settings it points at now): the stage it is in keeps its place and goes on at the new pace
 func (e *envelope) retime(old Envelope) {
 	cur := e.set
-	e.sustain = math.Max(0, math.Min(cur.Sustain, 1))
+	e.sustain = max(0, min(cur.Sustain, 1))
 	// what is left of a stage, at the new time
 	scale := func(oldTime, newTime float64) int {
 		if oldTime <= 0 {

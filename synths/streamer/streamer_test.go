@@ -213,7 +213,7 @@ func TestStereoPartsAndSpeed(t *testing.T) {
 func maxAbs(x []float32) float64 {
 	m := 0.0
 	for _, v := range x {
-		m = math.Max(m, math.Abs(float64(v)))
+		m = max(m, math.Abs(float64(v)))
 	}
 	return m
 }

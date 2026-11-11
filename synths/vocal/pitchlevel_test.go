@@ -22,7 +22,7 @@ func plPeak(cfg Config, pitch, vel float64) float64 {
 				if math.IsNaN(x) || math.IsInf(x, 0) {
 					return math.NaN()
 				}
-				p = math.Max(p, math.Abs(x))
+				p = max(p, math.Abs(x))
 			}
 		}
 	}
@@ -51,7 +51,7 @@ func TestLevelAcrossPitch(t *testing.T) {
 					t.Errorf("%s: NaN at pitch %g", name, pitch)
 					continue
 				}
-				worst[pitch] = math.Max(worst[pitch], p)
+				worst[pitch] = max(worst[pitch], p)
 				db := 20 * math.Log10(p/ref)
 				if p > 1.5 || db > 9.5 || db < -12.5 {
 					t.Errorf("%s vel %g pitch %g: peak %.3f, %+.1f dB against pitch 57 (%.3f)", name, vel, pitch, p, db, ref)

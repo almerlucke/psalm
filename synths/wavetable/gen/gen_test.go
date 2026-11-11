@@ -353,7 +353,7 @@ func TestFromSound(t *testing.T) {
 	prev := table.Sample(1-1.0/FrameSize, 0.5, 1e-9)
 	for j := range FrameSize {
 		x := table.Sample(float64(j)/FrameSize, 0.5, 1e-9)
-		maxStep = math.Max(maxStep, math.Abs(x-prev))
+		maxStep = max(maxStep, math.Abs(x-prev))
 		prev = x
 	}
 	if smooth := 2 * math.Pi * 441.3 / sr; maxStep > 3*smooth {

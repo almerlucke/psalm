@@ -171,15 +171,15 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("drift", func(f float64) { v.cfg.Drift = f })
 	msg.IfFltVal("contact", func(f float64) { v.cfg.Contact = f })
 	msg.IfFltVal("mass", func(f float64) { v.cfg.Mass = f })
-	msg.IfFltVal("undercut", func(f float64) { v.cfg.Undercut = math.Max(0.01, math.Min(f, 1)) })
-	msg.IfFltVal("nonlinearity", func(f float64) { v.cfg.Nonlinearity = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("undercut", func(f float64) { v.cfg.Undercut = max(0.01, min(f, 1)) })
+	msg.IfFltVal("nonlinearity", func(f float64) { v.cfg.Nonlinearity = max(0, min(f, 1)) })
 	msg.IfFltVal("inharmonicity", func(f float64) { v.cfg.Inharmonicity = f })
 	msg.IfFltVal("lfoRate", func(f float64) { v.cfg.LFORate = f })
 	msg.IfFltVal("lfo2Rate", func(f float64) { v.cfg.LFO2Rate = f })
 	envelope.Seconds(msg, "amp", nil, &v.cfg.Decay, &v.cfg.Release)
 	msg.IfFltVal("frequency", func(f float64) { v.freq = f })
 	msg.IfFltVal("pitch", func(p float64) { v.freq = 440 * math.Exp2((p-69)/12) })
-	msg.IfFltVal("velocity", func(f float64) { v.velocity = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0, min(f, 1)) })
 	msg.IfFltVal("decay", func(f float64) { v.cfg.Decay = f })
 	msg.IfFltVal("highDamping", func(f float64) { v.cfg.HighDamping = f })
 	msg.IfFltVal("hardness", func(f float64) { v.cfg.Hardness = f })
@@ -245,12 +245,12 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 	if pos <= 0 {
 		pos = 0.25
 	}
-	pos = math.Max(0.01, math.Min(pos+mods.Mod(dPosition), 1))
-	beat := math.Max(0, cfg.Beat+mods.Mod(dBeat))
-	highDamping := math.Max(0, cfg.HighDamping+mods.Mod(dHighDamping))
-	inharm := math.Max(0, math.Min(cfg.Inharmonicity+mods.Mod(dInharmonicity), 1))
-	decay := math.Max(0.005, cfg.Decay*math.Exp2(mods.Mod(dDecay)))
-	release := math.Max(0.005, cfg.Release)
+	pos = max(0.01, min(pos+mods.Mod(dPosition), 1))
+	beat := max(0, cfg.Beat+mods.Mod(dBeat))
+	highDamping := max(0, cfg.HighDamping+mods.Mod(dHighDamping))
+	inharm := max(0, min(cfg.Inharmonicity+mods.Mod(dInharmonicity), 1))
+	decay := max(0.005, cfg.Decay*math.Exp2(mods.Mod(dDecay)))
+	release := max(0.005, cfg.Release)
 	v.n = 0
 	v.hasTube = false
 	first := true
@@ -271,10 +271,10 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 		m.r, m.w, m.tube, m.jit = r, w, tube, 0
 		m.c, m.s = r*math.Cos(w), r*math.Sin(w)
 		m.gain = amp
-		m.fast = math.Pow(10, -3/(math.Min(t60, release)*sr)) / r
+		m.fast = math.Pow(10, -3/(min(t60, release)*sr)) / r
 		v.n++
 	}
-	tubeOn := math.Max(0, math.Min(cfg.Resonator, 1))
+	tubeOn := max(0, min(cfg.Resonator, 1))
 	if md := modelOf(cfg.Instrument); md != nil {
 		v.instrument(md, pos, beat, highDamping, inharm, decay, tubeOn, add)
 	} else {
@@ -283,7 +283,7 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 			if inharm > 0 && cfg.Modes[0].Ratio > 0 {
 				// stiffness stretches the partials: relative to the first mode, the higher the sharper
 				x := mode.Ratio / cfg.Modes[0].Ratio
-				f = v.freq * cfg.Modes[0].Ratio * x * math.Sqrt(math.Max(0.1, 1+0.02*inharm*(x*x-1)))
+				f = v.freq * cfg.Modes[0].Ratio * x * math.Sqrt(max(0.1, 1+0.02*inharm*(x*x-1)))
 			}
 			rel := mode.Decay
 			if rel <= 0 {
@@ -310,10 +310,10 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 	}
 	// the mallet: a half sine force, as long as it touches (3 ms soft, 0.2 ms hard); its area is 1
 	// the Hertz contact: the touch lasts as (mass/velocity)^(1/5), so a harder blow is shorter and brighter
-	contact := math.Max(0, math.Min(cfg.Contact, 1))
-	hard := math.Max(0, math.Min(cfg.Hardness+mods.Mod(dHardness)+(0.5+0.5*contact)*(v.velocity-0.5), 1))
-	touch := 0.003 * math.Pow(0.2/3, hard) * math.Pow(0.8/math.Max(v.velocity, 0.1), 0.2+0.3*contact) *
-		math.Pow(3, math.Max(0, math.Min(cfg.Mass, 1)))
+	contact := max(0, min(cfg.Contact, 1))
+	hard := max(0, min(cfg.Hardness+mods.Mod(dHardness)+(0.5+0.5*contact)*(v.velocity-0.5), 1))
+	touch := 0.003 * math.Pow(0.2/3, hard) * math.Pow(0.8/max(v.velocity, 0.1), 0.2+0.3*contact) *
+		math.Pow(3, max(0, min(cfg.Mass, 1)))
 	n := max(1, int(touch*sr))
 	if cfg.Excitation == Burst {
 		n = max(1, int((0.01+0.04*(1-hard))*sr))
@@ -347,13 +347,13 @@ func (v *Voice) strike(duration, amplitude float64, message psalm.Message, tick 
 		}
 	}
 	v.pulsePos = 0
-	v.knock = math.Max(0, cfg.Noise+mods.Mod(dNoise)) * (0.3 + 0.7*v.velocity)
+	v.knock = max(0, cfg.Noise+mods.Mod(dNoise)) * (0.3 + 0.7*v.velocity)
 	if cfg.Excitation == Bow {
 		v.knock = 0
 	}
 	v.bentTo = 0 // the modes are set unbent: bend them in the next buffer
 	v.nlShift, v.nlPeak, v.nlTime = 0, 0, 0
-	v.nlStrength = math.Max(0, math.Min(cfg.Nonlinearity, 1)) * v.velocity * v.velocity
+	v.nlStrength = max(0, min(cfg.Nonlinearity, 1)) * v.velocity * v.velocity
 	v.tremPhase = 0
 	v.active = true
 	v.quiet = 0
@@ -387,7 +387,7 @@ func (v *Voice) prime() {
 func (v *Voice) turn(bend float64) {
 	for k := range v.n {
 		m := &v.modes[k]
-		w := math.Min(m.w*bend*(1+m.jit), math.Pi*0.96)
+		w := min(m.w*bend*(1+m.jit), math.Pi*0.96)
 		m.c, m.s = m.r*math.Cos(w), m.r*math.Sin(w)
 	}
 	v.bentTo = bend
@@ -434,7 +434,7 @@ func (v *Voice) nonlinear(dt float64) {
 	if gentle {
 		rate = gongBloom
 	}
-	phi := math.Min(0.25, rate*v.nlStrength*rel*onset*dt)
+	phi := min(0.25, rate*v.nlStrength*rel*onset*dt)
 	if cap(v.nlGain) < n {
 		v.nlGain = make([]float64, n)
 	}
@@ -474,7 +474,7 @@ func (v *Voice) nonlinear(dt float64) {
 			if gentle {
 				// the energy joins what rings, in its phase: the mode swells, it does not get kicked about
 				if e[k] > 1e-16 {
-					g := math.Min(math.Sqrt(1+gain[k]/e[k]), 1.3)
+					g := min(math.Sqrt(1+gain[k]/e[k]), 1.3)
 					m.re *= g
 					m.im *= g
 				} else {
@@ -495,9 +495,9 @@ func (v *Voice) nonlinear(dt float64) {
 		v.rng = v.rng*1664525 + 1013904223
 		r := float64(int32(v.rng)) / 2147483648
 		if gentle { // a gong's modes drift a little, over about a second
-			m.jit = math.Max(-0.0012, math.Min(0.9991*m.jit+r*0.00005*v.nlStrength*amp, 0.0012))
+			m.jit = max(-0.0012, min(0.9991*m.jit+r*0.00005*v.nlStrength*amp, 0.0012))
 		} else {
-			m.jit = math.Max(-0.004, math.Min(0.99*m.jit+r*0.0008*v.nlStrength*amp, 0.004))
+			m.jit = max(-0.004, min(0.99*m.jit+r*0.0008*v.nlStrength*amp, 0.004))
 		}
 	}
 	if gentle {
@@ -510,7 +510,7 @@ func (v *Voice) nonlinear(dt float64) {
 
 // keyValue is the note for the matrix: -1 to 1, five octaves below middle C to five above
 func (v *Voice) keyValue() float64 {
-	return math.Max(-1, math.Min(math.Log2(v.freq/middleC)/5, 1))
+	return max(-1, min(math.Log2(v.freq/middleC)/5, 1))
 }
 
 // gongBloom is how fast a gong's modes pass energy up (a cymbal's 24: it hisses); the energy joins what
@@ -564,7 +564,7 @@ func (v *Voice) Synthesize() {
 	if cfg.LFORate > 0 {
 		lfoInc = cfg.LFORate / sr
 	}
-	decayCoef := math.Pow(10, -3/(math.Max(0.005, cfg.Decay)*sr))
+	decayCoef := math.Pow(10, -3/(max(0.005, cfg.Decay)*sr))
 	damp := v.released && cfg.Release > 0
 	knockCoef := math.Exp(-1 / (0.002 * sr))
 	// the bend turns every mode (the modes ring on smoothly; the matrix's pitch every 8 samples)
@@ -578,7 +578,7 @@ func (v *Voice) Synthesize() {
 	nonlinear := cfg.Nonlinearity > 0 && v.nlStrength > 0
 	// the tremolo: the motor's, or the wheel's
 	tremolo := cfg.Tremolo
-	depth := math.Max(0, math.Min(cfg.TremoloDepth, 1))
+	depth := max(0, min(cfg.TremoloDepth, 1))
 	if wheel := 0.9 * v.expr.Wheel(); wheel > 0 { // the wheel deepens the motor's tremolo, or brings one in
 		depth += (1 - depth) * wheel
 		if tremolo <= 0 {
@@ -666,7 +666,7 @@ func (v *Voice) Synthesize() {
 			v.knock *= knockCoef
 		}
 		swing := 1.0
-		if d := math.Max(0, math.Min(depth+dTrem, 1)); tremolo > 0 && d > 0 {
+		if d := max(0, min(depth+dTrem, 1)); tremolo > 0 && d > 0 {
 			swing = 1 - d*0.5*(1-math.Cos(2*math.Pi*v.tremPhase))
 			v.tremPhase += tremInc
 			if v.tremPhase >= 1 {
@@ -688,10 +688,10 @@ func (v *Voice) Synthesize() {
 		if filtered {
 			s = v.filter.Process(0, s)
 		}
-		loud = math.Max(loud, math.Abs(s))
+		loud = max(loud, math.Abs(s))
 		g := gain * level
 		if modded {
-			g = gain * math.Max(0, level+dLev)
+			g = gain * max(0, level+dLev)
 		}
 		val := float32(s * g)
 		for _, ch := range channels {

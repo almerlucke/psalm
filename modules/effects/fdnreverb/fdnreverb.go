@@ -176,7 +176,7 @@ func New(cfg Config) *FDNReverb {
 
 	r.update()
 	r.widthS = mix.NewSmoother(r.width, mix.SmoothMs, r.sr)
-	r.mix = mix.NewSmoother(math.Max(0, math.Min(cfg.Mix, 1)), mix.SmoothMs, r.sr)
+	r.mix = mix.NewSmoother(max(0, min(cfg.Mix, 1)), mix.SmoothMs, r.sr)
 	r.SetSelf(r)
 
 	return r
@@ -190,13 +190,13 @@ func (r *FDNReverb) update() {
 	cfg := &r.cfg
 	msToSamps := r.sr * 0.001
 
-	size := math.Max(0.0, math.Min(cfg.Size, 1.0))
-	decay := math.Max(0.05, cfg.Decay)
-	damping := math.Max(0.0, math.Min(cfg.Damping, 1.0))
+	size := max(0.0, min(cfg.Size, 1.0))
+	decay := max(0.05, cfg.Decay)
+	damping := max(0.0, min(cfg.Damping, 1.0))
 	decayHigh := decay * (1.0 - 0.9*damping)
 
 	// modulated reads are centered on length + modDepth
-	r.modDepth = math.Max(0.0, math.Min(cfg.ModDepth, 4.0)) * msToSamps
+	r.modDepth = max(0.0, min(cfg.ModDepth, 4.0)) * msToSamps
 
 	for i := range numLines {
 		// whole samples, so unmodulated reads are exact (interpolation would add damping every pass)
@@ -212,10 +212,10 @@ func (r *FDNReverb) update() {
 		r.modInc[i] = cfg.ModRate * (1.0 + 0.13*float64(i)) / r.sr
 	}
 
-	r.preDelayN = math.Max(0.0, math.Min(cfg.PreDelay, 490.0)) * msToSamps
-	r.width = math.Max(0.0, math.Min(cfg.Width, 1.0))
+	r.preDelayN = max(0.0, min(cfg.PreDelay, 490.0)) * msToSamps
+	r.width = max(0.0, min(cfg.Width, 1.0))
 
-	diffGain := 0.75 * math.Max(0.0, math.Min(cfg.Diffusion, 1.0))
+	diffGain := 0.75 * max(0.0, min(cfg.Diffusion, 1.0))
 	for c := range 2 {
 		for _, ap := range r.diffusers[c] {
 			ap.gain = diffGain
@@ -328,7 +328,7 @@ func (r *FDNReverb) ProcessSample(inL float64, inR float64) (float64, float64) {
 func (r *FDNReverb) Synthesize() {
 	ins := r.Input(0).Channels
 	outs := r.Output(0).Channels
-	mixTo := math.Max(0, math.Min(r.cfg.Mix, 1))
+	mixTo := max(0, min(r.cfg.Mix, 1))
 
 	for i := range r.Config().BufferSize {
 		inL, inR := float64(ins[0][i]), float64(ins[1][i])

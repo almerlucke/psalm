@@ -80,11 +80,11 @@ func Counter(m []Note, p CounterParams) []Note {
 			if i+1 < len(m) {
 				l = m[i+1].Start - n.Start
 			}
-			slots = append(slots, slot{at: n.Start, len: math.Max(l, 0.05), mel: n.Key, chord: chordAt(n.Start)})
+			slots = append(slots, slot{at: n.Start, len: max(l, 0.05), mel: n.Key, chord: chordAt(n.Start)})
 		}
 	} else {
 		for at := m[0].Start; at < end-1e-9; at += p.Every {
-			slots = append(slots, slot{at: at, len: math.Min(p.Every, end-at), mel: melodyAt(at), chord: chordAt(at)})
+			slots = append(slots, slot{at: at, len: min(p.Every, end-at), mel: melodyAt(at), chord: chordAt(at)})
 		}
 	}
 	if len(slots) == 0 {
@@ -132,7 +132,7 @@ func Counter(m []Note, p CounterParams) []Note {
 		}
 		leap := math.Abs(float64(d))
 		cost += (1 - p.Steps) * 0.3 * leap
-		cost += p.Steps * 0.8 * math.Max(0, leap-2)
+		cost += p.Steps * 0.8 * max(0, leap-2)
 		md := mb - ma
 		ms := 0
 		if md > 0 {

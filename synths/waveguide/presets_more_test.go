@@ -61,7 +61,7 @@ func TestMorePresetsRender(t *testing.T) {
 					if math.IsNaN(s) || math.IsInf(s, 0) {
 						t.Fatalf("%s pitch %g velocity %g: %g", name, p, vel, s)
 					}
-					peak = math.Max(peak, math.Abs(s))
+					peak = max(peak, math.Abs(s))
 				}
 				if peak < 0.005 || peak > 6 {
 					t.Errorf("%s pitch %g velocity %g: peak %g", name, p, vel, peak)
@@ -223,7 +223,7 @@ func TestMorePresetsMatrixResponds(t *testing.T) {
 					d += (with[k] - without[k]) * (with[k] - without[k])
 					ref += without[k] * without[k]
 				}
-				rel = math.Max(rel, math.Sqrt(d/(ref+1e-12)))
+				rel = max(rel, math.Sqrt(d/(ref+1e-12)))
 			}
 			if rel < 0.02 {
 				t.Errorf("%s: slot %d (%v to %s) changes the sound by %.4f", name, i, sl.Src, sl.Dest, rel)
@@ -303,7 +303,7 @@ func fingerprintOf(x []float64) fingerprint {
 		mean += f.bands[i] / 24
 	}
 	for i := range f.bands {
-		f.bands[i] = math.Max(f.bands[i]-mean, -40)
+		f.bands[i] = max(f.bands[i]-mean, -40)
 	}
 	f.centroid = math.Log2(num / (den + 1e-12))
 	// envelope
@@ -313,10 +313,10 @@ func fingerprintOf(x []float64) fingerprint {
 	for i := 0; i+win <= len(x); i += win {
 		pk := 0.0
 		for _, s := range x[i : i+win] {
-			pk = math.Max(pk, math.Abs(s))
+			pk = max(pk, math.Abs(s))
 		}
 		env = append(env, pk)
-		top = math.Max(top, pk)
+		top = max(top, pk)
 	}
 	for i, pk := range env {
 		if pk >= 0.7*top {
@@ -326,10 +326,10 @@ func fingerprintOf(x []float64) fingerprint {
 	}
 	late, cnt := 0.0, 0.0
 	for i := int(1.2 / 0.005); i < len(env); i++ {
-		late = math.Max(late, env[i])
+		late = max(late, env[i])
 		cnt++
 	}
-	f.decay = math.Min(40, 20*math.Log10(top/(late+1e-9)))
+	f.decay = min(40, 20*math.Log10(top/(late+1e-9)))
 	return f
 }
 

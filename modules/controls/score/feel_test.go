@@ -75,7 +75,7 @@ func TestTimingHumanize(t *testing.T) {
 	for _, m := range loops[0] {
 		b := beatOf(m, 0, s)
 		off := b - math.Round(b)
-		maxOff = math.Max(maxOff, math.Abs(off))
+		maxOff = max(maxOff, math.Abs(off))
 		if math.Abs(off) > 1.5/float64(psalm.PPQ()) {
 			moved++
 		}
@@ -154,7 +154,7 @@ func TestVelocityAndAccents(t *testing.T) {
 		if math.Abs(a/0.5-v/0.8) > 1e-9 {
 			t.Fatal("velocity and amplitude should vary together")
 		}
-		lo, hi = math.Min(lo, a), math.Max(hi, a)
+		lo, hi = min(lo, a), max(hi, a)
 	}
 	if lo < 0.4-1e-9 || hi > 0.6+1e-9 || hi-lo < 0.05 {
 		t.Fatalf("expected amplitudes varying within ±20%% of 0.5, got %v - %v", lo, hi)

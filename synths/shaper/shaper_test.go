@@ -51,7 +51,7 @@ func amplitude(x []float64, freq float64) float64 {
 func peak(x []float64) float64 {
 	p := 0.0
 	for _, v := range x {
-		p = math.Max(p, math.Abs(v))
+		p = max(p, math.Abs(v))
 	}
 	return p
 }
@@ -436,7 +436,7 @@ func TestMonoConfig(t *testing.T) {
 func d2(x []float64) float64 {
 	m := 0.0
 	for i := 2; i < len(x); i++ {
-		m = math.Max(m, math.Abs(x[i]-2*x[i-1]+x[i-2]))
+		m = max(m, math.Abs(x[i]-2*x[i-1]+x[i-2]))
 	}
 	return m
 }
@@ -497,7 +497,7 @@ func TestNoOffsetThump(t *testing.T) {
 			s2 += y * y
 		}
 		if s2 > 0 {
-			worst = math.Max(worst, math.Abs(s/float64(win))/math.Sqrt(s2/float64(win)))
+			worst = max(worst, math.Abs(s/float64(win))/math.Sqrt(s2/float64(win)))
 		}
 	}
 	if worst > 0.15 {
@@ -513,7 +513,7 @@ func TestNoOffsetThump(t *testing.T) {
 			s2 += y * y
 		}
 		if s2/float64(win) > 1e-4 { // louder than -40 dB: below it the offset is of the blocker settling, far below hearing
-			worst = math.Max(worst, math.Abs(s/float64(win))/math.Sqrt(s2/float64(win)))
+			worst = max(worst, math.Abs(s/float64(win))/math.Sqrt(s2/float64(win)))
 		}
 	}
 	if worst > 0.15 {
@@ -627,7 +627,7 @@ func TestPresetSwapsDoNotTick(t *testing.T) {
 	maxd2 := func(x []float64) float64 {
 		m := 0.0
 		for i := 2; i < len(x); i++ {
-			m = math.Max(m, math.Abs(x[i]-2*x[i-1]+x[i-2]))
+			m = max(m, math.Abs(x[i]-2*x[i-1]+x[i-2]))
 		}
 		return m
 	}
@@ -640,7 +640,7 @@ func TestPresetSwapsDoNotTick(t *testing.T) {
 		after := run(v, 0.5)
 		x := append(append([]float64{}, before[len(before)-8:]...), after...)
 		early, steady := maxd2(x[:int(0.03*sr())]), maxd2(x[int(0.2*sr()):])
-		if early > 4*math.Max(steady, maxd2(before))+0.003 {
+		if early > 4*max(steady, maxd2(before))+0.003 {
 			t.Errorf("%s to %s: second difference %.4f in the first 30 ms, %.4f in the sound once settled, %.4f before: a tick", p[0], p[1], early, steady, maxd2(before))
 		}
 	}
@@ -655,9 +655,9 @@ func TestFMBassOnset(t *testing.T) {
 	for i := 2; i < len(x); i++ {
 		d := math.Abs(x[i] - 2*x[i-1] + x[i-2])
 		if i < int(0.02*sr()) {
-			on = math.Max(on, d)
+			on = max(on, d)
 		} else if i > int(0.1*sr()) {
-			body = math.Max(body, d)
+			body = max(body, d)
 		}
 	}
 	if on > 4*body {

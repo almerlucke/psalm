@@ -317,9 +317,9 @@ func TestSoundboardEndsSilently(t *testing.T) {
 	b := soundboard(sr)
 	peak, end := 0.0, 0.0
 	for i, x := range b {
-		peak = math.Max(peak, math.Abs(x))
+		peak = max(peak, math.Abs(x))
 		if i >= len(b)-200 {
-			end = math.Max(end, math.Abs(x))
+			end = max(end, math.Abs(x))
 		}
 	}
 	if db := 20 * math.Log10(end/peak); db > -80 {

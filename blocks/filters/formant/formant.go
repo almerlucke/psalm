@@ -54,12 +54,12 @@ func (f *Formant) Set(vowelPos float64, q float64) {
 
 // SetShift scales all formant frequencies, > 1 sounds like a smaller voice, < 1 like a bigger one
 func (f *Formant) SetShift(shift float64) {
-	f.shift = math.Max(0.1, shift)
+	f.shift = max(0.1, shift)
 	f.update()
 }
 
 func (f *Formant) update() {
-	pos := math.Max(0.0, math.Min(f.pos, NumVowels-1))
+	pos := max(0.0, min(f.pos, NumVowels-1))
 	idx := int(pos)
 	if idx >= NumVowels-1 {
 		idx = NumVowels - 2

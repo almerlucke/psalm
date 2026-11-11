@@ -208,11 +208,11 @@ func (k *Keyboard) Receive(value any, _ int) {
 // Velocity returns the velocity of a note (a MIDI velocity, 1-127) after the curve, 0-1
 func (k *Keyboard) Velocity(velocity int) float64 {
 	if k.cfg.FixedVelocity > 0 {
-		return math.Min(k.cfg.FixedVelocity, 1)
+		return min(k.cfg.FixedVelocity, 1)
 	}
-	v := math.Max(0, math.Min(float64(velocity)/127, 1))
+	v := max(0, min(float64(velocity)/127, 1))
 	if k.cfg.VelocityMap != nil {
-		return math.Max(0, math.Min(k.cfg.VelocityMap(v), 1))
+		return max(0, min(k.cfg.VelocityMap(v), 1))
 	}
 	c := float64(k.cfg.Curve)
 	if c <= 0 {
@@ -302,7 +302,7 @@ func (k *Keyboard) noteOn(ch, note, velocity int, tick psalm.CtrlTick) {
 		k.release(ch, note, tick)
 	}
 	v := k.Velocity(velocity)
-	d := math.Max(0, math.Min(k.cfg.Dynamics, 1))
+	d := max(0, min(k.cfg.Dynamics, 1))
 	if k.cfg.Hits {
 		k.send(psalm.Message{
 			"command":   "trigger",

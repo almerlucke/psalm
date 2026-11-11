@@ -99,7 +99,7 @@ func TestScaleStillWorks(t *testing.T) {
 	e, _ := tractAt(Tenor, 0, 1)
 	m, _ := tractAt(Tenor, 0, 0.5)
 	for k := range m {
-		if m[k] < math.Min(a[k], e[k])-1e-9 || m[k] > math.Max(a[k], e[k])+1e-9 {
+		if m[k] < min(a[k], e[k])-1e-9 || m[k] > max(a[k], e[k])+1e-9 {
 			t.Errorf("F%d of the mix %g not between %g and %g", k+1, m[k], a[k], e[k])
 		}
 	}
@@ -147,7 +147,7 @@ func TestGlottalPulse(t *testing.T) {
 	for range 100 * 100 {
 		d, f := g.tick(0.01, 0.6, 1.4, 0, 0)
 		sum += d
-		peak = math.Max(peak, f)
+		peak = max(peak, f)
 	}
 	if math.Abs(sum)/100 > 0.01 || math.Abs(peak-1) > 0.02 {
 		t.Errorf("mean of the derivative %g, flow peak %g", sum/100, peak)
@@ -224,7 +224,7 @@ func TestShimmer(t *testing.T) {
 			}
 			cycles, low = g.cycles, 0
 		}
-		low = math.Min(low, d)
+		low = min(low, d)
 	}
 	if len(lows) < 100 {
 		t.Fatalf("%d cycles", len(lows))

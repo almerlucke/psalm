@@ -354,8 +354,8 @@ func (s *Script) newAPI() *goja.Object {
 			step = 15 / s.BPM()
 		}
 		q := queued{tick: s.tick, pitches: s.pitches(call.Argument(0)),
-			velocity: math.Max(0, math.Min(number(call, 1, 0.8), 1)),
-			seconds:  math.Max(0.005, number(call, 2, 1)*step)}
+			velocity: max(0, min(number(call, 1, 0.8), 1)),
+			seconds:  max(0.005, number(call, 2, 1)*step)}
 		// delay: later, in steps; the tick it falls on is the nearest (a tick is a few milliseconds)
 		if delay := number(call, 3, 0); delay > 0 {
 			ticks := delay * step * s.BPM() * float64(s.Config().PPQ) / 60
@@ -417,7 +417,7 @@ func (s *Script) newAPI() *goja.Object {
 	// fire(delay = 0, count = 1): a trigger on the trigger output, carrying the event being handled; delay steps later (0.5: halfway the next step), count
 	// of them (a ratchet) spread over one step, the first after the delay
 	set("fire", func(call goja.FunctionCall) goja.Value {
-		delay, count := math.Max(0, number(call, 0, 0)), int(math.Max(1, math.Min(number(call, 1, 1), 64)))
+		delay, count := max(0, number(call, 0, 0)), int(max(1, min(number(call, 1, 1), 64)))
 		step := s.ev.Seconds
 		if step <= 0 { // no trigger yet: a sixteenth
 			step = 15 / s.BPM()
@@ -453,7 +453,7 @@ func (s *Script) newAPI() *goja.Object {
 		return goja.Undefined()
 	})
 	set("mod", func(call goja.FunctionCall) goja.Value {
-		s.modVal.Store(math.Float64bits(math.Max(0, math.Min(number(call, 0, 0), 1))))
+		s.modVal.Store(math.Float64bits(max(0, min(number(call, 0, 0), 1))))
 		return goja.Undefined()
 	})
 	set("log", func(call goja.FunctionCall) goja.Value {

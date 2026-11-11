@@ -84,7 +84,7 @@ func NewTable(samples []float32, frameSize int) (*Table, error) {
 			data := make([]float32, size+1)
 			for j := range size {
 				data[j] = float32(lre[j])
-				peak = math.Max(peak, math.Abs(lre[j]))
+				peak = max(peak, math.Abs(lre[j]))
 			}
 			data[size] = data[0]
 			t.frames[i] = append(t.frames[i], level{data: data, size: float64(size), mask: size - 1})
@@ -117,7 +117,7 @@ func NewTable(samples []float32, frameSize int) (*Table, error) {
 	for i, r := range rmss {
 		t.gains[i] = 1
 		if r > 1e-6 {
-			t.gains[i] = math.Min(maxFrameGain, mean/r)
+			t.gains[i] = min(maxFrameGain, mean/r)
 		}
 	}
 
@@ -272,7 +272,7 @@ func (t *Table) FrameSize() int {
 // into the next, smoothly giving up the harmonics that would soon cross the Nyquist frequency
 func (t *Table) levelFor(inc float64) (int, float64) {
 	harmonics := float64(t.frameSize / 2)
-	maxHarmonic := 0.48 / math.Max(inc, 1e-9)
+	maxHarmonic := 0.48 / max(inc, 1e-9)
 	x := math.Log2(harmonics / maxHarmonic) // level x holds exactly the harmonics allowed
 	l := int(math.Floor(x)) + 1             // level l and l+1 are both safe
 	if l < 0 {
@@ -306,7 +306,7 @@ type cursor struct {
 }
 
 func (t *Table) cursor(position float64, inc float64) cursor {
-	fp := math.Max(0, math.Min(position, 1)) * float64(len(t.frames)-1)
+	fp := max(0, min(position, 1)) * float64(len(t.frames)-1)
 	f0 := int(fp)
 	f1 := min(f0+1, len(t.frames)-1)
 	c := cursor{f0: t.frames[f0], f1: t.frames[f1], ffrac: fp - float64(f0)}

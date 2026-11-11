@@ -129,11 +129,11 @@ func (p *Part) SetNotes(text string) error {
 
 func (p *Part) ReceiveMessage(msg psalm.Message) {
 	p.Clock.ReceiveMessage(msg)
-	msg.IfFltVal("velocity", func(f float64) { p.Velocity = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("length", func(f float64) { p.Length = math.Max(0.05, math.Min(f, 1)) })
+	msg.IfFltVal("velocity", func(f float64) { p.Velocity = max(0, min(f, 1)) })
+	msg.IfFltVal("length", func(f float64) { p.Length = max(0.05, min(f, 1)) })
 	msg.IfFltVal("transpose", func(f float64) { p.Transpose = f })
-	msg.IfFltVal("register", func(f float64) { p.Register = math.Max(0, math.Min(f, 96)) })
-	msg.IfFltVal("bass", func(f float64) { p.Bass = math.Max(0, math.Min(f, 96)) })
+	msg.IfFltVal("register", func(f float64) { p.Register = max(0, min(f, 96)) })
+	msg.IfFltVal("bass", func(f float64) { p.Bass = max(0, min(f, 96)) })
 }
 
 func (p *Part) Receive(v any, _ int) {
@@ -149,7 +149,7 @@ func (p *Part) SetTargets(targets []psalm.Receiver) { p.targets = targets }
 func (p *Part) CtrlTick(tick psalm.CtrlTick) {
 	p.play(tick, func(h Hit, _ int64, seconds float64) {
 		if pitches := p.pitchesOf(h, tick); len(pitches) > 0 {
-			p.pending = append(p.pending, queued{tick: tick, pitches: pitches, seconds: math.Max(0.005, seconds*p.Length), vel: h.Vel, pitch: h.Pitch})
+			p.pending = append(p.pending, queued{tick: tick, pitches: pitches, seconds: max(0.005, seconds*p.Length), vel: h.Vel, pitch: h.Pitch})
 		}
 	})
 }
@@ -159,7 +159,7 @@ func (p *Part) late(psalm.CtrlTick) {
 	for _, n := range p.pending {
 		vel := p.Velocity
 		if n.vel > 0 {
-			vel = math.Min(1, vel*n.vel)
+			vel = min(1, vel*n.vel)
 		}
 		for _, pitch := range n.pitches {
 			msg := psalm.Message{"command": "trigger", "tick": n.tick, "duration": n.seconds, "amplitude": vel,

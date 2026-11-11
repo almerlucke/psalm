@@ -91,7 +91,7 @@ func (s *str) next() float64 {
 		// shorter for now: read the loop a fraction of a sample later (linear, which never adds
 		// gain, so the loop stays stable)
 		n := p.n
-		at := float64(s.pos) + math.Min(s.shift, float64(n-2))
+		at := float64(s.pos) + min(s.shift, float64(n-2))
 		i := int(at)
 		f := at - float64(i)
 		u = s.buf[i%n] + (s.buf[(i+1)%n]-s.buf[i%n])*f
@@ -162,7 +162,7 @@ func designString(d stringDesign) stringParams {
 	// more
 	g0 := math.Pow(10, -3/(d.f0*d.t60))
 	p.g = g0
-	fh := math.Min(math.Max(6*d.f0, 5000), 0.4*d.sr) // fitted high: a one pole follows f² below it
+	fh := min(max(6*d.f0, 5000), 0.4*d.sr) // fitted high: a one pole follows f² below it
 	if fh > d.f0*1.5 && d.damping > 0 {
 		gh := math.Pow(10, -3/(d.f0/(1/d.t60+d.damping*(fh*fh-d.f0*d.f0))))
 		p.a = lossPole(gh/g0, 2*math.Pi*fh/d.sr)
@@ -216,7 +216,7 @@ func dispersion(sr, stiffness, wound float64) *[128]dispersionFilter {
 	}
 	var t [128]dispersionFilter
 	for k := range t {
-		pitch := math.Max(21, math.Min(float64(k), 108))
+		pitch := max(21, min(float64(k), 108))
 		t[k].stages, t[k].ad = fitDispersion(sr, 440*math.Exp2((pitch-69)/12), inharmonicityAt(pitch, wound)*stiffness, dispersionStages)
 	}
 	stored, _ := dispersionTables.LoadOrStore(key, &t)
@@ -233,14 +233,14 @@ func fitDispersion(sr, f0, b float64, maxStages int) (int, float64) {
 	for stages > 0 && float64(stages) > 0.4*(period-3) {
 		stages--
 	}
-	top := math.Min(10, math.Floor(0.35*period))
+	top := min(10, math.Floor(0.35*period))
 	if b <= 0 || stages == 0 || top < 2 {
 		return 0, 0
 	}
 
 	// the most negative coefficient keeps the allpasses within part of the loop
-	q := math.Max(1, 0.4*(period-3)/float64(stages))
-	aMin := math.Max(-0.95, (1-q)/(1+q))
+	q := max(1, 0.4*(period-3)/float64(stages))
+	aMin := max(-0.95, (1-q)/(1+q))
 
 	p := stringParams{g: 1, stages: stages}
 	cost := func(a float64) float64 {
@@ -283,7 +283,7 @@ func lossPole(ratio, w float64) float64 {
 	c := math.Cos(w)
 	// (r² - 1) a² + 2 (r² c - 1) a + (r² - 1) = 0, the root inside the unit circle
 	A, B := r2-1, 2*(r2*c-1)
-	disc := math.Sqrt(math.Max(0, B*B-4*A*A))
+	disc := math.Sqrt(max(0, B*B-4*A*A))
 	for _, a := range []float64{(-B + disc) / (2 * A), (-B - disc) / (2 * A)} {
 		if a <= 0 && a > -1 {
 			return a
@@ -339,12 +339,12 @@ func partial(p stringParams, k, guess float64) float64 {
 	phase := func(w float64) float64 {
 		return w*(float64(p.n)+filterDelay(p, p.ad, w)+allpassDelay(p.at, w)) - 2*math.Pi*k
 	}
-	w := math.Max(1e-4, math.Min(guess, math.Pi-1e-3))
+	w := max(1e-4, min(guess, math.Pi-1e-3))
 	for range 12 {
 		const h = 1e-7
 		f := phase(w)
 		step := f / ((phase(w+h) - f) / h)
-		w = math.Max(1e-6, math.Min(w-step, math.Pi-1e-6))
+		w = max(1e-6, min(w-step, math.Pi-1e-6))
 		if math.Abs(step) < 1e-12 {
 			break
 		}
@@ -440,14 +440,14 @@ func woundness(pitch float64) float64 { return 1 / (1 + math.Exp((pitch-woundBre
 // inharmonicityAt returns the inharmonicity of a key with the wound strings at an amount (0 is
 // the plain curve of inharmonicity, 1 the steps of a real piano)
 func inharmonicityAt(pitch, wound float64) float64 {
-	w := math.Max(0, math.Min(wound, 1)) * woundness(pitch)
+	w := max(0, min(wound, 1)) * woundness(pitch)
 	return inharmonicity(pitch) * (1 - w*(1-woundStiffness))
 }
 
 // woundTraits returns what the copper wrap does to a key: the factor of its ring time, of the
 // damping of its highs, and of its drain into the bridge
 func woundTraits(pitch float64, cfg *Config) (ring, damping, mass float64) {
-	w := math.Max(0, math.Min(cfg.Wound, 1)) * woundness(pitch)
+	w := max(0, min(cfg.Wound, 1)) * woundness(pitch)
 	return 1 - w*(1-woundRing), 1 + w*woundDamping, 1 + w*woundMass
 }
 

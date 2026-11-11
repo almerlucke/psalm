@@ -103,7 +103,7 @@ func (r *RingMod) Settings() Config { return r.cfg }
 func (r *RingMod) SetFreq(hz float64) { r.cfg.Freq = hz }
 func (r *RingMod) SetMix(m float64)   { r.cfg.Mix = m }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 
 func (r *RingMod) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {

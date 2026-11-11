@@ -6,6 +6,7 @@ import (
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/blocks/mix"
 	"github.com/almerlucke/psalm/blocks/pitchshift"
+	"github.com/almerlucke/psalm/blocks/tanh"
 	"github.com/almerlucke/psalm/modules/effects/fdnreverb"
 )
 
@@ -43,7 +44,7 @@ type highPass struct {
 }
 
 func (h *highPass) set(fc float64, sr float64) {
-	rc := 1.0 / (2.0 * math.Pi * math.Max(1.0, fc))
+	rc := 1.0 / (2.0 * math.Pi * max(1.0, fc))
 	h.a = rc / (rc + 1.0/sr)
 }
 
@@ -95,8 +96,8 @@ func New(cfg Config) *Shimmer {
 
 	s.envAtt = 1.0 - math.Exp(-1.0/(0.01*sr))
 	s.envRel = 1.0 - math.Exp(-1.0/(0.3*sr))
-	s.amount = mix.NewSmoother(math.Max(0, math.Min(cfg.Shimmer, 1)), mix.SmoothMs, sr)
-	s.mix = mix.NewSmoother(math.Max(0, math.Min(cfg.Mix, 1)), mix.SmoothMs, sr)
+	s.amount = mix.NewSmoother(max(0, min(cfg.Shimmer, 1)), mix.SmoothMs, sr)
+	s.mix = mix.NewSmoother(max(0, min(cfg.Mix, 1)), mix.SmoothMs, sr)
 
 	s.SetSelf(s)
 
@@ -156,8 +157,8 @@ func (s *Shimmer) ReceiveMessage(msg psalm.Message) {
 func (s *Shimmer) Synthesize() {
 	ins := s.Input(0).Channels
 	outs := s.Output(0).Channels
-	mixTo := math.Max(0, math.Min(s.cfg.Mix, 1))
-	amountTo := math.Max(0.0, math.Min(s.cfg.Shimmer, 1.0))
+	mixTo := max(0, min(s.cfg.Mix, 1))
+	amountTo := max(0.0, min(s.cfg.Shimmer, 1.0))
 
 	for i := range s.Config().BufferSize {
 		inL, inR := float64(ins[0][i]), float64(ins[1][i])
@@ -168,7 +169,7 @@ func (s *Shimmer) Synthesize() {
 		left, right := s.reverb.ProcessSample(inL+s.fb[0], inR+s.fb[1])
 
 		// follow the wet level and back off the feedback above feedbackLevel
-		level := math.Max(math.Abs(left), math.Abs(right))
+		level := max(math.Abs(left), math.Abs(right))
 		coef := s.envRel
 		if level > s.env {
 			coef = s.envAtt
@@ -182,7 +183,7 @@ func (s *Shimmer) Synthesize() {
 		// shift, cut the lows and softly limit what goes back into the loop
 		for c, x := range [2]float64{left, right} {
 			shifted := s.lowCuts[c].process(s.shifters[c].Process(x))
-			s.fb[c] = math.Tanh(shifted * gain)
+			s.fb[c] = tanh.Tanh(shifted * gain)
 		}
 
 		outs[0][i] = float32(dry*inL + wet*left)

@@ -84,7 +84,7 @@ func (s *Saturate) SignalLatency() int { return s.os[0].Latency() }
 // Tail lets it rest while silent (the filters ring for a moment)
 func (s *Saturate) Tail() float64 { return 0.01 }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 func dbToGain(db float64) float64     { return math.Pow(10, db/20) }
 
 func (s *Saturate) Receive(value any, index int) {
@@ -148,7 +148,7 @@ func (s *Saturate) Synthesize() {
 		dcR    = 1 - 2*math.Pi*10/sr // a DC blocker at 10 Hz
 	)
 	if cfg.Tone > 0 {
-		lp = 1 - math.Exp(-2*math.Pi*math.Min(cfg.Tone, sr*0.45)/sr)
+		lp = 1 - math.Exp(-2*math.Pi*min(cfg.Tone, sr*0.45)/sr)
 	}
 	for i := range out[0] {
 		drive := dbToGain(s.drive.Next(cfg.Drive))

@@ -126,7 +126,7 @@ func tuneVoice(in, out string, o tuneOptions) error {
 		}
 		x[i] = s / float64(chans)
 		if chans > 1 {
-			apart = math.Max(apart, math.Abs(float64(sf.Buffer(0, 0)[i]-sf.Buffer(1, 0)[i])))
+			apart = max(apart, math.Abs(float64(sf.Buffer(0, 0)[i]-sf.Buffer(1, 0)[i])))
 		}
 	}
 	if apart > 1e-3 {

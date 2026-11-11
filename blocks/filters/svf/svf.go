@@ -62,7 +62,7 @@ func (f *SVF) Set(fc float64, res float64) {
 // handy for bandpass based filters like formant filters
 func (f *SVF) SetFrequencyQ(fc float64, q float64) {
 	f.fc = fc
-	f.q = math.Max(0.1, q)
+	f.q = max(0.1, q)
 	f.update()
 }
 
@@ -72,8 +72,8 @@ func (f *SVF) K() float64 {
 }
 
 func (f *SVF) update() {
-	fc := math.Max(1.0, math.Min(f.fc, f.sr*0.49))
-	res := math.Max(0.0, math.Min(f.res, 0.99))
+	fc := max(1.0, min(f.fc, f.sr*0.49))
+	res := max(0.0, min(f.res, 0.99))
 
 	f.g = math.Tan(math.Pi * fc / f.sr)
 	if f.q > 0.0 {

@@ -88,7 +88,7 @@ func ParseLanes(text string) ([]LaneData, error) {
 			if x < 0 {
 				return nil, fmt.Errorf("line %d: %q: a position of 0 (the start) or more", n+1, strings.TrimSpace(part))
 			}
-			pt := Point{X: x, Y: math.Max(0, math.Min(y, 1))}
+			pt := Point{X: x, Y: max(0, min(y, 1))}
 			if len(f) == 3 {
 				if !slicesContains(laneShapes, f[2]) {
 					return nil, fmt.Errorf("line %d: %q: lin, smooth, step or exp", n+1, f[2])
@@ -212,9 +212,9 @@ func (a *Automation) Value(lane int) float64 {
 		return 0
 	}
 	if int(a.rec.Load()) == lane {
-		return math.Max(0, math.Min(a.frozen.Load(), 1))
+		return max(0, min(a.frozen.Load(), 1))
 	}
-	return math.Max(0, math.Min(a.vals[lane].Load(), 1))
+	return max(0, min(a.vals[lane].Load(), 1))
 }
 
 // SetRecord arms a lane to record (-1: none): its cable stops moving its setting
@@ -243,7 +243,7 @@ func (a *Automation) CtrlTick(tick psalm.CtrlTick) {
 			beatsPerBar = bpb
 		}
 		pos, _ := a.song.At(tick, a.Config().PPQ)
-		x = float64(pos.Section.StartBar) + math.Max(0, math.Min(pos.Progress, 1))*float64(pos.Section.Bars)
+		x = float64(pos.Section.StartBar) + max(0, min(pos.Progress, 1))*float64(pos.Section.Bars)
 		a.live.Store(!pos.Ended)
 		if pos.Ended {
 			x = float64(tr.Form().Bars())
@@ -295,7 +295,7 @@ func (a *Automation) View() *LanesView {
 		h.Values[i] = math.Round(a.Value(i)*1000) / 1000
 	}
 	if h.Armed >= 0 { // what is played, as it is played
-		h.Values[h.Armed] = math.Round(math.Max(0, math.Min(a.shown.Load(), 1))*1000) / 1000
+		h.Values[h.Armed] = math.Round(max(0, min(a.shown.Load(), 1))*1000) / 1000
 	}
 	v.Head = h
 	if tr := a.song.Transport(); tr != nil {

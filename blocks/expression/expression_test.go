@@ -42,7 +42,7 @@ func TestBendAndWheel(t *testing.T) {
 	lo, hi := 0.0, 0.0
 	for range 44100 {
 		v := f.Vibrato(44100, 5, 0.5)
-		lo, hi = math.Min(lo, v), math.Max(hi, v)
+		lo, hi = min(lo, v), max(hi, v)
 	}
 	if math.Abs(lo+0.5) > 1e-3 || math.Abs(hi-0.5) > 1e-3 {
 		t.Errorf("the vibrato swings %g to %g, want ±0.5", lo, hi)

@@ -303,12 +303,12 @@ func pointer(read func(string) (Pattern, error)) func(string) (*Pattern, error) 
 
 func (c *Clock) ReceiveMessage(msg psalm.Message) {
 	msg.IfIntVal("division", func(d int) { c.Division = max(0, min(d, len(Divisions)-1)) })
-	msg.IfFltVal("swing", func(f float64) { c.Swing = math.Max(0.5, math.Min(f, 0.75)) })
-	msg.IfFltVal("chance", func(f float64) { c.Chance = math.Max(0, math.Min(f, 1)) })
+	msg.IfFltVal("swing", func(f float64) { c.Swing = max(0.5, min(f, 0.75)) })
+	msg.IfFltVal("chance", func(f float64) { c.Chance = max(0, min(f, 1)) })
 	msg.IfIntVal("groove", func(g int) { c.Groove = max(0, min(g, len(rhythm.Grooves)-1)) })
-	msg.IfFltVal("drift", func(f float64) { c.Drift = math.Max(0, math.Min(f, 0.3)) })
-	msg.IfFltVal("mutate", func(f float64) { c.Mutate = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("seed", func(f float64) { c.Seed = int(math.Max(0, math.Min(f, 999))) })
+	msg.IfFltVal("drift", func(f float64) { c.Drift = max(0, min(f, 0.3)) })
+	msg.IfFltVal("mutate", func(f float64) { c.Mutate = max(0, min(f, 1)) })
+	msg.IfFltVal("seed", func(f float64) { c.Seed = int(max(0, min(f, 999))) })
 	msg.IfBoolVal("freeze", func(b bool) { c.Freeze = b })
 }
 
@@ -400,16 +400,16 @@ func (c *Clock) feel(p *Pattern, hi int, cycle int64) (shift, vel, prob, length,
 	}
 	if l := c.lanes.Load(); l != nil {
 		if v, ok := l.Prob.At(step); ok {
-			prob = math.Max(0, math.Min(v/100, 1))
+			prob = max(0, min(v/100, 1))
 		}
 		if v, ok := l.Vel.At(step); ok {
-			vel *= math.Max(0, v/100)
+			vel *= max(0, v/100)
 		}
 		if v, ok := l.Shift.At(step); ok {
-			shift += math.Max(-100, math.Min(v, 100)) / 100
+			shift += max(-100, min(v, 100)) / 100
 		}
 		if v, ok := l.Len.At(step); ok {
-			length = math.Max(0.05, v/100)
+			length = max(0.05, v/100)
 		}
 		if v, ok := l.Pitch.At(step); ok {
 			pitch = v
@@ -458,7 +458,7 @@ func mutatePattern(p *Pattern, amount float64, seed int, pass int64) *Pattern {
 		return p
 	}
 	rng := rand.New(rand.NewPCG(uint64(seed)*7919+uint64(pass)*104729+1, 17))
-	prob := math.Min(1, amount) * 0.25
+	prob := min(1, amount) * 0.25
 	canAdd := p.Hits[0].Pitches == nil && len(p.Hits[0].Rel) == 0
 	by := make([][]Hit, n)
 	for _, h := range p.Hits {
@@ -490,7 +490,7 @@ func mutatePattern(p *Pattern, amount float64, seed int, pass int64) *Pattern {
 func (c *Clock) hitTick() float64 {
 	p := c.pat()
 	shift, _, _, _, _ := c.feel(p, c.hit, c.cycle)
-	return c.tickAt(math.Max(0, float64(c.cycle)*p.Steps+p.Hits[c.hit].At+shift))
+	return c.tickAt(max(0, float64(c.cycle)*p.Steps+p.Hits[c.hit].At+shift))
 }
 
 // inFill says the tick is in the last bar of its section of the song
@@ -557,7 +557,7 @@ func (c *Clock) Play(tick psalm.CtrlTick, f func(Event)) {
 func (c *Clock) Set(division string, swing float64) error {
 	for i, d := range Divisions {
 		if d == division {
-			c.Division, c.Swing = i, math.Max(0.5, math.Min(swing, 0.75))
+			c.Division, c.Swing = i, max(0.5, min(swing, 0.75))
 			return nil
 		}
 	}
@@ -833,8 +833,8 @@ func NewNote() *Note {
 
 func (n *Note) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("pitch", func(f float64) { n.Pitch = f })
-	msg.IfFltVal("velocity", func(f float64) { n.Velocity = math.Max(0, math.Min(f, 1)) })
-	msg.IfFltVal("length", func(f float64) { n.Length = math.Max(0.01, f) })
+	msg.IfFltVal("velocity", func(f float64) { n.Velocity = max(0, min(f, 1)) })
+	msg.IfFltVal("length", func(f float64) { n.Length = max(0.01, f) })
 	msg.IfFltVal("transpose", func(f float64) { n.Transpose = f })
 }
 
@@ -873,13 +873,13 @@ func (n *Note) late(psalm.CtrlTick) {
 			vel = n.velocity
 		}
 		if ev.Vel > 0 {
-			vel = math.Min(1, vel*ev.Vel)
+			vel = min(1, vel*ev.Vel)
 		}
 		steps := n.Length
 		if n.hasLen {
 			steps = n.length
 		}
-		seconds := math.Max(0.005, steps*ev.Seconds)
+		seconds := max(0.005, steps*ev.Seconds)
 		var pitches []float64
 		switch p := n.pitch.(type) {
 		case nil:

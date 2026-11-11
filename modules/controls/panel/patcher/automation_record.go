@@ -140,7 +140,7 @@ func (r *laneRecorder) y(tn *node, v float64) float64 {
 	} else if p.Max != p.Min {
 		x = (v - p.Min) / (p.Max - p.Min)
 	}
-	return math.Round(math.Max(0, math.Min((x-r.lo)/(r.hi-r.lo), 1))*10000) / 10000
+	return math.Round(max(0, min((x-r.lo)/(r.hi-r.lo), 1))*10000) / 10000
 }
 
 // step looks at the setting once (every 25 ms; a test calls it as it runs the patch); false: the lane is not to be recorded any more (its cable or module is gone)

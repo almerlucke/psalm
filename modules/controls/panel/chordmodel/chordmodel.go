@@ -304,7 +304,7 @@ func (m *Module) Hear(i int) {
 
 // SetLive switches live on or off, and how many bars a progression lasts when the patch has no song (0: the length of the progression)
 func (m *Module) SetLive(on bool, every float64) {
-	m.change(func(st *State) { st.Live, st.Every = on, math.Max(0, math.Min(every, 128)) })
+	m.change(func(st *State) { st.Live, st.Every = on, max(0, min(every, 128)) })
 }
 
 // Preview starts or stops playing the progression through the synths the notes output goes to
@@ -374,7 +374,7 @@ func (m *Module) CtrlTick(tick psalm.CtrlTick) {
 		if j == 0 {
 			vel = 0.7
 		}
-		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": math.Max(0.05, left*m.Env().TickDuration()*ppq*0.95), "amplitude": vel,
+		msg := psalm.Message{"command": "trigger", "tick": tick, "duration": max(0.05, left*m.Env().TickDuration()*ppq*0.95), "amplitude": vel,
 			"message": psalm.Message{"pitch": p, "velocity": vel}}
 		for _, t := range m.targets {
 			t.ReceiveMessage(msg)
@@ -460,7 +460,7 @@ func (m *Module) message(raw json.RawMessage) {
 				st.Scale = max(0, min(*s.Scale, len(Scales)-1))
 			}
 			if s.Bars != nil {
-				st.Bars = math.Max(0.5, math.Min(*s.Bars, 128))
+				st.Bars = max(0.5, min(*s.Bars, 128))
 			}
 			if s.Strip != nil {
 				st.Strip = *s.Strip
@@ -472,13 +472,13 @@ func (m *Module) message(raw json.RawMessage) {
 				st.As = *s.As
 			}
 			if s.Rate != nil {
-				st.Rate = math.Max(0.01, math.Min(*s.Rate, 2))
+				st.Rate = max(0.01, min(*s.Rate, 2))
 			}
 			if s.Live != nil {
 				st.Live = *s.Live
 			}
 			if s.Every != nil {
-				st.Every = math.Max(0, math.Min(*s.Every, 128))
+				st.Every = max(0, min(*s.Every, 128))
 			}
 		})
 	case msg.Generate != nil:

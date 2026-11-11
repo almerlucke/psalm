@@ -144,7 +144,7 @@ func (v *Voice) note(duration, amplitude float64, message psalm.Message, tick ps
 	if e.Loop {
 		v.total = -1
 	}
-	v.fade, v.fadeStep = 0, 1/math.Max(1, fadeIn*sr)
+	v.fade, v.fadeStep = 0, 1/max(1, fadeIn*sr)
 	v.relGain, v.relStep = 1, 0
 	v.released = false
 	v.wait = tick.SampleOffset
@@ -182,7 +182,7 @@ func (v *Voice) NoteOff() {
 		return
 	}
 	v.released = true
-	v.relStep = 1 / math.Max(1, v.e.Release*v.Config().SampleRate)
+	v.relStep = 1 / max(1, v.e.Release*v.Config().SampleRate)
 }
 
 func (v *Voice) Clear() {
@@ -312,7 +312,7 @@ func (v *Voice) Synthesize() {
 			chans[0][s], chans[1][s] = l, r
 		}
 		if v.fade < 1 {
-			v.fade = math.Min(1, v.fade+v.fadeStep)
+			v.fade = min(1, v.fade+v.fadeStep)
 		}
 		if v.relStep > 0 {
 			if v.relGain -= v.relStep; v.relGain <= 0 {

@@ -69,7 +69,7 @@ func TestDrumsDoNotStartWithAStep(t *testing.T) {
 			_, x := play(f(), pitch, 0.1)
 			var peak float64
 			for _, v := range x[:int(0.05*sr())] {
-				peak = math.Max(peak, math.Abs(v))
+				peak = max(peak, math.Abs(v))
 			}
 			if math.Abs(x[0]) > 0.02*peak {
 				t.Errorf("%s %g: the first sample is %.3f against a peak of %.3f: a step", n, pitch, x[0], peak)
@@ -117,7 +117,7 @@ func TestReedsSpeakQuicklyAndInTune(t *testing.T) {
 				t.Errorf("%s %g: speaks after %.2f s", name, pitch, speaks)
 				continue
 			}
-			for at := math.Max(0.25, speaks+0.05); at < 0.9; at += 0.05 {
+			for at := max(0.25, speaks+0.05); at < 0.9; at += 0.05 {
 				if c := windowCents(x, at, hz(pitch)); math.Abs(c) > 30 {
 					t.Errorf("%s %g: %.0f cents out at %.2f s", name, pitch, c, at)
 					break
@@ -135,7 +135,7 @@ func TestFlutesKeepTheirRegister(t *testing.T) {
 			_, x := play(Presets[name](), pitch, 2)
 			var peak float64
 			for _, v := range x[int(1.0*sr()):int(1.8*sr())] {
-				peak = math.Max(peak, math.Abs(v))
+				peak = max(peak, math.Abs(v))
 			}
 			if peak < 0.05 {
 				t.Errorf("%s %g: dies away (peak %.3f after a second)", name, pitch, peak)
@@ -158,9 +158,9 @@ func TestPipeStartDoesNotOvershoot(t *testing.T) {
 			for i, v := range x {
 				switch a := math.Abs(v); {
 				case i < int(0.3*sr()):
-					early = math.Max(early, a)
+					early = max(early, a)
 				case i > int(0.8*sr()):
-					late = math.Max(late, a)
+					late = max(late, a)
 				}
 			}
 			if late > 0.01 && early > 2*late {

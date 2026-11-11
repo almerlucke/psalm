@@ -47,7 +47,7 @@ type bridge struct {
 
 // bridgeQ is the quality of a mode of the board: wood is lossy, the treble more
 func bridgeQ(f float64) float64 {
-	return math.Max(6, (15+15*math.Min(1, f/300))/(1+(f/2500)*(f/2500)))
+	return max(6, (15+15*min(1, f/300))/(1+(f/2500)*(f/2500)))
 }
 
 // bridgeTarget is the mean real part of the admittance the modes are fitted to: what the old
@@ -80,7 +80,7 @@ func newBridge(sr float64) *bridge {
 		for i := 0; i < n; i++ {
 			// spread over the octave with a jitter, none on top of another
 			f := lo * math.Exp2((float64(i)+0.2+0.6*rnd.Float64())/float64(n))
-			if f >= math.Min(bridgeTo, 0.45*sr) {
+			if f >= min(bridgeTo, 0.45*sr) {
 				continue
 			}
 			q := bridgeQ(f)

@@ -21,7 +21,7 @@ func envelope(r *Rotary, freq, seconds float64) []float64 {
 		}
 		r.Synthesize()
 		for _, x := range r.Output(0).Channels[0] {
-			peak = math.Max(peak, math.Abs(float64(x)))
+			peak = max(peak, math.Abs(float64(x)))
 			if k++; k == win {
 				env, peak, k = append(env, peak), 0, 0
 			}
@@ -34,7 +34,7 @@ func envelope(r *Rotary, freq, seconds float64) []float64 {
 func cycles(env []float64) int {
 	lo, hi := math.Inf(1), 0.0
 	for _, e := range env {
-		lo, hi = math.Min(lo, e), math.Max(hi, e)
+		lo, hi = min(lo, e), max(hi, e)
 	}
 	mid, n := (lo+hi)/2, 0
 	for i := 1; i < len(env); i++ {

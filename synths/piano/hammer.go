@@ -92,9 +92,9 @@ func (v *Voice) excitation(f0, sr float64) {
 	exc, knock := v.exc[:len(board)], v.knock[:len(board)]
 	v.exc, v.knock = exc, knock
 
-	h := math.Max(0, math.Min(v.hardness, 1))
+	h := max(0, min(v.hardness, 1))
 	if v.soft {
-		h = math.Max(0, h-softHardness)
+		h = max(0, h-softHardness)
 	}
 
 	// the hammer meets the string: the force it pushes with (the same push, the momentum, for
@@ -105,10 +105,10 @@ func (v *Voice) excitation(f0, sr float64) {
 	for i, x := range f {
 		if i < len(exc) {
 			exc[i] = x
-			peak = math.Max(peak, x)
+			peak = max(peak, x)
 		}
 	}
-	width := 1.0 / math.Max(peak, 1e-9) / sr // seconds, how long the push is (area 1 over its peak)
+	width := 1.0 / max(peak, 1e-9) / sr // seconds, how long the push is (area 1 over its peak)
 
 	// the knock and the texture are an impact: short, shorter in the treble (where the strings
 	// die fast and a long thud or noise would outlast them, like a slow hammer)
@@ -120,8 +120,8 @@ func (v *Voice) excitation(f0, sr float64) {
 	// the soundboard texture and knock, through a lowpass as bright as the pulse; the knock also
 	// through a highpass that rises with the key (a small hammer near the thin edge of the board
 	// ticks, a big one in the middle of it thuds)
-	s := math.Max(0, math.Min(cfg.Soundboard, 1))
-	fc := math.Min(math.Min(0.25*sr, 0.48/width), knockMaxHz) // a soft tick, not a click
+	s := max(0, min(cfg.Soundboard, 1))
+	fc := min(min(0.25*sr, 0.48/width), knockMaxHz) // a soft tick, not a click
 	a := 1 - math.Exp(-2*math.Pi*fc/sr)
 	ka := 1 - math.Exp(-2*math.Pi*interpolate(knockLowHz, v.pitch)/sr)
 	l1, l2, k1, k2 := 0.0, 0.0, 0.0, 0.0
@@ -165,7 +165,7 @@ func (v *Voice) excitation(f0, sr float64) {
 	// a string can't ring below its fundamental: what the push has down there would pass the
 	// strings as an unpitched thump, louder than the note itself in the treble (where the push is
 	// longer than a period). A steep highpass under the fundamental (Butterworth, two biquads)
-	w := 2 * math.Pi * math.Min(fundamentalCut*f0, 0.45*sr) / sr
+	w := 2 * math.Pi * min(fundamentalCut*f0, 0.45*sr) / sr
 	for _, q := range [2]float64{0.5412, 1.3066} {
 		alpha := math.Sin(w) / (2 * q)
 		a0 := 1 + alpha
@@ -183,7 +183,7 @@ func (v *Voice) excitation(f0, sr float64) {
 
 	// the strike position: the wave reflected from the near end follows the direct one, a comb
 	// with notches at the harmonics that have a node where the hammer hits
-	beta := math.Max(0.02, math.Min(v.strikeAt, 0.5))
+	beta := max(0.02, min(v.strikeAt, 0.5))
 	// (in the treble the notches are far above hearing, and a comb of a sample or two is only a
 	// crude highpass: left out)
 	if d, ok := strikeComb(f0, beta, sr); ok {
@@ -213,12 +213,12 @@ func (v *Voice) hammer(pitch, hardness, f0 float64) hammer {
 		alpha:    feltHysteresis,
 		z:        interpolate(stringImpedance, pitch),
 		period:   1 / f0,
-		strikeAt: math.Max(0.02, math.Min(keyStrikeAt(&v.cfg, keyOf(pitch)), 0.5)),
+		strikeAt: max(0.02, min(keyStrikeAt(&v.cfg, keyOf(pitch)), 0.5)),
 	}
 	// the felt of the key, fitted once (see feltStiffness), and how this strike differs: a harder
 	// or softer felt touches the string shorter or longer, the stiffness goes with the contact
 	// time to the power p+1
-	base := math.Max(0, math.Min(v.cfg.Hardness+math.Max(0, math.Min(v.cfg.Variation, 1))*0.06*keyRandom(keyOf(pitch), 1), 1))
+	base := max(0, min(v.cfg.Hardness+max(0, min(v.cfg.Variation, 1))*0.06*keyRandom(keyOf(pitch), 1), 1))
 	h.k = feltStiffness(v.Config().SampleRate, pitch, base, h.strikeAt, f0)
 	contact := (1.25 - 0.5*hardness) / (1.25 - 0.5*base)
 	if v.soft {
@@ -266,7 +266,7 @@ func feltStiffness(sr, pitch, hardness, strikeAt, f0 float64) float64 {
 		f := hammerForce(h, 0.8, sr, nil)
 		peak := 0.0
 		for _, x := range f {
-			peak = math.Max(peak, x)
+			peak = max(peak, x)
 		}
 		return 1 / peak / sr
 	}
@@ -400,7 +400,7 @@ func hammerForce(h hammer, velocity, sr float64, scratch *hammerScratch) []float
 			// compression + c force(compression) = free, between 0 and free (Newton, kept in the
 			// bracket, from the compression of the step before)
 			lo, hi := 0.0, free
-			x := math.Min(math.Max(guess, free*1e-3), free)
+			x := min(max(guess, free*1e-3), free)
 			for range 30 {
 				f, slope := felt(x)
 				g := x + c*f - free
@@ -473,7 +473,7 @@ func hammerContact(pitch float64) float64 {
 	// spectrum of the push (a longer push would leave out the fundamental of some keys) and the
 	// second partial beyond it (the treble stays nearly pure)
 	f0 := 440 * math.Exp2((pitch-69)/12)
-	return math.Min(interpolate(contactTable, pitch)/1000, 1.1/f0)
+	return min(interpolate(contactTable, pitch)/1000, 1.1/f0)
 }
 
 var contactTable = [][2]float64{{21, 2.4}, {36, 1.6}, {48, 1.62}, {60, 1.63}, {72, 1.57}, {84, 1.4}, {96, 1.3}, {108, 0.9}} // ms
@@ -498,9 +498,9 @@ func smoothingPole(f0, pitch, hardness, sr float64) (float64, bool) {
 		return 0, false
 	}
 	// a hard hammer (a toy piano's, on metal) touches shortly and leaves the overtones
-	smoothing := trebleSmoothing * (1 + 10*math.Max(0, hardness-0.6))
-	smoothing /= math.Max(math.Min((periods-1.1)/smoothingSpan, 1), 0.05)
-	return 1 - math.Exp(-2*math.Pi*math.Min(smoothing*f0, 0.45*sr)/sr), true
+	smoothing := trebleSmoothing * (1 + 10*max(0, hardness-0.6))
+	smoothing /= max(min((periods-1.1)/smoothingSpan, 1), 0.05)
+	return 1 - math.Exp(-2*math.Pi*min(smoothing*f0, 0.45*sr)/sr), true
 }
 
 // smoothingGain returns the gain of the treble smoothing at a frequency
@@ -538,7 +538,7 @@ const (
 
 // keyStrikeAt returns where the hammer of a key hits: the setting, a little different for every key
 func keyStrikeAt(cfg *Config, key int) float64 {
-	return cfg.StrikePosition*strikeRegister(cfg, float64(key)) + math.Max(0, math.Min(cfg.Variation, 1))*0.008*keyRandom(key, 2)
+	return cfg.StrikePosition*strikeRegister(cfg, float64(key)) + max(0, min(cfg.Variation, 1))*0.008*keyRandom(key, 2)
 }
 
 // strikeRegister returns the factor of the strike point of a pitch: the hammers of a piano hit
@@ -546,8 +546,8 @@ func keyStrikeAt(cfg *Config, key int) float64 {
 // treble, where a hammer is as wide as a fair part of the string and the fundamental should
 // speak. The setting is the bass, the register moves it to strikeTreble times that at the top
 func strikeRegister(cfg *Config, pitch float64) float64 {
-	amount := math.Max(0, math.Min(cfg.StrikeRegister, 1))
-	x := math.Max(0, math.Min((pitch-strikeFrom)/(strikeTo-strikeFrom), 1))
+	amount := max(0, min(cfg.StrikeRegister, 1))
+	x := max(0, min((pitch-strikeFrom)/(strikeTo-strikeFrom), 1))
 	x = x * x * (3 - 2*x)
 	return 1 - amount*x*(1-strikeTreble)
 }

@@ -98,7 +98,7 @@ func (r *Rotary) Speeds() (horn, drum float64) { return r.horn.rate, r.drum.rate
 
 func (r *Rotary) SetMix(m float64) { r.cfg.Mix = m }
 
-func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(x, hi)) }
+func clamp(x, lo, hi float64) float64 { return max(lo, min(x, hi)) }
 
 func (r *Rotary) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
@@ -125,7 +125,7 @@ func (r *Rotary) ReceiveMessage(msg psalm.Message) {
 
 // SetCrossover moves the split between the drum and the horn (Hz, 150 to 4000)
 func (r *Rotary) SetCrossover(hz float64) {
-	r.cfg.Crossover = math.Max(150, math.Min(hz, 4000))
+	r.cfg.Crossover = max(150, min(hz, 4000))
 	for _, f := range []*biquad.Biquad{r.lo, r.lo2, r.hi, r.hi2} {
 		f.SetFrequency(r.cfg.Crossover)
 	}

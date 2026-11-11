@@ -165,7 +165,7 @@ func TestWaveformAndAmplitudeInputs(t *testing.T) {
 
 	peak := 0.0
 	for _, v := range render(b, 4) {
-		peak = math.Max(peak, math.Abs(v))
+		peak = max(peak, math.Abs(v))
 	}
 	if math.Abs(peak-0.5) > 0.01 {
 		t.Fatalf("expected amplitude 0.5, got peak %v", peak)

@@ -107,7 +107,7 @@ func TestTablesLoad(t *testing.T) {
 					if math.IsNaN(float64(x)) {
 						t.Fatalf("%s: NaN in table", file)
 					}
-					peak = math.Max(peak, math.Abs(float64(x)))
+					peak = max(peak, math.Abs(float64(x)))
 				}
 			}
 		}
@@ -157,7 +157,7 @@ func TestGlideAcrossLevels(t *testing.T) {
 	for range 100 {
 		v.Synthesize()
 		for _, s := range v.Output(0).Channels[0] {
-			maxJump = math.Max(maxJump, math.Abs(float64(s)-prev))
+			maxJump = max(maxJump, math.Abs(float64(s)-prev))
 			prev = float64(s)
 		}
 	}
@@ -190,7 +190,7 @@ func TestPositionChangeIsSmooth(t *testing.T) {
 	maxStep := func() float64 {
 		prev, m := float64(v.Output(0).Channels[0][0]), 0.0
 		for _, s := range v.Output(0).Channels[0] {
-			m = math.Max(m, math.Abs(float64(s)-prev))
+			m = max(m, math.Abs(float64(s)-prev))
 			prev = float64(s)
 		}
 		return m
@@ -294,7 +294,7 @@ func TestNormalizeKeepsTheLevel(t *testing.T) {
 			cfg.Normalize = normalize
 			l, _ := render(cfg, psalm.Message{"frequency": 40.0}, 20)
 			r := rms(l)
-			lo, hi = math.Min(lo, r), math.Max(hi, r)
+			lo, hi = min(lo, r), max(hi, r)
 		}
 		return hi / lo
 	}
@@ -371,11 +371,11 @@ func TestPresets(t *testing.T) {
 							if math.IsNaN(float64(s)) {
 								t.Fatal("NaN output")
 							}
-							peak = math.Max(peak, math.Abs(float64(s)))
+							peak = max(peak, math.Abs(float64(s)))
 						}
 					}
 				}
-				lo, hi = math.Min(lo, peak), math.Max(hi, peak)
+				lo, hi = min(lo, peak), max(hi, peak)
 			}
 			// a lowpassed preset on a noise like table (KaossDrum2 holds little below a few kHz)
 			// is quiet (around 0.005, varying with the random unison phases), but never silent

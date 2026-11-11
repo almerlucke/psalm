@@ -28,7 +28,7 @@ func New(pan float64) *Pan {
 }
 
 func clamp(pan float64) float64 {
-	return math.Max(-1.0, math.Min(1.0, pan))
+	return max(-1.0, min(1.0, pan))
 }
 
 // gains returns the left and right gain for a pan position

@@ -6,8 +6,6 @@
 package envelope
 
 import (
-	"math"
-
 	"github.com/almerlucke/genny/float/envelopes/adsr"
 	"github.com/almerlucke/psalm"
 )
@@ -17,10 +15,10 @@ const shortest = 0.1
 
 // Receive changes an envelope setting (durations in milliseconds) from a message
 func Receive(msg psalm.Message, prefix string, s *adsr.Setting) {
-	msg.IfFltVal(prefix+"Attack", func(f float64) { s.AttackDuration = math.Max(shortest, f) })
-	msg.IfFltVal(prefix+"Decay", func(f float64) { s.DecayDuration = math.Max(shortest, f) })
-	msg.IfFltVal(prefix+"Sustain", func(f float64) { s.DecayLevel = math.Max(0, math.Min(f, 1)) * level(s) })
-	msg.IfFltVal(prefix+"Release", func(f float64) { s.ReleaseDuration = math.Max(shortest, f) })
+	msg.IfFltVal(prefix+"Attack", func(f float64) { s.AttackDuration = max(shortest, f) })
+	msg.IfFltVal(prefix+"Decay", func(f float64) { s.DecayDuration = max(shortest, f) })
+	msg.IfFltVal(prefix+"Sustain", func(f float64) { s.DecayLevel = max(0, min(f, 1)) * level(s) })
+	msg.IfFltVal(prefix+"Release", func(f float64) { s.ReleaseDuration = max(shortest, f) })
 }
 
 // level is the peak of the attack (1 when unset)
@@ -36,7 +34,7 @@ func level(s *adsr.Setting) float64 {
 func Seconds(msg psalm.Message, prefix string, attack, decay, release *float64) {
 	set := func(name string, p *float64) {
 		if p != nil {
-			msg.IfFltVal(prefix+name, func(f float64) { *p = math.Max(shortest, f) / 1000 })
+			msg.IfFltVal(prefix+name, func(f float64) { *p = max(shortest, f) / 1000 })
 		}
 	}
 	set("Attack", attack)

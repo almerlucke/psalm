@@ -104,7 +104,7 @@ func Keys(ctl *panel.Panel, name string, play func(note int, velocity float64, o
 			On       bool    `json:"on"`
 		}
 		if json.Unmarshal(raw, &m) == nil && m.Note >= 0 && m.Note < 128 {
-			play(m.Note, math.Max(0, math.Min(m.Velocity, 1)), m.On)
+			play(m.Note, max(0, min(m.Velocity, 1)), m.On)
 		}
 	}))
 }
@@ -158,7 +158,7 @@ func Pads(ctl *panel.Panel, name string, h Hitter, columns ...int) *panel.Param 
 			Velocity float64 `json:"velocity"`
 		}
 		if json.Unmarshal(raw, &m) == nil && m.Pad >= 0 && m.Pad < len(h.Names) {
-			h.Hit(m.Pad, math.Max(0, math.Min(m.Velocity, 1)))
+			h.Hit(m.Pad, max(0, min(m.Velocity, 1)))
 		}
 	}))
 }

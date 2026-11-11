@@ -10,7 +10,7 @@ import (
 // goes silent, or is split in two (the second a step on); the notes that matter (on a beat, or long) are then fitted to the chord under them again, and the last note of the melody
 // ends on the root. The same seed makes the same changes; what is left of the melody is what makes it still the melody
 func Mutate(m []Note, p Params, amount float64, seed uint64) []Note {
-	amount = math.Max(0, math.Min(amount, 1))
+	amount = max(0, min(amount, 1))
 	if amount == 0 || len(m) == 0 {
 		return slices.Clone(m)
 	}

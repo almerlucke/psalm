@@ -43,9 +43,9 @@ func boardResponse(sr float64) [][]float64 {
 	fade := int(boardResponseFade * sr)
 	ir := [][]float64{make([]float64, n), make([]float64, n)}
 
-	for f := boardModesFrom; f < math.Min(boardModesTo, 0.45*sr); {
+	for f := boardModesFrom; f < min(boardModesTo, 0.45*sr); {
 		// the board: quality rising from the bass, how much it radiates and its high roll off
-		q := boardQLow + (boardQ-boardQLow)*math.Min(1, f/300)
+		q := boardQLow + (boardQ-boardQLow)*min(1, f/300)
 		decay := math.Exp(-math.Pi * f / q / sr) // per sample
 		radiation := (f / 300) / math.Sqrt(1+(f/300)*(f/300))
 		rolloff := 1 / math.Sqrt(1+(f/2500)*(f/2500))
@@ -129,19 +129,19 @@ func voicing(power []float64, hz, sr float64, cfg Config) *[128]float64 {
 		mean += p
 	}
 	mean /= float64(len(power))
-	body := math.Max(0, math.Min(cfg.Body, 1))
+	body := max(0, min(cfg.Body, 1))
 	direct := 1 - 0.7*body
 	ref := direct*direct + body*body
-	h := math.Max(0, math.Min(cfg.Hardness, 1))
+	h := max(0, min(cfg.Hardness, 1))
 
 	var gains [128]float64
 	for key := range gains {
-		pitch := math.Max(21, math.Min(float64(key), 108))
+		pitch := max(21, min(float64(key), 108))
 		f0 := 440 * math.Exp2((stretched(pitch, &cfg)-69)/12) // tuned like the strings
-		b := inharmonicityAt(pitch, cfg.Wound) * math.Max(0, cfg.Stiffness)
+		b := inharmonicityAt(pitch, cfg.Wound) * max(0, cfg.Stiffness)
 		ringF, dampF, _ := woundTraits(pitch, &cfg)
-		t60 := ringTime(pitch) * ringF * math.Max(0.05, cfg.Decay)
-		beta := math.Max(0.02, math.Min(cfg.StrikePosition*strikeRegister(&cfg, pitch), 0.5))
+		t60 := ringTime(pitch) * ringF * max(0.05, cfg.Decay)
+		beta := max(0.02, min(cfg.StrikePosition*strikeRegister(&cfg, pitch), 0.5))
 
 		// the hammer pulse at velocity 0.8
 		contact := hammerContact(pitch) * 0.7 * (1.25 - 0.5*h)
@@ -176,8 +176,8 @@ func voicing(power []float64, hz, sr float64, cfg Config) *[128]float64 {
 				g := smoothingGain(lp, f, sr) / smoothingGain(lp, f0, sr)
 				comb *= g * g
 			}
-			decay := math.Min(1/(1/t60+highDamping*dampF*math.Max(0, cfg.Damping)*f*f), 3) // seconds, heard for 3
-			kw := 1 + 1.5*f*f/(f*f+1500*1500)                                              // the ear: the highs count more
+			decay := min(1/(1/t60+highDamping*dampF*max(0, cfg.Damping)*f*f), 3) // seconds, heard for 3
+			kw := 1 + 1.5*f*f/(f*f+1500*1500)                                    // the ear: the highs count more
 			weight := (re*re + im*im) * comb * decay * kw
 
 			// the partial is a few Hz wide (the strings beat, they are not exactly in tune)

@@ -80,13 +80,13 @@ func New(cfg Config) *Chorus {
 // Settings returns the settings
 func (c *Chorus) Settings() Config { return c.cfg }
 
-func (c *Chorus) SetRate(rate float64)     { c.cfg.Rate = math.Max(0, rate) }
-func (c *Chorus) SetDepth(ms float64)      { c.cfg.Depth = math.Max(0, math.Min(ms, 10)) }
-func (c *Chorus) SetDelay(ms float64)      { c.cfg.Delay = math.Max(1, math.Min(ms, 35)) }
-func (c *Chorus) SetSpread(spread float64) { c.cfg.Spread = math.Max(0, math.Min(spread, 1)) }
-func (c *Chorus) SetFeedback(fb float64)   { c.cfg.Feedback = math.Max(0, math.Min(fb, 0.9)) }
-func (c *Chorus) SetTone(hz float64)       { c.cfg.Tone = math.Max(0, hz) }
-func (c *Chorus) SetMix(mix float64)       { c.cfg.Mix = math.Max(0, math.Min(mix, 1)) }
+func (c *Chorus) SetRate(rate float64)     { c.cfg.Rate = max(0, rate) }
+func (c *Chorus) SetDepth(ms float64)      { c.cfg.Depth = max(0, min(ms, 10)) }
+func (c *Chorus) SetDelay(ms float64)      { c.cfg.Delay = max(1, min(ms, 35)) }
+func (c *Chorus) SetSpread(spread float64) { c.cfg.Spread = max(0, min(spread, 1)) }
+func (c *Chorus) SetFeedback(fb float64)   { c.cfg.Feedback = max(0, min(fb, 0.9)) }
+func (c *Chorus) SetTone(hz float64)       { c.cfg.Tone = max(0, hz) }
+func (c *Chorus) SetMix(mix float64)       { c.cfg.Mix = max(0, min(mix, 1)) }
 
 func (c *Chorus) Receive(value any, index int) {
 	if msg, ok := psalm.MsgVal(value); ok {
@@ -124,15 +124,15 @@ func (c *Chorus) Synthesize() {
 		voices = max(1, min(cfg.Voices, maxVoices))
 		smooth = 1 - math.Exp(-1/(smoothMs*0.001*sr))
 		msToS  = 0.001 * sr
-		fb     = math.Max(0, math.Min(cfg.Feedback, 0.9))
-		offset = 0.25 * math.Max(0, math.Min(cfg.Spread, 1)) // quarter cycle at full spread
+		fb     = max(0, min(cfg.Feedback, 0.9))
+		offset = 0.25 * max(0, min(cfg.Spread, 1)) // quarter cycle at full spread
 		lp     = 1.0
 	)
 	if cfg.Voices == 0 {
 		voices = 3
 	}
 	if cfg.Tone > 0 {
-		lp = 1 - math.Exp(-2*math.Pi*math.Min(cfg.Tone, sr*0.45)/sr)
+		lp = 1 - math.Exp(-2*math.Pi*min(cfg.Tone, sr*0.45)/sr)
 	}
 	outGain := math.Sqrt(float64(voices))
 
@@ -156,7 +156,7 @@ func (c *Chorus) Synthesize() {
 					p += offset
 				}
 				d := (c.delay + c.depth*sine.Cycle(p)) * msToS
-				wet[ch] += c.lines[ch].ReadHermite(math.Max(1, d))
+				wet[ch] += c.lines[ch].ReadHermite(max(1, d))
 			}
 		}
 

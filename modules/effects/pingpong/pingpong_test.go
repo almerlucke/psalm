@@ -31,7 +31,7 @@ func run(pp *PingPong, seconds float64, left, right float64) ([]float64, []float
 func peakNear(x []float64, pos int) float64 {
 	m := 0.0
 	for i := max(0, pos-4); i < min(len(x), pos+5); i++ {
-		m = math.Max(m, math.Abs(x[i]))
+		m = max(m, math.Abs(x[i]))
 	}
 	return m
 }
@@ -138,7 +138,7 @@ func TestRepeatsDarken(t *testing.T) {
 	crest := func(x []float64, pos int) float64 {
 		peak, sum := 0.0, 0.0
 		for i := pos - 20; i < pos+200; i++ {
-			peak = math.Max(peak, math.Abs(x[i]))
+			peak = max(peak, math.Abs(x[i]))
 			sum += x[i] * x[i]
 		}
 		return peak / math.Sqrt(sum)

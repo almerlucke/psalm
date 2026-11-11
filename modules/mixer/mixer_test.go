@@ -137,7 +137,7 @@ func TestMuteAndSoloDontClick(t *testing.T) {
 	}
 	maxStep := 0.0
 	for i := 1; i < len(l); i++ {
-		maxStep = math.Max(maxStep, math.Abs(l[i]-l[i-1]))
+		maxStep = max(maxStep, math.Abs(l[i]-l[i-1]))
 	}
 	if maxStep > 0.01 {
 		t.Fatalf("solo should fade, not step: %v", maxStep)
@@ -191,7 +191,7 @@ func TestLimiter(t *testing.T) {
 	quiet := l[int(0.39*sr):int(0.4*sr)]
 	peak := 0.0
 	for _, x := range quiet {
-		peak = math.Max(peak, math.Abs(x))
+		peak = max(peak, math.Abs(x))
 	}
 	if math.Abs(peak-0.3) > 0.01 {
 		t.Fatalf("the limiter should let go of quiet parts, peak %v", peak)

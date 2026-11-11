@@ -58,13 +58,13 @@ func stretch(stiffness, wound float64) *[128]float64 {
 
 // stretched returns a pitch tuned with the stretch of the piano, scaled by the Stretch setting
 func stretched(pitch float64, cfg *Config) float64 {
-	s := math.Max(0, cfg.Stretch)
+	s := max(0, cfg.Stretch)
 	if s == 0 {
 		return pitch
 	}
-	t := stretch(math.Max(0, cfg.Stiffness), math.Max(0, math.Min(cfg.Wound, 1)))
+	t := stretch(max(0, cfg.Stiffness), max(0, min(cfg.Wound, 1)))
 	key := max(0, min(int(math.Floor(pitch)), 126))
-	frac := math.Max(0, math.Min(pitch-float64(key), 1))
+	frac := max(0, min(pitch-float64(key), 1))
 	cents := t[key] + (t[key+1]-t[key])*frac
 	return pitch + s*cents/100
 }

@@ -26,10 +26,10 @@ func (f Field) clamp(v float64) float64 {
 	if math.IsNaN(v) {
 		v = f.Default
 	}
-	v = math.Max(f.Min, math.Min(v, f.Max))
+	v = max(f.Min, min(v, f.Max))
 	if f.Step > 0 {
 		v = f.Min + math.Round((v-f.Min)/f.Step)*f.Step
-		v = math.Max(f.Min, math.Min(v, f.Max))
+		v = max(f.Min, min(v, f.Max))
 	}
 	return v
 }

@@ -34,7 +34,7 @@ type beamSolution struct {
 
 // at is the displacement of mode k at x (0 to 1), by Hermite interpolation
 func (s *beamSolution) at(k int, x float64) float64 {
-	x = math.Max(0, math.Min(x, 1))
+	x = max(0, min(x, 1))
 	e := int(x * beamElems)
 	if e >= beamElems {
 		e = beamElems - 1
@@ -403,8 +403,8 @@ func tuneArch(r2, r3, e float64, depth, width float64) (float64, float64, *beamS
 		// backtrack until the residual falls
 		moved := false
 		for step := 1.0; step > 1e-3; step /= 2 {
-			nd := math.Max(0.02, math.Min(depth-step*dd, 0.97))
-			nw := math.Max(0.08, math.Min(width-step*dw, 0.9))
+			nd := max(0.02, min(depth-step*dd, 0.97))
+			nw := max(0.08, min(width-step*dw, 0.9))
 			g1, g2, s := eval(nd, nw)
 			if n := math.Hypot(g1, g2); n < norm {
 				depth, width, f1, f2, norm, sol, moved = nd, nw, g1, g2, n, s, true
@@ -437,7 +437,7 @@ func buildArch(r2, r3, e, depth, width float64) *archBar {
 
 // pair is the grid solutions around the undercut u and the weight of the upper
 func (a *archBar) pair(u float64) (*beamSolution, *beamSolution, float64) {
-	f := math.Max(0, math.Min(u, 1)) * archSteps
+	f := max(0, min(u, 1)) * archSteps
 	i := int(f)
 	if i >= archSteps {
 		i = archSteps - 1
@@ -454,6 +454,6 @@ func (a *archBar) ratio(k int, u float64) float64 {
 // shape is how much a blow at pos wakes mode k at undercut u
 func (a *archBar) shape(k int, pos, u float64) float64 {
 	lo, hi, t := a.pair(u)
-	x := math.Max(0.01, math.Min(pos, 1))
+	x := max(0.01, min(pos, 1))
 	return math.Abs(lo.at(k, x)*(1-t) + hi.at(k, x)*t)
 }

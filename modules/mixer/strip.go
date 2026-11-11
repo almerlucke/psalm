@@ -115,13 +115,13 @@ func (s *Strip) SetVolume(db float64) {
 // FadeTo fades the volume to a level in dB over seconds, in even steps of dB
 func (s *Strip) FadeTo(db float64, seconds float64) {
 	s.cfg.Volume = db
-	from := math.Max(s.volDB, MinDB)
-	samples := math.Max(1, seconds*s.Config().SampleRate)
-	s.ramp = math.Abs(math.Max(db, MinDB)-from) / samples
+	from := max(s.volDB, MinDB)
+	samples := max(1, seconds*s.Config().SampleRate)
+	s.ramp = math.Abs(max(db, MinDB)-from) / samples
 }
 
 // SetPan sets the pan (-1 left to 1 right)
-func (s *Strip) SetPan(pan float64) { s.cfg.Pan = math.Max(-1, math.Min(pan, 1)) }
+func (s *Strip) SetPan(pan float64) { s.cfg.Pan = max(-1, min(pan, 1)) }
 
 // SetMute mutes or unmutes the strip (with a short fade)
 func (s *Strip) SetMute(mute bool) { s.cfg.Mute = mute }
@@ -235,7 +235,7 @@ func (s *Strip) Synthesize() {
 		main     = s.Output(0).Channels
 		smooth   = 1 - math.Exp(-1/(smoothMs*0.001*sr))
 		muteCoef = 1 - math.Exp(-1/(muteMs*0.001*sr))
-		target   = math.Max(s.cfg.Volume, MinDB)
+		target   = max(s.cfg.Volume, MinDB)
 		openTo   = 1.0
 	)
 	if s.silenced() {
@@ -247,9 +247,9 @@ func (s *Strip) Synthesize() {
 		if s.volDB != target {
 			if s.ramp > 0 {
 				if s.volDB < target {
-					s.volDB = math.Min(target, s.volDB+s.ramp)
+					s.volDB = min(target, s.volDB+s.ramp)
 				} else {
-					s.volDB = math.Max(target, s.volDB-s.ramp)
+					s.volDB = max(target, s.volDB-s.ramp)
 				}
 			} else {
 				s.volDB += (target - s.volDB) * smooth
@@ -315,7 +315,7 @@ type levelMeter struct {
 }
 
 func (m *levelMeter) add(l, r float64) {
-	m.peak = math.Max(m.peak, math.Max(math.Abs(l), math.Abs(r)))
+	m.peak = max(m.peak, max(math.Abs(l), math.Abs(r)))
 	m.sum += (l*l + r*r) / 2
 	m.count++
 }
