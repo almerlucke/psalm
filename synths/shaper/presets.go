@@ -31,7 +31,7 @@ var Presets = map[string]func() Config{
 	// cross modulation: line 1 on line 2
 	"xmodBell": XModBell, "xmodGrowl": XModGrowl, "ringMetal": RingMetal,
 	// beyond: what only this synth does
-	"rainbow": Rainbow, "crystalSea": CrystalSea, "fourBeasts": FourBeasts, "trumpetVoice": TrumpetVoice, "sevenLamps": SevenLamps,
+	"czResonant": CZResonant, "tubeOrgan": TubeOrgan, "rainbow": Rainbow, "crystalSea": CrystalSea, "fourBeasts": FourBeasts, "trumpetVoice": TrumpetVoice, "sevenLamps": SevenLamps,
 	"crownsCast": CrownsCast, "thunder": Thunder, "lightning": Lightning, "lionBass": LionBass, "throneDrone": ThroneDrone,
 	"manyEyes": ManyEyes,
 }

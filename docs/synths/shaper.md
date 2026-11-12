@@ -34,6 +34,21 @@ a test holds them to genny's:
 | `table sine 256`, `table 0 1 0.5 -1` | a wave (`sine`, `cosine`, `sawtooth`, `triangle`, `square`, and `uni-` for 0..1) read over 0..1, or your points with straight lines between them |
 | `pow p`, `tanh d` | `abs(x)^p` with the sign of `x`; `tanh(d x) / tanh(d)` (these two are not genny's) |
 | `par(a, b, ...)` | each chain on `x`, the results added |
+| `fold g`, `trifold g` | a wave folder: `sin(g x π/2)`, or `g x` reflected at -1 and 1; each 1 of gain above 1 is a fold, and the harmonics rise with it |
+| `tube drive bias` | an asymmetric tanh (2 and 0.3 to start): the bias leans the wave and adds even harmonics |
+| `halfwave`, `diode thr knee` | the negative half cut off; nothing below the threshold, a soft knee (0 and 0.1) |
+| `curve t`, `ucurve t` | a power curve with a tension from -1 to 1, sign kept over -1..1 (`curve`) or over 0..1 (`ucurve`) |
+| `smoothstep e0 e1`, `smootherstep e0 e1` | an S between two edges (0 and 1), clamped outside them |
+| `deadzone w`, `softdead w` | 0 while `abs(x)` is under `w` (0.2); `softdead` lowers the rest by `w` so it has no jump |
+| `czsaw d`, `czsquare d w`, `czpulse d`, `czres d h` | Casio CZ phase distortion of the phase: d from 0 (a cosine) to 1; `w` the width of the square, `h` the harmonic of the resonance (4) |
+| `hann`, `hamming`, `blackman`, `welch`, `tukey a`, `gauss s`, `kaiser b` | a window over 0..1 (repeating): a bump that is 0 at the ends, for envelopes inside the wave and for products (`par` is a sum, a bump times a wave is `... | hann`) |
+| `harm 1:1 3:0.4` | a sum of sines of `x` at the harmonics, scaled to peak at 1: a waveshaper like `cheby` with a different spectrum |
+| `poly c0 c1 c2...`, `legendre n` | a polynomial of `x`; the Legendre polynomial of order n (0 to 20) |
+| `funnel v1 v2...` | snaps `x` to the nearest value of the list (a scale or a sieve made into a staircase) |
+
+`fold`, `tube`, `halfwave`, `diode`, `curve`, `ucurve`, `smoothstep`, `deadzone` and the `cz` stages take macros as numbers; the
+windows, `harm`, `poly`, `legendre` and `funnel` take plain numbers (genny builds them once). Genny's shapers with a memory (`bitcrush`,
+`hysteresis`, `onepole`, `samplehold`) are not stages: a chain has no state, it is read at any place of the wave, many times a sample.
 
 **FM** is a chain too: `par(thru, mult 3 | sin | mult 0.3) | sin` is a sine at the pitch whose phase a sine at three times the pitch
 moves by 0.3 of a turn (about 1.9 radians): phase modulation, the sound of a DX. The ratio is a whole number (`mult 1`, `2`, `3`,

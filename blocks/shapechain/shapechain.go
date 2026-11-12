@@ -567,7 +567,10 @@ func (p *parser) stage() (stage, error) {
 			return math.Tanh(d*x) / math.Tanh(d)
 		})
 	}
-	return stage{}, p.fail(t, "%q is not a stage (%s)", name, strings.Join(StageNames, ", "))
+	if st, ok, err := p.moreStage(t, name, mk); ok {
+		return st, err
+	}
+	return stage{}, p.fail(t, "%q is not a stage (%s)", name, strings.Join(append(append([]string{}, StageNames...), MoreStageNames...), ", "))
 }
 
 // SinTurns is sin(2πx) from a table: see sinTurns

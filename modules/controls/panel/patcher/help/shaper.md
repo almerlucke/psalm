@@ -77,6 +77,12 @@ drift = 0.3
 | `table sine 256` | reads a wave table, or your own points |
 | `pow p`, `tanh d` | a power curve, a tanh curve |
 | `par(a, b, ...)` | each chain on x, the results added |
+| `fold g`, `trifold g`, `tube drive bias` | wave folders; an asymmetric tanh |
+| `halfwave`, `diode thr knee`, `deadzone w`, `softdead w` | rectifiers and dead zones |
+| `curve t`, `ucurve t`, `smoothstep e0 e1`, `smootherstep e0 e1` | bends and S curves |
+| `czsaw d`, `czsquare d w`, `czpulse d`, `czres d h` | Casio CZ phase distortion |
+| `hann`, `hamming`, `blackman`, `welch`, `tukey a`, `gauss s`, `kaiser b` | windows over 0..1 |
+| `harm 1:1 3:0.4`, `poly c0 c1...`, `legendre n`, `funnel v1 v2...` | sums of sines, polynomials, snapping to values |
 
 Numbers may be macros (`m1` to `m4`, or `m1[1,5]` mapped to 1..5). `#` starts a comment.
 
