@@ -11,6 +11,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/catalog"
+	"github.com/almerlucke/psalm/modules/effects/looper"
 )
 
 // toRoot goes to the root of the repository, where the file of the piece is (once: the tests share the directory)
@@ -104,5 +105,36 @@ func playPiece(t *testing.T, real bool) {
 				t.Fatalf("section %s, script %s: %s", s.name, id, st)
 			}
 		}
+	}
+}
+
+// the live patch has a looper to record on top of the piece: a source mixer (the piece, the sound input), the looper and its cable to the output
+func TestLivePatchHasLooper(t *testing.T) {
+	toRoot(t)
+	psalm.PushConfig(psalm.Config{BPM: tempo, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	psalm.Seed(3)
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Audio: p.PatchInput(0)}))
+	ids, err := buildPatch(pt, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Out(pt.Out())
+	// the piece as the source, passes recorded: layers
+	pt.SettingsOf(ids.sources).Apply(map[string]float64{"level1": 1, "level2": 0})
+	pt.SettingsOf(ids.looper).Apply(map[string]float64{"bars": 1, "record": 1})
+	loop := pt.Module(ids.looper).(*looper.Looper)
+	for range int(5 * 44100 / 256) { // a bar of 4/4 at 66 bpm is 3.6 seconds
+		p.ResetRun()
+		p.Run()
+	}
+	pt.SettingsOf(ids.looper).Apply(map[string]float64{"record": 0})
+	for range int(8 * 44100 / 256) {
+		p.ResetRun()
+		p.Run()
+	}
+	if n, _ := loop.Layers(); n < 1 {
+		t.Errorf("%d layers recorded, want at least 1", n)
 	}
 }

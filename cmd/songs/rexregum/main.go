@@ -20,6 +20,11 @@
 //
 // The pedal and the choir come in from silence over the first five bars (their scripts move the level of their strips).
 //
+// Playing live there is a looper to record on top of the piece: a source mixer (strip 1 the piece, strip 2 the sound input of the computer, whose
+// side panel has the choice of the device) feeds an audio looper of three bars of 4/4 (12 beats, four bars of the 3/4), layer on layer. Its input level
+// (the sound you hear of the source) is 0 so the microphone does not sing back; turn it up with headphones. The piece's strip is off: raise it to record the
+// piece too.
+//
 // The form is seven sections of seven bars, the choir's chord changes: Dawn (a G minor chord and bells), Lament, Gathering (the
 // timpani and the chimes come in on the D major), Theme, Canon, Glory and Throne. The scripts are in scripts/ (embedded); in the
 // page double tap a script to read it and change it while it plays (Ctrl+Enter takes it), the song's tiles play a section next.

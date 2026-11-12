@@ -173,6 +173,8 @@ func score(path string) (string, error) {
 type patchIDs struct {
 	scripts []string
 	synths  map[string]string
+	looper  string // the audio looper of the live patch ("" when rendering)
+	sources string // the source mixer in front of it
 }
 
 // orchestra is where the Virtual Playing Orchestra is (it is not in the repository: without it the synths play)
@@ -401,6 +403,26 @@ func buildPatch(pt *patcher.Patcher, once, real bool) (ids patchIDs, err error) 
 	pt.SettingsOf(shine).Apply(map[string]float64{"shimmer": 0.3, "semitones": 12, "mix": 1, "decay": 6})
 	if once {
 		pt.SettingsOf(song).Apply(map[string]float64{"loop": 0})
+	}
+	if !once {
+		// playing live there is a looper to record on top of the piece: a source mixer chooses what is recorded (its strip 1 is the piece, its strip 2 the
+		// sound input of the computer: the side panel of the input has the choice of the device), the looper records it into a loop of bars on the beat of
+		// the patch, layer on layer, and plays the layers on. The sound that goes through the looper (its input level) is what you hear of the source: 0, so
+		// the microphone does not sing back from the speakers; with headphones turn it up to hear yourself
+		y := 20 + float64(len(parts))*110
+		mic := add("input", "", 260, y)
+		src := add("mixer", "4 channels", 520, y)
+		loop := add("audiolooper", "", 780, y)
+		connect(patcher.Cable{From: mixer, Out: 0, To: src, In: 0})
+		connect(patcher.Cable{From: mic, To: src, In: 1})
+		connect(patcher.Cable{From: src, Out: 0, To: loop})
+		connect(patcher.Cable{From: loop, To: "out"})
+		if err != nil {
+			return patchIDs{}, err
+		}
+		pt.SettingsOf(src).Apply(map[string]float64{"level1": 0, "level2": 1, "pan1": 0, "pan2": 0})
+		pt.SettingsOf(loop).Apply(map[string]float64{"bars": 3, "dry": 0})
+		ids.looper, ids.sources = loop, src
 	}
 	pt.Move("out", 1060, 400)
 	return ids, nil
