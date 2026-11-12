@@ -35,3 +35,9 @@ for (const [part, list] of Object.entries(SCORE)) {
   for (const [start, pitch, len] of list) for (let i = start; i < start + len && i < h.length; i++) h[i] = pitch
 }
 shared.heldAt = (part, step) => (held[part] && held[part][step] !== undefined ? held[part][step] : -1)
+
+// shared.fadeIn(ev, bars): 0 at the start of the piece to 1 after `bars` bars, along half a cosine (a slow start, a soft arrival)
+shared.fadeIn = (ev, bars) => {
+  const t = Math.min(1, Math.max(0, shared.stepNow(ev) / (BAR * bars)))
+  return 0.5 - 0.5 * Math.cos(Math.PI * t)
+}

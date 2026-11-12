@@ -3,6 +3,7 @@
 // Tuned: a slow swell, seven voices to a note spread wide.
 let ready = false
 function trigger(ev) {
+  mod(BASE * shared.fadeIn(ev, 5) / 2) // in over the first five bars: the level of the strip
   if (!ready) {
     tune({ preset: "crystalSea", ampAttack: 2800, ampDecay: 400, ampSustain: 1, ampRelease: 3600, unison: 5, spread: 22, uniStereo: 0.9, drift: 0.4, trim: -4, mono: 0 })
     ready = true

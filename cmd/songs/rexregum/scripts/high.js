@@ -7,6 +7,7 @@ function section(name, i) {
   if (ready) tune({ cutoff: cutoff[i] })
 }
 function trigger(ev) {
+  mod(BASE * shared.fadeIn(ev, 5) / 2) // in over the first five bars: the level of the strip
   if (!ready) {
     tune({ preset: "evolvingPad", ampAttack: 3500, ampDecay: 400, ampSustain: 1, ampRelease: 4500, position: 0.35,
       positionLFORate: 0.08, positionLFODepth: 0.35, unison: 5, detune: 16, spread: 0.9, resonance: 0.15, filterEnvAmount: 0.4,

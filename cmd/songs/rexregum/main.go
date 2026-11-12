@@ -2,7 +2,7 @@
 // The program reads the file and puts its notes in the score script; the other scripts play them, each on a synth of its own that
 // starts from a preset and is tuned to the sound of the piece. Where the Virtual Playing Orchestra is in assets the parts play its
 // recordings instead (-orchestra=false for the synths): the double basses for the pedal and the pulse, the mixed choir for the lower
-// voices and the sopranos for the higher, the celesta, an english horn for the lament, the timpani, trumpets for the theme, first
+// voices and the sopranos for the higher, the celesta, an english horn for the lament, the timpani, the harp for the theme, first
 // violins for the canon and a glockenspiel for the chimes (see realParts). The synths:
 //
 //	the pedal         a drone of four partials that breathe against each other (shaper throneDrone)
@@ -17,6 +17,8 @@
 //
 // and two parts that are not in the file, made from it: a pulse (a sub bass in eighths on the notes of the pedal) and the joins (a
 // low hit where a section begins, a riser before the theme, the canon and the glory).
+//
+// The pedal and the choir come in from silence over the first five bars (their scripts move the level of their strips).
 //
 // The form is seven sections of seven bars, the choir's chord changes: Dawn (a G minor chord and bells), Lament, Gathering (the
 // timpani and the chimes come in on the D major), Theme, Canon, Glory and Throne. The scripts are in scripts/ (embedded); in the

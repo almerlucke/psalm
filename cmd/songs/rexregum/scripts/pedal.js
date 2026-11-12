@@ -3,6 +3,7 @@
 // changes through it. Tuned: it comes in over two seconds and goes in three, with a sine an octave under it.
 let ready = false
 function trigger(ev) {
+  mod(BASE * shared.fadeIn(ev, 5) / 2) // in over the first five bars: the level of the strip
   if (!ready) {
     tune({ preset: "throneDrone", ampAttack: 2200, ampDecay: 400, ampSustain: 1, ampRelease: 3200, sub: 0.3, trim: -3, mono: 0 })
     ready = true
