@@ -42,6 +42,12 @@ func Describe(cfg Config) params.Set {
 		params.K("Morph", "morphAmount", -1, 1, cfg.MorphAmount, params.Label("morph env amount")),
 		params.K("Morph", "shapeAmount", -1, 1, cfg.ShapeAmount, params.Label("m1 env amount")),
 
+		params.K("Stereo", "stereoMorph", -1, 1, cfg.StereoMorph, params.Label("stereo morph (left under, right over)")),
+		params.K("Stereo", "stereoMacro1", -1, 1, cfg.StereoMacros[0], params.Label("stereo m1")),
+		params.K("Stereo", "stereoMacro2", -1, 1, cfg.StereoMacros[1], params.Label("stereo m2")),
+		params.K("Stereo", "stereoMacro3", -1, 1, cfg.StereoMacros[2], params.Label("stereo m3")),
+		params.K("Stereo", "stereoMacro4", -1, 1, cfg.StereoMacros[3], params.Label("stereo m4")),
+
 		params.K("Line 1", "octave1", -4, 4, float64(l1.Octave), params.Step(1), params.Label("octave")),
 		params.K("Line 1", "detune1", -1200, 1200, l1.Detune, params.Unit("ct"), params.Label("detune")),
 		params.K("Line 1", "level1", 0, 2, orOne(l1.Level), params.Label("level")),

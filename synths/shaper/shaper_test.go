@@ -729,3 +729,54 @@ func TestLine2Chains(t *testing.T) {
 		t.Errorf("a step of %v when chain 2A was set under a note", worst)
 	}
 }
+
+// the stereo morph and macros: the left and the right channel read other places in the morph and other macros, so a centred sound is wide; with none they
+// are the same; the pitch and the loudness are the same on both sides
+func TestStereoMorph(t *testing.T) {
+	render := func(cfg Config) (l, r []float64) {
+		v := New(cfg)
+		v.NoteOn(1, psalm.Message{"frequency": 220.0}, psalm.CtrlTick{}, v.Config())
+		for range 60 {
+			v.Synthesize()
+			for i := range v.Output(0).Channels[0] {
+				l = append(l, float64(v.Output(0).Channels[0][i]))
+				r = append(r, float64(v.Output(0).Channels[1][i]))
+			}
+		}
+		return l[len(l)/3:], r[len(r)/3:]
+	}
+	base := plain("sin", "par(sin, mult 3 | sin | mult 0.8)")
+	base.Morph = 0.5
+	l, r := render(base)
+	for i := range l {
+		if math.Abs(l[i]-r[i]) > 1e-9 {
+			t.Fatal("a mono image (no stereo morph) has different channels")
+		}
+	}
+	base.StereoMorph = 1
+	l, r = render(base)
+	if !(amplitude(l, 660) < 0.5*amplitude(r, 660)) { // the left at 0.25 of the way (mostly a sine), the right at 0.75
+		t.Errorf("the third harmonic: left %v, right %v", amplitude(l, 660), amplitude(r, 660))
+	}
+	if d := math.Abs(amplitude(l, 220)/amplitude(r, 220) - 1); d > 0.5 {
+		t.Errorf("the pitch is the same on both sides: %v %v", amplitude(l, 220), amplitude(r, 220))
+	}
+	// the macros: a fold deeper on the right
+	m := plain("sin | fold m1[1,5]")
+	m.StereoMacros[0] = 1
+	m.Macros[0] = 0.5
+	l, r = render(m)
+	if !(amplitude(r, 660)+amplitude(r, 880)+amplitude(r, 1100) > 2*(amplitude(l, 660)+amplitude(l, 880)+amplitude(l, 1100))) {
+		t.Errorf("the fold is not deeper on the right: %v", amplitude(r, 660))
+	}
+	// by message and not under explicit oversampling (the chains are read from tables)
+	v := New(plain("sin"))
+	v.ReceiveMessage(psalm.Message{"stereoMorph": 0.7, "stereoMacro2": -0.4})
+	if v.cfg.StereoMorph != 0.7 || v.cfg.StereoMacros[1] != -0.4 || !v.stereo {
+		t.Errorf("messages: %v %v stereo %v", v.cfg.StereoMorph, v.cfg.StereoMacros, v.stereo)
+	}
+	v.ReceiveMessage(psalm.Message{"oversample": 2.0})
+	if v.stereo {
+		t.Error("explicit oversampling should read directly, mono")
+	}
+}

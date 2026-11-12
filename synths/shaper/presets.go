@@ -33,7 +33,7 @@ var Presets = map[string]func() Config{
 	// beyond: what only this synth does
 	"czResonant": CZResonant, "foldLead": FoldLead, "triFoldPad": TriFoldPad, "tubeBass": TubeBass, "softDeadLead": SoftDeadLead,
 	"curveBass": CurveBass, "stepLead": StepLead, "czSawLead": CZSawLead, "czSquareBass": CZSquareBass, "czPulseArp": CZPulseArp,
-	"harmPad": HarmPad, "polyLead": PolyLead, "legendrePad": LegendrePad, "funnelArp": FunnelArp, "duoLead": DuoLead, "tubeOrgan": TubeOrgan, "rainbow": Rainbow, "crystalSea": CrystalSea, "fourBeasts": FourBeasts, "trumpetVoice": TrumpetVoice, "sevenLamps": SevenLamps,
+	"harmPad": HarmPad, "polyLead": PolyLead, "legendrePad": LegendrePad, "funnelArp": FunnelArp, "duoLead": DuoLead, "splitPad": SplitPad, "splitLead": SplitLead, "wideFoldPad": WideFoldPad, "wideMorph": WideMorph, "tubeOrgan": TubeOrgan, "rainbow": Rainbow, "crystalSea": CrystalSea, "fourBeasts": FourBeasts, "trumpetVoice": TrumpetVoice, "sevenLamps": SevenLamps,
 	"crownsCast": CrownsCast, "thunder": Thunder, "lightning": Lightning, "lionBass": LionBass, "throneDrone": ThroneDrone,
 	"manyEyes": ManyEyes,
 }

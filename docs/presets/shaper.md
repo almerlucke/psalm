@@ -137,3 +137,7 @@ The stages from genny's newer shapers (folds, the tube, dead zones, curves, smoo
 | legendrePad | LegendrePad | the Legendre polynomial of order five as a waveshaper: a strange, even stack of harmonics |
 | funnelArp | FunnelArp | a saw snapped to six levels, plucked: a staircase with the grain of a low bit depth |
 | duoLead | DuoLead | two different oscillators: a folded sine on line 1, a CZ saw an octave up on line 2 (chains of its own), both opening with the note |
+| splitPad | SplitPad | a different wave on each side: a soft triangle on the left, a narrow pulse on the right (line 2 with chains of its own, width 1) |
+| splitLead | SplitLead | a folded sine on the left and a CZ saw on the right, each opening with the note |
+| wideFoldPad | WideFoldPad | one chain made wide: a fold that is deeper on the right (stereo m1), so the left is soft and the right bright |
+| wideMorph | WideMorph | a pad that travels through a sine, a triangle, a bend of two sines and a narrow pulse, the left behind the right (stereo morph) |

@@ -99,8 +99,14 @@ type Config struct {
 	// the sample rate at the pitch is read as it is, and one that doesn't is read from tables (see tables.go), which hold only the
 	// harmonics that fit
 	Oversample int
-	Width      float64 // 0-1: line 1 to the left, line 2 to the right
-	Level      float64 // output level (0 is treated as 1)
+	// StereoMorph (-1 to 1) reads the left and the right channel at different places in the morph: the left that much under the morph and the
+	// right that much over it, so a centred sound is wide (a moving image: the morph envelope and the matrix move both). StereoMacros do the same
+	// for the macros m1 to m4 (a fold that is deeper on the right). It works with the automatic oversampling (Oversample 0), where the
+	// chains are read from tables: two tables a line instead of one
+	StereoMorph  float64
+	StereoMacros [shapechain.NumMacros]float64
+	Width        float64 // 0-1: line 1 to the left, line 2 to the right
+	Level        float64 // output level (0 is treated as 1)
 	// Trim is dB on top of Level for the mix: it is not a part of a preset (loading one leaves it), so a script can
 	// load a preset and set where it sits
 	Trim float64
@@ -264,7 +270,14 @@ type Voice struct {
 	copyDrift  [2 * MaxUnison]float64 // the pitch drift of each copy, a ratio
 	voiceDrift [3]float64             // morph, cutoff (octaves), pitch (ratio)
 	// the tables of the lines (see tables.go), used when table says so; bwEff is the harmonics the chains hold
-	tables    [2]lineTables
+	tables  [2]lineTables
+	tablesR [2]lineTables // the tables of the right channel when the sound is stereo (StereoMorph, StereoMacros)
+	stereo  bool
+	tR      struct { // the table the right channel reads now, the one it fades from, and how far it is
+		cur, prev *waveTable
+		w         float64
+	}
+	rawR      [MaxUnison]float64 // what the right channel reads, for each copy of a line
 	table     bool
 	bwEff     [2]int // the harmonics the chains of each line hold
 	macroUsed [shapechain.NumMacros]bool
@@ -443,7 +456,8 @@ func (v *Voice) pickFactor() {
 		}
 	}
 	// from tables: when the chains need more than one time a sample, and for a unison, which reads one table for all its copies
-	v.table = v.cfg.Oversample == 0 && (f > 1 || v.cfg.Unison > 1)
+	v.stereo = v.cfg.Oversample == 0 && v.cfg.StereoMorph != 0 || v.cfg.Oversample == 0 && v.cfg.StereoMacros != [shapechain.NumMacros]float64{}
+	v.table = v.cfg.Oversample == 0 && (f > 1 || v.cfg.Unison > 1 || v.stereo)
 	if f != v.osFactor {
 		v.osFactor = f
 		for k := range v.os {
@@ -484,6 +498,7 @@ func (v *Voice) apply(c Config) {
 	}
 	cfg := &v.cfg
 	cfg.Morph, cfg.Macros, cfg.Line1, cfg.Line2, cfg.Width, cfg.Level = c.Morph, c.Macros, c.Line1, c.Line2, c.Width, c.Level
+	cfg.StereoMorph, cfg.StereoMacros = max(-1, min(c.StereoMorph, 1)), c.StereoMacros
 	cfg.Oversample = oversampleFactor(c.Oversample)
 	cfg.Unison, cfg.Spread, cfg.UniStereo = max(1, min(c.Unison, MaxUnison)), c.Spread, c.UniStereo
 	cfg.Drift, cfg.Sub, cfg.Noise, cfg.NoiseColor = c.Drift, c.Sub, c.Noise, c.NoiseColor
@@ -541,6 +556,36 @@ func (v *Voice) setFreq(f float64) {
 	v.freq = f
 }
 
+// lineTable is the table a line reads for a morph and macros: made when it has none, again when the wave or the pitch has moved from what the
+// current one was made for (the sound fades from the old to the new), and the table it fades from while it does (nil when it is done)
+func (v *Voice) lineTable(lt *lineTables, k int, pos float64, macros *shapechain.Macros, fTop float64) (cur, prev *waveTable, w float64) {
+	switch {
+	case !lt.valid:
+		v.buildTable(lt, k, pos, macros, fTop)
+	case lt.gen != v.swapGen: // a chain was swapped: fade to the table of the new chains as the voice does
+		v.rebuildTable(lt, k, pos, macros, fTop, true)
+	case v.t%4 == 0 && v.tableDue(lt, k, pos, macros, fTop):
+		v.rebuildTable(lt, k, pos, macros, fTop, false)
+	}
+	w = 1
+	if lt.blend < 1 {
+		lt.blend = min(1, lt.blend+lt.blendInc)
+		w = lt.blend
+		prev = &lt.buf[lt.prev]
+	}
+	return &lt.buf[lt.cur], prev, w
+}
+
+// side is the morph and the macros a channel reads (-1 the left, 1 the right) when the sound is stereo: that much under or over
+// the morph, a half of StereoMorph and of each of StereoMacros each way
+func (v *Voice) side(pos float64, ch float64) (float64, shapechain.Macros) {
+	m := v.smMacros
+	for i := range m {
+		m[i] = clamp01(m[i] + ch*0.5*v.cfg.StereoMacros[i])
+	}
+	return clamp01(pos + ch*0.5*v.cfg.StereoMorph), m
+}
+
 func (v *Voice) line(i int) *Line {
 	if i == 0 {
 		return &v.cfg.Line1
@@ -579,6 +624,10 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("glide", func(f float64) { v.cfg.Glide = max(0, min(f, 3000)) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0, min(f, 1)) })
 	msg.IfFltVal("morph", func(f float64) { v.cfg.Morph = max(0, min(f, 1)) })
+	msg.IfFltVal("stereoMorph", func(f float64) { v.cfg.StereoMorph = max(-1, min(f, 1)) })
+	for i := range v.cfg.StereoMacros {
+		msg.IfFltVal([]string{"stereoMacro1", "stereoMacro2", "stereoMacro3", "stereoMacro4"}[i], func(f float64) { v.cfg.StereoMacros[i] = max(-1, min(f, 1)) })
+	}
 	for i := range v.cfg.Macros {
 		msg.IfFltVal([]string{"macro1", "macro2", "macro3", "macro4"}[i], func(f float64) { v.cfg.Macros[i] = max(0, min(f, 1)) })
 	}
@@ -678,7 +727,7 @@ func (v *Voice) startNote(mode adsr.ReleaseMode, duration, amplitude float64, me
 		v.uni = max(1, min(v.cfg.Unison, MaxUnison))
 		v.phase = [2 * MaxUnison]float64{}
 		v.subPh = 0
-		v.tables[0].valid, v.tables[1].valid = false, false
+		v.tables[0].valid, v.tables[1].valid, v.tablesR[0].valid, v.tablesR[1].valid = false, false, false, false
 		v.openIn = 0
 		if v.uni > 1 {
 			r := v.Rand()
@@ -728,7 +777,7 @@ func (v *Voice) Clear() {
 	v.pending = nil
 	v.phase = [2 * MaxUnison]float64{}
 	v.subPh = 0
-	v.tables[0].valid, v.tables[1].valid = false, false
+	v.tables[0].valid, v.tables[1].valid, v.tablesR[0].valid, v.tablesR[1].valid = false, false, false, false
 	v.noiseLP = [2]float64{}
 	for _, line := range v.os {
 		for _, o := range line {
@@ -1121,23 +1170,23 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 			// current one was made for; the sound fades from the old table to the new one
 			w := 1.0
 			var tcur, tprev *waveTable
+			stereoLine := false // the right channel reads tables of its own (v.tR, v.rawR)
 			if v.table {
 				lt := &v.tables[k]
-				fTop := f * ratio[k] * spreadRatio[uni-1] * 1.01
-				switch {
-				case !lt.valid:
-					v.buildTable(lt, k, pos, &v.smMacros, fTop)
-				case lt.gen != v.swapGen: // a chain was swapped: fade to the table of the new chains as the voice does
-					v.rebuildTable(lt, k, pos, &v.smMacros, fTop, true)
-				case v.t%4 == 0 && v.tableDue(lt, k, pos, &v.smMacros, fTop):
-					v.rebuildTable(lt, k, pos, &v.smMacros, fTop, false)
+				if lt.valid && lt.gen == v.swapGen && lt.blend >= 1 && v.t&3 != 0 && !v.stereo {
+					tcur = &lt.buf[lt.cur] // nothing to make or fade: the usual sample
+				} else {
+					fTop := f * ratio[k] * spreadRatio[uni-1] * 1.01
+					if v.stereo {
+						posL, macL := v.side(pos, -1)
+						tcur, tprev, w = v.lineTable(lt, k, posL, &macL, fTop)
+						posR, macR := v.side(pos, 1)
+						v.tR.cur, v.tR.prev, v.tR.w = v.lineTable(&v.tablesR[k], k, posR, &macR, fTop)
+						stereoLine = true
+					} else {
+						tcur, tprev, w = v.lineTable(lt, k, pos, &v.smMacros, fTop)
+					}
 				}
-				if lt.blend < 1 {
-					lt.blend = min(1, lt.blend+lt.blendInc)
-					w = lt.blend
-					tprev = &lt.buf[lt.prev]
-				}
-				tcur = &lt.buf[lt.cur]
 			}
 			pm := 0.0 // the phase of line 2 bent by line 1, in turns
 			if k == 1 && xmodOn && cfg.XModType == 0 {
@@ -1160,6 +1209,13 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 					s = tcur.read(rd)
 					if tprev != nil {
 						s = tprev.read(rd)*(1-w) + s*w
+					}
+					if stereoLine {
+						sr := v.tR.cur.read(rd)
+						if v.tR.prev != nil {
+							sr = v.tR.prev.read(rd)*(1-v.tR.w) + sr*v.tR.w
+						}
+						v.rawR[j] = sr
 					}
 				case factor == 1:
 					s = v.wave(k, rd, pos, &v.smMacros)
@@ -1213,8 +1269,17 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 					s *= 1 - v.smXmod + v.smXmod*1.6*modSig
 				}
 				c := k*MaxUnison + j
+				if !stereoLine {
+					o[0] += s * amp * v.gL[c]
+					o[1] += s * amp * v.gR[c]
+					continue
+				}
+				sr := max(-2, min(v.rawR[j]-v.dcEst[k], 2)) // the right channel reads another wave (stereo)
+				if ring {
+					sr *= 1 - v.smXmod + v.smXmod*1.6*modSig
+				}
 				o[0] += s * amp * v.gL[c]
-				o[1] += s * amp * v.gR[c]
+				o[1] += sr * amp * v.gR[c]
 			}
 		}
 		if !stereo {

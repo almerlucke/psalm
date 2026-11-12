@@ -54,24 +54,28 @@ type entry struct {
 	xmod   float64
 	silent bool    // line 1 only modulates
 	level  float64 // the output level (0: the usual)
+	// the third part: a different shape on each side (width 1: line 1 left, line 2 right) or one chain made wide (sMacro: the first macro is that much lower on
+	// the left and higher on the right, sMorph the same for the morph)
+	width, sMorph, sMacro float64
 }
 
 var tour = []entry{
-	{"fold", "sin | fold m1[1,6]", 0, 1, lead, nil, "", shaper.Line{}, 0, false, 0},
-	{"trifold", "sin | trifold m1[1,5]", 0, 1, pad, nil, "", shaper.Line{}, 0, false, 0},
-	{"tube", "sin | tube m1[1,8] 0.4", 0, 1, bass, nil, "", shaper.Line{}, 0, false, 0},
-	{"softdead", "sin | softdead m1[0,0.8] | mult 1.8", 0, 1, lead, nil, "", shaper.Line{}, 0, false, 0},
-	{"curve", "bipolar | curve m1[-0.9,0.9]", 0, 1, bass, nil, "", shaper.Line{}, 0, false, 0},
-	{"smootherstep", "tri | smootherstep 0 m1[1,0.15] | bipolar", 0, 1, lead, nil, "", shaper.Line{}, 0, false, 0},
-	{"czsaw", "czsaw m1", 0, 1, lead, nil, "", shaper.Line{}, 0, false, 0},
-	{"czsquare", "czsquare m1[0,0.95]", 0, 1, bass, nil, "", shaper.Line{}, 0, false, 0},
-	{"czpulse", "czpulse m1", 0, 1, arp, nil, "", shaper.Line{}, 0, false, 0},
-	{"harm", "bipolar | harm 1:1 3:0.6 5:0.4 8:0.3", 0, 0, pad, nil, "", shaper.Line{}, 0, false, 0},
-	{"poly", "bipolar | poly 0 1.6 0 -0.6", 0, 0, lead, nil, "", shaper.Line{}, 0, false, 0},
-	{"legendre", "bipolar | legendre 5", 0, 0, pad, nil, "", shaper.Line{}, 0, false, 0},
-	{"funnel", "bipolar | funnel -1 -0.6 -0.2 0.2 0.6 1", 0, 0, arp, nil, "", shaper.Line{}, 0, false, 0},
-	{"czResonant", "", 0, 0, lead, shaper.CZResonant, "", shaper.Line{}, 0, false, 0},
-	{"tubeOrgan", "", 0, 0, pad, shaper.TubeOrgan, "", shaper.Line{}, 0, false, 0},
+	{"fold", "sin | fold m1[1,6]", 0, 1, lead, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"trifold", "sin | trifold m1[1,5]", 0, 1, pad, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"tube", "sin | tube m1[1,8] 0.4", 0, 1, bass, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"softdead", "sin | softdead m1[0,0.8] | mult 1.8", 0, 1, lead, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"curve", "bipolar | curve m1[-0.9,0.9]", 0, 1, bass, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"smootherstep", "tri | smootherstep 0 m1[1,0.15] | bipolar", 0, 1, lead, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"czsaw", "czsaw m1", 0, 1, lead, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"czsquare", "czsquare m1[0,0.95]", 0, 1, bass, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"czpulse", "czpulse m1", 0, 1, arp, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"harm", "bipolar | harm 1:1 3:0.6 5:0.4 8:0.3", 0, 0, pad, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"poly", "bipolar | poly 0 1.6 0 -0.6", 0, 0, lead, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"legendre", "bipolar | legendre 5", 0, 0, pad, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"funnel", "bipolar | funnel -1 -0.6 -0.2 0.2 0.6 1", 0, 0, arp, nil, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"czResonant", "", 0, 0, lead, shaper.CZResonant, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{"tubeOrgan", "", 0, 0, pad, shaper.TubeOrgan, "", shaper.Line{}, 0, false, 0, 0, 0, 0},
+	{name: "wide morph (stereo morph)", style: pad, preset: shaper.WideMorph},
 	// two oscillators with different waves: line 1 the chain, line 2 chain2
 	{name: "duo fold+czsaw", chain: "sin | fold m1[1,4]", chain2: "czsaw m1[0.15,0.9]", line2: shaper.Line{Octave: 1, Detune: 7, Level: 0.5}, to: 1, level: 0.8, style: lead},
 	{name: "duo opposite PWM", chain: "pulse m1[0.4,0.06] | bipolar", chain2: "pulse m1[0.06,0.4] | bipolar", line2: shaper.Line{Detune: 12, Level: 1}, to: 1, level: 0.3, style: pad},
@@ -80,6 +84,12 @@ var tour = []entry{
 	{name: "duo two syncs", chain: "mult m1[1,6] | mod 1 | bipolar", chain2: "mult m1[1.5,4.5] | mod 1 | bipolar", line2: shaper.Line{Detune: 7, Level: 0.6}, to: 1, level: 1.2, style: lead},
 	{name: "duo fm: sine mod saw", chain: "sin", chain2: "bipolar | softclip 1.5", line2: shaper.Line{Octave: 1, Detune: 3, Level: 1}, xmod: 0.12, silent: true, style: arp},
 	{name: "duo ring: fold x czres", chain: "sin | fold 2", chain2: "czres 0.7 6", line2: shaper.Line{Detune: 13, Level: 1}, xmod: 1, level: 0.4, style: pad},
+	{name: "split fold | czsaw", chain: "sin | fold m1[1,4]", chain2: "czsaw m1[0.15,0.9]", line2: shaper.Line{Detune: 5, Level: 0.7}, width: 1, level: 0.8, to: 1, style: lead},
+	{name: "split tri | pulse pad", chain: "tri | bipolar", chain2: "pulse 0.3 | bipolar", line2: shaper.Line{Detune: 6, Level: 0.8}, width: 1, level: 0.5, style: pad},
+	{name: "split sine | saw bass", chain: "sin", chain2: "bipolar | softclip m1[1,5]", line2: shaper.Line{Level: 0.6}, width: 1, level: 0.7, to: 1, style: bass},
+	{name: "wide pwm (stereo m1)", chain: "pulse m1[0.45,0.08] | bipolar", from: 0.5, sMacro: 0.8, level: 0.35, style: pad},
+	{name: "wide fold (stereo m1)", chain: "sin | fold m1[1,5]", from: 0.3, to: 0.6, sMacro: 0.7, level: 0.5, style: pad},
+	{name: "wide CZ (stereo m1)", chain: "czsaw m1", from: 0.2, to: 0.9, sMacro: 0.6, level: 0.7, style: lead},
 	{name: "duo harm+poly pad", chain: "bipolar | harm 1:1 3:0.5 5:0.3", chain2: "bipolar | poly 0 1.6 0 -0.6", line2: shaper.Line{Detune: 6, Level: 0.6}, level: 0.4, style: pad},
 }
 
@@ -108,6 +118,14 @@ func config(e entry) shaper.Config {
 		AmpEnv: env(8, 500, 0.75, 350), Width: 0.4, Level: 0.6,
 		Filter: voicefilter.Config{Type: voicefilter.Ladder24, Cutoff: 5500, Resonance: 0.05, Env: env(1, 100, 1, 100)},
 	}
+	cfg.StereoMorph = e.sMorph
+	cfg.StereoMacros[0] = e.sMacro
+	if e.sMacro != 0 || e.sMorph != 0 {
+		cfg.Unison, cfg.Line2, cfg.Width = 1, shaper.Line{}, 0 // one copy of one line, centred: the image is the stereo morph's
+		if e.level > 0 {
+			cfg.Level = e.level
+		}
+	}
 	if e.chain2 != "" {
 		cfg.Line2 = e.line2
 		cfg.XMod, cfg.XModSilent = e.xmod, e.silent
@@ -115,6 +133,9 @@ func config(e entry) shaper.Config {
 			cfg.XModType = 1
 		}
 		cfg.Unison, cfg.Spread = 2, 5
+		if e.width > 0 {
+			cfg.Width, cfg.Unison, cfg.UniStereo = e.width, 1, 0
+		}
 		if e.level > 0 {
 			cfg.Level = e.level
 		}

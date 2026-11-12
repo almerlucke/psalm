@@ -213,8 +213,10 @@ psalm.register("shapeview", (p, api) => {
 	const morphRow = slider("morph", "morph", 0, 1, 0.005, "0 is chain A, 1 the last chain; between them a blend");
 	const macroRows = [1, 2, 3, 4].map(n => slider("macro" + n, "m" + n, 0, 1, 0.005, "macro " + n + ": a number in the chains that the synth moves while it plays"));
 	const amtRows = [slider("morphAmount", "morph env", -1, 1, 0.01, "how far the morph envelope pulls the morph at its peak"), slider("shapeAmount", "m1 env", -1, 1, 0.01, "how far the m1 envelope pulls macro 1 at its peak")];
+	const stereoRows = [slider("stereoMorph", "stereo morph", -1, 1, 0.01, "the left channel reads the morph that much under and the right that much over: a centred sound gets wide")]
+		.concat([1, 2, 3, 4].map(n => slider("stereoMacro" + n, "stereo m" + n, -1, 1, 0.01, "macro " + n + " is lower on the left and higher on the right by this much (a fold deeper on one side)")));
 	const nowRow = h("div", "sv-nowrow"); nowRow.append(nowC, h("span", "sv-cap", "now"));
-	morphBox.append(thumbRow, nowRow, morphRow, h("div", "sv-sub", "macros (the cards that use them show m1 to m4)"), ...macroRows, ...amtRows);
+	morphBox.append(thumbRow, nowRow, morphRow, h("div", "sv-sub", "macros (the cards that use them show m1 to m4)"), ...macroRows, ...amtRows, h("div", "sv-sub", "stereo: the left and the right read other places (automatic oversampling)"), ...stereoRows);
 
 	// ---------- envelopes ----------
 	const ENV = [["amp", "amp", "volume over the note"], ["morphEnv", "morph", "moves the morph over the note (see morph env)"], ["shapeEnv", "m1", "moves macro 1 over the note (see m1 env)"], ["pitchEnv", "pitch", "bends the pitch over the note (see pitch env amount)"]];

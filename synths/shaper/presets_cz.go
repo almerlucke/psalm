@@ -128,3 +128,47 @@ func DuoLead() Config {
 	c.Unison, c.Spread, c.UniStereo = 2, 6, 0.5
 	return c
 }
+
+// SplitPad is a different wave on each side: a soft triangle on the left, a narrow pulse on the right (line 1 and line 2 with chains of their own, the width
+// all the way), the unison kept off so each side stays its own
+func SplitPad() Config {
+	c := stage("tri | bipolar", 0, 0, env(900, 800, 0.85, 1600), env(1, 1, 1, 1), 0.56, 3800)
+	c.Chains2[0] = "pulse 0.3 | bipolar"
+	c.Line1.Detune, c.Line2 = -5, Line{Detune: 6, Level: 0.8}
+	c.Width, c.Drift = 1, 0.3
+	return c
+}
+
+// SplitLead is a folded sine on the left and a CZ saw on the right, each opening with the note, apart in the stereo field
+func SplitLead() Config {
+	c := stage("sin | fold m1[1,4]", 0, 1, env(8, 500, 0.75, 350), env(5, 900, 0.4, 500), 0.6, 5200)
+	c.Chains2[0] = "czsaw m1[0.15,0.9]"
+	c.Line2 = Line{Detune: 5, Level: 0.7}
+	c.Width = 1
+	return c
+}
+
+// WideFoldPad is one chain made wide: a sine folded by a macro that is deeper on the right (the stereo macro), so the image has a left that is soft and
+// a right that is bright, and both open and close with the envelope
+func WideFoldPad() Config {
+	c := stage("sin | fold m1[1,5]", 0.3, 0.6, env(700, 900, 0.85, 1500), env(2500, 1500, 0.6, 1500), 0.4, 4800)
+	c.StereoMacros[0] = 0.7
+	c.Line2 = Line{Detune: 5, Level: 0.4}
+	c.Width = 0.1 // centred: the image is the stereo macro's
+	c.Unison, c.Spread, c.UniStereo = 2, 6, 0.3
+	return c
+}
+
+// WideMorph is a pad that travels through four waves (a sine, a triangle, a bend of two sines, a narrow pulse) with the morph slow, the left a fourth of the way
+// behind the right (the stereo morph): the image turns as the waves change
+func WideMorph() Config {
+	c := Config{
+		Chains: [NumChains]string{"sin", "tri | bipolar", "par(thru, mult 2 | sin | mult 0.3) | sin", "pulse 0.3 | bipolar | softclip 1.5"},
+		Morph:  0.1, MorphAmount: 0.8, MorphEnv: env(6000, 8000, 0.5, 3000), StereoMorph: 0.4,
+		Line1: Line{Level: 1}, Line2: Line{Detune: 6, Level: 0.3, Octave: -1},
+		AmpEnv: env(900, 700, 0.85, 2000), Width: 0.1, Level: 0.5, Drift: 0.3,
+		Unison: 2, Spread: 5, UniStereo: 0.3,
+		Filter: softLow(2800),
+	}
+	return c
+}

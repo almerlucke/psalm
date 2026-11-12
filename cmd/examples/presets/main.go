@@ -1,4 +1,4 @@
-// Presets: a tour of the showcase presets of the synths (the shaper synth's all eighty-two), each playing what suits it for two bars: a
+// Presets: a tour of the showcase presets of the synths (the shaper synth's all eighty-six), each playing what suits it for two bars: a
 // chord for pads and drones, a line for leads, an arpeggio for plucks, a bass line for basses, a beat
 // for the drum kits. The name of each prints as it starts.
 //
@@ -208,6 +208,10 @@ func main() {
 		{"shaper", "legendrePad", pad, 0, sh(shaper.LegendrePad)},
 		{"shaper", "funnelArp", arp, 0, sh(shaper.FunnelArp)},
 		{"shaper", "duoLead", lead, 0, sh(shaper.DuoLead)},
+		{"shaper", "splitPad", pad, 0, sh(shaper.SplitPad)},
+		{"shaper", "splitLead", lead, 0, sh(shaper.SplitLead)},
+		{"shaper", "wideFoldPad", pad, 0, sh(shaper.WideFoldPad)},
+		{"shaper", "wideMorph", pad, 0, sh(shaper.WideMorph)},
 		{"drumsynth", "electro", beat, 0, kit(drumsynth.KitElectro)},
 		{"drumsynth", "trap", beat, 0, kit(drumsynth.KitTrap)},
 		{"drumsynth", "industrial", beat, 0, kit(drumsynth.KitIndustrial)},
