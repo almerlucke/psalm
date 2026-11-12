@@ -4,11 +4,11 @@
 const cutoff = [1700, 2100, 2700, 3500, 4600, 6200, 8200]
 let ready = false
 function section(name, i) {
-  if (ready) set({ cutoff: cutoff[i] })
+  if (ready) tune({ cutoff: cutoff[i] })
 }
 function trigger(ev) {
   if (!ready) {
-    set({ preset: "evolvingPad", ampAttack: 3500, ampDecay: 400, ampSustain: 1, ampRelease: 4500, position: 0.35,
+    tune({ preset: "evolvingPad", ampAttack: 3500, ampDecay: 400, ampSustain: 1, ampRelease: 4500, position: 0.35,
       positionLFORate: 0.08, positionLFODepth: 0.35, unison: 5, detune: 16, spread: 0.9, resonance: 0.15, filterEnvAmount: 0.4,
       cutoff: cutoff[Math.max(0, song.index)], level: 0.16 })
     ready = true

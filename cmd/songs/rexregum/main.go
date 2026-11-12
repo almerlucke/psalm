@@ -1,6 +1,9 @@
-// Rex Regum: an electronic piece to honour the King of Kings, from a MIDI file (assets/midi/rexregum.mid: 3/4, 66 bpm, 49 bars, 2:14).
+// Rex Regum: a piece to honour the King of Kings, from a MIDI file (assets/midi/rexregum.mid: 3/4, 66 bpm, 49 bars, 2:14).
 // The program reads the file and puts its notes in the score script; the other scripts play them, each on a synth of its own that
-// starts from a preset and is tuned to the sound of the piece (nothing is meant to sound like an orchestra):
+// starts from a preset and is tuned to the sound of the piece. Where the Virtual Playing Orchestra is in assets the parts play its
+// recordings instead (-orchestra=false for the synths): the double basses for the pedal and the pulse, the mixed choir for the lower
+// voices and the sopranos for the higher, the celesta, an english horn for the lament, the timpani, trumpets for the theme, first
+// violins for the canon and a glockenspiel for the chimes (see realParts). The synths:
 //
 //	the pedal         a drone of four partials that breathe against each other (shaper throneDrone)
 //	the choir         six voices held for seven bars at a time: the lower three on a sea that never repeats (shaper crystalSea), the
@@ -23,6 +26,7 @@
 //	go run ./cmd/songs/rexregum -render rexregum.wav -seed 7    render it to a file (-stems: the parts too)
 //	go run ./cmd/songs/rexregum -profile                        the time every module takes
 //	go run ./cmd/songs/rexregum -theme midnight -addr localhost:8088
+//	go run ./cmd/songs/rexregum -orchestra=false                the synths instead of the recordings of the orchestra
 package main
 
 import (
@@ -50,6 +54,7 @@ func main() {
 	renderTo := flag.String("render", "", "render the tour once to this WAV file instead of playing it")
 	profile := flag.Bool("profile", false, "play the piece offline and report the time every module takes")
 	stems := flag.Bool("stems", false, "with -render, also write the parts to their own files")
+	orch := flag.Bool("orchestra", true, "the parts the Virtual Playing Orchestra has recorded play its recordings (if it is in assets), off: the synths")
 	seed := flag.Uint64("seed", 0, "seed the random choices (0: different every time); with it a render is the same every time")
 	flag.Parse()
 
@@ -73,7 +78,7 @@ func main() {
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
 	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Audio: p.PatchInput(0)}), patcher.Theme(t))
-	ids, err := buildPatch(pt, *renderTo != "" || *profile)
+	ids, err := buildPatch(pt, *renderTo != "" || *profile, *orch && hasOrchestra())
 	if err != nil {
 		log.Fatal(err)
 	}

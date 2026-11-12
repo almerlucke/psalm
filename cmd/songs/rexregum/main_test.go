@@ -57,6 +57,17 @@ func TestPiecePlays(t *testing.T) {
 	if testing.Short() {
 		t.Skip("plays 49 bars")
 	}
+	t.Run("synths", func(t *testing.T) { playPiece(t, false) })
+	t.Run("orchestra", func(t *testing.T) {
+		toRoot(t)
+		if !hasOrchestra() {
+			t.Skip("the orchestra is not in assets")
+		}
+		playPiece(t, true)
+	})
+}
+
+func playPiece(t *testing.T, real bool) {
 	tempo = 240 // the fastest the patch goes
 	defer func() { tempo = 66 }()
 	toRoot(t)
@@ -65,11 +76,15 @@ func TestPiecePlays(t *testing.T) {
 	psalm.Seed(3)
 	p := psalm.New(nil)
 	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
-	ids, err := buildPatch(pt, true)
+	ids, err := buildPatch(pt, true, real)
 	if err != nil {
 		t.Fatal(err)
 	}
 	p.Out(pt.Out())
+	limit := 1.5 // recordings have sharper peaks than the synths (the master limits them)
+	if real {
+		limit = 2
+	}
 	bar := int(3 * 60 / tempo * 44100 / 256) // buffers in a bar (three beats)
 	for i, s := range sections {
 		var peak, energy float64
@@ -81,7 +96,7 @@ func TestPiecePlays(t *testing.T) {
 				energy += float64(v) * float64(v)
 			}
 		}
-		if peak < 0.02 || peak > 1.5 || math.IsNaN(energy) {
+		if peak < 0.02 || peak > limit || math.IsNaN(energy) {
 			t.Errorf("section %d (%s): peak %v", i, s.name, peak)
 		}
 		for _, id := range ids.scripts {

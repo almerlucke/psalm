@@ -3,7 +3,7 @@
 let ready = false
 function trigger(ev) {
   if (!ready) {
-    set({ preset: "glassBell", ampRelease: 3000, trim: -2, mono: 0 })
+    tune({ preset: "glassBell", ampRelease: 3000, trim: -2, mono: 0 })
     ready = true
   }
   for (const n of shared.notesNow("celesta", ev)) note(n.pitch, 0.35 + 0.6 * n.vel, n.len)

@@ -7,7 +7,7 @@ function trigger(ev) {
   const lv = level[Math.max(0, song.index)] || 0
   if (!lv) return
   if (!ready) {
-    set({ preset: "pulseBass", cutoff: 420, resonance: 0.25, filterEnvAmount: 2, ampRelease: 160 })
+    tune({ preset: "pulseBass", cutoff: 420, resonance: 0.25, filterEnvAmount: 2, ampRelease: 160 })
     ready = true
   }
   const s = shared.stepNow(ev)

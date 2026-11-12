@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/almerlucke/psalm/midi"
@@ -174,11 +175,52 @@ type patchIDs struct {
 	synths  map[string]string
 }
 
+// orchestra is where the Virtual Playing Orchestra is (it is not in the repository: without it the synths play)
+const orchestra = "assets/Virtual-Playing-Orchestra3"
+
+func hasOrchestra() bool {
+	_, err := os.Stat(orchestra + "/Vocals/choir-MIXED-sustain.sfz")
+	return err == nil
+}
+
+// realPart is a recording of the orchestra (a sfz file, in the orchestra) for a part, and the level it plays at (the recordings
+// differ in loudness)
+type realPart struct {
+	sfz  string
+	gain float64
+}
+
+// realParts are the parts that play recordings of real instruments (a sampler) when the orchestra is there, each the instrument that
+// fits what the file asks of it. The joins (fx: a hit and a riser) have no instrument, they stay a synth
+//
+//	pedal      the double basses, sustained: the low voice of twelve seconds and more
+//	low        the mixed choir, for the lower three voices (G2 to E5)
+//	high       the sopranos, for the higher three (D4 to E6)
+//	celesta    the celesta, which the file asks for
+//	lament     the english horn, the voice of a lament: one line, slow, C4 to A4
+//	timpani    the timpani, struck
+//	theme      the trumpets, staccato: the tune of the King
+//	canon      the first violins, staccato: the answer a fifth and an octave above
+//	chimes     the glockenspiel, for the bells that ring over the Gathering and on
+//	pulse      the double basses, short: the eighths under the pulse
+var realParts = map[string]realPart{
+	"pedal":   {"Strings/bass-SEC-sustain.sfz", 0.75},
+	"low":     {"Vocals/choir-MIXED-sustain.sfz", 1.5},
+	"high":    {"Vocals/choir-FEMALE-sustain.sfz", 1.1},
+	"celesta": {"Keys/celesta.sfz", 2},
+	"lament":  {"Woodwinds/english-horn-SOLO-sustain.sfz", 2.3},
+	"timpani": {"Percussion/timpani-hit.sfz", 1.1},
+	"theme":   {"Brass/trumpet-SEC-staccato.sfz", 1.4},
+	"canon":   {"Strings/1st-violin-SEC-staccato.sfz", 0.9},
+	"chimes":  {"Percussion/glockenspiel.sfz", 4.5},
+	"pulse":   {"Strings/bass-SEC-staccato.sfz", 2},
+}
+
 // buildPatch makes the patch: the song, a score script that holds the notes of the file, and a clock of sixteenths into eleven
 // scripts that each play a synth, all on a mixer with three buses: a hall, an echo and a shimmer. The timpani pull down the
 // pulse and the pads (a sidechain). Rendering turns the loop of the song off so it ends with the last section. It returns the
 // scripts, to look at what they say
-func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
+func buildPatch(pt *patcher.Patcher, once, real bool) (ids patchIDs, err error) {
 	add := func(kind, preset string, x, y float64) string {
 		if err != nil {
 			return ""
@@ -241,6 +283,10 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	for i, p := range parts {
 		y := 20 + float64(i)*110
 		scripts[i] = add("script", "", 260, y)
+		if _, ok := realParts[p.name]; ok && real {
+			parts[i].kind, parts[i].preset = "sampler", ""
+			p = parts[i]
+		}
 		synths[i] = add(p.kind, p.preset, 520, y)
 	}
 	mixer := add("mixer", "16 channels", 780, 300)
@@ -255,7 +301,16 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	text(scoreID, "code", data+scoreScript)
 	ids = patchIDs{scripts: []string{scoreID}, synths: map[string]string{}}
 	for i, p := range parts {
-		text(scripts[i], "code", p.script)
+		code := p.script
+		if rp, ok := realParts[p.name]; ok && real {
+			// a recording has no settings to tune: the scripts only play it (`tune` does nothing; with a synth it is `set`); its level is the gain
+			code = "const tune = () => {}\n" + code
+			text(synths[i], "sounds", "0 "+orchestra+"/"+rp.sfz+" sfz")
+		}
+		if code == p.script {
+			code = "const tune = set\n" + code
+		}
+		text(scripts[i], "code", code)
 		connect(patcher.Cable{From: clock, To: scripts[i]})
 		connect(patcher.Cable{From: scripts[i], To: synths[i]})
 		// on its way to the mixer a sound may go through an eq (a low cut that takes out what is too low to hear, and the offset
@@ -294,7 +349,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	// the clock counts sixteenths (a bar of the 3/4 is twelve): its default
 	_ = clock
 	// the mix, by the channels in the order of the parts: pedal, low, high, celesta, lament, timpani, theme, canon, chimes, pulse, fx
-	pt.SettingsOf(mixer).Apply(map[string]float64{
+	mix := map[string]float64{
 		"level1": 0.55, "pan1": 0, "sendA1": 0.3,
 		"level2": 0.4, "pan2": -0.15, "sendA2": 0.35, "sendC2": 0.25,
 		"level3": 0.32, "pan3": 0.15, "sendA3": 0.35, "sendC3": 0.35,
@@ -307,7 +362,15 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"level10": 0.6, "pan10": 0,
 		"level11": 0.6, "pan11": 0, "sendA11": 0.6,
 		"returnA": 1, "returnB": 0.7, "returnC": 0.5, "level": 0.7,
-	})
+	}
+	if real { // the recordings are not as loud as the synths: each by its gain
+		for i, p := range parts {
+			if rp, ok := realParts[p.name]; ok {
+				mix[fmt.Sprintf("level%d", i+1)] *= rp.gain
+			}
+		}
+	}
+	pt.SettingsOf(mixer).Apply(mix)
 	// the hall: a big one, for a piece of this size
 	pt.SettingsOf(hall).Apply(map[string]float64{"mix": 0.7, "decay": 4.5, "size": 0.8})
 	// the echo: a dotted eighth (0.75 of a beat), a few repeats, with the top left on

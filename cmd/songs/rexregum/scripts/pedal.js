@@ -4,7 +4,7 @@
 let ready = false
 function trigger(ev) {
   if (!ready) {
-    set({ preset: "throneDrone", ampAttack: 2200, ampDecay: 400, ampSustain: 1, ampRelease: 3200, sub: 0.3, trim: -3, mono: 0 })
+    tune({ preset: "throneDrone", ampAttack: 2200, ampDecay: 400, ampSustain: 1, ampRelease: 3200, sub: 0.3, trim: -3, mono: 0 })
     ready = true
   }
   for (const n of shared.notesNow("pedal", ev)) note(n.pitch, 0.7, n.len)
