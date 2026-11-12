@@ -33,7 +33,7 @@ var Presets = map[string]func() Config{
 	// beyond: what only this synth does
 	"czResonant": CZResonant, "foldLead": FoldLead, "triFoldPad": TriFoldPad, "tubeBass": TubeBass, "softDeadLead": SoftDeadLead,
 	"curveBass": CurveBass, "stepLead": StepLead, "czSawLead": CZSawLead, "czSquareBass": CZSquareBass, "czPulseArp": CZPulseArp,
-	"harmPad": HarmPad, "polyLead": PolyLead, "legendrePad": LegendrePad, "funnelArp": FunnelArp, "tubeOrgan": TubeOrgan, "rainbow": Rainbow, "crystalSea": CrystalSea, "fourBeasts": FourBeasts, "trumpetVoice": TrumpetVoice, "sevenLamps": SevenLamps,
+	"harmPad": HarmPad, "polyLead": PolyLead, "legendrePad": LegendrePad, "funnelArp": FunnelArp, "duoLead": DuoLead, "tubeOrgan": TubeOrgan, "rainbow": Rainbow, "crystalSea": CrystalSea, "fourBeasts": FourBeasts, "trumpetVoice": TrumpetVoice, "sevenLamps": SevenLamps,
 	"crownsCast": CrownsCast, "thunder": Thunder, "lightning": Lightning, "lionBass": LionBass, "throneDrone": ThroneDrone,
 	"manyEyes": ManyEyes,
 }
@@ -103,8 +103,9 @@ func FoldPad() Config {
 // SyncLead is a saw hard synced to a higher pitch that sweeps down as the note goes on
 func SyncLead() Config {
 	return Config{
-		Chains: [NumChains]string{"mult m1[1,6] | mod 1 | bipolar"},
-		Macros: [4]float64{0}, ShapeAmount: 1, ShapeEnv: env(3, 500, 0.15, 300),
+		Chains:  [NumChains]string{"mult m1[1,6] | mod 1 | bipolar"},
+		Chains2: [NumChains]string{"mult m1[1.5,4.5] | mod 1 | bipolar"},
+		Macros:  [4]float64{0}, ShapeAmount: 1, ShapeEnv: env(3, 500, 0.15, 300),
 		Line1: Line{Level: 1}, Line2: Line{Detune: 7, Level: 0.6},
 		AmpEnv: env(4, 400, 0.8, 250), Width: 0.3, Level: 0.643,
 		VibratoRate: 5.5, VibratoDepth: 0.1, VibratoDelay: 0.3,
@@ -116,9 +117,10 @@ func SyncLead() Config {
 // PWM is a pulse whose width moves on an LFO, two lines apart
 func PWM() Config {
 	return Config{
-		Chains: [NumChains]string{"pulse m1[0.4,0.06] | bipolar"},
-		Macros: [4]float64{0.4},
-		Line1:  Line{Level: 1, Detune: -9}, Line2: Line{Detune: 12, Level: 1, Octave: 1},
+		Chains:  [NumChains]string{"pulse m1[0.4,0.06] | bipolar"},
+		Chains2: [NumChains]string{"pulse m1[0.06,0.4] | bipolar"},
+		Macros:  [4]float64{0.4},
+		Line1:   Line{Level: 1, Detune: -9}, Line2: Line{Detune: 12, Level: 1, Octave: 1},
 		AmpEnv: env(15, 500, 0.8, 350), Width: 0.9, Level: 0.339,
 		LFO1Rate: 0.7, LFO2Rate: 0.53,
 		Filter: lowpass(2600, 0.18, 0.3, 40, 500, 0.6, 350),

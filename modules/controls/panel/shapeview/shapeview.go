@@ -27,7 +27,7 @@ var Plugin = panel.Plugin{Name: "shapeview", JS: script, CSS: styles}
 
 // Host is what the view works on: the texts of the chains and the settings of the synth
 type Host struct {
-	ChainKeys [4]string // the keys of the texts (chainA...)
+	ChainKeys [8]string // the keys of the texts: chainA to chainD of line 1, then the chains of line 2 (chain2A...)
 	Text      func(key string) string
 	TextErr   func(key string) string
 	SetText   func(key, value string) error
@@ -63,9 +63,11 @@ type chainPlot struct {
 
 // state is what the page gets as things change
 type state struct {
-	Chains   [4]chainPlot       `json:"chains"`
-	Used     int                `json:"used"` // the chains in use (A first)
+	Chains   [8]chainPlot       `json:"chains"` // line 1's A to D, then line 2's
+	Used     int                `json:"used"`   // the chains in use (A first)
+	Used2    int                `json:"used2"`  // the chains of line 2 in use (0: it reads line 1's)
 	Blend    []float64          `json:"blend,omitempty"`
+	Blend2   []float64          `json:"blend2,omitempty"` // the wave of line 2 (the same as Blend when it has no chains of its own)
 	Spectrum []float64          `json:"spectrum,omitempty"`
 	Values   map[string]float64 `json:"values"`
 }
@@ -82,7 +84,7 @@ type View struct {
 // catalog is what the page is given once
 type catalog struct {
 	Stages []shapechain.StageInfo `json:"stages"`
-	Keys   [4]string              `json:"keys"`
+	Keys   [8]string              `json:"keys"`
 }
 
 // Add adds the editor to a panel (and the plugin to its page)
@@ -126,8 +128,8 @@ func (v *View) message(raw json.RawMessage) {
 // state works out what the page shows; the plots are only made again when the chains or the macros or the morph changed
 func (v *View) state() any {
 	vals := v.h.Values()
-	var texts [4]string
-	var errs [4]string
+	var texts [8]string
+	var errs [8]string
 	key := strings.Builder{}
 	for i, k := range v.h.ChainKeys {
 		texts[i], errs[i] = v.h.Text(k), v.h.TextErr(k)
@@ -148,9 +150,9 @@ func (v *View) state() any {
 }
 
 // plot works out the plots of the four chains and the blend of them at a morph
-func plot(texts, errs [4]string, morph float64, macros shapechain.Macros) state {
+func plot(texts, errs [8]string, morph float64, macros shapechain.Macros) state {
 	var st state
-	var chains [4]*shapechain.Chain
+	var chains [8]*shapechain.Chain
 	for i, t := range texts {
 		cp := chainPlot{Text: t, Err: errs[i], Stages: []stagePlot{}}
 		if strings.TrimSpace(t) == "" {
@@ -178,26 +180,39 @@ func plot(texts, errs [4]string, morph float64, macros shapechain.Macros) state 
 		cp.Stages = stagePlots(t, macros)
 		st.Chains[i] = cp
 	}
-	for i := range chains {
-		if chains[i] != nil && (i == 0 || chains[i-1] != nil) {
-			st.Used = i + 1
+	count := func(from int) int {
+		n := 0
+		for i := from; i < from+4; i++ {
+			if chains[i] == nil {
+				break
+			}
+			n++
 		}
+		return n
 	}
-	if st.Used > 0 {
-		f := max(0, min(morph, 1)) * float64(st.Used-1)
-		i := min(int(f), st.Used-1)
+	st.Used, st.Used2 = count(0), count(4)
+	blendOf := func(from, used int) []float64 {
+		f := max(0, min(morph, 1)) * float64(used-1)
+		i := min(int(f), used-1)
 		frac := f - float64(i)
-		a := st.Chains[i].Wave
-		blend := make([]float64, len(a))
-		copy(blend, a)
-		if i+1 < st.Used && frac > 0 {
-			b := st.Chains[i+1].Wave
+		blend := append([]float64(nil), st.Chains[from+i].Wave...)
+		if i+1 < used && frac > 0 {
+			b := st.Chains[from+i+1].Wave
 			for k := range blend {
 				blend[k] += (b[k] - blend[k]) * frac
 			}
 		}
-		st.Blend = round(blend, 1e4)
-		st.Spectrum = round(shapechain.Spectrum(blend, harmonics), 1e4)
+		return round(blend, 1e4)
+	}
+	if st.Used > 0 {
+		st.Blend = blendOf(0, st.Used)
+		st.Spectrum = round(shapechain.Spectrum(st.Blend, harmonics), 1e4)
+	}
+	switch {
+	case st.Used2 > 0:
+		st.Blend2 = blendOf(4, st.Used2)
+	case st.Used > 0:
+		st.Blend2 = st.Blend
 	}
 	return st
 }

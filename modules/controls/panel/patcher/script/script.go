@@ -381,7 +381,7 @@ func (s *Script) newAPI() *goja.Object {
 			case string:
 				// a chain of the shaper synth is read here: a chain that can't be read is an error of
 				// the script (with its place), and the synth gets it read
-				if len(key) == 6 && key[:5] == "chain" && key[5] >= 'A' && key[5] <= 'D' && strings.TrimSpace(x) != "" {
+				if (len(key) == 6 && key[:5] == "chain" && key[5] >= 'A' && key[5] <= 'D' || len(key) == 7 && key[:6] == "chain2" && key[6] >= 'A' && key[6] <= 'D') && strings.TrimSpace(x) != "" {
 					c, err := shapechain.Parse(x)
 					if err != nil {
 						panic(vm.NewTypeError(fmt.Sprintf("set %s: %v", key, err)))

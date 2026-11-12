@@ -38,7 +38,7 @@ func TestShaperChains(t *testing.T) {
 
 	texts := pt.Texts(syn)
 	want := shaper.Glass()
-	if len(texts) != 4 || texts[0].Key != "chainA" || texts[0].Value != want.Chains[0] || texts[1].Value != want.Chains[1] || texts[3].Value != "" {
+	if len(texts) != 8 || texts[4].Key != "chain2A" || texts[4].Value != "" || texts[0].Key != "chainA" || texts[0].Value != want.Chains[0] || texts[1].Value != want.Chains[1] || texts[3].Value != "" {
 		t.Fatalf("texts %+v", texts)
 	}
 

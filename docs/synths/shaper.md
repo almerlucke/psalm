@@ -66,6 +66,7 @@ the synth keeps the chain it had.
 |---|---|
 | `Chains` | the text of chains A to D; the list ends at the first empty one; chain A is a sine when empty |
 | `Morph`, `Macros` | 0-1, where in the chains it is; the values of `m1` to `m4` |
+| `Chains2` | the chains of line 2, written like `Chains`. Empty (the default) line 2 reads the chains above, the same wave at its own pitch and place in the morph; with chains of its own it is another oscillator (a folded sine against a CZ saw), which fattens the sound, gives cross modulation two different waves and lets the lines take different tones. The morph and the macros are the same for both. Messages `chain2A` to `chain2D` (an empty `chain2A` gives line 2 the chains of line 1 again) |
 | `Line1`, `Line2` | `Octave`, `Detune` (cents), `Level` (line 2 is off at 0), `Morph` (-1 to 1, added to the morph) |
 | `MorphEnv`, `MorphAmount` | an envelope over the note that moves the morph by up to `MorphAmount` (-1 to 1); off at 0 |
 | `ShapeEnv`, `ShapeAmount` | the same on macro `m1` |
@@ -119,7 +120,7 @@ A lopsided wave (a narrow pulse sits mostly on one side of zero) has its mean ta
 the start of each note and followed slowly after; otherwise the envelope would switch the offset on and off with every note, a thump
 that a small speaker plays as a tick.
 
-**Messages**: `preset`, `trim`, `pitch`, `frequency`, `velocity`, `glide`, `pitchAmount`, `morph`, `macro1`-`macro4`, `chainA`-`chainD` (text, or a
+**Messages**: `preset`, `trim`, `pitch`, `frequency`, `velocity`, `glide`, `pitchAmount`, `morph`, `macro1`-`macro4`, `chainA`-`chainD`, `chain2A`-`chain2D` (text, or a
 `*shapechain.Chain` read already, which is what the patcher sends), `octave1/2`, `detune1/2`,
 `level1/2`, `morph1/2`, `morphAmount`, `shapeAmount`, `oversample` (0-4: auto, off, 2x, 4x, 8x), `width`,
 `unison` (1-7), `spread`, `uniStereo`, `drift`, `sub`, `noise`, `noiseColor`,
@@ -131,6 +132,7 @@ aftertouch](../../synths.md#pitch-bend-mod-wheel-and-aftertouch). **Value input*
 
 The window of a shaper in the patcher (double click it) has an editor for the chains instead of four text boxes (`modules/controls/panel/shapeview`), above the usual settings:
 
+- **Line 1 and Line 2** switch which oscillator's chains you edit. Line 2 reads the chains of line 1 until you press `Give it chains of its own` (a copy to change); `Same as line 1 again` clears them. A dot on `Line 2` says it has chains of its own.
 - **Chains A to D** are tabs; a dot says the chain is in use, red that its text can't be read (the sound keeps the chain it had, and the error is under the text).
 - **Plots:** the wave of the chain (one cycle, at the macros as they are now), the curve of the stage you pick (x from -1 to 1, with y = x faint), and its harmonics (grey ones are above what the chain's bandwidth says matters; an edge, a saw or a pulse, says its harmonics go on and the synth filters them). Picking a card draws the wave after that stage in grey behind the wave of the chain, so you see what each stage does to it.
 - **The rack:** one card for every stage, with a small plot of the wave after it and knobs for its numbers. A number is a constant (slider and box) or a macro: the menu on the number makes it `m1` to `m4`, and then the two boxes are the number when the macro is 0 and 1 (`m1[1,6]`). Drag a card to move it, `⧉` copies it, `✕` takes it away, `●` leaves it out (it stays in the text as a line `#off | stage`, which the chain reads as a comment, and comes back with `○`). `+ Add a stage` lists every stage by group with what it does; a stage with a list (`cheby`, `harm`, `poly`, `funnel`, `table`) or a `par(...)` is a box of text on its card.
@@ -140,7 +142,7 @@ The window of a shaper in the patcher (double click it) has an editor for the ch
 - **Envelopes** (amp, morph, m1, pitch) are curves: drag the dots for the attack, the decay and sustain, the release. The buttons make fades: for the amp `Pluck`, `Soft`, `Fade in` (1.5 s), `Swell`, `Fade out` (a release of 3 s), for the others `Quick`, `Slow rise`, `Fall` and `Hold`.
 - **Play** plays a note (the octave next to it) on the synth, to hear what you drew. The settings under the editor are the same ones, they follow each other.
 
-Presets: 81 in ten families (see [presets](../presets/shaper.md#shaper), and `go run ./cmd/examples/presets -synth shaper`
+Presets: 82 in ten families (see [presets](../presets/shaper.md#shaper), and `go run ./cmd/examples/presets -synth shaper`
 plays them all): basses (`subSine`, `kickSub`, `reese`, `acid`, `wobble`, `pulseBass`, `fmBass`, `growl`, `subFold`),
 leads (`supersawLead`, `squareLead`, `syncLead`, `pluckLead`, `fmLead`, `fluteLead`, `brassLead`, `vowel`, `reed`), pads
 (`warmPad`, `stringPad`, `choirPad`, `airPad`, `darkPad`, `evolve`, `glassPad`, `foldPad`, `morphPad`, `swarm`, `organ`), keys and

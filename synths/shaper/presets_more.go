@@ -26,7 +26,8 @@ func KickSub() Config {
 func Reese() Config {
 	return Config{
 		Unison: 3, Spread: 12, UniStereo: 0.6, Drift: 0.5, Sub: 0.35,
-		Chains: [NumChains]string{"bipolar | softclip 1.15"}, Line1: Line{Level: 1}, Line2: Line{Detune: 21, Level: 1},
+		Chains:  [NumChains]string{"bipolar | softclip 1.15"},
+		Chains2: [NumChains]string{"pulse 0.5 | bipolar | softclip 1.1"}, Line1: Line{Level: 1}, Line2: Line{Detune: 21, Level: 1},
 		AmpEnv: env(8, 500, 0.9, 200), Width: 0.5, Level: 0.484, LFO1Rate: 0.25,
 		Filter: lowpass(650, 0.25, 0.8, 5, 300, 0.7, 200),
 		Mods:   slots(modmatrix.Slot{Src: lfo1, Dest: "cutoff", Amount: 0.13}, modmatrix.Slot{Src: lfo1, Dest: "detune2", Amount: 0.15}),
@@ -103,7 +104,8 @@ func SupersawLead() Config {
 func SquareLead() Config {
 	return Config{
 		Unison: 3, Spread: 10, UniStereo: 0.6, Drift: 0.3,
-		Chains: [NumChains]string{"pulse m1[0.5,0.2] | bipolar"}, Macros: [4]float64{0.3},
+		Chains:  [NumChains]string{"pulse m1[0.5,0.2] | bipolar"},
+		Chains2: [NumChains]string{"bipolar | softclip 1.4"}, Macros: [4]float64{0.3},
 		Line1: Line{Level: 1}, Line2: Line{Detune: 8, Level: 0.6, Octave: 0},
 		AmpEnv: env(5, 300, 0.85, 200), Level: 0.342, Mono: true, Legato: true, Glide: 45, Width: 0.5, LFO1Rate: 0.7,
 		VibratoRate: 5.5, VibratoDepth: 0.08, VibratoDelay: 0.3, Filter: lowpass(3000, 0.15, 0.5, 4, 300, 0.6, 200),
@@ -125,8 +127,9 @@ func PluckLead() Config {
 // FMLead is an electric-organ-bright phase modulated lead: the harder the key the brighter, the wheel adds more
 func FMLead() Config {
 	return Config{
-		Drift:  0.3,
-		Chains: [NumChains]string{pm(2, "m1[0.05,0.5]")}, Macros: [4]float64{0.15},
+		Drift:   0.3,
+		Chains:  [NumChains]string{pm(2, "m1[0.05,0.5]")},
+		Chains2: [NumChains]string{"par(thru, mult 3 | sin | mult m1[0.02,0.2]) | sin"}, Macros: [4]float64{0.15},
 		Line1: Line{Level: 1}, Line2: Line{Detune: 5, Level: 0.5, Octave: 0}, Width: 0.5,
 		AmpEnv: env(5, 300, 0.85, 220), Level: 0.49, VibratoRate: 5.4, VibratoDepth: 0.08, VibratoDelay: 0.25,
 		Mods: slots(modmatrix.Slot{Src: vel, Dest: "macro1", Amount: 0.65}, modmatrix.Slot{Src: modmatrix.Wheel, Dest: "macro1", Amount: 0.35}),
@@ -148,7 +151,8 @@ func FluteLead() Config {
 func BrassLead() Config {
 	return Config{
 		Unison: 3, Spread: 8, UniStereo: 0.5, Drift: 0.3,
-		Chains: [NumChains]string{pm(1, "m1[0.05,0.4]")}, Macros: [4]float64{0.1}, ShapeAmount: 0.8, ShapeEnv: env(90, 400, 0.55, 250),
+		Chains:  [NumChains]string{pm(1, "m1[0.05,0.4]")},
+		Chains2: [NumChains]string{"bipolar | softclip 1.5"}, Macros: [4]float64{0.1}, ShapeAmount: 0.8, ShapeEnv: env(90, 400, 0.55, 250),
 		Line1: Line{Level: 1}, Line2: Line{Detune: 6, Level: 0.5}, Width: 0.4,
 		AmpEnv: env(45, 300, 0.85, 220), Level: 0.478, VibratoRate: 5.2, VibratoDepth: 0.06, VibratoDelay: 0.4,
 		Mods: slots(modmatrix.Slot{Src: vel, Dest: "macro1", Amount: 0.25}),
@@ -161,7 +165,8 @@ func BrassLead() Config {
 func WarmPad() Config {
 	return Config{
 		Unison: 3, Spread: 14, UniStereo: 1, Drift: 0.5, Sub: 0.2,
-		Chains: [NumChains]string{"bipolar | softclip 1.1"}, Line1: Line{Level: 1, Detune: -7}, Line2: Line{Detune: 13, Level: 1}, Width: 1,
+		Chains:  [NumChains]string{"bipolar | softclip 1.1"},
+		Chains2: [NumChains]string{"tri | bipolar"}, Line1: Line{Level: 1, Detune: -7}, Line2: Line{Detune: 13, Level: 1}, Width: 1,
 		AmpEnv: env(1400, 900, 0.9, 1800), Level: 0.529, LFO1Rate: 0.12, Filter: lowpass(1100, 0.12, 0.7, 900, 1000, 0.7, 1500),
 		Mods: slots(modmatrix.Slot{Src: lfo1, Dest: "cutoff", Amount: 0.1}),
 	}
@@ -171,7 +176,8 @@ func WarmPad() Config {
 func StringPad() Config {
 	return Config{
 		Unison: 3, Spread: 12, UniStereo: 0.9, Drift: 0.5,
-		Chains: [NumChains]string{"bipolar | softclip 1.2", "pulse 0.4 | bipolar"}, Morph: 0.4,
+		Chains:  [NumChains]string{"bipolar | softclip 1.2", "pulse 0.4 | bipolar"},
+		Chains2: [NumChains]string{"pulse 0.4 | bipolar", "bipolar | softclip 1.2"}, Morph: 0.4,
 		Line1: Line{Level: 1, Detune: -6}, Line2: Line{Detune: 11, Level: 1, Morph: 0.15}, Width: 0.9,
 		AmpEnv: env(700, 900, 0.9, 1400), Level: 0.578, LFO2Rate: 0.18, VibratoRate: 5.2, VibratoDepth: 0.04, VibratoDelay: 0.8,
 		Filter: lowpass(2300, 0.1, 0.6, 600, 900, 0.7, 1400), Mods: slots(modmatrix.Slot{Src: lfo2, Dest: "morph", Amount: 0.35}),
@@ -208,7 +214,8 @@ func AirPad() Config {
 func DarkPad() Config {
 	return Config{
 		Unison: 3, Spread: 10, UniStereo: 0.8, Drift: 0.5, Sub: 0.25,
-		Chains: [NumChains]string{"pulse 0.5 | bipolar"}, Line1: Line{Level: 1}, Line2: Line{Octave: -1, Detune: 9, Level: 0.9}, Width: 0.8,
+		Chains:  [NumChains]string{"pulse 0.5 | bipolar"},
+		Chains2: [NumChains]string{"tri | bipolar"}, Line1: Line{Level: 1}, Line2: Line{Octave: -1, Detune: 9, Level: 0.9}, Width: 0.8,
 		AmpEnv: env(1600, 900, 0.9, 2400), Level: 0.364, LFO1Rate: 0.07, Filter: lowpass(520, 0.22, 0.5, 1200, 1200, 0.7, 2000),
 		Mods: slots(modmatrix.Slot{Src: lfo1, Dest: "cutoff", Amount: 0.2}),
 	}

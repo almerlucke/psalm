@@ -1,6 +1,6 @@
 # shaper
 
-The chains of every preset are in the module's window in the patcher (see [synths](../synths/shaper.md#shaper)). `go run ./cmd/examples/presets -synth shaper` plays all of them, two bars each. Every preset is held to the same measures by a test: no clipping, as loud as the others (a sustained sound at about -15 dB rms, a short one peaking near 0.5), under -18 dB of its energy above 6 kHz (the effects excepted), silent within 12 seconds of the key being let go, and not like any other preset.
+The chains of every preset are in the module's window in the patcher (see [synths](../synths/shaper.md#shaper)). `go run ./cmd/examples/presets -synth shaper` plays all of them, two bars each. Presets with chains of their own for line 2 (a different wave against the first, not a copy of it): warmPad, stringPad (the two lines morph opposite ways), darkPad, reese, squareLead, pwm (the pulse widths move opposite ways), fmLead (another ratio), brassLead, syncLead (another sync ratio) and duoLead. Every preset is held to the same measures by a test: no clipping, as loud as the others (a sustained sound at about -15 dB rms, a short one peaking near 0.5), under -18 dB of its energy above 6 kHz (the effects excepted), silent within 12 seconds of the key being let go, and not like any other preset.
 
 ## Basses
 
@@ -136,3 +136,4 @@ The stages from genny's newer shapers (folds, the tube, dead zones, curves, smoo
 | polyLead | PolyLead | a saw through a cubic: rounded, soft at the peaks |
 | legendrePad | LegendrePad | the Legendre polynomial of order five as a waveshaper: a strange, even stack of harmonics |
 | funnelArp | FunnelArp | a saw snapped to six levels, plucked: a staircase with the grain of a low bit depth |
+| duoLead | DuoLead | two different oscillators: a folded sine on line 1, a CZ saw an octave up on line 2 (chains of its own), both opening with the note |

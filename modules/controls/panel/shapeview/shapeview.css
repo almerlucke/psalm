@@ -61,3 +61,10 @@
 .shapeview .sv-card input[type=number], .shapeview .sv-card input.txt, .shapeview .sv-card select { background: var(--bg, #1b1b1f); }
 .shapeview .sv-plots { margin-top: 4px; }
 .shapeview input[type=range] { accent-color: var(--accent); }
+.shapeview .sv-gap { width: 8px; }
+.shapeview .sv-line { min-width: 64px; }
+.shapeview .sv-line.on { background: var(--accent); color: var(--accent-ink, #fff); }
+.shapeview .sv-line.used::after { content: ""; position: absolute; right: 3px; top: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.shapeview .sv-line.on.used::after { background: currentColor; }
+.shapeview .sv-own { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.shapeview .sv-own[hidden], .shapeview .sv-own > [hidden] { display: none; }

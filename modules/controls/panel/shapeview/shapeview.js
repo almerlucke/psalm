@@ -5,12 +5,13 @@ psalm.register("shapeview", (p, api) => {
 	const cat = p.data || {stages: [], keys: ["chainA", "chainB", "chainC", "chainD"]};
 	const info = Object.fromEntries(cat.stages.map(s => [s.name, s]));
 	const KEYS = cat.keys;
-	let st = {chains: [], used: 0, values: {}};
-	let ci = 0;                     // the chain being edited
-	const sel = [0, 0, 0, 0];       // the stage picked in each chain
-	const pending = [0, 0, 0, 0];   // until when the page's own text is the one to show (ms)
-	let rack = [[], [], [], []];    // the items of each chain: {text, off}
-	let rackSig = ["", "", "", ""];
+	let st = {chains: [], used: 0, used2: 0, values: {}};
+	let ci = 0;                     // the chain being edited: 0 to 3 are the chains of line 1, 4 to 7 those of line 2
+	let lineNo = 0;                   // the line being edited
+	const sel = Array(8).fill(0);   // the stage picked in each chain
+	const pending = Array(8).fill(0); // until when the page's own text is the one to show (ms)
+	let rack = Array.from({length: 8}, () => []);    // the items of each chain: {text, off}
+	let rackSig = Array(8).fill("");
 	const colors = {};
 	const restyle = () => { for (const n of ["ink", "accent", "muted", "line", "track"]) colors[n] = api.css(n); colors.danger = "#e5484d"; };
 	restyle();
@@ -125,9 +126,18 @@ psalm.register("shapeview", (p, api) => {
 	// ---------- the root ----------
 	const root = h("div", "shapeview");
 	const bar = h("div", "sv-bar"), tabs = h("div", "sv-tabs");
-	const tabEls = KEYS.map((k, i) => { const b = h("button", "sv-tab", "ABCD"[i]); b.title = "edit chain " + "ABCD"[i]; b.addEventListener("click", () => pick(i)); tabs.append(b); return b; });
+	const lineEls = [0, 1].map(n => { const b = h("button", "sv-tab sv-line", "Line " + (n + 1)); b.title = n ? "line 2: its own chains, or line 1's when it has none" : "line 1"; b.addEventListener("click", () => { lineNo = n; pick(n * 4 + ci % 4); }); tabs.append(b); return b; });
+	tabs.append(h("span", "sv-gap"));
+	const tabEls = [0, 1, 2, 3].map(i => { const b = h("button", "sv-tab", "ABCD"[i]); b.title = "edit chain " + "ABCD"[i]; b.addEventListener("click", () => pick(lineNo * 4 + i)); tabs.append(b); return b; });
 	const playBtn = h("button", "sv-btn", "▶ Play"); playBtn.title = "play a note on the synth, to hear the chains as they are";
 	const octave = h("select", "sv-select"); [36, 48, 60, 72].forEach(n => { const o = h("option", "", "C" + (n / 12 - 1)); o.value = n; if (n === 48) o.selected = true; octave.append(o); });
+	const own = h("div", "sv-own");
+	const ownMsg = h("span", "", "Line 2 reads the chains of line 1. "), ownBtn = h("button", "sv-btn", "Give it chains of its own");
+	ownBtn.title = "copy the chains of line 1 to line 2, to change them there";
+	ownBtn.addEventListener("click", () => { for (let j = 0; j < 4; j++) { const t = st.chains[j] ? st.chains[j].text : ""; setChainText(4 + j, t); } pick(4 + ci % 4); });
+	const ownOff = h("button", "sv-btn", "Same as line 1 again"); ownOff.title = "line 2 reads the chains of line 1 again (its own are cleared)";
+	ownOff.addEventListener("click", () => { for (let j = 0; j < 4; j++) setChainText(4 + j, ""); });
+	own.append(ownMsg, ownBtn, ownOff);
 	playBtn.addEventListener("click", () => send({play: +octave.value + 9}));
 	const startSel = h("select", "sv-select"); startSel.title = "replace this chain by a start";
 	const starts = [["Sine", "sin"], ["Saw", "bipolar"], ["Triangle", "tri | bipolar"], ["Square", "pulse 0.5 | bipolar"], ["Soft saw", "bipolar | tanh 1.5"], ["Folded sine", "sin | fold 3"],
@@ -146,9 +156,9 @@ psalm.register("shapeview", (p, api) => {
 		const s = stageOf(it.text); if (!s.args || !s.args.length) return;
 		const pr = s.inf.params[0], cur = s.args[0].macro ? (pr.lo + pr.hi) / 2 : s.args[0].v;
 		const end = cur - pr.lo > pr.hi - cur ? pr.lo : pr.hi;
-		const base = ci; let k = 0;
-		for (let j = 0; j < 4; j++) {
-			if (j === base) continue; k++;
+		const base = ci % 4; let k = 0;
+		for (let jj = 0; jj < 4; jj++) {
+			if (jj === base) continue; k++; const j = lineNo * 4 + jj;
 			const copy = items.map(x => ({...x}));
 			const a = s.args.map(x => ({...x})); a[0] = {macro: 0, v: cur + (end - cur) * (k / 3)};
 			copy[sel[ci]].text = stageText(s.name, a);
@@ -187,7 +197,7 @@ psalm.register("shapeview", (p, api) => {
 	textbox.addEventListener("input", () => { pending[ci] = performance.now() + 1500; later("typing", 350, () => { rack[ci] = rackOf(textbox.value); rackSig[ci] = rack[ci].map(x => (x.off ? "-" : "") + x.text).join("|"); send({text: {key: KEYS[ci], value: textbox.value}}); buildRack(); }); });
 
 	// the morph and macros
-	const morphBox = h("div", "sv-morph"), thumbs = KEYS.map((k, i) => { const c = h("canvas", "sv-canvas thumb"); c.title = "chain " + "ABCD"[i]; c.addEventListener("click", () => pick(i)); return c; });
+	const morphBox = h("div", "sv-morph"), thumbs = [0, 1, 2, 3].map(i => { const c = h("canvas", "sv-canvas thumb"); c.title = "chain " + "ABCD"[i]; c.addEventListener("click", () => pick(lineNo * 4 + i)); return c; });
 	const thumbRow = h("div", "sv-thumbs"); thumbs.forEach(c => thumbRow.append(c));
 	const nowC = h("canvas", "sv-canvas thumb now"); nowC.title = "the wave now: the chains blended at the morph";
 	const sliders = {};
@@ -316,10 +326,16 @@ psalm.register("shapeview", (p, api) => {
 		redraw();
 	};
 
+	const showOwn = () => { // the note that line 2 reads line 1's chains, and its buttons
+		const own2 = (st.used2 || 0) > 0;
+		own.hidden = !(lineNo === 1 || own2); ownMsg.hidden = ownBtn.hidden = own2; ownOff.hidden = !own2;
+	};
 	const pick = i => {
-		ci = i; tabEls.forEach((b, q) => b.classList.toggle("on", q === i));
+		ci = i; lineNo = i >= 4 ? 1 : 0;
+		tabEls.forEach((b, q) => b.classList.toggle("on", q === i % 4)); lineEls.forEach((b, q) => b.classList.toggle("on", q === lineNo));
 		if (!rack[i].length && st.chains[i]) rack[i] = rackOf(st.chains[i].text);
-		textbox.value = st.chains[i] ? st.chains[i].text : ""; buildRack();
+		textbox.value = st.chains[i] ? st.chains[i].text : ""; buildRack(); redraw();
+		showOwn();
 	};
 
 	const redraw = () => {
@@ -329,18 +345,18 @@ psalm.register("shapeview", (p, api) => {
 		drawWave(cWave, c.wave, sp && sp.wave && sp.wave.length ? upsample(sp.wave) : null);
 		drawCurve(cCurve, sp ? sp.curve : null);
 		drawSpectrum(cSpec, c.spectrum, c.harm);
-		capWave.textContent = "wave of chain " + "ABCD"[ci] + (sp ? " (grey: after " + ((it && it.text) || "").split(" ")[0] + ")" : "");
+		capWave.textContent = "wave of " + (lineNo ? "line 2 " : "") + "chain " + "ABCD"[ci % 4] + (sp ? " (grey: after " + ((it && it.text) || "").split(" ")[0] + ")" : "");
 		capCurve.textContent = sp ? "the stage " + ((it && it.text) || "").split(" ")[0] + ", x from -1 to 1" : "pick a stage";
 		capSpec.textContent = "harmonics" + (c.harm ? (c.harm >= 1000 ? ": an edge, they go on (aliasing is filtered)" : ": " + c.harm + " matter") : "");
 		for (const q of cardPlots) { const s2 = q.index >= 0 ? (c.stages || [])[q.index] : null; drawWave(q.mini, s2 && s2.wave ? s2.wave : null, null); }
-		thumbs.forEach((t, i) => { const ch = st.chains[i]; drawWave(t, ch && ch.wave, null); t.classList.toggle("on", i === ci); t.classList.toggle("unused", !ch || !ch.wave); });
-		drawWave(nowC, st.blend, null);
+		thumbs.forEach((t, i) => { const ch = st.chains[lineNo * 4 + i]; drawWave(t, ch && ch.wave, null); t.classList.toggle("on", lineNo * 4 + i === ci); t.classList.toggle("unused", !ch || !ch.wave); });
+		drawWave(nowC, lineNo ? st.blend2 : st.blend, null);
 		envs.forEach(e => e.draw());
 	};
 	const upsample = w => { const n = 256, out = new Array(n); for (let i = 0; i < n; i++) out[i] = w[Math.floor(i * w.length / n)]; return out; };
 
-	root.append(bar, plots, rackEl, textbox, err, h("div", "sv-sub", "morph: the chains A to D blended along the morph"), morphBox, h("div", "sv-sub", "envelopes: drag the dots; the buttons set fades"), envBox);
-	tabEls[0].classList.add("on");
+	root.append(bar, own, plots, rackEl, textbox, err, h("div", "sv-sub", "morph: the chains A to D blended along the morph"), morphBox, h("div", "sv-sub", "envelopes: drag the dots; the buttons set fades"), envBox);
+	tabEls[0].classList.add("on"); lineEls[0].classList.add("on"); own.hidden = true;
 
 	return {
 		el: root,
@@ -354,10 +370,13 @@ psalm.register("shapeview", (p, api) => {
 				if (sig !== rackSig[i] && !(i === ci && document.activeElement === textbox)) { rack[i] = rackOf(c.text); rackSig[i] = rack[i].map(x => (x.off ? "-" : "") + x.text).join("|"); if (i === ci) { textbox.value = c.text; buildRack(); } }
 			});
 			const c = s.chains[ci]; err.textContent = c && c.err ? c.err : ""; err.hidden = !(c && c.err);
-			tabEls.forEach((b, i) => { const ch = s.chains[i]; b.classList.toggle("bad", !!(ch && ch.err)); b.classList.toggle("used", !!(ch && ch.wave)); });
+			tabEls.forEach((b, i) => { const ch = s.chains[lineNo * 4 + i]; b.classList.toggle("bad", !!(ch && ch.err)); b.classList.toggle("used", !!(ch && ch.wave)); });
+			lineEls.forEach((b, n) => b.classList.toggle("bad", s.chains.slice(n * 4, n * 4 + 4).some(ch => ch && ch.err)));
+			showOwn();
+			lineEls[1].classList.toggle("used", s.used2 > 0);
 			for (const [k, sl] of Object.entries(sliders)) if (s.values && s.values[k] !== undefined) sl.set(s.values[k]);
 			// the macros that are used
-			const used = [0, 1, 2, 3].map(m => s.chains.some(ch => ch.macros && ch.macros[m]));
+			const used = [0, 1, 2, 3].map(m => s.chains.some(ch => ch && ch.macros && ch.macros[m]));
 			macroRows.forEach((r, m) => r.classList.toggle("unused", !used[m]));
 			redraw();
 		},

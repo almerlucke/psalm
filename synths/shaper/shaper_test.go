@@ -94,7 +94,7 @@ func TestPresetsPlay(t *testing.T) {
 			if p > 1.2 {
 				t.Errorf("too loud: peak %v", p)
 			}
-			if n := v.numChains; n < 1 {
+			if n := v.own[0].n; n < 1 {
 				t.Errorf("%d chains", n)
 			}
 			// let go: it ends
@@ -231,12 +231,12 @@ func TestChainMessages(t *testing.T) {
 	cfg := plain("sin")
 	cfg.Oversample = 1
 	v := New(cfg)
-	if v.numChains != 1 {
-		t.Fatalf("%d chains", v.numChains)
+	if v.own[0].n != 1 {
+		t.Fatalf("%d chains", v.own[0].n)
 	}
 	v.ReceiveMessage(psalm.Message{"chainB": "bipolar"})
-	if v.numChains != 2 || v.cfg.Chains[1] != "bipolar" {
-		t.Errorf("chain B: %d chains, %q", v.numChains, v.cfg.Chains[1])
+	if v.own[0].n != 2 || v.cfg.Chains[1] != "bipolar" {
+		t.Errorf("chain B: %d chains, %q", v.own[0].n, v.cfg.Chains[1])
 	}
 	v.ReceiveMessage(psalm.Message{"chainB": "wobble 3"})
 	if v.cfg.Chains[1] != "bipolar" {
@@ -247,15 +247,15 @@ func TestChainMessages(t *testing.T) {
 		t.Errorf("a chain read already: %q", v.cfg.Chains[0])
 	}
 	v.ReceiveMessage(psalm.Message{"chainB": ""})
-	if v.numChains != 1 {
-		t.Errorf("an empty chain B leaves %d chains", v.numChains)
+	if v.own[0].n != 1 {
+		t.Errorf("an empty chain B leaves %d chains", v.own[0].n)
 	}
 	v.ReceiveMessage(psalm.Message{"chainA": "mod 0"})
 	if v.cfg.Chains[0] != "tri" {
 		t.Errorf("chain A: %q", v.cfg.Chains[0])
 	}
-	if v := New(Config{}); v.numChains != 1 || v.cfg.Chains[0] != DefaultChain {
-		t.Errorf("no chains: %d, %q", v.numChains, v.cfg.Chains[0])
+	if v := New(Config{}); v.own[0].n != 1 || v.cfg.Chains[0] != DefaultChain {
+		t.Errorf("no chains: %d, %q", v.own[0].n, v.cfg.Chains[0])
 	}
 }
 
@@ -662,5 +662,70 @@ func TestFMBassOnset(t *testing.T) {
 	}
 	if on > 4*body {
 		t.Errorf("the onset of FMBass has a second difference of %.4f, %.1f times the body of the note", on, on/body)
+	}
+}
+
+// line 2 with chains of its own is another oscillator: a sine on the left, a saw on the right (read directly and from tables); without them it reads the
+// chains of line 1; chain2A by message sets it, an empty one gives line 2 line 1's chains back
+func TestLine2Chains(t *testing.T) {
+	for _, over := range []int{1, 0} {
+		cfg := plain("sin")
+		cfg.Oversample = over
+		cfg.Width = 1
+		cfg.Line2 = Line{Level: 1}
+		cfg.Chains2[0] = "bipolar"
+		v := New(cfg)
+		v.NoteOn(1, psalm.Message{"frequency": 300.0}, psalm.CtrlTick{}, v.Config())
+		var l, r []float64
+		for range 60 {
+			v.Synthesize()
+			for i := range v.Output(0).Channels[0] {
+				l = append(l, float64(v.Output(0).Channels[0][i]))
+				r = append(r, float64(v.Output(0).Channels[1][i]))
+			}
+		}
+		l, r = l[len(l)/3:], r[len(r)/3:]
+		if !(amplitude(l, 600) < 0.02*amplitude(l, 300) && amplitude(r, 600) > 0.3*amplitude(r, 300)) {
+			t.Errorf("oversample %d: left (a sine) %v %v, right (a saw) %v %v", over, amplitude(l, 300), amplitude(l, 600), amplitude(r, 300), amplitude(r, 600))
+		}
+	}
+	v := New(plain("sin"))
+	if v.lc(1) != &v.own[0] {
+		t.Error("line 2 without chains of its own should read the first")
+	}
+	v.ReceiveMessage(psalm.Message{"chain2A": "tri", "chain2B": "sin"})
+	if v.own[1].n != 2 || v.lc(1) != &v.own[1] || v.cfg.Chains2[1] != "sin" {
+		t.Errorf("chain2A and B: %d chains, %q", v.own[1].n, v.cfg.Chains2)
+	}
+	v.ReceiveMessage(psalm.Message{"chain2A": "wobble 2"})
+	if v.cfg.Chains2[0] != "tri" {
+		t.Errorf("a chain that can't be read replaced the one before: %q", v.cfg.Chains2[0])
+	}
+	v.ReceiveMessage(psalm.Message{"chain2A": ""})
+	if v.own[1].n != 0 || v.lc(1) != &v.own[0] {
+		t.Error("an empty chain2A should give line 2 the chains of line 1")
+	}
+	// a swap under a sounding note fades and does not click
+	cfg := plain("sin")
+	cfg.Line2 = Line{Level: 1}
+	cfg.Oversample = 1
+	v = New(cfg)
+	v.NoteOn(1, psalm.Message{"frequency": 220.0}, psalm.CtrlTick{}, v.Config())
+	var x []float64
+	for i := range 80 {
+		if i == 40 {
+			v.ReceiveMessage(psalm.Message{"chain2A": "tri | bipolar"})
+		}
+		v.Synthesize()
+		for _, s := range v.Output(0).Channels[0] {
+			x = append(x, float64(s))
+		}
+	}
+	worst := 0.0
+	for i := 1; i < len(x); i++ {
+		worst = max(worst, math.Abs(x[i]-x[i-1]))
+	}
+	if worst > 0.5 {
+		t.Errorf("a step of %v when chain 2A was set under a note", worst)
 	}
 }

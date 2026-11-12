@@ -112,6 +112,9 @@ func shaperKind(voices int) patcher.Kind {
 		for i, key := range shaper.ChainKeys {
 			out[key] = cfg.Chains[i]
 		}
+		for i, key := range shaper.ChainKeys2 {
+			out[key] = cfg.Chains2[i]
+		}
 		return out
 	}
 	return patcher.Kind{Name: "shaper", Group: "Synths", Presets: sorted(shaper.Presets), Ins: note, Outs: outs,
@@ -122,7 +125,7 @@ func shaperKind(voices int) patcher.Kind {
 				Rebuild:     func(n string) psalm.Modular { return mk(n, voices) },
 				PresetTexts: texts,
 				TextMessage: func(key, value string) (psalm.Message, error) {
-					if !slices.Contains(shaper.ChainKeys[:], key) {
+					if !slices.Contains(shaper.ChainKeys[:], key) && !slices.Contains(shaper.ChainKeys2[:], key) {
 						return nil, errors.New("no such chain")
 					}
 					if strings.TrimSpace(value) == "" {
@@ -138,12 +141,18 @@ func shaperKind(voices int) patcher.Kind {
 					return psalm.Message{key: c}, nil
 				}}
 			made.View = func(page *panel.Panel, name string, h *patcher.ViewHost) {
-				shapeview.Add(page, name, shapeview.Host{ChainKeys: shaper.ChainKeys, Text: h.Text, TextErr: h.TextErr, SetText: h.SetText,
+				var keys [8]string
+				copy(keys[:], shaper.ChainKeys[:])
+				copy(keys[4:], shaper.ChainKeys2[:])
+				shapeview.Add(page, name, shapeview.Host{ChainKeys: keys, Text: h.Text, TextErr: h.TextErr, SetText: h.SetText,
 					Values: h.Values, Apply: h.Apply, Play: h.Play})
 			}
 			t := texts(preset)
 			for i, key := range shaper.ChainKeys {
 				made.Texts = append(made.Texts, patcher.Text{Key: key, Label: "chain " + string(rune('A'+i)), Value: t[key], Lines: 3, Help: shaper.ChainHelp, Hidden: true})
+			}
+			for i, key := range shaper.ChainKeys2 {
+				made.Texts = append(made.Texts, patcher.Text{Key: key, Label: "line 2 chain " + string(rune('A'+i)), Value: t[key], Lines: 3, Help: shaper.ChainHelp, Hidden: true})
 			}
 			return made, nil
 		}}

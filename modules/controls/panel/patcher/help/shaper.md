@@ -64,7 +64,7 @@ drift = 0.3
 
 ## The editor
 
-The chains are a rack of cards (one for each stage) with plots: the wave of the chain, the curve of the stage you pick and its harmonics. A number on a card is a constant or a macro (the menu on it); drag cards to move them, copy, take away or leave one out (`●`). The text is under the rack and is the same chain. `Start from` gives a chain to begin with, `Freeze` turns the wave into a table, `Vary in B-D` makes a morph from one chain. The four chains are shown along the morph, with the macros. The envelopes (amp, morph, m1, pitch) are curves to drag, with buttons for fades (`Fade in`, `Swell`, `Fade out`...). `Play` plays a note.
+The chains are a rack of cards (one for each stage) with plots: the wave of the chain, the curve of the stage you pick and its harmonics. A number on a card is a constant or a macro (the menu on it); drag cards to move them, copy, take away or leave one out (`●`). The text is under the rack and is the same chain. `Start from` gives a chain to begin with, `Freeze` turns the wave into a table, `Vary in B-D` makes a morph from one chain. The four chains are shown along the morph, with the macros. The envelopes (amp, morph, m1, pitch) are curves to drag, with buttons for fades (`Fade in`, `Swell`, `Fade out`...). `Line 1` / `Line 2` switch the oscillator whose chains you edit: line 2 reads line 1's chains until you give it chains of its own (a different wave to fatten the sound, to modulate or to ring against line 1). `Play` plays a note.
 
 ## Stages you can use
 
@@ -92,7 +92,7 @@ Numbers may be macros (`m1` to `m4`, or `m1[1,5]` mapped to 1..5). `#` starts a 
 
 ## Presets
 
-Presets are chosen when the module is added and in its editor; choosing one also puts its chains in the four boxes. A few names: `acid`, `supersawLead`, `fmBass`, `bellMorph`, `warmPad`, `ePiano`, `kalimba`, `laser`, `riser`. There are 81 in ten families.
+Presets are chosen when the module is added and in its editor; choosing one also puts its chains in the four boxes. A few names: `acid`, `supersawLead`, `fmBass`, `bellMorph`, `warmPad`, `ePiano`, `kalimba`, `laser`, `riser`. There are 82 in ten families.
 
 ## Settings
 

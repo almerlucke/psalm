@@ -117,3 +117,14 @@ func LegendrePad() Config {
 func FunnelArp() Config {
 	return stage("bipolar | funnel -1 -0.6 -0.2 0.2 0.6 1", 0, 0, env(3, 300, 0.1, 250), env(1, 1, 1, 1), 0.7, 5000)
 }
+
+// DuoLead is two different oscillators: line 1 a sine folded as the note opens, line 2 (chains of its own) a CZ saw an octave up and a few cents
+// off, whose distortion rises with it; the two together are fuller than one wave twice
+func DuoLead() Config {
+	c := stage("sin | fold m1[1,4]", 0, 1, env(8, 500, 0.75, 350), env(5, 900, 0.4, 500), 0.5, 5200)
+	c.Chains2[0] = "czsaw m1[0.15,0.9]"
+	c.Line2 = Line{Octave: 1, Detune: 7, Level: 0.5}
+	c.Width = 0.6
+	c.Unison, c.Spread, c.UniStereo = 2, 6, 0.5
+	return c
+}

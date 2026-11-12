@@ -35,6 +35,15 @@ const NumChains = 4
 // ChainKeys are the messages that set a chain (a string, or a *shapechain.Chain read already), A to D
 var ChainKeys = [NumChains]string{"chainA", "chainB", "chainC", "chainD"}
 
+// ChainKeys2 are the messages that set the chains of line 2 (see Config.Chains2)
+var ChainKeys2 = [NumChains]string{"chain2A", "chain2B", "chain2C", "chain2D"}
+
+// lineChains are the chains a line reads: the ones from A on that are there (n)
+type lineChains struct {
+	c [NumChains]*shapechain.Chain
+	n int
+}
+
 // Oversamples are the factors the chains are read at, by the number of the message "oversample": 0 is
 // automatic, then 1 (the chain read once a sample), 2, 4 and 8 times
 var Oversamples = [...]int{0, 1, 2, 4, 8}
@@ -56,10 +65,14 @@ type Config struct {
 	// Chains are the chains written as text, A first. The ones from the first empty one on are not
 	// used; a morph goes through the ones that are
 	Chains [NumChains]string
-	Morph  float64                       // 0-1: 0 is chain A, 1 the last chain, in between a blend of two neighbours
-	Macros [shapechain.NumMacros]float64 // 0-1: m1 to m4 in the chains
-	Line1  Line
-	Line2  Line
+	// Chains2 are the chains of line 2, written as text like Chains. A line 2 with none (Chains2[0] empty, the default) reads the chains
+	// above: the same wave at its own pitch and place in the morph; with chains of its own it is another oscillator (a different wave to
+	// fatten the sound, to modulate or to ring against line 1). The morph and the macros are the same for both
+	Chains2 [NumChains]string
+	Morph   float64                       // 0-1: 0 is chain A, 1 the last chain, in between a blend of two neighbours
+	Macros  [shapechain.NumMacros]float64 // 0-1: m1 to m4 in the chains
+	Line1   Line
+	Line2   Line
 
 	// Unison stacks copies of each line, spread in pitch by Spread cents (the outer copies that far under and over) and
 	// across the stereo field by UniStereo (0-1); 1 is one copy, up to MaxUnison. Drift (0-1) lets each copy, the
@@ -196,25 +209,24 @@ func DefaultConfig() Config { return Glass() }
 // Voice plays a note
 type Voice struct {
 	*psalm.Module
-	cfg       Config
-	chains    [NumChains]*shapechain.Chain
-	numChains int
-	freq      float64
-	velocity  float64
-	amp       float64
-	phase     [2 * MaxUnison]float64                                   // of each copy of each line (line*MaxUnison + copy)
-	os        [2 * MaxUnison][len(Oversamples)]*oversample.Oversampler // by factor, made when one is first needed
-	osReady   [2 * MaxUnison][len(Oversamples)]bool                    // its history holds the wave just before now
-	osFactor  int                                                      // how many times it reads the chain now
-	amped     *adsr.ADSR
-	morphEnv  *adsr.ADSR
-	shapeEnv  *adsr.ADSR
-	pitchEnv  *adsr.ADSR
-	pitchMul  float64 // 2^(the bend in semitones / 12), worked out every 4 samples
-	fBlend    float64 // how much of the filter is in the sound: 1, or less while a filter that was off fades in
-	pending   *pendingNote
-	dcEst     [2]float64 // the mean of the wave of each line, taken off before the envelope (see Synthesize)
-	glideOff  float64    // semitones the glide is still away from the pitch of the note
+	cfg      Config
+	own      [2]lineChains // the chains (A to D) and the chains of line 2 (none: line 2 reads the first, see lc)
+	freq     float64
+	velocity float64
+	amp      float64
+	phase    [2 * MaxUnison]float64                                   // of each copy of each line (line*MaxUnison + copy)
+	os       [2 * MaxUnison][len(Oversamples)]*oversample.Oversampler // by factor, made when one is first needed
+	osReady  [2 * MaxUnison][len(Oversamples)]bool                    // its history holds the wave just before now
+	osFactor int                                                      // how many times it reads the chain now
+	amped    *adsr.ADSR
+	morphEnv *adsr.ADSR
+	shapeEnv *adsr.ADSR
+	pitchEnv *adsr.ADSR
+	pitchMul float64 // 2^(the bend in semitones / 12), worked out every 4 samples
+	fBlend   float64 // how much of the filter is in the sound: 1, or less while a filter that was off fades in
+	pending  *pendingNote
+	dcEst    [2]float64 // the mean of the wave of each line, taken off before the envelope (see Synthesize)
+	glideOff float64    // semitones the glide is still away from the pitch of the note
 	// what the sound is now: the morph, the macros, the levels and the width glide to what they are set to
 	// in a few milliseconds, so changing them under a sounding note (a script does it every step) never
 	// makes a click; snap says the next sample starts there (a new note)
@@ -226,8 +238,7 @@ type Voice struct {
 	snap     bool
 	// a chain changed under a sounding note is faded to over xfLen samples: the old ones are kept to
 	// fade out
-	old       [NumChains]*shapechain.Chain
-	oldNum    int
+	old       [2]lineChains // what each line read before the swap
 	xfLeft    int
 	xf        float64
 	lastFreq  float64 // the pitch the voice last sounded at, 0 for none
@@ -255,7 +266,7 @@ type Voice struct {
 	// the tables of the lines (see tables.go), used when table says so; bwEff is the harmonics the chains hold
 	tables    [2]lineTables
 	table     bool
-	bwEff     int
+	bwEff     [2]int // the harmonics the chains of each line hold
 	macroUsed [shapechain.NumMacros]bool
 	scratch   tableScratch
 	smXmod    float64
@@ -318,30 +329,42 @@ func New(cfg Config) *Voice {
 		v.mods.SetExt(i, e)
 	}
 	for i, text := range cfg.Chains {
-		v.setChain(i, text)
+		v.setChain(0, i, text)
+	}
+	for i, text := range cfg.Chains2 {
+		v.setChain(1, i, text)
 	}
 	v.pickFactor()
 	v.SetSelf(v)
 	return v
 }
 
-// setChain sets a chain from text or a chain read already. Text that can't be read leaves the chain as it was
-// (chain A that has none is a sine)
-func (v *Voice) setChain(i int, chain any) {
+// lc is the chains a line reads: line 2 has its own when it has any, else it reads the first set
+func (v *Voice) lc(k int) *lineChains {
+	if k == 1 && v.own[1].n > 0 {
+		return &v.own[1]
+	}
+	return &v.own[0]
+}
+
+// setChain sets a chain of a set (0: A to D, 1: the chains of line 2) from text or a chain read already. Text that can't be read leaves the chain as
+// it was (chain A that has none is a sine; an empty first chain of line 2 gives it back the chains of line 1)
+func (v *Voice) setChain(set, i int, chain any) {
 	var c *shapechain.Chain
+	cur := &v.own[set]
 	switch x := chain.(type) {
 	case *shapechain.Chain:
 		c = x
 	case string:
 		if x == "" {
 			c = nil
-			if i == 0 {
+			if i == 0 && set == 0 {
 				c = shapechain.MustParse(DefaultChain)
 			}
 		} else {
 			var err error
 			if c, err = shapechain.Parse(x); err != nil {
-				if v.chains[i] != nil || i != 0 {
+				if cur.c[i] != nil || i != 0 || set == 1 {
 					return
 				}
 				c = shapechain.MustParse(DefaultChain)
@@ -350,25 +373,29 @@ func (v *Voice) setChain(i int, chain any) {
 	default:
 		return
 	}
-	if c != v.chains[i] && v.t > 0 && v.numChains > 0 && v.IsActive() {
+	if c != cur.c[i] && v.t > 0 && v.own[0].n > 0 && v.IsActive() {
 		if v.xfLeft == 0 { // fade from the chains as they are
-			v.old, v.oldNum = v.chains, v.numChains
+			v.old = [2]lineChains{*v.lc(0), *v.lc(1)}
 		}
 		v.xfLeft = int(chainFade * v.Config().SampleRate)
 		v.swapGen++
 	}
-	v.chains[i] = c
-	if c != nil {
-		v.cfg.Chains[i] = c.Text()
-	} else {
-		v.cfg.Chains[i] = ""
+	cur.c[i] = c
+	texts := &v.cfg.Chains
+	if set == 1 {
+		texts = &v.cfg.Chains2
 	}
-	v.numChains = 0
-	for _, ch := range v.chains {
+	if c != nil {
+		texts[i] = c.Text()
+	} else {
+		texts[i] = ""
+	}
+	cur.n = 0
+	for _, ch := range cur.c {
 		if ch == nil {
 			break
 		}
-		v.numChains++
+		cur.n++
 	}
 }
 
@@ -385,25 +412,34 @@ func (v *Voice) pickFactor() {
 			top = max(top, v.freq*1.12*math.Exp2(float64(v.line(k).Octave)+(v.line(k).Detune+v.cfg.Spread)/1200))
 		}
 		f = 1
-		for i := 0; i < v.numChains; i++ {
-			reach := top * float64(v.chains[i].Bandwidth()) // the highest frequency with something in it
-			need := 1
-			switch {
-			case reach <= sr/2:
-			case reach <= 2*sr-20000:
-				need = 2
-			default:
-				need = MaxAuto
+		for _, set := range v.own {
+			for i := 0; i < set.n; i++ {
+				reach := top * float64(set.c[i].Bandwidth()) // the highest frequency with something in it
+				need := 1
+				switch {
+				case reach <= sr/2:
+				case reach <= 2*sr-20000:
+					need = 2
+				default:
+					need = MaxAuto
+				}
+				f = max(f, need)
 			}
-			f = max(f, need)
 		}
 	}
-	v.bwEff = 1
+	v.bwEff = [2]int{1, 1}
 	v.macroUsed = [shapechain.NumMacros]bool{}
-	for i := 0; i < v.numChains; i++ {
-		v.bwEff = max(v.bwEff, v.chains[i].Bandwidth())
-		for m := range v.macroUsed {
-			v.macroUsed[m] = v.macroUsed[m] || v.chains[i].Uses(m+1)
+	for _, set := range v.own {
+		for i := 0; i < set.n; i++ {
+			for m := range v.macroUsed {
+				v.macroUsed[m] = v.macroUsed[m] || set.c[i].Uses(m+1)
+			}
+		}
+	}
+	for k := range v.bwEff {
+		lc := v.lc(k)
+		for i := 0; i < lc.n; i++ {
+			v.bwEff[k] = max(v.bwEff[k], lc.c[i].Bandwidth())
 		}
 	}
 	// from tables: when the chains need more than one time a sample, and for a unison, which reads one table for all its copies
@@ -441,7 +477,10 @@ func (v *Voice) oversampler(line int) (*oversample.Oversampler, *bool) { // line
 // next note
 func (v *Voice) apply(c Config) {
 	for i, text := range c.Chains {
-		v.setChain(i, text)
+		v.setChain(0, i, text)
+	}
+	for i, text := range c.Chains2 {
+		v.setChain(1, i, text)
 	}
 	cfg := &v.cfg
 	cfg.Morph, cfg.Macros, cfg.Line1, cfg.Line2, cfg.Width, cfg.Level = c.Morph, c.Macros, c.Line1, c.Line2, c.Width, c.Level
@@ -526,7 +565,12 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	envelope.Receive(msg, "pitchEnv", &v.cfg.PitchEnv)
 	for i, key := range ChainKeys {
 		if c, ok := msg[key]; ok {
-			v.setChain(i, c)
+			v.setChain(0, i, c)
+		}
+	}
+	for i, key := range ChainKeys2 {
+		if c, ok := msg[key]; ok {
+			v.setChain(1, i, c)
 		}
 	}
 	msg.IfFltVal("frequency", func(f float64) { v.setFreq(f) })
@@ -701,10 +745,12 @@ func (v *Voice) IsActive() bool { return !v.amped.Done() }
 
 // wave is the chains at a phase, blended at a place in the morph (0-1 over the chains in use); while a
 // chain is being swapped, the chains it replaces fade out
-func (v *Voice) wave(ph, pos float64, m *shapechain.Macros) float64 {
-	y := waveOf(&v.chains, v.numChains, ph, pos, m)
+func (v *Voice) wave(k int, ph, pos float64, m *shapechain.Macros) float64 {
+	lc := v.lc(k)
+	y := waveOf(&lc.c, lc.n, ph, pos, m)
 	if v.xf > 0 {
-		y += (waveOf(&v.old, v.oldNum, ph, pos, m) - y) * v.xf
+		o := &v.old[k]
+		y += (waveOf(&o.c, o.n, ph, pos, m) - y) * v.xf
 	}
 	return y
 }
@@ -996,7 +1042,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 				pos := clamp01(v.smMorph + v.line(k).Morph)
 				sum := 0.0
 				for j := 0; j < dcPoints; j++ {
-					sum += max(-2, min(v.wave(float64(j)/dcPoints, pos, &v.smMacros), 2))
+					sum += max(-2, min(v.wave(k, float64(j)/dcPoints, pos, &v.smMacros), 2))
 				}
 				v.dcEst[k] = sum / dcPoints
 			}
@@ -1080,11 +1126,11 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 				fTop := f * ratio[k] * spreadRatio[uni-1] * 1.01
 				switch {
 				case !lt.valid:
-					v.buildTable(lt, pos, &v.smMacros, fTop)
+					v.buildTable(lt, k, pos, &v.smMacros, fTop)
 				case lt.gen != v.swapGen: // a chain was swapped: fade to the table of the new chains as the voice does
-					v.rebuildTable(lt, pos, &v.smMacros, fTop, true)
-				case v.t%4 == 0 && v.tableDue(lt, pos, &v.smMacros, fTop):
-					v.rebuildTable(lt, pos, &v.smMacros, fTop, false)
+					v.rebuildTable(lt, k, pos, &v.smMacros, fTop, true)
+				case v.t%4 == 0 && v.tableDue(lt, k, pos, &v.smMacros, fTop):
+					v.rebuildTable(lt, k, pos, &v.smMacros, fTop, false)
 				}
 				if lt.blend < 1 {
 					lt.blend = min(1, lt.blend+lt.blendInc)
@@ -1116,7 +1162,7 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 						s = tprev.read(rd)*(1-w) + s*w
 					}
 				case factor == 1:
-					s = v.wave(rd, pos, &v.smMacros)
+					s = v.wave(k, rd, pos, &v.smMacros)
 				default:
 					step := inc * invFactor
 					os, ready := v.oversampler(c)
@@ -1128,14 +1174,14 @@ func (v *Voice) render(out *psalm.Socket, from, to int) {
 							pb := rd + ahead - float64(b)*inc
 							os.Down(func(j int) float64 {
 								p := pb + float64(j)*step
-								return v.wave(p-math.Floor(p), pos, &v.smMacros)
+								return v.wave(k, p-math.Floor(p), pos, &v.smMacros)
 							})
 						}
 						*ready = true
 					}
 					s = os.Down(func(j int) float64 {
 						p := rd + ahead + float64(j)*step
-						return v.wave(p-math.Floor(p), pos, &v.smMacros)
+						return v.wave(k, p-math.Floor(p), pos, &v.smMacros)
 					})
 				}
 				if s != s { // NaN: a chain that divided by nothing

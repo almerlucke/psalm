@@ -100,7 +100,7 @@ func nextPow2(n int) int {
 
 // tableDue says whether the table of a line no longer fits what the voice is doing: the pitch rose until its harmonics
 // would fold back, or fell far enough to make it dull, or the morph or a macro moved
-func (v *Voice) tableDue(lt *lineTables, pos float64, macros *shapechain.Macros, fTop float64) bool {
+func (v *Voice) tableDue(lt *lineTables, k int, pos float64, macros *shapechain.Macros, fTop float64) bool {
 	t := &lt.buf[lt.cur]
 	fit := int(v.Config().SampleRate / 2 / fTop) // the harmonics that fit now
 	if fit < t.harm {
@@ -112,10 +112,10 @@ func (v *Voice) tableDue(lt *lineTables, pos float64, macros *shapechain.Macros,
 	if v.t-lt.builtAt < max(blendMin, t.n/2) {
 		return false
 	}
-	if min(fit, v.bwEff, tableMax/tablePerHarmonic) > 2*t.harm {
+	if min(fit, v.bwEff[k], tableMax/tablePerHarmonic) > 2*t.harm {
 		return true
 	}
-	if v.numChains > 1 && math.Abs(pos-t.pos) > tableTol {
+	if v.lc(k).n > 1 && math.Abs(pos-t.pos) > tableTol {
 		return true
 	}
 	for i := range macros {
@@ -209,35 +209,36 @@ func (v *Voice) fill(t *waveTable, chains *[NumChains]*shapechain.Chain, num, bw
 }
 
 // oldBandwidth is the harmonics of the chains that are fading out
-func (v *Voice) oldBandwidth() int {
+func (v *Voice) oldBandwidth(k int) int {
 	bw := 1
-	for i := 0; i < v.oldNum; i++ {
-		bw = max(bw, v.old[i].Bandwidth())
+	o := &v.old[k]
+	for i := 0; i < o.n; i++ {
+		bw = max(bw, o.c[i].Bandwidth())
 	}
 	return bw
 }
 
 // buildTable makes the first table of a line (a note starts). A line that is picked up while a swapped chain is fading
 // out (the voice read directly before) gets the table of the chains that go, and the sound goes on from where the fade is
-func (v *Voice) buildTable(lt *lineTables, pos float64, macros *shapechain.Macros, fTop float64) {
+func (v *Voice) buildTable(lt *lineTables, k int, pos float64, macros *shapechain.Macros, fTop float64) {
 	lt.cur, lt.prev = 0, 0
 	lt.blend, lt.blendInc = 1, 1
-	if v.xf > 0 && v.oldNum > 0 && v.xfLeft > 0 {
+	if v.xf > 0 && v.old[k].n > 0 && v.xfLeft > 0 {
 		lt.prev = 1
-		v.fill(&lt.buf[1], &v.old, v.oldNum, v.oldBandwidth(), pos, macros, fTop)
+		v.fill(&lt.buf[1], &v.old[k].c, v.old[k].n, v.oldBandwidth(k), pos, macros, fTop)
 		lt.blend = 1 - v.xf
 		lt.blendInc = v.xf / float64(v.xfLeft)
 	}
-	v.fill(&lt.buf[0], &v.chains, v.numChains, v.bwEff, pos, macros, fTop)
+	v.fill(&lt.buf[0], &v.lc(k).c, v.lc(k).n, v.bwEff[k], pos, macros, fTop)
 	lt.valid, lt.builtAt, lt.gen = true, v.t, v.swapGen
 }
 
 // rebuildTable makes a new current table for the morph and macros the line has now, and the sound fades to it over as
 // long as the last one took to make (the time the wave took to move tableTol); after a swap of chains the new table is that of
 // the chains, and the fade the one of the swap
-func (v *Voice) rebuildTable(lt *lineTables, pos float64, macros *shapechain.Macros, fTop float64, swap bool) {
+func (v *Voice) rebuildTable(lt *lineTables, k int, pos float64, macros *shapechain.Macros, fTop float64, swap bool) {
 	v.retire(lt)
-	v.fill(&lt.buf[lt.cur], &v.chains, v.numChains, v.bwEff, pos, macros, fTop)
+	v.fill(&lt.buf[lt.cur], &v.lc(k).c, v.lc(k).n, v.bwEff[k], pos, macros, fTop)
 	span := min(blendMax, max(blendMin, v.t-lt.builtAt))
 	if swap {
 		span = max(blendMin, v.xfLeft)

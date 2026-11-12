@@ -62,6 +62,23 @@ func TestPageShapeView(t *testing.T) {
 		v := pt.SettingsOf(id).Values()["ampAttack"]
 		return v > 1000
 	})
+	// line 2: it reads the chains of line 1 until it is given chains of its own (a copy), which are then edited apart from line 1's
+	tb.Eval(`(() => { S().querySelectorAll(".shapeview .sv-line")[1].click(); return 0; })()`)
+	tb.WaitFor(`!S().querySelector(".shapeview .sv-own").hidden`, "the note that line 2 reads the chains of line 1")
+	tb.Eval(`(() => { [...S().querySelectorAll(".shapeview .sv-own button")].find(b => b.textContent.startsWith("Give")).click(); return 0; })()`)
+	paneltest.Eventually(t, "line 2 with a copy of the chains of line 1", func() bool {
+		return textOf(pt.Texts(id), "chain2A") != "" && textOf(pt.Texts(id), "chain2A") == textOf(pt.Texts(id), "chainA")
+	})
+	tb.Eval(`(() => { const t = S().querySelector(".shapeview .sv-text"); t.value = "tri | bipolar"; t.dispatchEvent(new Event("input", {bubbles: true})); return 0; })()`)
+	paneltest.Eventually(t, "chain 2A typed", func() bool { return strings.Contains(textOf(pt.Texts(id), "chain2A"), "tri") })
+	if !strings.Contains(textOf(pt.Texts(id), "chainA"), "czsaw") {
+		t.Errorf("line 1's chain A changed with line 2's: %q", textOf(pt.Texts(id), "chainA"))
+	}
+	if e := pt.TextError(id, "chain2A"); e != "" {
+		t.Error(e)
+	}
+	tb.Eval(`(() => { [...S().querySelectorAll(".shapeview .sv-own button")].find(b => b.textContent.startsWith("Same")).click(); return 0; })()`)
+	paneltest.Eventually(t, "line 2 reads line 1's chains again", func() bool { return textOf(pt.Texts(id), "chain2A") == "" })
 	if dir := os.Getenv("SHAPEVIEW_SHOT"); dir != "" {
 		time.Sleep(600 * time.Millisecond)
 		tb.Eval(`(() => { const w = document.querySelector(".pt-win"); w.style.height = "1640px"; w.style.top = "10px"; return 0; })()`)
