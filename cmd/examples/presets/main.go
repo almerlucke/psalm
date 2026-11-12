@@ -1,4 +1,4 @@
-// Presets: a tour of the showcase presets of the synths (the shaper synth's all sixty-six), each playing what suits it for two bars: a
+// Presets: a tour of the showcase presets of the synths (the shaper synth's all eighty-one), each playing what suits it for two bars: a
 // chord for pads and drones, a line for leads, an arpeggio for plucks, a bass line for basses, a beat
 // for the drum kits. The name of each prints as it starts.
 //
@@ -192,6 +192,21 @@ func main() {
 		{"shaper", "lionBass", bass, 0, sh(shaper.LionBass)},
 		{"shaper", "throneDrone", drone, -1, sh(shaper.ThroneDrone)},
 		{"shaper", "manyEyes", lead, 0, sh(shaper.ManyEyes)},
+		{"shaper", "czResonant", lead, 0, sh(shaper.CZResonant)},
+		{"shaper", "tubeOrgan", pad, 0, sh(shaper.TubeOrgan)},
+		{"shaper", "foldLead", lead, 0, sh(shaper.FoldLead)},
+		{"shaper", "triFoldPad", pad, 0, sh(shaper.TriFoldPad)},
+		{"shaper", "tubeBass", bass, 0, sh(shaper.TubeBass)},
+		{"shaper", "softDeadLead", lead, 0, sh(shaper.SoftDeadLead)},
+		{"shaper", "curveBass", bass, 0, sh(shaper.CurveBass)},
+		{"shaper", "stepLead", lead, 0, sh(shaper.StepLead)},
+		{"shaper", "czSawLead", lead, 0, sh(shaper.CZSawLead)},
+		{"shaper", "czSquareBass", bass, 0, sh(shaper.CZSquareBass)},
+		{"shaper", "czPulseArp", arp, 0, sh(shaper.CZPulseArp)},
+		{"shaper", "harmPad", pad, 0, sh(shaper.HarmPad)},
+		{"shaper", "polyLead", lead, 0, sh(shaper.PolyLead)},
+		{"shaper", "legendrePad", pad, 0, sh(shaper.LegendrePad)},
+		{"shaper", "funnelArp", arp, 0, sh(shaper.FunnelArp)},
 		{"drumsynth", "electro", beat, 0, kit(drumsynth.KitElectro)},
 		{"drumsynth", "trap", beat, 0, kit(drumsynth.KitTrap)},
 		{"drumsynth", "industrial", beat, 0, kit(drumsynth.KitIndustrial)},

@@ -1,0 +1,63 @@
+.shapeview { align-items: stretch; gap: 10px; width: 100%; }
+.shapeview button, .shapeview select, .shapeview textarea, .shapeview input { font: inherit; }
+.shapeview .sv-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.shapeview .sv-tabs { display: flex; gap: 2px; }
+.shapeview .sv-tab { min-width: 34px; min-height: 30px; padding: 2px 10px; border-radius: calc(var(--radius) / 2); position: relative; }
+.shapeview .sv-tab.on { background: var(--accent); color: var(--accent-ink, #fff); }
+.shapeview .sv-tab.used::after { content: ""; position: absolute; right: 3px; top: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.shapeview .sv-tab.on.used::after { background: currentColor; }
+.shapeview .sv-tab.bad { outline: 2px solid var(--danger, #e5484d); }
+.shapeview .sv-btn, .shapeview .sv-select { min-height: 30px; padding: 2px 10px; font-size: 13px; }
+.shapeview .sv-plots { display: grid; grid-template-columns: 1.4fr 1fr 1.4fr; gap: 8px; }
+.shapeview .sv-plot { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.shapeview .sv-canvas { width: 100%; height: 110px; border-radius: calc(var(--radius) / 2); background: var(--track); display: block; }
+.shapeview .sv-canvas.mini { height: 46px; }
+.shapeview .sv-canvas.thumb { height: 40px; cursor: pointer; border: 2px solid transparent; box-sizing: border-box; }
+.shapeview .sv-canvas.thumb.on { border-color: var(--accent); }
+.shapeview .sv-canvas.thumb.unused { opacity: .35; }
+.shapeview .sv-canvas.envc { height: 70px; touch-action: none; cursor: crosshair; }
+.shapeview .sv-cap { font-size: 12px; color: var(--muted); min-height: 1.2em; }
+.shapeview .sv-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.shapeview .sv-rack { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; }
+.shapeview .sv-card { width: 196px; padding: 6px; border-radius: calc(var(--radius) / 2); background: var(--track); border: 2px solid transparent; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.shapeview .sv-card.sel { border-color: var(--accent); }
+.shapeview .sv-card.off { opacity: .45; }
+.shapeview .sv-card.off .sv-name { text-decoration: line-through; }
+.shapeview .sv-card.over { outline: 2px dashed var(--accent); }
+.shapeview .sv-card.drag { opacity: .5; }
+.shapeview .sv-head { display: flex; justify-content: space-between; align-items: center; }
+.shapeview .sv-name { font-size: 14px; }
+.shapeview .sv-tools { display: flex; gap: 0; }
+.shapeview .sv-x { min-height: 22px; min-width: 22px; padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; }
+.shapeview .sv-x:hover { color: var(--ink); }
+.shapeview .sv-card .sv-canvas.mini { background: var(--bg, transparent); }
+.shapeview .sv-args { display: flex; flex-direction: column; gap: 3px; }
+.shapeview .sv-arg { display: grid; grid-template-columns: 1fr 4.4em; gap: 2px 4px; align-items: center; font-size: 12px; }
+.shapeview .sv-arg .nm { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.shapeview .sv-arg .rg { width: 100%; min-width: 0; }
+.shapeview .sv-arg .num { width: 100%; min-width: 0; padding: 1px 2px; font-size: 12px; box-sizing: border-box; }
+.shapeview .sv-arg .nm { grid-column: 1; }
+.shapeview .sv-arg .mc { grid-column: 2; }
+.shapeview .sv-arg .mc { padding: 0; font-size: 11px; min-width: 0; }
+.shapeview .sv-card .txt { width: 100%; box-sizing: border-box; font-size: 12px; font-family: monospace; }
+.shapeview .sv-add { align-self: center; }
+.shapeview .sv-text { width: 100%; box-sizing: border-box; font-family: monospace; font-size: 13px; resize: vertical; border-radius: calc(var(--radius) / 2); }
+.shapeview .sv-err { color: var(--danger, #e5484d); font-size: 13px; }
+.shapeview .sv-morph { display: flex; flex-direction: column; gap: 4px; }
+.shapeview .sv-thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.shapeview .sv-nowrow { display: flex; gap: 8px; align-items: center; }
+.shapeview .sv-nowrow .thumb { width: 25%; }
+.shapeview .sv-slider { display: grid; grid-template-columns: 5.5em 1fr 3.6em; gap: 6px; align-items: center; font-size: 13px; }
+.shapeview .sv-slider .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.shapeview .sv-slider.unused { opacity: .5; }
+.shapeview .sv-envs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.shapeview .sv-fades { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.shapeview .sv-mini { min-height: 24px; padding: 0 8px; font-size: 12px; }
+@media (max-width: 720px) {
+	.shapeview .sv-plots { grid-template-columns: 1fr; }
+	.shapeview .sv-envs { grid-template-columns: 1fr; }
+}
+.shapeview input[type=number], .shapeview input.txt, .shapeview textarea, .shapeview select { background: var(--track); color: var(--ink); border: 1px solid var(--line); border-radius: calc(var(--radius) / 3); }
+.shapeview .sv-card input[type=number], .shapeview .sv-card input.txt, .shapeview .sv-card select { background: var(--bg, #1b1b1f); }
+.shapeview .sv-plots { margin-top: 4px; }
+.shapeview input[type=range] { accent-color: var(--accent); }

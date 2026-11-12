@@ -434,7 +434,7 @@ psalm.register("patcher", (p, api) => {
 		const texts = n.texts || [];
 		if (!texts.length && !n.page) return; // nothing to show
 		if (windows[id]) { toFront(windows[id]); return; }
-		const script = texts.some(t => t.lines > 1);
+		const script = texts.some(t => t.lines > 1 && !t.hidden) || (texts.length > 0 && texts.every(t => t.hidden) && !!n.page); // a window of a view of its own is as wide as a script's
 		const was = kept(storeKey(n));
 		const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
 		const width = num(was.w, 300, vw) || Math.min(script ? 760 : 560, vw - 20);

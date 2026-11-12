@@ -92,6 +92,8 @@ type Text struct {
 	Lines int    `json:"lines,omitempty"` // more than one: a box of that many lines (a script)
 	// Help is what to know to type it, shown above its box: a point a line, `code` in backquotes
 	Help string `json:"help,omitempty"`
+	// Hidden keeps the box out of the module's window (a view of its own edits the text: the shaper's chain rack); the text is still kept and saved
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 // Port is a port of a kind of module: its name on the page, what goes through it, its index
@@ -140,6 +142,9 @@ type Made struct {
 	Rebuild func(preset string) psalm.Modular
 	// Edit makes an editor of its own on its page instead (the DX7's); it returns the settings
 	Edit func(page *panel.Panel, name, preset string) Settings
+	// View adds a view of its own to the page above the usual settings (the shaper's plots and chain rack): the host reads and sets the module's texts and
+	// settings and plays a note on it
+	View func(page *panel.Panel, name string, host *ViewHost)
 	// Added returns the modules its editor added to the patch (a step sequencer playing the module),
 	// asked once, right after Edit
 	Added func() []psalm.Modular
@@ -192,6 +197,21 @@ type Made struct {
 	Log func() string
 	// Lanes is what the page draws in its lanes at the bottom of the patch (an automation module's): lanes of points over the bars, edited there (nil: it has none)
 	Lanes func() *LanesView
+}
+
+// ViewHost is what a module's view (Made.View) gets to work with. Every function may be called from any goroutine except the audio thread's (a view
+// handles its messages off it)
+type ViewHost struct {
+	// Text is a text of the module (a chain), TextErr why it could not be read ("" it could)
+	Text    func(key string) string
+	TextErr func(key string) string
+	// SetText sets a text; the error is why it could not be read
+	SetText func(key, value string) error
+	// Values are the settings of the module's editor by key, Apply sets some of them
+	Values func() map[string]float64
+	Apply  func(values map[string]float64)
+	// Play plays a note (a MIDI pitch) of a duration in seconds on the module
+	Play func(pitch, seconds float64)
 }
 
 // Settings are the settings of a module's editor: what a patch saves of it
@@ -558,6 +578,9 @@ func (pt *Patcher) build(id, kindName, preset string) (*node, []psalm.Modular, e
 		n.page.SetTheme(pt.theme)
 		if made.Describe != nil {
 			n.set = made.Describe(preset) // what a mod cable can move
+		}
+		if made.View != nil {
+			made.View(n.page, kindName, pt.viewHost(n))
 		}
 		if made.Edit != nil {
 			n.settings = made.Edit(n.page, kindName, preset)
@@ -1197,7 +1220,7 @@ func (pt *Patcher) state() any {
 			ns.Outs = []Port{}
 		}
 		for _, t := range n.made.Texts {
-			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key], Lines: t.Lines, Help: t.Help})
+			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key], Lines: t.Lines, Help: t.Help, Hidden: t.Hidden})
 		}
 		for _, a := range n.made.Actions {
 			ns.Actions = append(ns.Actions, ActionInfo{Key: a.Key, Label: a.Label, Title: a.Title})
@@ -1631,4 +1654,53 @@ func madeModule(n *node) psalm.Modular {
 		return nil
 	}
 	return n.made.Module
+}
+
+// viewHost is what the view of a module works with
+func (pt *Patcher) viewHost(n *node) *ViewHost {
+	return &ViewHost{
+		Text: func(key string) string {
+			pt.mu.Lock()
+			defer pt.mu.Unlock()
+			return n.texts[key]
+		},
+		TextErr: func(key string) string {
+			pt.mu.Lock()
+			defer pt.mu.Unlock()
+			return n.textErr[key]
+		},
+		SetText: func(key, value string) error {
+			if err := pt.SetText(n.ID, key, value); err != nil {
+				return err
+			}
+			pt.mu.Lock()
+			defer pt.mu.Unlock()
+			if e := n.textErr[key]; e != "" {
+				return errors.New(e)
+			}
+			return nil
+		},
+		Values: func() map[string]float64 {
+			pt.mu.Lock()
+			s := n.settings
+			pt.mu.Unlock()
+			if s == nil {
+				return nil
+			}
+			return s.Values()
+		},
+		Apply: func(values map[string]float64) {
+			pt.mu.Lock()
+			s := n.settings
+			pt.mu.Unlock()
+			if s != nil {
+				s.Apply(values)
+			}
+		},
+		Play: func(pitch, seconds float64) {
+			msg := psalm.Message{"command": "trigger", "duration": seconds, "amplitude": 0.8, "tick": psalm.CtrlTick{},
+				"message": psalm.Message{"pitch": pitch, "velocity": 0.8}}
+			pt.do(func() { n.made.Module.Receive(msg, 0) })
+		},
+	}
 }

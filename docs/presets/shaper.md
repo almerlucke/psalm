@@ -114,3 +114,25 @@ Sounds only this synth makes: the wave itself travels, changes with the key or t
 | lionBass | LionBass | a purr when touched softly and a roar when hard: the velocity folds the wave |
 | throneDrone | ThroneDrone | a drone of the partials 1, 3, 7 and 12 whose levels breathe against one another on waves of twelve and seven seconds |
 | manyEyes | ManyEyes | a lead that draws itself anew with every note (morph, fold and bend from a random value for the note) |
+
+## New shapers
+
+The stages from genny's newer shapers (folds, the tube, dead zones, curves, smoothsteps, Casio CZ phase distortion, harmonics, polynomials, funnels); `go run ./cmd/examples/shapestages` plays them with their chains.
+
+| Name | Function | Sound |
+|---|---|---|
+| czResonant | CZResonant | the Casio CZ resonant wave: a falling saw times a cosine of higher pitch, whose resonance rises as the note opens |
+| tubeOrgan | TubeOrgan | a sine with its octave and fifth driven through an asymmetric tube; the touch leans the wave and adds even harmonics |
+| foldLead | FoldLead | a sine folded more and more as the note opens: the harmonics climb like a west coast synth's |
+| triFoldPad | TriFoldPad | a sine reflected at the edges by a gain that rises slowly: a pad that grows teeth |
+| tubeBass | TubeBass | a sine driven hard into an asymmetric tube at the start of the note, then settling: a round bass with even harmonics |
+| softDeadLead | SoftDeadLead | a sine with a dead zone that widens over the note: a thin, reedy lead |
+| curveBass | CurveBass | a saw bent by a tension that moves from one side to the other: a bass that is hollow and then full |
+| stepLead | StepLead | a triangle pressed towards a square by a smootherstep whose edge closes in: soft to bright |
+| czSawLead | CZSawLead | a Casio CZ saw whose distortion grows during the note, with vibrato and a second line an octave down |
+| czSquareBass | CZSquareBass | the CZ square: a cosine turned into a pulse with fast edges |
+| czPulseArp | CZPulseArp | the CZ pulse: a cosine squeezed into the start of the cycle, plucked |
+| harmPad | HarmPad | a sum of sines (1, 3, 5 and 8) as a waveshaper, held in a unison |
+| polyLead | PolyLead | a saw through a cubic: rounded, soft at the peaks |
+| legendrePad | LegendrePad | the Legendre polynomial of order five as a waveshaper: a strange, even stack of harmonics |
+| funnelArp | FunnelArp | a saw snapped to six levels, plucked: a staircase with the grain of a low bit depth |

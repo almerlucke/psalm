@@ -121,6 +121,7 @@
 		texts = n.texts || [];
 		for (const t of texts) {
 			const wrap = el("label", "mw-box");
+			wrap.hidden = !!t.hidden; // a view of its own edits it (the shaper's rack)
 			if (texts.length > 1) wrap.append(el("span", "mw-label", t.label));
 			if (t.help) wrap.append(help(t.help));
 			const ta = el("textarea", "mw-text"); ta.spellcheck = false; ta.wrap = "off"; ta.value = t.value;
@@ -152,13 +153,14 @@
 			wrap.append(ta); holder.append(wrap);
 			log = ta;
 		}
-		$("code").hidden = $("run").hidden = !texts.length && !(n.actions || []).length;
+		const shown = texts.filter(t => !t.hidden);
+		$("code").hidden = $("run").hidden = !shown.length && !(n.actions || []).length;
 		$("settings").hidden = !n.page;
-		const script = texts.some(t => t.lines > 1);
-		root.classList.toggle("both", !!texts.length && !!n.page && script);
-		root.classList.toggle("short", !!texts.length && !!n.page && !script);
+		const script = shown.some(t => t.lines > 1);
+		root.classList.toggle("both", !!shown.length && !!n.page && script);
+		root.classList.toggle("short", !!shown.length && !!n.page && !script);
 		document.title = $("title").textContent = n.kind + (n.preset ? " · " + n.preset : "");
-		const first = holder.querySelector("textarea");
+		const first = holder.querySelector(".mw-box:not([hidden]) textarea");
 		if (first) first.focus();
 	}
 	function show(n) {

@@ -25,6 +25,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel/editor"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
+	"github.com/almerlucke/psalm/modules/controls/panel/shapeview"
 	"github.com/almerlucke/psalm/modules/effects/chorus"
 	"github.com/almerlucke/psalm/modules/effects/compressor"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
@@ -136,9 +137,13 @@ func shaperKind(voices int) patcher.Kind {
 					}
 					return psalm.Message{key: c}, nil
 				}}
+			made.View = func(page *panel.Panel, name string, h *patcher.ViewHost) {
+				shapeview.Add(page, name, shapeview.Host{ChainKeys: shaper.ChainKeys, Text: h.Text, TextErr: h.TextErr, SetText: h.SetText,
+					Values: h.Values, Apply: h.Apply, Play: h.Play})
+			}
 			t := texts(preset)
 			for i, key := range shaper.ChainKeys {
-				made.Texts = append(made.Texts, patcher.Text{Key: key, Label: "chain " + string(rune('A'+i)), Value: t[key], Lines: 3, Help: shaper.ChainHelp})
+				made.Texts = append(made.Texts, patcher.Text{Key: key, Label: "chain " + string(rune('A'+i)), Value: t[key], Lines: 3, Help: shaper.ChainHelp, Hidden: true})
 			}
 			return made, nil
 		}}

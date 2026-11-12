@@ -127,7 +127,20 @@ that a small speaker plays as a tick.
 `morphEnv`, `shapeEnv`, `pitchEnv` and `filter`, the filter and the matrix, and the [pitch bend, mod wheel and
 aftertouch](../../synths.md#pitch-bend-mod-wheel-and-aftertouch). **Value input** 1: the morph; 5 to 8: Ext 1-4.
 
-Presets: 66 in nine families (see [presets](../presets/shaper.md#shaper), and `go run ./cmd/examples/presets -synth shaper`
+## The editor in the patcher
+
+The window of a shaper in the patcher (double click it) has an editor for the chains instead of four text boxes (`modules/controls/panel/shapeview`), above the usual settings:
+
+- **Chains A to D** are tabs; a dot says the chain is in use, red that its text can't be read (the sound keeps the chain it had, and the error is under the text).
+- **Plots:** the wave of the chain (one cycle, at the macros as they are now), the curve of the stage you pick (x from -1 to 1, with y = x faint), and its harmonics (grey ones are above what the chain's bandwidth says matters; an edge, a saw or a pulse, says its harmonics go on and the synth filters them). Picking a card draws the wave after that stage in grey behind the wave of the chain, so you see what each stage does to it.
+- **The rack:** one card for every stage, with a small plot of the wave after it and knobs for its numbers. A number is a constant (slider and box) or a macro: the menu on the number makes it `m1` to `m4`, and then the two boxes are the number when the macro is 0 and 1 (`m1[1,6]`). Drag a card to move it, `⧉` copies it, `✕` takes it away, `●` leaves it out (it stays in the text as a line `#off | stage`, which the chain reads as a comment, and comes back with `○`). `+ Add a stage` lists every stage by group with what it does; a stage with a list (`cheby`, `harm`, `poly`, `funnel`, `table`) or a `par(...)` is a box of text on its card.
+- **The text** of the chain is under the rack: the rack and the text are two views of one string, so you can type, paste a chain from a script or move a card. A text you type is read half a second after you stop; comments (`#`) you write are lost when a card is moved.
+- **Start from** replaces the chain by a sine, a saw, a folded sine, an FM pair, additive partials, hard sync or a CZ resonance. **Freeze** turns the wave of the chain into a `table` of 129 points, to keep a shape you made. **Vary in B-D** copies the chain to the other three, the first number of the picked stage a third, two thirds and all the way to the end of its range: a morph made from one chain.
+- **Morph and macros** are sliders under the four chains drawn as small waves (click one to edit it) and the wave now, the chains blended at the morph; the macros that no chain uses are dimmed. `morph env` and `m1 env` are how far those envelopes pull them.
+- **Envelopes** (amp, morph, m1, pitch) are curves: drag the dots for the attack, the decay and sustain, the release. The buttons make fades: for the amp `Pluck`, `Soft`, `Fade in` (1.5 s), `Swell`, `Fade out` (a release of 3 s), for the others `Quick`, `Slow rise`, `Fall` and `Hold`.
+- **Play** plays a note (the octave next to it) on the synth, to hear what you drew. The settings under the editor are the same ones, they follow each other.
+
+Presets: 81 in ten families (see [presets](../presets/shaper.md#shaper), and `go run ./cmd/examples/presets -synth shaper`
 plays them all): basses (`subSine`, `kickSub`, `reese`, `acid`, `wobble`, `pulseBass`, `fmBass`, `growl`, `subFold`),
 leads (`supersawLead`, `squareLead`, `syncLead`, `pluckLead`, `fmLead`, `fluteLead`, `brassLead`, `vowel`, `reed`), pads
 (`warmPad`, `stringPad`, `choirPad`, `airPad`, `darkPad`, `evolve`, `glassPad`, `foldPad`, `morphPad`, `swarm`, `organ`), keys and
