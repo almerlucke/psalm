@@ -10,6 +10,8 @@ github.com/almerlucke/genny v0.0.0-20261112120952-d85780b6a7c6 h1:jebEd6lAuKiVcX
 github.com/almerlucke/genny v0.0.0-20261112120952-d85780b6a7c6/go.mod h1:INftEQjbHJnz9uxDe0su0HBX3uITGkhT1GM8vWXBiBk=
 github.com/almerlucke/genny v0.0.0-20261112123552-ab695db8b39c h1:X6TXXkZUZBcSAThE1nInGlTDZbuEARox9AaYjaANrYY=
 github.com/almerlucke/genny v0.0.0-20261112123552-ab695db8b39c/go.mod h1:INftEQjbHJnz9uxDe0su0HBX3uITGkhT1GM8vWXBiBk=
+github.com/almerlucke/genny v0.1.0 h1:dTU1tHU5tSxwBZ5JWV1oJGqmuuTEjFQQiAXwo3jevD0=
+github.com/almerlucke/genny v0.1.0/go.mod h1:INftEQjbHJnz9uxDe0su0HBX3uITGkhT1GM8vWXBiBk=
 github.com/almerlucke/go-jack v0.0.0-20260928121326-3451e862d67e h1:o1z9touuz/VSx9rNr7kzMJVsF6E3p19Q/JrcOj6zTqo=
 github.com/almerlucke/go-jack v0.0.0-20260928121326-3451e862d67e/go.mod h1:YG4N4/vbPTKiqZGFHq7+pjm6mI/Y8IS5eHyAoLev1CY=
 github.com/almerlucke/sndfile v0.0.0-20261005172134-5c26a1818b2a h1:rI/gNlKGuj0056wv/38RWgEQMO/3qBw5s5CDKcBtKRw=

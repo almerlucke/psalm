@@ -1,14 +1,19 @@
 package catalog
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/midi"
@@ -103,6 +108,7 @@ type midiPlayer struct {
 	src                *playerSource
 	syncSong           atomic.Bool   // the song of the patch moves the file (read on the audio thread)
 	lift               atomic.Uint64 // the velocity floor (a float64): 0 plays the velocities of the file, 1 every note at full
+	modCh              atomic.Int32  // the channel the mod outputs follow (0: any)
 	armed              bool          // the file is at the song and starts next buffer
 	lastBuf            int64         // the buffer the song was last looked at
 
@@ -130,15 +136,18 @@ func newMidiPlayer() *midiPlayer {
 	for i := range m.chans {
 		m.chans[i] = mk(ins[1+i], i+1)
 	}
-	for c := range m.cc {
-		m.OnControl(c, func(v float64, _ psalm.CtrlTick) { m.cc[c] = v })
-	}
-	m.OnEvent(func(e midi.Event, _ psalm.CtrlTick) {
-		switch e.Message.Kind() {
+	m.OnEvent(func(e midi.Event, _ psalm.CtrlTick) { // the mod outputs: of one channel (the setting), or of all
+		msg := e.Message
+		if ch := int(m.modCh.Load()); ch > 0 && msg.IsChannel() && msg.Channel() != ch {
+			return
+		}
+		switch msg.Kind() {
+		case midi.ControlChange:
+			m.cc[msg.Controller()&127] = float64(msg.Value()) / 127
 		case midi.PitchBend:
-			m.bend = (e.Message.BendAmount() + 1) / 2
+			m.bend = (msg.BendAmount() + 1) / 2
 		case midi.ChannelPressure:
-			m.pressure = float64(e.Message.Pressure()) / 127
+			m.pressure = float64(msg.Pressure()) / 127
 		}
 	})
 	m.SetSelf(m)
@@ -147,6 +156,7 @@ func newMidiPlayer() *midiPlayer {
 
 // ReceiveMessage takes the settings: play, loop, speed, follow (the tempo of the patch); transpose
 func (m *midiPlayer) ReceiveMessage(msg psalm.Message) {
+	msg.IfFltVal("modChannel", func(f float64) { m.modCh.Store(int32(max(0, min(f, 16)))) })
 	msg.IfFltVal("lift", func(f float64) { m.lift.Store(math.Float64bits(max(0, min(f, 1)))) })
 	msg.IfFltVal("loop", func(f float64) { m.src.set(func(s *playerSource) { s.loop = f > 0.5 }) })
 	msg.IfFltVal("speed", func(f float64) { m.src.set(func(s *playerSource) { s.speed = f }) })
@@ -257,7 +267,10 @@ func parseControllers(text string) ([]int, error) {
 
 // midiPlayerKind plays a MIDI file: its notes go to the synths it is cabled to (like a keyboard's), the controllers of the file, its pitch bend and its pressure
 // are mod outputs
-func midiPlayerKind() patcher.Kind {
+func midiPlayerKind(folder string) patcher.Kind {
+	if folder == "" {
+		folder = "assets/midi"
+	}
 	outs := []patcher.Port{{Name: "all", Type: patcher.Notes}}
 	for ch := range 16 {
 		outs = append(outs, patcher.Port{Name: strconv.Itoa(ch + 1), Type: patcher.Notes, Index: 1 + ch})
@@ -266,7 +279,7 @@ func midiPlayerKind() patcher.Kind {
 	for i := range midiControls {
 		outs = append(outs, patcher.Port{Name: "ctrl " + strconv.Itoa(i+1), Type: patcher.Mod, Index: 2 + i})
 	}
-	const fileHelp = "- the path of a .mid file (`assets/midi/jig-1.mid`); typing another swaps it while it plays"
+	const fileHelp = "- pick a file of the folder, or type the path of a .mid file (`assets/midi/jig-1.mid`); another swaps it while it plays"
 	const ctrlHelp = "- the controller numbers of the outputs ctrl 1 to ctrl 6, `1 11 7 10 74 71`: the mod wheel, expression, volume, pan, brightness, resonance"
 	return patcher.Kind{Name: "midiplayer", Group: "Sources", Outs: outs,
 		Make: func(string) (*patcher.Made, error) {
@@ -298,8 +311,14 @@ func midiPlayerKind() patcher.Kind {
 			}
 			return &patcher.Made{Module: m,
 				Texts: []patcher.Text{
-					{Key: "file", Label: "file", Help: fileHelp},
+					{Key: "file", Label: "file", Help: fileHelp, Choose: midiFiles(folder)},
 					{Key: "controllers", Label: "controllers", Value: "1 11 7 10 74 71", Help: ctrlHelp},
+				},
+				Upload: func(key, name string, data []byte) (string, error) {
+					if key != "file" {
+						return "", errors.New("no such text")
+					}
+					return saveMIDI(folder, name, data)
 				},
 				SetText: func(key, value string) error {
 					switch key {
@@ -324,6 +343,7 @@ func midiPlayerKind() patcher.Kind {
 						params.K("Player", "speed", 0.25, 2, 1, params.Step(0.01)),
 						params.S("Player", "follow", false, params.Label("follow the tempo")),
 						params.S("Player", "sync", false, params.Label("follow the song")),
+						params.K("Player", "modChannel", 0, 16, 0, params.Step(1), params.Label("mod outputs of channel (0: all)")),
 						params.K("Player", "lift", 0, 1, 0, params.Label("velocity floor")),
 						params.K("Player", "transpose", -24, 24, 0, params.Step(1), params.Unit("st")),
 					}}
@@ -368,4 +388,77 @@ func midiPlayerKind() patcher.Kind {
 				},
 				Mod: m.out}, nil
 		}}
+}
+
+// midiFiles lists the MIDI files in a folder and below it (as paths to type), the list kept a few seconds: the page asks for it with every update
+func midiFiles(folder string) func() []string {
+	var (
+		mu   sync.Mutex
+		at   time.Time
+		list []string
+	)
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		if time.Since(at) < 3*time.Second {
+			return list
+		}
+		at, list = time.Now(), []string{}
+		_ = filepath.WalkDir(folder, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || len(list) >= 500 {
+				return filepath.SkipDir
+			}
+			switch strings.ToLower(filepath.Ext(path)) {
+			case ".mid", ".midi", ".rmi":
+				if !d.IsDir() {
+					list = append(list, filepath.ToSlash(path))
+				}
+			}
+			return nil
+		})
+		slices.Sort(list)
+		return list
+	}
+}
+
+// saveMIDI keeps a MIDI file the page sent in the folder, under its own name (a file of the same name with other notes gets a number), and returns the path
+func saveMIDI(folder, name string, data []byte) (string, error) {
+	if _, err := midi.ParseFile(data); err != nil {
+		return "", fmt.Errorf("%s: %v", name, err)
+	}
+	base := strings.Map(func(r rune) rune {
+		if r == ' ' || r > 127 || strings.ContainsRune(`/\:*?"<>|`, r) || r < 32 {
+			return '_'
+		}
+		return r
+	}, filepath.Base(strings.ReplaceAll(name, "\\", "/")))
+	ext := strings.ToLower(filepath.Ext(base))
+	if ext != ".mid" && ext != ".midi" && ext != ".rmi" {
+		base += ".mid"
+		ext = ".mid"
+	}
+	stem := strings.TrimSuffix(base, filepath.Ext(base))
+	if stem == "" || stem == "." {
+		stem = "upload"
+	}
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		return "", err
+	}
+	for i := 1; ; i++ {
+		path := filepath.Join(folder, stem+ext)
+		if i > 1 {
+			path = filepath.Join(folder, fmt.Sprintf("%s-%d%s", stem, i, ext))
+		}
+		have, err := os.ReadFile(path)
+		if err == nil && bytes.Equal(have, data) { // the same file again
+			return filepath.ToSlash(path), nil
+		}
+		if err == nil {
+			continue
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			return "", err
+		}
+		return filepath.ToSlash(path), nil
+	}
 }

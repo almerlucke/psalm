@@ -84,6 +84,8 @@ type Config struct {
 	// SysEx is the folder of SysEx files of the DX7 editor (list, load as the bank, save into); ""
 	// leaves it off
 	SysEx string
+	// MIDI is the folder of MIDI files the MIDI player offers to pick from; "" is assets/midi
+	MIDI string
 	// Audio is the sound input of the engine (Psalm.PatchInput(0)) that the input kind reads: a microphone to sing over the piece. nil
 	// leaves the input silent (a render)
 	Audio psalm.Modular
@@ -178,7 +180,7 @@ func Kinds(cfg Config) []patcher.Kind {
 	}
 	table := gen.Brightness(32)
 	h := &hub{input: cfg.Input}
-	kinds := []patcher.Kind{keyboardKind(h), midiPlayerKind(), inputKind(cfg.Audio), recorderKind(), audioLooperKind()}
+	kinds := []patcher.Kind{keyboardKind(h), midiPlayerKind(cfg.MIDI), inputKind(cfg.Audio), recorderKind(), audioLooperKind()}
 	kinds = append(kinds, patcher.Sources()...)
 	kinds = append(kinds, patcher.Generators()...)
 	kinds = append(kinds, script.Kind(script.NewRuntime()))

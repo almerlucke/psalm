@@ -1,6 +1,10 @@
 package patcher
 
-import "github.com/almerlucke/psalm"
+import (
+	"encoding/json"
+
+	"github.com/almerlucke/psalm"
+)
 
 // ArpLate plays the triggers of a tick, as the patcher does after every module
 func ArpLate(a *Arp, tick psalm.CtrlTick) { a.late(tick) }
@@ -15,3 +19,9 @@ func LooperScript(pt *Patcher, id string, layer int) string {
 
 // LooperScriptAll is the script of all the layers of the looper of a module
 func LooperScriptAll(pt *Patcher, id string) string { return pt.Module(id).(*Looper).ScriptAll() }
+
+// StateJSON is the state the page gets, as JSON
+func StateJSON(pt *Patcher) string {
+	b, _ := json.Marshal(pt.state())
+	return string(b)
+}

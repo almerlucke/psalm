@@ -112,7 +112,7 @@
 
 	// the boxes are made when the module has other texts than they were made for
 	function build(n) {
-		const key = JSON.stringify([n.kind, n.preset, (n.texts || []).map(t => [t.key, t.label, t.lines]), (n.actions || []).map(a => [a.key, a.label])]) + (n.log !== undefined && n.log !== null) + !!n.page;
+		const key = JSON.stringify([n.kind, n.preset, (n.texts || []).map(t => [t.key, t.label, t.lines, t.choices, t.uploads]), (n.actions || []).map(a => [a.key, a.label])]) + (n.log !== undefined && n.log !== null) + !!n.page;
 		if (key === built) return;
 		built = key;
 		boxes = {}; log = null;
@@ -125,6 +125,27 @@
 			if (texts.length > 1) wrap.append(el("span", "mw-label", t.label));
 			if (t.help) wrap.append(help(t.help));
 			const ta = el("textarea", "mw-text"); ta.spellcheck = false; ta.wrap = "off"; ta.value = t.value;
+			if (t.choices) { // a list of what can be picked (the files of a folder): a pick is typed into the box and taken
+				const sel = el("select", "mw-pick");
+				sel.append(new Option(t.choices.length ? "pick a file…" : "no files found", ""));
+				for (const c of t.choices) sel.append(new Option(c, c));
+				sel.value = t.choices.includes(t.value) ? t.value : "";
+				sel.addEventListener("change", () => { if (sel.value) { ta.value = sel.value; commitText(t.key, ta.value); } });
+				if (t.uploads) { // a file from the computer: sent to the module, which keeps it and loads it
+					const row = el("div", "mw-pickrow"), up = el("button", "", "Upload…"), file = el("input");
+					file.type = "file"; file.accept = ".mid,.midi,.rmi"; file.hidden = true;
+					up.type = "button"; up.title = "Send a file from this computer";
+					up.addEventListener("click", () => file.click());
+					file.addEventListener("change", async () => {
+						const f = file.files[0]; file.value = "";
+						if (!f) return;
+						const bytes = new Uint8Array(await f.arrayBuffer());
+						let bin = ""; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+						send({upload: {id, key: t.key, name: f.name, data: btoa(bin)}});
+					});
+					row.append(sel, up, file); wrap.append(row);
+				} else wrap.append(sel);
+			}
 			ta.addEventListener("keydown", e => {
 				e.stopPropagation();
 				if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "\t"); }

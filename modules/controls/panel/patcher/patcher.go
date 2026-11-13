@@ -94,6 +94,12 @@ type Text struct {
 	Help string `json:"help,omitempty"`
 	// Hidden keeps the box out of the module's window (a view of its own edits the text: the shaper's chain rack); the text is still kept and saved
 	Hidden bool `json:"hidden,omitempty"`
+	// Choose lists values to pick from (a file picker: the files of a folder), asked when the page is updated; the window shows them in a list above the box, a pick
+	// is typed into the box. Choices is what the page gets
+	Choose  func() []string `json:"-"`
+	Choices []string        `json:"choices,omitempty"`
+	// Uploads says the window has a button to send a file from the computer (the module's Upload keeps it)
+	Uploads bool `json:"uploads,omitempty"`
 }
 
 // Port is a port of a kind of module: its name on the page, what goes through it, its index
@@ -178,6 +184,9 @@ type Made struct {
 	// thread). A module with a state has it before its texts and settings are set: when it has one, the settings kept are not set again (the state is the sound)
 	State    func() (string, error)
 	SetState func(state string) error
+	// Upload keeps a file the page sent for a text (an upload button next to a list to pick from): it returns what the text becomes (the path it kept it at);
+	// off the audio thread. nil: it takes none
+	Upload func(key, name string, data []byte) (string, error)
 	// Bind is called once the module has its editor, with a function that sets the settings of the editor (the knobs and the controls) to values by key, and one that
 	// changes the labels of settings by key (the page has them when it asks for the panel next): for a module that changes its own settings, or what they are called
 	// (a plugin that loads a preset), and tells the editor
@@ -430,6 +439,10 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		Action *struct {
 			ID, Key string
 		} `json:"action"`
+		Upload *struct {
+			ID, Key, Name string
+			Data          []byte // a file the page sent (base64 in the JSON)
+		} `json:"upload"`
 		Example *struct {
 			ID       string
 			Texts    map[string]string
@@ -498,6 +511,8 @@ func (pt *Patcher) handle(raw json.RawMessage) error {
 		return pt.SetText(m.Text.ID, m.Text.Key, m.Text.Value)
 	case m.Action != nil:
 		return pt.Act(m.Action.ID, m.Action.Key)
+	case m.Upload != nil:
+		return pt.Upload(m.Upload.ID, m.Upload.Key, m.Upload.Name, m.Upload.Data)
 	case m.Example != nil:
 		return pt.LoadExample(m.Example.ID, m.Example.Texts, m.Example.Settings)
 	case m.Lanes != nil:
@@ -1024,6 +1039,30 @@ func (pt *Patcher) Act(id, key string) error {
 	return errors.New("no such button")
 }
 
+// MaxUpload is the most bytes of a file a page can send to a module
+const MaxUpload = 8 << 20
+
+// Upload gives a module a file the page sent (a file picker's): the module keeps it and says what to put in the text it was for, which is set
+func (pt *Patcher) Upload(id, key, name string, data []byte) error {
+	pt.mu.Lock()
+	n := pt.node(id)
+	pt.mu.Unlock()
+	if n == nil || n.made.Upload == nil {
+		return errors.New("this module takes no files")
+	}
+	if len(data) == 0 || len(data) > MaxUpload {
+		return fmt.Errorf("a file of 1 byte to %d MB", MaxUpload>>20)
+	}
+	value, err := n.made.Upload(key, name, data)
+	if err != nil {
+		pt.mu.Lock()
+		n.textErr[key] = err.Error()
+		pt.mu.Unlock()
+		return err
+	}
+	return pt.SetText(id, key, value)
+}
+
 func (pt *Patcher) SetText(id, key, value string) error {
 	pt.mu.Lock()
 	n := pt.node(id)
@@ -1248,7 +1287,10 @@ func (pt *Patcher) state() any {
 			ns.Outs = []Port{}
 		}
 		for _, t := range n.made.Texts {
-			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key], Lines: t.Lines, Help: t.Help, Hidden: t.Hidden})
+			ns.Texts = append(ns.Texts, Text{Key: t.Key, Label: t.Label, Value: n.texts[t.Key], Lines: t.Lines, Help: t.Help, Hidden: t.Hidden, Uploads: n.made.Upload != nil && t.Choose != nil})
+			if t.Choose != nil {
+				ns.Texts[len(ns.Texts)-1].Choices = t.Choose()
+			}
 		}
 		for _, a := range n.made.Actions {
 			ns.Actions = append(ns.Actions, ActionInfo{Key: a.Key, Label: a.Label, Title: a.Title})
