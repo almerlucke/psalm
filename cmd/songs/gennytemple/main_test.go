@@ -50,30 +50,18 @@ func TestPartsPlayTheChannelsOfTheFile(t *testing.T) {
 	}
 }
 
-// the piece plays, the first minute at least (it plays as it is: a faster tempo would change the file's time): it sounds, it does not clip, with the shaper synths and, where the
-// orchestra is, with the samplers
+// the piece plays, the first minute at least (it plays as it is: a faster tempo would change the file's time): it sounds and does not clip
 func TestPiecePlays(t *testing.T) {
 	if testing.Short() {
-		t.Skip("plays two minutes")
+		t.Skip("plays a minute")
 	}
-	t.Run("synths", func(t *testing.T) { playMinute(t, false) })
-	t.Run("orchestra", func(t *testing.T) {
-		toRoot(t)
-		if !hasOrchestra() {
-			t.Skip("the orchestra is not in assets")
-		}
-		playMinute(t, true)
-	})
-}
-
-func playMinute(t *testing.T, real bool) {
 	toRoot(t)
 	psalm.PushConfig(psalm.Config{BPM: tempo, PPQ: 240, SampleRate: 44100, BufferSize: 256})
 	defer psalm.PopConfig()
 	psalm.Seed(3)
 	p := psalm.New(nil)
 	pt := patcher.New(p, panel.New(p, "Test"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
-	if _, err := buildPatch(pt, real); err != nil {
+	if _, err := buildPatch(pt); err != nil {
 		t.Fatal(err)
 	}
 	p.Out(pt.Out())

@@ -1,11 +1,9 @@
 // Genny Temple: a piece from a MIDI file (assets/midi/genny-temple.mid: 66 bpm, four minutes, fifteen channels; its tracks are named after the furnishings of the temple of
-// Solomon). A midiplayer plays the file, each channel to a sampler of its own that plays the Virtual Playing Orchestra (assets/Virtual-Playing-Orchestra3, not in the repository), or, without it or with -orchestra=false, to a shaper synth: the molten sea a church bell, the two lavers a vibraphone and glass bells, Jachin and Boaz
-// two organs, the pomegranates a bell of phase modulation, the lamps a harp and the bell of fire, the side chambers a choir, the altar a dark pad, the glory a sea of crystal, and
-// the offerings (the drum channel) a small click, a closed hat (tick). All are on a mixer with a hall, an echo and a shimmer. In the page the midiplayer's window has the file picker, and
-// the synths' windows the shaper editor, to change the sounds while it plays.
+// Solomon). A midiplayer plays the file, each channel to a synth of psalm of its own, as the General MIDI programs of the file ask: tubular bells, a vibraphone and a glockenspiel
+// (modal), two church organs (organ), a celesta (dx), two harps (waveguide), choirs (vocal), a warm pad (subtractive) and the drums (drumsynth, the 808 kit). All are on a mixer with
+// a hall, an echo and a shimmer. In the page the midiplayer's window has the file picker, and the synths' windows their editors, to change the sounds while it plays.
 //
 //	go run ./cmd/songs/gennytemple
-//	go run ./cmd/songs/gennytemple -orchestra=false                      shaper synths instead of the recordings
 //	go run ./cmd/songs/gennytemple -render part.wav -from 60 -seconds 30      a part of it (to tune the mix)
 //	go run ./cmd/songs/gennytemple -render gennytemple.wav -seed 7      render it to a file (-stems: the parts too)
 package main
@@ -34,7 +32,6 @@ func main() {
 	renderTo := flag.String("render", "", "render the piece once to this WAV file instead of playing it")
 	profile := flag.Bool("profile", false, "play the piece offline and report the time every module takes")
 	stems := flag.Bool("stems", false, "with -render, also write the parts to their own files")
-	orch := flag.Bool("orchestra", true, "the parts play the recordings of the Virtual Playing Orchestra (samplers, if it is in assets); off: shaper synths")
 	from := flag.Float64("from", 0, "with -render, start the file at this second")
 	length := flag.Float64("seconds", 0, "with -render, render this many seconds (0: to the end of the file), to tune a part without waiting for all of it")
 	seed := flag.Uint64("seed", 0, "seed the random choices (0: different every time); with it a render is the same every time")
@@ -63,7 +60,7 @@ func main() {
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
 	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Audio: p.PatchInput(0)}), patcher.Theme(t))
-	ids, err := buildPatch(pt, *orch && hasOrchestra())
+	ids, err := buildPatch(pt)
 	if err != nil {
 		log.Fatal(err)
 	}
