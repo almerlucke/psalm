@@ -88,6 +88,7 @@ The chains of every preset are in the module's window in the patcher (see [synth
 | riser | Riser | Riser climbs for a long note: pitch, brightness and fold all going up, for the bars before a change |
 | impact | Impact | Impact is a low hit: a fold falling from high to low and a sine thump under it, ringing out |
 | zap | Zap | Zap is a short fall in pitch of an FM tone: a game sound |
+| tick | Tick | Tick is a small click, a closed hat: a burst of bright noise through a high pass, over in thirty milliseconds. It has no pitch to speak of: any key plays it |
 
 ## Cross modulation
 

@@ -1,4 +1,4 @@
-// Presets: a tour of the showcase presets of the synths (the shaper synth's all eighty-six), each playing what suits it for two bars: a
+// Presets: a tour of the showcase presets of the synths (the shaper synth's all eighty-seven), each playing what suits it for two bars: a
 // chord for pads and drones, a line for leads, an arpeggio for plucks, a bass line for basses, a beat
 // for the drum kits. The name of each prints as it starts.
 //
@@ -178,6 +178,7 @@ func main() {
 		{"shaper", "riser", drone, -1, sh(shaper.Riser)},
 		{"shaper", "impact", hits, -3, sh(shaper.Impact)},
 		{"shaper", "zap", hits, 0, sh(shaper.Zap)},
+		{"shaper", "tick", hits, 0, sh(shaper.Tick)},
 		{"shaper", "xmodBell", arp, 0, sh(shaper.XModBell)},
 		{"shaper", "xmodGrowl", held, -1, sh(shaper.XModGrowl)},
 		{"shaper", "ringMetal", hits, 0, sh(shaper.RingMetal)},

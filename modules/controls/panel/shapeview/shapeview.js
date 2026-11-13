@@ -274,15 +274,16 @@ psalm.register("shapeview", (p, api) => {
 		const items = rack[ci];
 		items.forEach((it, i) => {
 			const s = stageOf(it.text), card = h("div", "sv-card" + (i === sel[ci] ? " sel" : "") + (it.off ? " off" : ""));
-			card.draggable = true; card.dataset.i = i;
+			card.dataset.i = i;
 			if (!it.off) k++;
-			const head = h("div", "sv-head"), name = h("b", "sv-name", s.name); name.title = s.inf ? s.inf.help : "";
+			const head = h("div", "sv-head"), grip = h("span", "sv-grip", "⠿"), name = h("b", "sv-name", s.name);
+			grip.draggable = true; grip.title = "drag to move this stage"; // only the grip drags the card: a slider or a number moves without picking the card up name.title = s.inf ? s.inf.help : "";
 			const tools = h("span", "sv-tools");
 			const mk = (t, title, f) => { const b = h("button", "sv-x", t); b.title = title; b.addEventListener("click", e => { e.stopPropagation(); f(); }); tools.append(b); return b; };
 			mk(it.off ? "○" : "●", "bypass: leave this stage out", () => { if (i === 0) return; const c = rack[ci].map(x => ({...x})); c[i].off = !c[i].off; setChain(ci, c, true); });
 			mk("⧉", "copy this stage after itself", () => { const c = rack[ci].map(x => ({...x})); c.splice(i + 1, 0, {...c[i]}); sel[ci] = i + 1; setChain(ci, c, true); });
 			mk("✕", "take this stage away", () => { const c = rack[ci].map(x => ({...x})); c.splice(i, 1); sel[ci] = Math.max(0, Math.min(sel[ci], c.length - 1)); setChain(ci, c, true); });
-			head.append(name, tools);
+			head.append(grip, name, tools);
 			const mini = h("canvas", "sv-canvas mini"); card.append(head, mini);
 			const body = h("div", "sv-args");
 			const edit = f => { const c = rack[ci].map(x => ({...x})); c[i].text = f(); rack[ci] = c; setChain(ci, c, false); };
@@ -313,8 +314,8 @@ psalm.register("shapeview", (p, api) => {
 			}
 			card.append(body);
 			card.addEventListener("click", () => { sel[ci] = i; [...rackEl.children].forEach((c, q) => c.classList && c.classList.contains("sv-card") && c.classList.toggle("sel", q === i)); redraw(); });
-			card.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", String(i)); card.classList.add("drag"); });
-			card.addEventListener("dragend", () => card.classList.remove("drag"));
+			grip.addEventListener("dragstart", e => { e.dataTransfer.setData("text/plain", String(i)); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setDragImage(card, 12, 12); card.classList.add("drag"); });
+			grip.addEventListener("dragend", () => card.classList.remove("drag"));
 			card.addEventListener("dragover", e => { e.preventDefault(); card.classList.add("over"); });
 			card.addEventListener("dragleave", () => card.classList.remove("over"));
 			card.addEventListener("drop", e => {

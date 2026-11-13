@@ -11,7 +11,7 @@ import (
 // Presets maps preset names to their config constructors
 var Presets = map[string]func() Config{
 	// basses
-	"subSine": SubSine, "kickSub": KickSub, "reese": Reese, "acid": Acid, "wobble": Wobble, "pulseBass": PulseBass,
+	"subSine": SubSine, "kickSub": KickSub, "tick": Tick, "reese": Reese, "acid": Acid, "wobble": Wobble, "pulseBass": PulseBass,
 	"fmBass": FMBass, "growl": Growl, "subFold": SubFold,
 	// leads
 	"supersawLead": SupersawLead, "squareLead": SquareLead, "syncLead": SyncLead, "pluckLead": PluckLead, "fmLead": FMLead,

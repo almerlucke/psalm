@@ -157,6 +157,11 @@ func newMidiPlayer() *midiPlayer {
 // ReceiveMessage takes the settings: play, loop, speed, follow (the tempo of the patch); transpose
 func (m *midiPlayer) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("modChannel", func(f float64) { m.modCh.Store(int32(max(0, min(f, 16)))) })
+	msg.IfFltVal("seek", func(f float64) { // not a setting of the editor: a program moves the file (a render of a part of the piece)
+		if p := m.src.player(); p != nil {
+			p.Seek(max(0, f))
+		}
+	})
 	msg.IfFltVal("lift", func(f float64) { m.lift.Store(math.Float64bits(max(0, min(f, 1)))) })
 	msg.IfFltVal("loop", func(f float64) { m.src.set(func(s *playerSource) { s.loop = f > 0.5 }) })
 	msg.IfFltVal("speed", func(f float64) { m.src.set(func(s *playerSource) { s.speed = f }) })

@@ -16,7 +16,7 @@ var lowNames = map[string]bool{"subSine": true, "kickSub": true, "reese": true, 
 	"growl": true, "subFold": true, "subDrone": true, "impact": true, "thunder": true, "lionBass": true, "throneDrone": true, "drone5": true, "darkPad": true}
 
 // effects are allowed their edge
-var effects = map[string]bool{"laser": true, "zap": true, "lightning": true}
+var effects = map[string]bool{"laser": true, "zap": true, "lightning": true, "tick": true}
 
 func fftc(a []complex128) []complex128 {
 	n := len(a)

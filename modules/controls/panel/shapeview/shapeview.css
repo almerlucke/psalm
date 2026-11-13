@@ -68,3 +68,7 @@
 .shapeview .sv-line.on.used::after { background: currentColor; }
 .shapeview .sv-own { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .shapeview .sv-own[hidden], .shapeview .sv-own > [hidden] { display: none; }
+.shapeview .sv-grip { cursor: grab; color: var(--muted); padding: 0 4px 0 0; user-select: none; font-size: 14px; line-height: 1; }
+.shapeview .sv-grip:active { cursor: grabbing; }
+.shapeview .sv-card input[type=range], .shapeview .sv-card input[type=number], .shapeview .sv-card select { cursor: auto; }
+.shapeview .sv-head .sv-name { flex: 1; }
