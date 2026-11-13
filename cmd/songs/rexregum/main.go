@@ -1,6 +1,6 @@
 // Rex Regum: a piece to honour the King of Kings, from a MIDI file (assets/midi/rexregum.mid: 3/4, 66 bpm, 49 bars, 2:14).
-// The program reads the file and puts its notes in the score script; the other scripts play them, each on a synth of its own that
-// starts from a preset and is tuned to the sound of the piece. Where the Virtual Playing Orchestra is in assets the parts play its
+// A midiplayer plays the file in step with the song, a channel to a synth; the program tunes the synths (each starts from a preset and is tuned to the sound
+// of the piece: `tuning` in patch.go); the scripts fade the drones in, open the choir's filter and make the parts that are not in the file. The score script holds only the notes of the pedal, which the pulse follows. Where the Virtual Playing Orchestra is in assets the parts play its
 // recordings instead (-orchestra=false for the synths): the double basses for the pedal and the pulse, the mixed choir for the lower
 // voices and the sopranos for the higher, the celesta, an english horn for the lament, the timpani, the harp for the theme, first
 // violins for the canon and a glockenspiel for the chimes (see realParts). The synths:

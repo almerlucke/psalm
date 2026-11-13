@@ -167,3 +167,22 @@ func TestInputs(t *testing.T) {
 		}
 	}
 }
+
+// SeekBeat and Beat count quarter notes of the file, through a change of tempo
+func TestPlayerBeats(t *testing.T) {
+	f := &File{Format: 1, Division: 480, Tracks: []Track{{}}}
+	f.Tracks[0].AddMeta(0, MetaTempo, TempoData(60))
+	f.Tracks[0].AddMeta(480*4, MetaTempo, TempoData(120))
+	f.Tracks[0].Add(0, NoteOnMsg(1, 60, 100))
+	f.Tracks[0].Add(480*8, NoteOffMsg(1, 60, 0))
+	p := NewPlayer(f)
+	for _, beat := range []float64{0, 1.5, 4, 6.25, 8} {
+		p.SeekBeat(beat)
+		if got := p.Beat(); got < beat-1e-6 || got > beat+1e-6 {
+			t.Errorf("SeekBeat(%v): Beat() = %v", beat, got)
+		}
+	}
+	if got := p.Position(); got < 6-1e-6 || got > 6+1e-6 { // 4 beats at 60, 4 at 120: beat 8 is 4+2 seconds
+		t.Errorf("beat 8 is at %v seconds, want 6", got)
+	}
+}

@@ -170,6 +170,8 @@ The keyboard also takes messages to change its settings: `channel`, `transpose`,
 
 ## MIDI files
 
+In the patcher the `midiplayer` module plays a file: type its path, switch play on, and its `all` output plays the synths it is cabled to, and outputs `1` to `16` play one channel each; the pitch bend, the pressure and six controllers (the mod wheel, expression, volume, pan, brightness and resonance unless you type others) are mod outputs for any setting. It loops, changes speed and follows the tempo of the patch.
+
 `midi.ReadFile(path)` reads a Standard MIDI File (`.mid`, or `.rmi`). It handles format 0 and 1,
 ticks per quarter note or SMPTE time, running status, tempo changes, meta events and system
 exclusive. It takes files as they come: a track cut short ends where the file does, and other

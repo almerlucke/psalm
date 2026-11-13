@@ -511,3 +511,28 @@ func (r *teeReader) Read(events []Event, frames int, sampleRate float64) []Event
 	r.reads = r.tee.reads
 	return append(events, r.tee.events...)
 }
+
+// SeekBeat moves to a beat (quarter notes from the start of the file), playing or not; 0 for a file timed in SMPTE frames, which has no beats
+func (p *Player) SeekBeat(beat float64) {
+	if p.division <= 0 {
+		return
+	}
+	p.Seek(secondsAt(p.tempoMap, int64(math.Round(max(0, beat)*float64(p.division)))))
+}
+
+// Beat returns where the player is in quarter notes from the start of the file (0 for a file timed in SMPTE frames)
+func (p *Player) Beat() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.division <= 0 {
+		return 0
+	}
+	i, _ := slices.BinarySearchFunc(p.tempoMap, p.pos+1e-9, func(c tempoChange, s float64) int {
+		if c.seconds <= s {
+			return -1
+		}
+		return 1
+	})
+	c := p.tempoMap[max(0, i-1)]
+	return (float64(c.tick) + (p.pos-c.seconds)/c.perTick) / float64(p.division)
+}

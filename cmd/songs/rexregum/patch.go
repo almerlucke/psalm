@@ -4,7 +4,9 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/almerlucke/psalm/midi"
@@ -22,24 +24,6 @@ var lowScript string
 
 //go:embed scripts/high.js
 var highScript string
-
-//go:embed scripts/celesta.js
-var celestaScript string
-
-//go:embed scripts/lament.js
-var lamentScript string
-
-//go:embed scripts/timpani.js
-var timpaniScript string
-
-//go:embed scripts/theme.js
-var themeScript string
-
-//go:embed scripts/canon.js
-var canonScript string
-
-//go:embed scripts/chimes.js
-var chimesScript string
 
 //go:embed scripts/pulse.js
 var pulseScript string
@@ -89,8 +73,8 @@ func songText() string {
 	return strings.Join(parts, ", ")
 }
 
-// score reads the file and gives the JavaScript the score script starts with: `const SCORE = {theme: [[start, pitch, length,
-// velocity], ...], ...}` with start and length in sixteenths from the start (a bar of the 3/4 is twelve) and the velocity 0-127, and
+// score reads the file and gives the JavaScript the score script starts with: `const SCORE = {pedal: [[start, pitch, length,
+// velocity], ...]}` (only the pedal: the pulse is made from it, the other parts are played from the file by the midiplayer) with start and length in sixteenths from the start (a bar of the 3/4 is twelve) and the velocity 0-127, and
 // `const SECTIONS = [[name, bars], ...]`. A note that starts off the grid, or a file that is not as long as the sections, is an error
 func score(path string) (string, error) {
 	f, err := midi.ReadFile(path)
@@ -157,7 +141,8 @@ func score(path string) (string, error) {
 			}
 		}
 	}
-	data, err := json.Marshal(all)
+	// the notes are played from the file by the midiplayer; the script only holds the pedal, which the pulse follows
+	data, err := json.Marshal(map[string][][4]float64{"pedal": all["pedal"]})
 	if err != nil {
 		return "", err
 	}
@@ -224,6 +209,36 @@ var realParts = map[string]realPart{
 	"pulse":   {sfz: "Strings/bass-SEC-staccato.sfz", gain: 2},
 }
 
+// tuning is where each synth starts from its preset: the settings of the sound of the piece, by the keys of the synth's page (the real parts, recordings,
+// have none). high also moves its cutoff section by section (its script)
+var tuning = map[string]map[string]float64{
+	"pedal": {"ampAttack": 2200, "ampDecay": 400, "ampSustain": 1, "ampRelease": 3200, "sub": 0.3, "trim": -3, "mono": 0},
+	"low": {"ampAttack": 2800, "ampDecay": 400, "ampSustain": 1, "ampRelease": 3600, "unison": 5, "spread": 22, "uniStereo": 0.9, "drift": 0.4,
+		"trim": -4, "mono": 0},
+	"high": {"ampAttack": 3500, "ampDecay": 400, "ampSustain": 1, "ampRelease": 4500, "position": 0.35, "positionLFORate": 0.08, "positionLFODepth": 0.35,
+		"unison": 5, "detune": 16, "spread": 0.9, "resonance": 0.15, "filterEnvAmount": 0.4, "cutoff": 1700, "level": 0.16},
+	"celesta": {"ampRelease": 3000, "trim": -2, "mono": 0},
+	// a triangle, a slide of ninety milliseconds, a vibrato that comes in after most of a second, a filter half closed
+	"lament": {"osc1Waveform": 2, "osc1Level": 1, "osc2Level": 0, "subLevel": 0, "noiseLevel": 0, "ringModLevel": 0, "fmAmount": 0, "sync": 0, "drive": 0,
+		"unison": 2, "unisonDetune": 8, "glide": 90, "filterType": 0, "cutoff": 1800, "resonance": 0.1, "filterEnvAmount": 0.6, "keyTrack": 0.3,
+		"lfo1Waveform": 0, "lfo1Rate": 5, "lfo1Pitch": 0.14, "lfo1Delay": 700, "lfo1KeySync": 1, "ampAttack": 140, "ampDecay": 300, "ampSustain": 0.8,
+		"ampRelease": 1400, "level": 0.5},
+	// a sine thump that falls in pitch, a long round tail
+	"timpani": {"osc1Waveform": 0, "osc1Level": 1, "osc2Level": 0, "subLevel": 0, "noiseLevel": 0, "ringModLevel": 0, "fmAmount": 0, "sync": 0, "drive": 0,
+		"unison": 1, "glide": 0, "filterEnvToPitch": 7, "cutoff": 900, "resonance": 0, "filterEnvAmount": 0, "ampAttack": 3, "ampDecay": 700, "ampSustain": 0,
+		"ampRelease": 500, "level": 0.4},
+	// a triangle with a sine an octave under it, a little wide, a filter that opens softly on every note
+	"theme": {"osc1Waveform": 2, "osc1Level": 1, "osc2Level": 0, "subLevel": 0.25, "noiseLevel": 0, "ringModLevel": 0, "fmAmount": 0, "sync": 0, "drive": 0,
+		"unison": 3, "unisonDetune": 9, "drift": 5, "cutoff": 3200, "resonance": 0.1, "filterEnvAmount": 0.8, "keyTrack": 0.5, "ampAttack": 12,
+		"ampDecay": 250, "ampSustain": 0.7, "ampRelease": 350, "level": 0.45},
+	// a sine with a second sine an octave up and a little apart
+	"canon": {"osc1Waveform": 0, "osc1Level": 1, "osc2Waveform": 0, "osc2Level": 0.35, "osc2Octave": 1, "osc2Detune": 0.08, "subLevel": 0, "noiseLevel": 0,
+		"ringModLevel": 0, "fmAmount": 0, "sync": 0, "drive": 0, "unison": 2, "unisonDetune": 10, "cutoff": 6000, "resonance": 0, "filterEnvAmount": 0.3,
+		"ampAttack": 8, "ampDecay": 300, "ampSustain": 0.5, "ampRelease": 500, "level": 0.4},
+	"chimes": {"ampRelease": 2500, "level": 0.4},
+	"pulse":  {"cutoff": 420, "resonance": 0.25, "filterEnvAmount": 2, "ampRelease": 160},
+}
+
 // buildPatch makes the patch: the song, a score script that holds the notes of the file, and a clock of sixteenths into eleven
 // scripts that each play a synth, all on a mixer with three buses: a hall, an echo and a shimmer. The timpani pull down the
 // pulse and the pads (a sidechain). Rendering turns the loop of the song off so it ends with the last section. It returns the
@@ -258,6 +273,7 @@ func buildPatch(pt *patcher.Patcher, once, real bool) (ids patchIDs, err error) 
 	song := add("song", "", 20, 20)
 	scoreID := add("script", "", 20, 160) // first, so it has put the score in `shared` before the others ask
 	clock := add("clock", "", 20, 300)
+	player := add("midiplayer", "", 20, 440) // plays the file in step with the song, a channel to a synth
 	type part struct {
 		name, script, kind, preset string
 	}
@@ -267,12 +283,12 @@ func buildPatch(pt *patcher.Patcher, once, real bool) (ids patchIDs, err error) 
 		{"pedal", pedalScript, "shaper", "throneDrone"},
 		{"low", lowScript, "shaper", "crystalSea"},
 		{"high", highScript, "wavetable", "evolvingPad"},
-		{"celesta", celestaScript, "shaper", "glassBell"},
-		{"lament", lamentScript, "subtractive", "pad"},
-		{"timpani", timpaniScript, "subtractive", "pad"},
-		{"theme", themeScript, "subtractive", "pad"},
-		{"canon", canonScript, "subtractive", "pad"},
-		{"chimes", chimesScript, "subtractive", "pad"},
+		{"celesta", "", "shaper", "glassBell"},
+		{"lament", "", "subtractive", "pad"},
+		{"timpani", "", "subtractive", "pad"},
+		{"theme", "", "subtractive", "pad"},
+		{"canon", "", "subtractive", "pad"},
+		{"chimes", "", "subtractive", "ePiano"},
 		{"pulse", pulseScript, "subtractive", "pulseBass"},
 		{"fx", fxScript, "shaper", "impact"},
 	}
@@ -312,7 +328,9 @@ func buildPatch(pt *patcher.Patcher, once, real bool) (ids patchIDs, err error) 
 	synths := make([]string, len(parts))
 	for i, p := range parts {
 		y := 20 + float64(i)*110
-		scripts[i] = add("script", "", 260, y)
+		if p.script != "" {
+			scripts[i] = add("script", "", 260, y)
+		}
 		if rp, ok := realParts[p.name]; ok && real {
 			parts[i].kind, parts[i].preset = "sampler", ""
 			if rp.kind != "" {
@@ -321,6 +339,9 @@ func buildPatch(pt *patcher.Patcher, once, real bool) (ids patchIDs, err error) 
 			p = parts[i]
 		}
 		synths[i] = add(p.kind, p.preset, 520, y)
+		if _, rec := realParts[p.name]; err == nil && !(rec && real) { // the synth is tuned to the sound of the piece; a recording has no settings
+			pt.SettingsOf(synths[i]).Apply(tuning[p.name])
+		}
 	}
 	mixer := add("mixer", "16 channels", 780, 300)
 	// the three buses of the mixer: a hall, an echo of a dotted eighth and a shimmer
@@ -331,9 +352,16 @@ func buildPatch(pt *patcher.Patcher, once, real bool) (ids patchIDs, err error) 
 		return patchIDs{}, err
 	}
 	text(song, "sections", songText())
+	text(player, "file", midiFile)
+	if err == nil {
+		pt.SettingsOf(player).Apply(map[string]float64{"sync": 1, "lift": 0.35})
+	}
 	text(scoreID, "code", data+scoreScript)
 	ids = patchIDs{scripts: []string{scoreID}, synths: map[string]string{}}
 	for i, p := range parts {
+		if p.script != "" {
+			ids.scripts = append(ids.scripts, scripts[i])
+		}
 		code := p.script
 		if rp, ok := realParts[p.name]; ok && real {
 			// a recording has no settings to tune: the scripts only play it (`tune` does nothing; with a synth it is `set`); its level is the gain
@@ -348,9 +376,16 @@ func buildPatch(pt *patcher.Patcher, once, real bool) (ids patchIDs, err error) 
 		if fadedIn[p.name] { // the drones come in over the first bars: the script moves the level of its strip, up to what the mix says
 			code = fmt.Sprintf("const BASE = %v\n", mix[fmt.Sprintf("level%d", i+1)]) + code
 		}
-		text(scripts[i], "code", code)
-		connect(patcher.Cable{From: clock, To: scripts[i]})
-		connect(patcher.Cable{From: scripts[i], To: synths[i]})
+		if p.script != "" {
+			text(scripts[i], "code", code)
+			connect(patcher.Cable{From: clock, To: scripts[i]})
+			connect(patcher.Cable{From: scripts[i], To: synths[i]})
+		}
+		for _, ch := range slices.Sorted(maps.Keys(roles)) { // the notes of the part come from its channels of the file
+			if roles[ch] == p.name {
+				connect(patcher.Cable{From: player, Out: ch, To: synths[i]})
+			}
+		}
 		// on its way to the mixer a sound may go through an eq (a low cut that takes out what is too low to hear, and the offset
 		// of the wave) and a compressor (the sidechain)
 		last := synths[i]
@@ -376,7 +411,6 @@ func buildPatch(pt *patcher.Patcher, once, real bool) (ids patchIDs, err error) 
 			connect(patcher.Cable{From: scripts[i], Out: 4, To: mixer, In: 16 + 4, Key: fmt.Sprintf("level%d", i+1), Lo: 0, Hi: 1})
 		}
 		ids.synths[p.name] = last // the stem of a part is its sound as it goes to the mixer
-		ids.scripts = append(ids.scripts, scripts[i])
 	}
 	// send A to the hall, B to the echo, C to the shimmer; each comes back on its return (after the 16 channels)
 	for i, fx := range []string{hall, echo, shine} {

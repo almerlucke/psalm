@@ -178,7 +178,7 @@ func Kinds(cfg Config) []patcher.Kind {
 	}
 	table := gen.Brightness(32)
 	h := &hub{input: cfg.Input}
-	kinds := []patcher.Kind{keyboardKind(h), inputKind(cfg.Audio), recorderKind(), audioLooperKind()}
+	kinds := []patcher.Kind{keyboardKind(h), midiPlayerKind(), inputKind(cfg.Audio), recorderKind(), audioLooperKind()}
 	kinds = append(kinds, patcher.Sources()...)
 	kinds = append(kinds, patcher.Generators()...)
 	kinds = append(kinds, script.Kind(script.NewRuntime()))

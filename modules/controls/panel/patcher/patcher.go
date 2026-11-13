@@ -153,6 +153,9 @@ type Made struct {
 	ValueIn func() psalm.Modular
 	// Notes plays the targets of its notes output (a keyboard), on the audio thread
 	Notes func(targets []psalm.Receiver)
+	// NotesOut is Notes for a module of several notes outputs (a MIDI player's): the targets of the output whose port has the index out, asked for every
+	// notes output whenever a cable changes
+	NotesOut func(out int, targets []psalm.Receiver)
 	// Mod returns what a mod output is now, 0-1 (asked on the audio thread, once a buffer)
 	Mod func(out int) func() float64
 	// Close lets go of what it holds when it is taken away (a MIDI device)
@@ -888,6 +891,31 @@ func (pt *Patcher) wire(c *Cable, on bool) {
 
 // renote gives a notes source the synths its cables go to
 func (pt *Patcher) renote(from *node) {
+	if from.made.NotesOut != nil {
+		pt.mu.Lock()
+		groups := map[int][]psalm.Receiver{}
+		for _, c := range pt.cables {
+			if c.Type == Notes && c.From == from.ID {
+				if to := pt.node(c.To); to != nil && c.Out >= 0 && c.Out < len(from.outPorts()) {
+					idx := from.outPorts()[c.Out].Index
+					groups[idx] = append(groups[idx], to.made.Module)
+				}
+			}
+		}
+		var outs []int
+		for _, p := range from.outPorts() {
+			if p.Type == Notes {
+				outs = append(outs, p.Index)
+			}
+		}
+		pt.mu.Unlock()
+		pt.do(func() {
+			for _, o := range outs {
+				from.made.NotesOut(o, groups[o])
+			}
+		})
+		return
+	}
 	if from.made.Notes == nil {
 		return
 	}

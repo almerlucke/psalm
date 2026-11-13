@@ -25,7 +25,7 @@ func toRoot(t *testing.T) {
 	}
 }
 
-// the score has every note of the file: the parts of the roles hold as many notes as the channels of the file they are made from
+// the score has every note of the file: the score holds the notes of the pedal (the pulse follows it): as many as the file has
 func TestScoreHasAllNotes(t *testing.T) {
 	toRoot(t)
 	text, err := score(midiFile)
@@ -38,14 +38,14 @@ func TestScoreHasAllNotes(t *testing.T) {
 	}
 	notes := 0
 	for _, n := range f.Notes() {
-		if _, ok := roles[n.Channel]; ok {
+		if roles[n.Channel] == "pedal" {
 			notes++
 		}
 	}
 	if notes == 0 {
 		t.Fatalf("%d notes in the file for the roles", notes)
 	}
-	if got := strings.Count(text, "],["); got < notes-len(roles) { // the notes are arrays in lists: a "],[" between two notes
+	if got := strings.Count(text, "],["); got < notes-1 { // the notes are arrays in lists: a "],[" between two notes
 		t.Errorf("the score has about %d notes, the file %d", got, notes)
 	}
 	if !strings.Contains(text, "const SECTIONS = ") {
