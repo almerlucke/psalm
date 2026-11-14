@@ -74,6 +74,19 @@ func (s *playerSource) apply(transport bool) {
 	}
 }
 
+// rewind goes back to the start, and plays again when the player is on (a file that played to its end has stopped)
+func (s *playerSource) rewind() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cur == nil {
+		return
+	}
+	s.cur.Seek(0)
+	if s.play {
+		s.cur.Play()
+	}
+}
+
 // swap makes p the player
 func (s *playerSource) swap(p *midi.Player) {
 	s.mu.Lock()
@@ -355,9 +368,7 @@ func midiPlayerKind(folder string) patcher.Kind {
 				},
 				Actions: []patcher.Action{
 					{Key: "restart", Label: "Rewind", Title: "Back to the start of the file", Do: func() error {
-						if p := m.src.player(); p != nil {
-							p.Seek(0)
-						}
+						m.src.rewind()
 						return nil
 					}},
 				},

@@ -1,11 +1,11 @@
-// Genny Temple: a piece from a MIDI file (assets/midi/genny-temple.mid: 66 bpm, four minutes, fifteen channels; its tracks are named after the furnishings of the temple of
+// Temple: a piece from a MIDI file (assets/midi/genny-temple.mid: 66 bpm, four minutes, fifteen channels; its tracks are named after the furnishings of the temple of
 // Solomon). A midiplayer plays the file, each channel to a synth of psalm of its own, as the General MIDI programs of the file ask: tubular bells, a vibraphone and a glockenspiel
 // (modal), two church organs (organ), a celesta (dx), two harps (waveguide), choirs (vocal), a warm pad (subtractive) and the drums (drumsynth, the 808 kit). All are on a mixer with
 // a hall, an echo and a shimmer. In the page the midiplayer's window has the file picker, and the synths' windows their editors, to change the sounds while it plays.
 //
-//	go run ./cmd/songs/gennytemple
-//	go run ./cmd/songs/gennytemple -render part.wav -from 60 -seconds 30      a part of it (to tune the mix)
-//	go run ./cmd/songs/gennytemple -render gennytemple.wav -seed 7      render it to a file (-stems: the parts too)
+//	go run ./cmd/songs/temple
+//	go run ./cmd/songs/temple -render part.wav -from 60 -seconds 30      a part of it (to tune the mix)
+//	go run ./cmd/songs/temple -render temple.wav -seed 7      render it to a file (-stems: the parts too)
 package main
 
 import (
@@ -56,7 +56,7 @@ func main() {
 	if !ok {
 		log.Fatalf("theme %q: one of %v", *theme, slices.Sorted(maps.Keys(panel.Themes)))
 	}
-	ctl := panel.New(p, "Genny Temple")
+	ctl := panel.New(p, "Temple")
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
 	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Audio: p.PatchInput(0)}), patcher.Theme(t))
