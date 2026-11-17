@@ -83,3 +83,11 @@ func TestMatrixDescribe(t *testing.T) {
 		t.Errorf("destinations %v, max %g", d.Options, d.Max)
 	}
 }
+
+func TestMatrixReceiveDoesNotAllocate(t *testing.T) {
+	m := New(testDests)
+	msg := psalm.Message{"note": 60}
+	if n := testing.AllocsPerRun(100, func() { m.Receive(msg) }); n != 0 {
+		t.Fatalf("Receive allocates %v times", n)
+	}
+}

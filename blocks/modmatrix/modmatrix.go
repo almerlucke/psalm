@@ -207,27 +207,43 @@ func (m *Matrix) Mod(dest int) float64 {
 	return m.out[dest]
 }
 
+// the message keys of the slots and externals, made once: Receive runs on the audio thread and must not allocate
+var (
+	slotKeys [Slots]struct{ src, dest, amount string }
+	extKeys  [Exts]string
+)
+
+func init() {
+	for i := range Slots {
+		p := fmt.Sprintf("mod%d", i+1)
+		slotKeys[i].src, slotKeys[i].dest, slotKeys[i].amount = p+"Src", p+"Dest", p+"Amount"
+	}
+	for i := range Exts {
+		extKeys[i] = fmt.Sprintf("ext%d", i+1)
+	}
+}
+
 // Receive takes "mod<n>Src", "mod<n>Dest" (0 for none, then the destinations in order), "mod<n>Amount"
 // and "ext<n>" (0 to 1) from a message, n from 1
 func (m *Matrix) Receive(msg psalm.Message) {
 	for i := range Slots {
-		p := fmt.Sprintf("mod%d", i+1)
+		k := &slotKeys[i]
 		s := m.Slot(i)
 		set := false
-		msg.IfIntVal(p+"Src", func(v int) { s.Src, set = Source(max(0, min(v, int(NumSources)-1))), true })
-		msg.IfIntVal(p+"Dest", func(v int) {
+		msg.IfIntVal(k.src, func(v int) { s.Src, set = Source(max(0, min(v, int(NumSources)-1))), true })
+		msg.IfIntVal(k.dest, func(v int) {
 			s.Dest, set = "", true
 			if v > 0 && v <= len(m.dests) {
 				s.Dest = m.dests[v-1].Key
 			}
 		})
-		msg.IfFltVal(p+"Amount", func(v float64) { s.Amount, set = v, true })
+		msg.IfFltVal(k.amount, func(v float64) { s.Amount, set = v, true })
 		if set {
 			m.Set(i, s)
 		}
 	}
 	for i := range Exts {
-		msg.IfFltVal(fmt.Sprintf("ext%d", i+1), func(v float64) { m.SetExt(i, v) })
+		msg.IfFltVal(extKeys[i], func(v float64) { m.SetExt(i, v) })
 	}
 }
 
