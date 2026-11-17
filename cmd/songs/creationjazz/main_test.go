@@ -46,7 +46,7 @@ func playsPatch(t *testing.T, real bool) {
 	}
 	p.Out(pt.Out())
 
-	for _, name := range []string{"animals", "gulls", "sea and birds", "children", "bells", "marimba", "upright bass", "piano", "vibes", "flute", "steel pan", "darbuka", "congas", "bongos", "claves", "shakers"} {
+	for _, name := range []string{"animals", "gulls", "sea and birds", "children", "bells", "marimba", "kalimba", "upright bass", "piano", "vibes", "flute", "steel pan", "darbuka", "congas", "bongos", "claves", "shakers"} {
 		if _, ok := ids.synths[name]; !ok {
 			t.Errorf("no %s in the combo", name)
 		}

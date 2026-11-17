@@ -20,7 +20,7 @@ type event struct {
 }
 
 // scriptNames are the scripts of the written parts (the others are played as the song goes) by the name of the part
-var scriptNames = map[string]string{"void": "void", "the word": "word", "flute": "flute", "steel pan": "steelpan", "bells": "bells", "marimba": "answer"}
+var scriptNames = map[string]string{"void": "void", "the word": "word", "flute": "flute", "steel pan": "steelpan", "bells": "bells", "marimba": "answer", "kalimba": "kalimba"}
 
 // runtime loads the scripts as the patcher does (a function of the api, shared and genny) with stubs for what a part plays with
 func runtime(t *testing.T, just bool) (*goja.Runtime, *goja.Object) {

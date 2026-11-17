@@ -103,7 +103,7 @@ func parts() []strip {
 		// the waters of the intro, going round while their note is held, their level follows the bars (a cable from the script to the strip)
 		{name: "waves", script: "waves", kind: "sampler", sounds: "36 " + wavesPath + " whole loop=1.5 name=waves", hall: 0.3, automated: true},
 		// the rest of the recordings of creation play like percussion: cut at their hits, a piece on each key, played on euclidean rhythms (see kits.go)
-		{name: "sea and birds", script: "seabirds", kind: "sampler", kit: "sea and birds", level: 0.7, pan: 0.25, hall: 0.5, heavens: 0.125},
+		{name: "sea and birds", script: "seabirds", kind: "sampler", kit: "sea and birds", level: 0.45, pan: 0.25, hall: 0.5, heavens: 0.125},
 		{name: "animals", script: "animals", kind: "sampler", kit: "animals", level: 0.4, pan: -0.2, hall: 0.4, heavens: 0.05},
 		{name: "gulls", script: "gulls", kind: "sampler", kit: "gulls", level: 0.75, pan: -0.35, hall: 0.5, heavens: 0.15},
 		{name: "children", script: "children", kind: "sampler", kit: "children", level: 0.5, pan: 0.15, hall: 0.4, heavens: 0.075},
@@ -113,6 +113,7 @@ func parts() []strip {
 		{name: "vibes", script: "vibes", kind: "dx", preset: "mallet", level: amp(0.05), pan: 0.2, hall: 0.35, heavens: 0.05},
 		{name: "bells", script: "bells", kind: "dx", preset: "musicBox", level: amp(0.12) * 1.5, pan: 0.15, hall: 0.45, heavens: 0.05},
 		{name: "marimba", script: "answer", kind: "modal", preset: "marimba", level: 0.5, pan: -0.25, hall: 0.35, heavens: 0.05},
+		{name: "kalimba", script: "kalimba", kind: "modal", preset: "kalimba", level: 0.5, pan: 0.3, hall: 0.4, heavens: 0.05},
 		{name: "flute", script: "flute", kind: "dx", preset: "flute", level: amp(0.21), pan: -0.15, hall: 0.4, heavens: 0.05},
 		{name: "steel pan", script: "steelpan", kind: "modal", preset: "steelPan", level: 0.3, pan: -0.4, hall: 0.35, heavens: 0.075},
 		// the percussion of the islands, played by hand: a sampler each with the hand-played recordings of its instrument, in the ratios of the days' rhythms
@@ -256,7 +257,13 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 		connect(patcher.Cable{From: mixer, Out: 1 + i, To: fx})
 		connect(patcher.Cable{From: fx, To: mixer, In: channels + i})
 	}
-	connect(patcher.Cable{From: mixer, Out: 0, To: "out"})
+	// the master: a low shelf and a gentle compressor glue the mix together and make it louder, before the output
+	masterEQ, masterComp := add("eq", "", 1600, 160), add("compressor", "", 1840, 160)
+	connect(patcher.Cable{From: mixer, Out: 0, To: masterEQ})
+	connect(patcher.Cable{From: masterEQ, To: masterComp})
+	connect(patcher.Cable{From: masterComp, To: "out"})
+	apply(masterEQ, map[string]float64{"lowFreq": 110, "lowGain": 3, "lowCut": 25})
+	apply(masterComp, map[string]float64{"threshold": -20, "ratio": 2.5, "knee": 8, "attack": 25, "release": 250, "makeup": 5, "mix": 1})
 	if err != nil {
 		return patchIDs{}, err
 	}
@@ -274,7 +281,7 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 	if opt.once {
 		apply(song, map[string]float64{"loop": 0})
 	}
-	pt.Move("out", 1600, 300)
+	pt.Move("out", 2080, 300)
 	if err != nil {
 		return patchIDs{}, err
 	}

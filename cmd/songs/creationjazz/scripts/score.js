@@ -103,6 +103,8 @@ shared.headA2 = () => shared.join(shared.motif(), shared.parse("| F5:2 Eb5:1 | D
 shared.headB = () => shared.parse("C5:2 Eb5:1 | D5:2 F5:1 | G5:2 F5:1 | Eb5:3 | C5:2 Ab4:1 | D5:1 F5 Ab5 | G5:3 | F5:2 D5:1")
 shared.head = () => shared.join(shared.headA(), shared.headA(), shared.headB(), shared.headA2())
 
+// the answer grows with the piece, to a climax in the head out: the marimba alone in the intro and the head (section 1 and 2), the Word and the flute join in the first solo,
+// a kalimba an octave up in the break, the bell in the head out (the motif and then the answer, high), and in the tag the marimba and the Word alone again, softer
 // the answers to the motif, one for every section, two bars over ii V7 (F minor, B flat seventh) that follow the motif and say which part of creation it is: the light
 // rising (1), the firmament low under the head (2), the waters flowing (3), the creatures calling (4), the lights sparkling high (5), man standing tall (6), and the rest
 // falling (7)
@@ -120,12 +122,12 @@ shared.answers = {
 // marimba and the Word that answer it
 shared.statements = {
   1: [[[4, 0]], 0.5],
-  2: [[[0, 0], [8, 0], [24, 0]], 0.8],
-  3: [[[0, 0], [8, 0], [24, 0]], 0.8],
-  4: [[[2, 0], [10, 0]], 0.85],
-  5: [[[0, 0], [16, 0]], 0.85],
-  6: [[[0, 0], [8, 0], [24, 12]], 1],
-  7: [[[0, 0], [10, 0]], 0.9],
+  2: [[[0, 0], [8, 0], [24, 0]], 0.7],
+  3: [[[0, 0], [8, 0], [16, 0], [24, 0]], 0.75],
+  4: [[[2, 0], [10, 0]], 0.8],
+  5: [[[0, 0], [8, 0], [16, 0]], 0.75],
+  6: [[[0, 0], [8, 0], [24, 12]], 0.6],
+  7: [[[0, 0], [10, 0]], 0.6],
 }
 // whether an answer begins at bar b of a day: two bars after a statement, with room for it (four bars from the statement to the end of the section)
 shared.answerAt = (day, b) => shared.statements[day.number][0].some(([bar]) => bar + 2 === b && bar + 4 <= day.bars)
@@ -133,16 +135,18 @@ shared.answerAt = (day, b) => shared.statements[day.number][0].some(([bar]) => b
 // motifAt makes the notes of a part that plays the motif in a section, at the bars given as [bar, semitones above the motif] (two bars each, on the chords I vi), or, when
 // `answer` is true, the answer of the section two bars after it (two bars, on ii V7), where there is room for it in the section; rests between them and after. The bell
 // plays the motif and a marimba the answer: a call and its reply
-shared.motifAt = (day, at, amp, answer) => {
+// `keep(bar)` says whether the statement at that bar is played (a part that is busy elsewhere leaves it out); `answer` may be "both": the motif and then its answer (four bars)
+shared.motifAt = (day, at, amp, answer, keep) => {
   const out = []
   let pos = 0
   for (const [bar, shift] of at) {
     if (answer && bar + 4 > day.bars) continue
-    const from = bar + (answer ? 2 : 0)
+    if (keep && !keep(bar)) continue
+    const from = bar + (answer === true ? 2 : 0)
     if (from > pos) out.push(shared.rest(from - pos))
-    const notes = answer ? shared.answers[day.number]() : shared.motif()
+    const notes = answer === "both" ? shared.join(shared.motif(), shared.answers[day.number]()) : answer ? shared.answers[day.number]() : shared.motif()
     out.push(...shared.transpose(notes, shift).map(n => Object.assign(n, { amp })))
-    pos = from + 2
+    pos = from + (answer === "both" ? 4 : 2)
   }
   if (pos < day.bars) out.push(shared.rest(day.bars - pos))
   return out
