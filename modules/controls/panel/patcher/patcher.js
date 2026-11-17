@@ -137,6 +137,13 @@ psalm.register("patcher", (p, api) => {
 		return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 	};
 
+	// the cables a note went through a moment ago light up
+	let litIds = new Set();
+	function showLit(ids) {
+		litIds = new Set(ids);
+		for (const p of svg.querySelectorAll("path.pt-cable:not(.drawing)")) p.classList.toggle("lit", litIds.has(p.dataset.id));
+	}
+
 	function drawCables() {
 		svg.setAttribute("width", area.scrollWidth); svg.setAttribute("height", area.scrollHeight);
 		for (const old of [...svg.querySelectorAll("path.pt-cable:not(.drawing), path.pt-hit")]) old.remove();
@@ -155,7 +162,7 @@ psalm.register("patcher", (p, api) => {
 			hit.append(t);
 			const path = document.createElementNS(svgNS, "path");
 			path.setAttribute("d", d);
-			path.setAttribute("class", `pt-cable ${c.type}` + (c.id === picked ? " picked" : ""));
+			path.setAttribute("class", `pt-cable ${c.type}` + (c.id === picked ? " picked" : "") + (litIds.has(c.id) ? " lit" : ""));
 			path.dataset.id = c.id;
 			for (const e of [hit, path]) e.addEventListener("pointerdown", ev => { ev.stopPropagation(); pick(c.id); });
 			svg.append(hit, path);
@@ -700,7 +707,8 @@ psalm.register("patcher", (p, api) => {
 		update(s) {
 			if (!s) return;
 			showJournal(s.journal || "", s.lines); // the log changes on its own, the patch is only drawn again when it changes
-			const {journal, lines, heads, ...rest} = s;
+			const {journal, lines, heads, lit, ...rest} = s;
+			showLit(lit || []);
 			lanes.heads(heads); // where the lanes are changes all the time, like the log
 			const was = JSON.stringify(st);
 			st = rest;

@@ -341,7 +341,7 @@ func inputKind(src psalm.Modular) patcher.Kind {
 func recorderKind() patcher.Kind {
 	return patcher.Kind{Name: "recorder", Group: "Effects", Ins: ins, Outs: outs, Make: func(string) (*patcher.Made, error) {
 		m := recorder.New(recorder.Config{})
-		return &patcher.Made{Module: m, Describe: func(string) params.Set { return recorder.Describe(m.Settings()) },
+		return &patcher.Made{Module: m, Sink: true, Describe: func(string) params.Set { return recorder.Describe(m.Settings()) },
 			Attach: func(j *patcher.Journal, name string) {
 				m.OnStarted(func(path string, err error) {
 					if err != nil {

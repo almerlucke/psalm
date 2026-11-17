@@ -7,7 +7,7 @@ import (
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher"
 )
 
-// midiFile is the piece: 15 channels, 66 bpm, four minutes
+// midiFile is the piece: 16 channels, 66 bpm, four minutes
 const midiFile = "assets/midi/genny-temple.mid"
 
 // tempo is the bpm of the piece (the file's)
@@ -34,7 +34,7 @@ var parts = []part{
 	{name: "lavers right", channels: []int{3}, kind: "modal", preset: "glockenspiel", level: 0.4, pan: 0.4, hall: 0.35, echo: 0.2},
 	{name: "jachin", channels: []int{4}, kind: "organ", preset: "full", level: 0.315, pan: -0.3, hall: 0.4},
 	{name: "boaz", channels: []int{5}, kind: "organ", preset: "full", level: 0.203, pan: 0.3, hall: 0.4},
-	{name: "pomegranates", channels: []int{6}, kind: "dx", preset: "celesta", level: 0.284, pan: 0.2, hall: 0.4, shimmer: 0.4},
+	{name: "gold bells", channels: []int{6}, kind: "modal", preset: "vibraphone", level: 0.42, pan: 0.2, hall: 0.4, shimmer: 0.4},
 	{name: "lamps left", channels: []int{7}, kind: "waveguide", preset: "harp", level: 0.347, pan: -0.5, hall: 0.35, echo: 0.25},
 	{name: "lamps right", channels: []int{8}, kind: "waveguide", preset: "harp", level: 0.625, pan: 0.5, hall: 0.4, shimmer: 0.3},
 	{name: "side chambers 5", channels: []int{9}, kind: "vocal", preset: "aah", level: 0.28, pan: 0, hall: 0.5},
@@ -42,7 +42,8 @@ var parts = []part{
 	{name: "side chambers 7", channels: []int{12}, kind: "vocal", preset: "aah", level: 0.28, pan: 0.5, hall: 0.5, shimmer: 0.2},
 	{name: "altar and room", channels: []int{13}, kind: "subtractive", preset: "pad", level: 0.27, pan: 0, hall: 0.5},
 	{name: "wing four", channels: []int{14}, kind: "vocal", preset: "aah", level: 0.252, pan: 0, hall: 0.5},
-	{name: "glory", channels: []int{15}, kind: "vocal", preset: "choir", level: 0.625, pan: 0, hall: 0.6, shimmer: 0.5},
+	{name: "room and glory", channels: []int{15}, kind: "vocal", preset: "angels", level: 0.5, pan: 0, hall: 0.6, shimmer: 0.5},
+	{name: "piano melody", channels: []int{16}, kind: "piano", preset: "grand", level: 0.4, pan: 0, hall: 0.3, echo: 0.1},
 	{name: "offerings", channels: []int{10}, kind: "drumsynth", preset: "808", level: 0.7, pan: 0.15, hall: 0.15, echo: 0.1},
 }
 

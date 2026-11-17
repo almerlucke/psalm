@@ -137,6 +137,8 @@ type ActionInfo struct {
 // Made is a module made: what the patch adds, and what the patcher asks of it
 type Made struct {
 	Module psalm.Modular   // its audio ports are the module's inputs and outputs
+	// Sink says the module is to run also when nothing is cabled on from it (a recorder tapping a voice): the patch pulls it through a silent gain into the output
+	Sink bool
 	Extra  []psalm.Modular // more for the patch (a keyboard's own modules)
 	// Describe describes its settings at a preset (nil: it has none to edit or modulate); the
 	// presets of the kind are its factory presets in its editor
@@ -270,6 +272,7 @@ type Cable struct {
 type Patcher struct {
 	*panel.Param
 	p        *psalm.Psalm
+	lit      sync.Map // the time a note last went through a notes cable (an *atomic.Int64), by the id of the cable
 	ctl      *panel.Panel
 	tempo    *panel.Param             // the tempo of the patch, in the bar at the top of the page
 	clip     *patchFile               // the modules copied (Copy), to paste
@@ -281,6 +284,7 @@ type Patcher struct {
 	theme    panel.Theme
 	kinds    []Kind
 	out      *gain.Gain // the output: what the patch plays
+	sinks    *gain.Gain // silent, into out: it pulls the modules that are only a tap (Made.Sink)
 
 	mu       sync.Mutex // the patch as the page sees it (the audio thread has its own copies)
 	nodes    []*node
@@ -342,6 +346,9 @@ func New(p *psalm.Psalm, ctl *panel.Panel, name string, kinds []Kind, opts ...Op
 		o(pt)
 	}
 	pt.out.AddTo(p)
+	pt.sinks = gain.New(-120)
+	pt.sinks.AddTo(p)
+	pt.sinks.Connect(0, pt.out, 0)
 	patchers.Store(p.Env(), pt)
 	empty := []*modConn{}
 	pt.mods.Store(&empty)
@@ -680,6 +687,9 @@ func (pt *Patcher) Add(kindName, preset string, x, y float64) (string, error) {
 		if n.made.Late != nil {
 			pt.late.add(n.ID, n.made.Late)
 		}
+		if n.made.Sink {
+			n.made.Module.Connect(0, pt.sinks, 0)
+		}
 	})
 	pt.mu.Lock()
 	pt.nodes = append(pt.nodes, n)
@@ -760,6 +770,9 @@ func (pt *Patcher) Remove(id string) error {
 	}
 	pt.do(func() {
 		pt.late.remove(n.ID)
+		if n.made.Sink {
+			n.made.Module.Disconnect(0, pt.sinks, 0)
+		}
 		for _, m := range n.all {
 			if m != psalm.Modular(n.page) { // the page is taken out below, once
 				pt.p.Remove(m)
@@ -904,6 +917,43 @@ func (pt *Patcher) wire(c *Cable, on bool) {
 	}
 }
 
+// litFor is how long a cable stays lit after a note went through it
+const litFor = 300 * time.Millisecond
+
+// tap is what a notes cable delivers to: the receiver, noting the time a note started through it (the page lights the cable)
+type tap struct {
+	psalm.Receiver
+	at *atomic.Int64
+}
+
+func (t tap) ReceiveMessage(m psalm.Message) {
+	if m["command"] == "trigger" {
+		if _, off := m["noteOff"]; !off {
+			t.at.Store(time.Now().UnixNano())
+		}
+	}
+	t.Receiver.ReceiveMessage(m)
+}
+
+// tapFor wraps the module a notes cable goes to (the patcher's lock held)
+func (pt *Patcher) tapFor(c *Cable, r psalm.Receiver) psalm.Receiver {
+	at, _ := pt.lit.LoadOrStore(c.ID, new(atomic.Int64))
+	return tap{r, at.(*atomic.Int64)}
+}
+
+// lit returns the cables a note went through a moment ago
+func (pt *Patcher) litCables() []string {
+	lit := []string{}
+	now := time.Now().UnixNano()
+	pt.lit.Range(func(k, v any) bool {
+		if now-v.(*atomic.Int64).Load() < int64(litFor) {
+			lit = append(lit, k.(string))
+		}
+		return true
+	})
+	return lit
+}
+
 // renote gives a notes source the synths its cables go to
 func (pt *Patcher) renote(from *node) {
 	if from.made.NotesOut != nil {
@@ -913,7 +963,7 @@ func (pt *Patcher) renote(from *node) {
 			if c.Type == Notes && c.From == from.ID {
 				if to := pt.node(c.To); to != nil && c.Out >= 0 && c.Out < len(from.outPorts()) {
 					idx := from.outPorts()[c.Out].Index
-					groups[idx] = append(groups[idx], to.made.Module)
+					groups[idx] = append(groups[idx], pt.tapFor(c, to.made.Module))
 				}
 			}
 		}
@@ -939,7 +989,7 @@ func (pt *Patcher) renote(from *node) {
 	for _, c := range pt.cables {
 		if c.Type == Notes && c.From == from.ID {
 			if to := pt.node(c.To); to != nil {
-				targets = append(targets, to.made.Module)
+				targets = append(targets, pt.tapFor(c, to.made.Module))
 			}
 		}
 	}
@@ -1251,6 +1301,7 @@ type state struct {
 	PasteN       int                  `json:"pasteN,omitempty"` // the pastes so far: another one, the page chooses them
 	Journal      string               `json:"journal"`          // the log of the patch, the newest lines
 	Lines        int                  `json:"lines"`            // how many lines it has had
+	Lit          []string             `json:"lit"`              // the cables a note went through a moment ago (the page lights them; changes all the time)
 	Heads        map[string]*LaneHead `json:"heads,omitempty"`  // where the lanes of the automation modules are
 	Sections     []SectionInfo        `json:"sections"`         // the sections of the song, for the grid
 	Chords       *ChordsInfo          `json:"chords,omitempty"` // the chord model of the patch, for the grid
@@ -1262,7 +1313,7 @@ func (pt *Patcher) state() any {
 	pt.mu.Lock()
 	defer pt.mu.Unlock()
 	st := state{Cables: []*Cable{}, Selected: pt.selected, Patches: patches, Current: pt.current, Keeps: pt.dir != "", Note: pt.note,
-		Pasted: pt.pasted, PasteN: pt.pasteN, Journal: pt.journal.Text(), Lines: pt.journal.Len(), Sections: []SectionInfo{}, SectionTexts: sectionTexts}
+		Lit: pt.litCables(), Pasted: pt.pasted, PasteN: pt.pasteN, Journal: pt.journal.Text(), Lines: pt.journal.Len(), Sections: []SectionInfo{}, SectionTexts: sectionTexts}
 	for _, n := range pt.nodes {
 		if cm := chordModelOf(madeModule(n)); cm != nil {
 			st.Chords = &ChordsInfo{Live: cm.State().Live}

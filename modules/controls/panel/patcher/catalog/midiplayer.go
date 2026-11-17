@@ -201,6 +201,13 @@ func (m *midiPlayer) ReceiveMessage(msg psalm.Message) {
 	})
 }
 
+// Restart goes back to the start of the file with the patch (Psalm.Restart): it plays again from there when the player is on. Following the song, the song
+// puts it where it is (it has restarted too)
+func (m *midiPlayer) Restart() {
+	m.armed = false
+	m.src.rewind()
+}
+
 // CtrlTick follows the song when it is to (once a buffer), then reads the file
 func (m *midiPlayer) CtrlTick(tick psalm.CtrlTick) {
 	if m.syncSong.Load() {

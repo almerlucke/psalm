@@ -1,10 +1,11 @@
-// Temple: a piece from a MIDI file (assets/midi/genny-temple.mid: 66 bpm, four minutes, fifteen channels; its tracks are named after the furnishings of the temple of
-// Solomon). A midiplayer plays the file, each channel to a synth of psalm of its own, as the General MIDI programs of the file ask: tubular bells, a vibraphone and a glockenspiel
-// (modal), two church organs (organ), a celesta (dx), two harps (waveguide), choirs (vocal), a warm pad (subtractive) and the drums (drumsynth, the 808 kit). All are on a mixer with
+// Temple: a piece from a MIDI file (assets/midi/genny-temple.mid: 66 bpm, four minutes, sixteen channels; its tracks are named after the furnishings of the temple of
+// Solomon). A midiplayer plays the file, each channel to a synth of psalm of its own, as the General MIDI programs of the file ask: tubular bells, a vibraphone (twice) and a glockenspiel
+// (modal), two church organs (organ), two harps (waveguide), choirs and a halo pad (vocal), a warm pad (subtractive), a grand piano (piano) and the drums (drumsynth, the 808 kit). All are on a mixer with
 // a hall, an echo and a shimmer. In the page the midiplayer's window has the file picker, and the synths' windows their editors, to change the sounds while it plays.
 //
 //	go run ./cmd/songs/temple
 //	go run ./cmd/songs/temple -render part.wav -from 60 -seconds 30      a part of it (to tune the mix)
+//	go run ./cmd/songs/temple -save temple      save the patch as patches/temple.json, to load in the patcher and change
 //	go run ./cmd/songs/temple -render temple.wav -seed 7      render it to a file (-stems: the parts too)
 package main
 
@@ -34,6 +35,7 @@ func main() {
 	stems := flag.Bool("stems", false, "with -render, also write the parts to their own files")
 	from := flag.Float64("from", 0, "with -render, start the file at this second")
 	length := flag.Float64("seconds", 0, "with -render, render this many seconds (0: to the end of the file), to tune a part without waiting for all of it")
+	save := flag.String("save", "", "save the patch of the piece as a patch of the patcher (patches/<name>.json, to load in the patcher and change) and stop")
 	seed := flag.Uint64("seed", 0, "seed the random choices (0: different every time); with it a render is the same every time")
 	flag.Parse()
 
@@ -59,10 +61,17 @@ func main() {
 	ctl := panel.New(p, "Temple")
 	ctl.SetTheme(t)
 	ctl.Section("Patch")
-	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Audio: p.PatchInput(0)}), patcher.Theme(t))
+	pt := patcher.New(p, ctl, "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue(), Audio: p.PatchInput(0)}), patcher.Theme(t), patcher.Keep("patches"))
 	ids, err := buildPatch(pt)
 	if err != nil {
 		log.Fatal(err)
+	}
+	if *save != "" {
+		if err := pt.Save(*save); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("saved patches/%s.json\n", *save)
+		return
 	}
 	master := mixer.New(p)
 	master.Channel("patch", pt.Out(), mixer.StripConfig{Volume: 2})

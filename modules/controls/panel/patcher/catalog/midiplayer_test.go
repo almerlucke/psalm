@@ -69,12 +69,22 @@ func midiPlayerPeak(t *testing.T, out int) float64 {
 	if e := pt.TextError(pl, "file"); e != "" {
 		t.Fatal(e)
 	}
-	var peak float64
-	for range 258 {
-		p.ResetRun()
-		p.Run()
-		for _, v := range pt.Out().Output(0).Channels[0] {
-			peak = max(peak, math.Abs(float64(v)))
+	run := func(n int) (peak float64) {
+		for range n {
+			p.ResetRun()
+			p.Run()
+			for _, v := range pt.Out().Output(0).Channels[0] {
+				peak = max(peak, math.Abs(float64(v)))
+			}
+		}
+		return
+	}
+	peak := run(258)
+	if out == 0 { // the file played to its end and is silent; a restart of the patch plays it again
+		run(100)
+		p.Restart()
+		if again := run(100); again < 0.01 {
+			t.Errorf("after a restart the file doesn't play again (peak %v)", again)
 		}
 	}
 	return peak
