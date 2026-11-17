@@ -38,7 +38,7 @@ package main
 //	go run ./cmd/songs/creation -render creation.wav -stems -seed 7 render it, a stem per strip
 //	go run ./cmd/songs/creation -profile                            the time every module takes
 //
-// The same piece is also made as a patch, with the patcher's modules and scripts to read and change while it plays: cmd/songs/creationpatch.
+// The piece is also made in jazz as a patch, with the patcher's modules and scripts to read and change while it plays: cmd/songs/creationjazz (a jazz version of it).
 //
 // The files: form.go (the days, their chords and voicings), melodies.go, orchestra.go (the
 // instruments on the mixer), parts.go (what every instrument plays, day by day) and arrangement.go
