@@ -71,6 +71,7 @@ var cuts = []cut{
 	{"sea and birds", seaBirdsPath, 6, 0.4, 0, 0, 8, -50},
 	{"gulls", gullsPath, 9, 0.4, 0, 70, 8, -48},
 	{"children", childrenPath, 6, 0.2, 0, 0, 6, -50},
+	{"word", wordPath, 3, 0.15, 0, 0, 4, -60}, // the syllables of John 1:1, that sing through the vocoder
 }
 
 func cutByName(name string) (cut, bool) {

@@ -98,27 +98,29 @@ func parts() []strip {
 	amp := func(a float64) float64 { return a / 0.8 }
 	return []strip{
 		{name: "void", script: "void", kind: "wavetable", preset: "drone", level: amp(0.111) * 0.7, hall: 0.4},
-		{name: "the word", script: "word", kind: "wavetable", preset: "pad", chain: "vocoder", level: 0.59, hall: 0.35, heavens: 0.1,
+		{name: "the word", script: "word", kind: "wavetable", preset: "pad", chain: "vocoder", level: 0.85, hall: 0.6, heavens: 0.05,
 			settings: map[string]float64{"position": 1, "positionLFODepth": 0, "filter": 0, "unison": 3}},
 		// the waters of the intro, going round while their note is held, their level follows the bars (a cable from the script to the strip)
 		{name: "waves", script: "waves", kind: "sampler", sounds: "36 " + wavesPath + " whole loop=1.5 name=waves", hall: 0.3, automated: true},
 		// the rest of the recordings of creation play like percussion: cut at their hits, a piece on each key, played on euclidean rhythms (see kits.go)
-		{name: "sea and birds", script: "seabirds", kind: "sampler", kit: "sea and birds", level: 0.7, pan: 0.25, hall: 0.5, heavens: 0.25},
-		{name: "animals", script: "animals", kind: "sampler", kit: "animals", level: 0.4, pan: -0.2, hall: 0.4, heavens: 0.1},
-		{name: "gulls", script: "gulls", kind: "sampler", kit: "gulls", level: 0.75, pan: -0.35, hall: 0.5, heavens: 0.3},
-		{name: "children", script: "children", kind: "sampler", kit: "children", level: 0.5, pan: 0.15, hall: 0.4, heavens: 0.15},
+		{name: "sea and birds", script: "seabirds", kind: "sampler", kit: "sea and birds", level: 0.7, pan: 0.25, hall: 0.5, heavens: 0.125},
+		{name: "animals", script: "animals", kind: "sampler", kit: "animals", level: 0.4, pan: -0.2, hall: 0.4, heavens: 0.05},
+		{name: "gulls", script: "gulls", kind: "sampler", kit: "gulls", level: 0.75, pan: -0.35, hall: 0.5, heavens: 0.15},
+		{name: "children", script: "children", kind: "sampler", kit: "children", level: 0.5, pan: 0.15, hall: 0.4, heavens: 0.075},
 		// the combo, in the pure ratios of the rest: a walking bass, a piano comping, a vibraphone, a flute leading with a steel pan after it, and the percussion keeping the waltz
 		{name: "upright bass", script: "jazzbass", kind: "dx", preset: "woodBass", level: amp(0.25) * 0.65, pan: -0.15, hall: 0.12},
 		{name: "piano", script: "comp", kind: "piano", preset: "grand", level: amp(0.2) * 0.8, pan: -0.05, hall: 0.25},
-		{name: "vibes", script: "vibes", kind: "dx", preset: "mallet", level: amp(0.05), pan: 0.2, hall: 0.35, heavens: 0.1},
-		{name: "flute", script: "flute", kind: "dx", preset: "flute", level: amp(0.21), pan: -0.15, hall: 0.4, heavens: 0.1},
-		{name: "steel pan", script: "steelpan", kind: "modal", preset: "steelPan", level: 0.3, pan: -0.4, hall: 0.35, heavens: 0.15},
+		{name: "vibes", script: "vibes", kind: "dx", preset: "mallet", level: amp(0.05), pan: 0.2, hall: 0.35, heavens: 0.05},
+		{name: "bells", script: "bells", kind: "dx", preset: "musicBox", level: amp(0.12) * 1.5, pan: 0.15, hall: 0.45, heavens: 0.05},
+		{name: "marimba", script: "answer", kind: "modal", preset: "marimba", level: 0.5, pan: -0.25, hall: 0.35, heavens: 0.05},
+		{name: "flute", script: "flute", kind: "dx", preset: "flute", level: amp(0.21), pan: -0.15, hall: 0.4, heavens: 0.05},
+		{name: "steel pan", script: "steelpan", kind: "modal", preset: "steelPan", level: 0.3, pan: -0.4, hall: 0.35, heavens: 0.075},
 		// the percussion of the islands, played by hand: a sampler each with the hand-played recordings of its instrument, in the ratios of the days' rhythms
 		{name: "darbuka", script: "darbuka", kind: "sampler", kit: "darbuka", level: 0.55, pan: 0.05, hall: 0.2},
 		{name: "congas", script: "congas", kind: "sampler", kit: "congas", level: 0.6, pan: 0.3, hall: 0.25},
 		{name: "bongos", script: "bongos", kind: "sampler", kit: "bongos", level: 0.45, pan: -0.3, hall: 0.25},
 		{name: "claves", script: "claves", kind: "sampler", kit: "claves", level: 0.4, pan: 0.45, hall: 0.2},
-		{name: "shakers", script: "shakers", kind: "sampler", kit: "shakers", level: 0.7, pan: -0.5, hall: 0.25, heavens: 0.15},
+		{name: "shakers", script: "shakers", kind: "sampler", kit: "shakers", level: 0.7, pan: -0.5, hall: 0.25, heavens: 0.075},
 	}
 }
 
@@ -205,7 +207,11 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 	text(song, "sections", sectionsText())
 	text(score, "code", prelude+script("score"))
 	text(wordScript, "code", script("theword"))
-	text(wordVoice, "sounds", "36 "+wordPath+" whole name=word vol=0")
+	syllables, kerr := kitLines("word") // the whole verse on a key of its own (35), the syllables of it from 36
+	if kerr != nil {
+		return patchIDs{}, kerr
+	}
+	text(wordVoice, "sounds", "35 "+wordPath+" whole name=wordall vol=0\n"+syllables)
 	ids = patchIDs{mixer: mixer, scripts: []string{score, wordScript}, synths: map[string]string{}, index: map[string]int{}}
 	channels := len(all)
 	modIn := channels + 4 // the mod input of the mixer: after its channels and its four returns (three buses are used)
@@ -226,7 +232,11 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 			connect(patcher.Cable{From: wordVoice, To: vocoder, In: 0})
 			connect(patcher.Cable{From: pl.synth, To: vocoder, In: 1})
 			connect(patcher.Cable{From: wordScript, To: wordVoice})
-			pl.out = vocoder
+			// an echo on the dotted eighth (at 92 beats a minute) behind the voice, so the syllables trail off into the hall
+			echo := add("pingpong", "", 1040, 20+float64(len(all))*90)
+			apply(echo, map[string]float64{"time": 0.489, "feedback": 0.35, "mix": 0.3, "highCut": 5000, "lowCut": 250})
+			connect(patcher.Cable{From: vocoder, To: echo})
+			pl.out = echo
 			ids.synths["the word voice"], ids.synths["the word pad"] = wordVoice, pl.synth
 		}
 		connect(patcher.Cable{From: pl.out, To: mixer, In: i})
@@ -250,7 +260,7 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 	if err != nil {
 		return patchIDs{}, err
 	}
-	m := map[string]float64{"returnA": 1, "returnB": 1}
+	m := map[string]float64{"returnA": 1, "returnB": 0.4}
 	for i, pl := range ps {
 		n := fmt.Sprint(i + 1)
 		m["level"+n] = pl.level // 0 for a recording: its script moves it
@@ -260,7 +270,7 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 	m["level"] = 0.9 // a little under the song of Go, which a limiter kept in
 	apply(mixer, m)
 	apply(hall, map[string]float64{"mix": 1, "decay": 4.2, "size": 0.85, "damping": 0.5})
-	apply(heavens, map[string]float64{"shimmer": 0.5, "mix": 1, "decay": 8})
+	apply(heavens, map[string]float64{"shimmer": 0.35, "mix": 1, "decay": 6})
 	if opt.once {
 		apply(song, map[string]float64{"loop": 0})
 	}

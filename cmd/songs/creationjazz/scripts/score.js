@@ -95,10 +95,58 @@ shared.ringing = (b, chord) => {
 // --- the head: the written melody of the tune, thirty-two bars (A A B A, the changes of the chorus in form.go), a waltz in E flat ---
 
 // the first A over I vi ii V7 iii vi ii V7: it climbs on the tones of the chords to the ninth and falls back, the bridge sings higher over IV V7 iii vi ii V7 I V7
-shared.headA = () => shared.parse("G4:2 Bb4:1 | C5:2 Eb5:1 | F5:2 Eb5:1 | D5:3 | Bb4:2 D5:1 | C5:1 Eb5 G5 | F5:2 C5:1 | Bb4:3")
-shared.headA2 = () => shared.parse("G4:2 Bb4:1 | C5:2 Eb5:1 | F5:2 Eb5:1 | D5:3 | Bb4:2 D5:1 | C5:1 Eb5 G5 | Ab4:2 C5:1 | Eb5:3")
+// the motif of the piece: the opening of the head, a rising E flat chord (G B flat | C E flat) over I vi. The head plays it, and a bell states it again in every section
+// where the changes begin on I vi (see bells.js), so that all the sections are recognised by it
+shared.motif = () => shared.parse("G4:2 Bb4:1 | C5:2 Eb5:1")
+shared.headA = () => shared.join(shared.motif(), shared.parse("| F5:2 Eb5:1 | D5:3 | Bb4:2 D5:1 | C5:1 Eb5 G5 | F5:2 C5:1 | Bb4:3"))
+shared.headA2 = () => shared.join(shared.motif(), shared.parse("| F5:2 Eb5:1 | D5:3 | Bb4:2 D5:1 | C5:1 Eb5 G5 | Ab4:2 C5:1 | Eb5:3"))
 shared.headB = () => shared.parse("C5:2 Eb5:1 | D5:2 F5:1 | G5:2 F5:1 | Eb5:3 | C5:2 Ab4:1 | D5:1 F5 Ab5 | G5:3 | F5:2 D5:1")
 shared.head = () => shared.join(shared.headA(), shared.headA(), shared.headB(), shared.headA2())
+
+// the answers to the motif, one for every section, two bars over ii V7 (F minor, B flat seventh) that follow the motif and say which part of creation it is: the light
+// rising (1), the firmament low under the head (2), the waters flowing (3), the creatures calling (4), the lights sparkling high (5), man standing tall (6), and the rest
+// falling (7)
+shared.answers = {
+  1: () => shared.parse("F5:1 Ab5 C6 | D6:3"),
+  2: () => shared.parse("F4:2 Ab4:1 | D4:3"),
+  3: () => shared.parse("C5:1 F5 Ab5 | F5:1 D5 F5"),
+  4: () => shared.parse("F5:0.5 F5 Ab5 r C6:1 | D6:0.5 D6 F5 r Ab5:1"),
+  5: () => shared.parse("Ab5:0.5 C6 F6 C6 Ab5 F5 | D6:3"),
+  6: () => shared.parse("F5:2 Ab5:1 | D6:3"),
+  7: () => shared.parse("Ab5:3 | F5:3"),
+}
+
+// where the motif is stated in every section (by the number of the section): the bars [bar, semitones above the motif] and how loud, for the bell that states it, the
+// marimba and the Word that answer it
+shared.statements = {
+  1: [[[4, 0]], 0.5],
+  2: [[[0, 0], [8, 0], [24, 0]], 0.8],
+  3: [[[0, 0], [8, 0], [24, 0]], 0.8],
+  4: [[[2, 0], [10, 0]], 0.85],
+  5: [[[0, 0], [16, 0]], 0.85],
+  6: [[[0, 0], [8, 0], [24, 12]], 1],
+  7: [[[0, 0], [10, 0]], 0.9],
+}
+// whether an answer begins at bar b of a day: two bars after a statement, with room for it (four bars from the statement to the end of the section)
+shared.answerAt = (day, b) => shared.statements[day.number][0].some(([bar]) => bar + 2 === b && bar + 4 <= day.bars)
+
+// motifAt makes the notes of a part that plays the motif in a section, at the bars given as [bar, semitones above the motif] (two bars each, on the chords I vi), or, when
+// `answer` is true, the answer of the section two bars after it (two bars, on ii V7), where there is room for it in the section; rests between them and after. The bell
+// plays the motif and a marimba the answer: a call and its reply
+shared.motifAt = (day, at, amp, answer) => {
+  const out = []
+  let pos = 0
+  for (const [bar, shift] of at) {
+    if (answer && bar + 4 > day.bars) continue
+    const from = bar + (answer ? 2 : 0)
+    if (from > pos) out.push(shared.rest(from - pos))
+    const notes = answer ? shared.answers[day.number]() : shared.motif()
+    out.push(...shared.transpose(notes, shift).map(n => Object.assign(n, { amp })))
+    pos = from + 2
+  }
+  if (pos < day.bars) out.push(shared.rest(day.bars - pos))
+  return out
+}
 
 // --- jazz: the parts that are not written, but played as the song goes ---
 
@@ -201,6 +249,7 @@ const PLAYERS = {
   "claves": { lay: -2, timing: 4, velocity: 0.12, swing: 0.6 },
   "shakers": { lay: 3, timing: 7, velocity: 0.18, swing: 0.62 },
   "darbuka": { lay: 0, timing: 5, velocity: 0.12, swing: 0.6 },
+  "word": { lay: 0, timing: 4, velocity: 0.1, swing: 0.6 },
   "animals": { lay: 4, timing: 7, velocity: 0.12, swing: 0.6 },
   "gulls": { lay: 2, timing: 9, velocity: 0.12, swing: 0.58 },
   "sea and birds": { lay: 3, timing: 8, velocity: 0.1, swing: 0.58 },
@@ -369,8 +418,10 @@ shared.dawn = song => {
 // accents through the bar (the beats of an accent, the beats of the bar)
 const FEELS = {
   "void": { timing: 20 },
-  "the word": { timing: 20, spread: 20 },
+  "the word": { timing: 6, spread: 6, velocity: 0.06 },
   "flute": { swing: 0.62, timing: 8, push: 4, velocity: 0.08 },
+  "bells": { timing: 6, strum: 12, velocity: 0.06 },
+  "marimba": { swing: 0.6, timing: 7, velocity: 0.08 },
   "steel pan": { swing: 0.62, timing: 8, push: 2, velocity: 0.08 },
 }
 // a note can only be late, never early: every note of every part waits this long (milliseconds) so the ones that play ahead of the beat have room
