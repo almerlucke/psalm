@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"path"
@@ -55,6 +56,72 @@ var kits = []kit{
 	}},
 }
 
+// the recordings of creation are played as percussion too: long recordings cut at their hits (a piece on each key from 36), played on the grid by scripts over
+// euclidean rhythms, a markov chain walking the pieces (the calls of the beasts, the gulls, the birds of the sea, the laughter of the children)
+type cut struct {
+	name, path string
+	rise, gap  float64 // how a hit is found (sampler hits)
+	from, to   float64 // the seconds of the recording to use, 0 0 for all
+	vol        float64 // dB
+	lowest     float64 // the pieces quieter than this (dB) are left out
+}
+
+var cuts = []cut{
+	{"animals", animalsPath, 9, 0.4, 0, 70, 8, -48},
+	{"sea and birds", seaBirdsPath, 6, 0.4, 0, 0, 8, -50},
+	{"gulls", gullsPath, 9, 0.4, 0, 70, 8, -48},
+	{"children", childrenPath, 6, 0.2, 0, 0, 6, -50},
+}
+
+func cutByName(name string) (cut, bool) {
+	for _, c := range cuts {
+		if c.name == name {
+			return c, true
+		}
+	}
+	return cut{}, false
+}
+
+// piece is a piece of a recording: the key, how long it lasts (seconds) and how loud it is (dB)
+type piece struct {
+	Key int     `json:"key"`
+	Sec float64 `json:"sec"`
+	DB  float64 `json:"db"`
+}
+
+// pieces cuts a recording as the sampler does and says of each piece the key, the seconds and the level
+func (c cut) pieces() ([]piece, error) {
+	snd, err := sampler.LoadFile(c.path)
+	if err != nil {
+		return nil, err
+	}
+	sr := snd.SampleRate()
+	cuts := sampler.Window(sampler.OnsetCuts(snd, c.rise, c.gap), sr, c.from, c.to, snd.NumFrames())
+	var out []piece
+	for i := 0; i+1 < len(cuts) && kitFirstKey+i <= 127; i++ {
+		out = append(out, piece{Key: kitFirstKey + i, Sec: math.Round(float64(cuts[i+1]-cuts[i])/sr*100) / 100, DB: math.Round(rmsRange(snd, cuts[i], cuts[i+1]))})
+	}
+	return out, nil
+}
+
+// piecesJS gives the scripts the pieces of the cut recordings (shared.pieces.animals is a list of {key, sec, db}, without the pieces too quiet to use)
+func piecesJS() (string, error) {
+	all := map[string][]piece{}
+	for _, c := range cuts {
+		ps, err := c.pieces()
+		if err != nil {
+			return "", err
+		}
+		for _, p := range ps {
+			if p.DB > c.lowest {
+				all[c.name] = append(all[c.name], p)
+			}
+		}
+	}
+	b, err := json.Marshal(all)
+	return "shared.pieces = " + string(b) + "\n", err
+}
+
 // kitKeys is what the scripts know of the kits: the keys of every kind
 func kitKeys() map[string]map[string][]int {
 	out := map[string]map[string][]int{}
@@ -73,6 +140,9 @@ func kitKeys() map[string]map[string][]int {
 
 // kitLines is the sounds of the sampler of a kit: a line for every recording on its key, brought to the same level
 func kitLines(name string) (string, error) {
+	if c, ok := cutByName(name); ok {
+		return fmt.Sprintf("%d %q hits %g %g %g %g name=%s vol=%g", kitFirstKey, c.path, c.rise, c.gap, c.from, c.to, strings.ReplaceAll(c.name, " ", "-"), c.vol), nil
+	}
 	for _, k := range kits {
 		if k.name != name {
 			continue

@@ -100,12 +100,13 @@ func parts() []strip {
 		{name: "void", script: "void", kind: "wavetable", preset: "drone", level: amp(0.111) * 0.7, hall: 0.4},
 		{name: "the word", script: "word", kind: "wavetable", preset: "pad", chain: "vocoder", level: 0.59, hall: 0.35, heavens: 0.1,
 			settings: map[string]float64{"position": 1, "positionLFODepth": 0, "filter": 0, "unison": 3}},
-		// the recordings of creation: going round while their note is held, their levels follow the days (a cable from the script of each to its strip)
-		{name: "waves", script: "waves", kind: "sampler", sounds: "36 " + wavesPath + " whole loop=1.5 name=waves", hall: 0.15, automated: true},
-		{name: "sea and birds", script: "seabirds", kind: "sampler", sounds: "36 " + seaBirdsPath + " whole loop=1.5 name=seabirds", pan: 0.2, hall: 0.15, automated: true},
-		{name: "gulls", script: "gulls", kind: "sampler", sounds: "36 " + gullsPath + " whole loop=1.5 name=gulls", pan: -0.3, hall: 0.15, automated: true},
-		{name: "animals", script: "animals", kind: "sampler", sounds: "36 " + animalsPath + " whole loop=1.5 name=animals", hall: 0.15, automated: true},
-		{name: "children", script: "children", kind: "sampler", sounds: "36 " + childrenPath + " whole name=children", pan: 0.1, hall: 0.25, automated: true},
+		// the waters of the intro, going round while their note is held, their level follows the bars (a cable from the script to the strip)
+		{name: "waves", script: "waves", kind: "sampler", sounds: "36 " + wavesPath + " whole loop=1.5 name=waves", hall: 0.3, automated: true},
+		// the rest of the recordings of creation play like percussion: cut at their hits, a piece on each key, played on euclidean rhythms (see kits.go)
+		{name: "sea and birds", script: "seabirds", kind: "sampler", kit: "sea and birds", level: 0.7, pan: 0.25, hall: 0.5, heavens: 0.25},
+		{name: "animals", script: "animals", kind: "sampler", kit: "animals", level: 0.4, pan: -0.2, hall: 0.4, heavens: 0.1},
+		{name: "gulls", script: "gulls", kind: "sampler", kit: "gulls", level: 0.75, pan: -0.35, hall: 0.5, heavens: 0.3},
+		{name: "children", script: "children", kind: "sampler", kit: "children", level: 0.5, pan: 0.15, hall: 0.4, heavens: 0.15},
 		// the combo, in the pure ratios of the rest: a walking bass, a piano comping, a vibraphone, a flute leading with a steel pan after it, and the percussion keeping the waltz
 		{name: "upright bass", script: "jazzbass", kind: "dx", preset: "woodBass", level: amp(0.25) * 0.65, pan: -0.15, hall: 0.12},
 		{name: "piano", script: "comp", kind: "piano", preset: "grand", level: amp(0.2) * 0.8, pan: -0.05, hall: 0.25},
@@ -164,6 +165,11 @@ func buildPatch(pt *patcher.Patcher, opt options) (ids patchIDs, err error) {
 	if err != nil {
 		return patchIDs{}, err
 	}
+	cutPieces, err := piecesJS() // the pieces of the recordings that play like percussion
+	if err != nil {
+		return patchIDs{}, err
+	}
+	prelude += cutPieces
 	pt.Tempo().Set(tempo)
 	song := add("song", "", 20, 20)
 	score := add("script", "", 20, 140) // first, so it has put the days in `shared` before the others ask

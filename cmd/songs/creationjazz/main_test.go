@@ -46,7 +46,7 @@ func playsPatch(t *testing.T, real bool) {
 	}
 	p.Out(pt.Out())
 
-	for _, name := range []string{"upright bass", "piano", "vibes", "flute", "steel pan", "darbuka", "congas", "bongos", "claves", "shakers"} {
+	for _, name := range []string{"animals", "gulls", "sea and birds", "children", "upright bass", "piano", "vibes", "flute", "steel pan", "darbuka", "congas", "bongos", "claves", "shakers"} {
 		if _, ok := ids.synths[name]; !ok {
 			t.Errorf("no %s in the combo", name)
 		}
@@ -59,7 +59,7 @@ func playsPatch(t *testing.T, real bool) {
 	}
 	slices.Sort(keys)
 	want := []string{"cutoff"}
-	for _, name := range []string{"waves", "sea and birds", "gulls", "animals", "children"} {
+	for _, name := range []string{"waves"} {
 		want = append(want, "level"+strconv.Itoa(ids.index[name]+1))
 	}
 	slices.Sort(want)
@@ -90,14 +90,6 @@ func playsPatch(t *testing.T, real bool) {
 			}
 			if l := mixer.Level[ids.index["waves"]]; math.Abs(l-math.Pow(10, -18.0/20)) > 0.05 {
 				t.Errorf("after the intro the waves are at %v, want about %v", l, math.Pow(10, -18.0/20))
-			}
-		case days[3].name: // the beasts go on at -10 dB to the end of the break
-			if l := mixer.Level[ids.index["animals"]]; math.Abs(l-math.Pow(10, -14.0/20)) > 0.05 {
-				t.Errorf("after the break the animals are at %v, want about %v", l, math.Pow(10, -14.0/20))
-			}
-		case days[4].name:
-			if l := mixer.Level[ids.index["animals"]]; l != 0 {
-				t.Errorf("the animals are at %v in the solo of the flute", l)
 			}
 		}
 		for _, id := range ids.scripts {

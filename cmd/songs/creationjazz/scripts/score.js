@@ -116,6 +116,10 @@ shared.layers = {
   comp: (d, b) => (d.number === 1 ? b >= 4 : d.number === 4 ? b >= 8 : upTo(d, b, 10)),
   vibes: (d, b) => (d.number === 2 || d.number === 3 ? b >= 16 : d.number === 5 ? b >= 8 : d.number === 6 || (d.number === 7 && b < 8)),
   flute: (d, b) => (d.number === 5 && b < 16) || (d.number === 7 && b < 8),
+  sea: (d, b) => d.number === 3 && b < 24,
+  animals: (d, b) => (d.number === 4 && b >= 2) || (d.number === 6 && b >= 8 && b < 24),
+  gulls: (d, b) => (d.number === 5 && b >= 4) || (d.number === 7 && b < 8),
+  children: (d, b) => (d.number === 6 && b >= 24) || (d.number === 7 && b < 4),
   pan: (d, b) => d.number === 3 || (d.number === 5 && b >= 8),
 }
 
@@ -197,6 +201,10 @@ const PLAYERS = {
   "claves": { lay: -2, timing: 4, velocity: 0.12, swing: 0.6 },
   "shakers": { lay: 3, timing: 7, velocity: 0.18, swing: 0.62 },
   "darbuka": { lay: 0, timing: 5, velocity: 0.12, swing: 0.6 },
+  "animals": { lay: 4, timing: 7, velocity: 0.12, swing: 0.6 },
+  "gulls": { lay: 2, timing: 9, velocity: 0.12, swing: 0.58 },
+  "sea and birds": { lay: 3, timing: 8, velocity: 0.1, swing: 0.58 },
+  "children": { lay: 0, timing: 6, velocity: 0.1, swing: 0.6 },
 }
 
 // player makes a player of a part that is not a score but played as the song goes (the combo): play(note, ev, sixteenth, pitches, velocity, steps, raw) puts a note where the player puts it
@@ -254,6 +262,56 @@ shared.voice = (br, q, type, lowest) => {
     floor = p + 1
   }
   return out
+}
+
+// a level for a piece of a recording: quiet ones told a little louder, loud ones softer (the velocity goes in squares)
+shared.evenOut = (db, ref) => Math.max(0.5, Math.min(1.6, Math.pow(10, (ref - db) / 40)))
+
+// walker is a markov chain that walks the pieces of a recording: mostly on to the next, now and then two on, one back or the same again; the function gives the place
+shared.walker = (length, start) => {
+  const chain = genny.markov({
+    next: { next: 14, skip: 4, back: 2, again: 3 },
+    skip: { next: 12, skip: 2, back: 2, again: 2 },
+    back: { next: 12, again: 3, skip: 2 },
+    again: { next: 12, skip: 3, back: 2 },
+  }, "next")
+  let pos = start || 0
+  return () => {
+    const a = chain.next()
+    if (a === "next") pos++
+    else if (a === "skip") pos += 2
+    else if (a === "back") pos = Math.max(0, pos - 1)
+    pos %= length
+    return pos
+  }
+}
+
+// a piece played: the key of it, as loud as the velocity says once it is evened out, as long as it lasts (at most four steps)
+shared.piece = (play, note, ev, sixteenth, p, vel, ref) => {
+  const steps = ev && ev.seconds > 0 ? Math.max(1, Math.min(p.sec / ev.seconds, 4)) : 1
+  play(note, ev, sixteenth, p.key, Math.min(1, vel * shared.evenOut(p.db, ref)), steps, true)
+}
+
+// calls makes a recording that plays like percussion: the pieces of it (shared.pieces[name]) walked by a markov chain on a euclidean rhythm of o.hits[section number]
+// hits in twelve sixteenths, turned by o.turn every bar (0: the same every bar), where o.on(day, bar) lets it; o.vel is how loud, o.ref the level (dB) the pieces are
+// evened out to. Returns what to call on every sixteenth: calls(song, note, ev)
+shared.calls = (name, o) => {
+  const play = shared.player(name)
+  let walk = null, last = -1
+  return (song, note, ev) => {
+    const day = shared.days[song.index]
+    const s = Math.round(song.beat * 4)
+    const at = song.bar * 12 + s
+    const pieces = shared.pieces[name]
+    if (!day || at === last || !pieces || !pieces.length) return
+    last = at
+    const k = o.hits[day.number]
+    if (!k || !o.on(day, song.bar)) return
+    const j = (s + day.number * 5 + song.bar * (o.turn || 0)) % 12
+    if (Math.floor(((j + 1) * k) / 12) === Math.floor((j * k) / 12)) return
+    walk = walk || shared.walker(pieces.length, 0)
+    shared.piece(play, note, ev, s, pieces[walk()], o.vel * (s % 4 === 0 ? 1.15 : 0.85), o.ref)
+  }
 }
 
 // --- the sounds of creation: recordings faded in and out ---

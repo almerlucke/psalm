@@ -1,8 +1,5 @@
-// the beasts of the earth in the break of the percussion: a recording of animals going round, faded in from the third bar
+// the beasts of the earth call on the beat of the percussion: pieces of a recording of animals cut at their calls, walked by a markov chain (mostly on to the next, now and
+// then two on, one back or the same again) on five hits in twelve in the break, three in the head out, where the percussion is at its fullest
 clock("1/16")
-let started = false
-function section(name) { if (name === shared.days[3].name) started = false }
-function trigger(ev) {
-  if (!started && song.index === 3 && song.bar >= 0) { started = true; note(36, 1, 192) }
-  mod(song.index === 3 ? shared.fade(-14, shared.at(song), 2, 17) / 2 : 0)
-}
+const calls = shared.calls("animals", { hits: { 4: 5, 6: 3 }, turn: 0, on: shared.layers.animals, vel: 0.5, ref: -30 })
+function trigger(ev) { calls(song, note, ev) }

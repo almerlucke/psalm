@@ -1,8 +1,4 @@
-// the sea and the birds under the steel pan's solo (the waters gathered, the land appearing): a recording going round, faded in over the first bar
+// the sea and the birds answer the steel pan in its solo: pieces of a recording of the sea with birds, cut at its hits, three in twelve turned every bar
 clock("1/16")
-let started = false
-function section(name) { if (name === shared.days[2].name) started = false }
-function trigger(ev) {
-  if (!started && song.index === 2 && song.bar >= 0) { started = true; note(36, 1, 384) }
-  mod(song.index === 2 ? shared.fade(-16, shared.at(song), 0, 33) / 2 : 0)
-}
+const calls = shared.calls("sea and birds", { hits: { 3: 3 }, turn: 7, on: shared.layers.sea, vel: 0.5, ref: -30 })
+function trigger(ev) { calls(song, note, ev) }
