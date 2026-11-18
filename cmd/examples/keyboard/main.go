@@ -27,6 +27,9 @@
 // on the keyboard: the knob moves it from then on (the bindings are kept in keyboard-midi.json).
 // The page has a keyboard of its own too (the computer's keys play it: A W S E D ...), played as
 // MIDI, and the amplitude envelope of the synth playing to drag into shape.
+// -hall-aftertouch 0.8 sends the aftertouch to the hall too: the harder a held key is pressed, the more of the
+// sound goes to the hall (up to that amount of the send, 0-1) instead of to the synth's own brightness (a -route or a panel route for the aftertouch still wins), the way to open a held note up without taking a
+// hand off the keys; the panel has it as a knob under Mix.
 // Record on the panel (or -record, from the start) records what is played; switched off (or at the
 // end) it is written to a MIDI file, recording-<date>-<time>.mid, to play again with the midifile
 // example.
@@ -40,6 +43,7 @@
 //	                                                      the wheel on the morph, the aftertouch on the first macro
 //	go run ./cmd/examples/keyboard -jack                  JACK audio and a JACK MIDI port (sample accurate)
 //	go run ./cmd/examples/keyboard -demo                  no keyboard: a phrase played as MIDI
+//	go run ./cmd/examples/keyboard -hall-aftertouch 0.8   the aftertouch opens the hall
 //	go run ./cmd/examples/keyboard -record                record what is played to a MIDI file
 package main
 
@@ -258,6 +262,7 @@ func main() {
 	channel := flag.Int("channel", 0, "the MIDI channel (1-16), 0 is all")
 	transpose := flag.Int("transpose", 0, "semitones")
 	monitor := flag.Bool("monitor", true, "print every MIDI event")
+	hallAfter := flag.Float64("hall-aftertouch", 0, "the aftertouch sends the sound to the hall: the send at full pressure (0-1, above the send of the synth), 0 is off")
 	var routes []string
 	flag.Func("route", "send a controller to any setting of the synths, scaled: source:name:min:max[:exp|:int], the source a controller (1 the mod wheel), bend or pressure (\"1:cutoff:300:8000:exp\"); repeatable", func(text string) error {
 		if _, _, err := keyboard.ParseRoute(text); err != nil {
@@ -382,8 +387,13 @@ func main() {
 	flagRoutes := cfg.Routes
 	cfg.Routes = nil
 	panelRoutes := []*panelRoute{{source: midi.CCModWheel, high: 1}, {source: keyboard.RoutePressure, high: 1}}
+	var hallAfterPct atomic.Int64
+	hallAfterPct.Store(int64(math.Round(max(0, min(*hallAfter, 1)) * 100)))
 	keysFor := func(in *instrument) keyboard.Config {
 		c := in.keys(cfg)
+		if hallAfterPct.Load() > 0 { // the aftertouch goes to the hall, not to the brightness of the synth (unless a route says so)
+			c.Pressure, c.PolyPressure = "", ""
+		}
 		c.Routes = maps.Clone(flagRoutes)
 		if c.Routes == nil {
 			c.Routes = map[int][]keyboard.Route{}
@@ -413,6 +423,7 @@ func main() {
 	soundIndex := func(synth, preset int) int {
 		return slices.Index(sounds, sound{synth, preset})
 	}
+	stripOf := func(in *instrument) *mixer.Strip { return mix.Strip(in.name + "/" + in.presets[in.selected.Load()]) }
 	var soundSelect *panel.Param // the sound on the panel, following every switch
 	shaped := &shaping{synth: func() psalm.Modular { return synthOf(instruments[current]) }, sent: map[string]float64{}}
 
@@ -426,6 +437,7 @@ func main() {
 		}
 		old := instruments[current]
 		kb.AllNotesOff(tick)
+		stripOf(old).SetSend("hall", old.hall) // the hall the aftertouch opened closes again
 		if old.name == "piano" {
 			synthOf(old).Receive(psalm.Message{"sustain": 0.0, "sostenuto": 0.0, "soft": 0.0}, 0)
 		}
@@ -457,6 +469,16 @@ func main() {
 			}
 		})
 	}
+	// the aftertouch to the hall: the send of the sound playing follows the pressure, from its own amount up to
+	// hallAfterPct percent of the way to full (on the audio thread, where the events come)
+	kb.OnEvent(func(e midi.Event, _ psalm.CtrlTick) {
+		pct := float64(hallAfterPct.Load()) / 100
+		if e.Message.Kind() != midi.ChannelPressure || pct == 0 {
+			return
+		}
+		in := instruments[current]
+		stripOf(in).SetSend("hall", in.hall+(max(pct, in.hall)-in.hall)*float64(e.Message.Pressure())/127)
+	})
 	kb.AddTo(p)
 
 	// --- the control panel: the sound, the keyboard and the mix on a web page, its controls
@@ -560,6 +582,8 @@ func main() {
 		ctl.Section("Mix")
 		ctl.Fader("Volume", -40, 6, panel.Linear, panel.Message(mix.Master(), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03))
 		ctl.Fader("Hall", -40, 6, panel.Linear, panel.Message(mix.Strip("hall"), "volume"), panel.Unit("dB"), panel.Default(0), panel.Smooth(0.03))
+		ctl.Knob("Aftertouch to hall", 0, 100, panel.Linear, panel.Func(func(v float64) { hallAfterPct.Store(int64(math.Round(v))); reroute() }),
+			panel.Default(float64(hallAfterPct.Load())), panel.Unit("%"), panel.Step(1))
 		ctl.Meter("Master", mix.Master())
 		ctl.Meter("Hall out", mix.Strip("hall"))
 
@@ -619,7 +643,7 @@ func newInstruments(p *psalm.Psalm) []*instrument {
 			return piano.NewPoly(piano.Presets[n](), 24).AddTo(p)
 		}, pianoKeys, 0.45),
 		build("subtractive", slices.Collect(maps.Keys(subtractive.Presets)), func(n string) psalm.Modular {
-			return subtractive.NewPoly(subtractive.Presets[n](), 12).AddTo(p)
+			return subtractive.NewPoly(subtractive.Presets[n](), subtractive.Voices(n, 12)).AddTo(p)
 		}, synthKeys, 0.3),
 		build("pulsar", slices.Collect(maps.Keys(pulsar.Presets)), func(n string) psalm.Modular {
 			return pulsar.NewPoly(pulsar.Presets[n](), 12).AddTo(p)

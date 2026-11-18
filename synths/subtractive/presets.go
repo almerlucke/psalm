@@ -6,6 +6,18 @@ import (
 	"github.com/almerlucke/psalm/blocks/oscillators/blosc"
 )
 
+// PresetVoices are the presets that are made for a number of voices: the Uno organ is a three voice paraphonic
+// synth, and its legato glide is the slide of a stolen voice, so more voices than that would never slide
+var PresetVoices = map[string]int{"unoOrgan": 3}
+
+// Voices returns the number of voices to play a preset with: the one it is made for, else def
+func Voices(preset string, def int) int {
+	if n, ok := PresetVoices[preset]; ok {
+		return n
+	}
+	return def
+}
+
 // Presets maps preset names to their config constructors
 var Presets = map[string]func() Config{
 	"bass":      BassPreset,

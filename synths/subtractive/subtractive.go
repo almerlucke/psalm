@@ -221,6 +221,7 @@ type Voice struct {
 	ampEnv     *adsr.ADSR
 	frequency  float64 // target frequency
 	glideFreq  float64 // current frequency, glides towards frequency
+	stolen     bool    // Clear came while the voice sounded (the poly steals a voice that way): the note that follows is legato for GlideLegato
 	cutoff     float64 // smoothed cutoff, ramps towards cfg.Cutoff over a buffer
 	res        float64 // smoothed resonance, ramps towards cfg.Resonance over a buffer
 	vowel      float64 // smoothed vowel, ramps towards cfg.Vowel over a buffer
@@ -423,9 +424,10 @@ func (v *Voice) Note(duration float64, amplitude float64, message psalm.Message,
 func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
 	wasActive := v.IsActive()
 	v.ReceiveMessage(message)
-	if v.cfg.GlideLegato && !wasActive {
+	if v.cfg.GlideLegato && !wasActive && !v.stolen {
 		v.glideFreq = v.frequency
 	}
+	v.stolen = false
 	if !wasActive && v.drvOver != nil {
 		v.drvOver.Reset() // what is left in the filter of the note before
 	}
@@ -452,6 +454,7 @@ func (v *Voice) NoteOff() {
 }
 
 func (v *Voice) Clear() {
+	v.stolen = v.IsActive()
 	v.filterEnv.Clear()
 	v.ampEnv.Clear()
 	v.svf.Clear()
@@ -485,6 +488,7 @@ func (v *Voice) Synthesize() {
 	outSocket.Clear()
 
 	if v.ampEnv.Done() {
+		v.stolen = false
 		v.resetSmoothing()
 		return
 	}

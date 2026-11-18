@@ -154,6 +154,8 @@ through settings note by note (see `cmd/examples/subtractive2`).
 
 All presets are functions returning a `Config`, also available by name in `subtractive.Presets`.
 
+A preset made for a number of voices is in `subtractive.PresetVoices` (`unoOrgan`: 3, a paraphonic synth, so that its legato glide is the slide of a stolen voice); `subtractive.Voices(name, def)` gives the number to play a preset with, `def` for the others. The keyboard and presets examples use it.
+
 | Name | Function | Sound |
 |---|---|---|
 | `bass` | `BassPreset` | Punchy saw bass with a square an octave below, 24 dB ladder |

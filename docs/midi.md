@@ -140,7 +140,7 @@ numbers (a waveform, a mode), and `Max` under `Min` turns it round. As text, for
 message: `keyboard.ParseRoute("1:cutoff:300:8000:exp")` (the source a controller, `bend` or
 `pressure`); the messages `{"route": "1:cutoff:300:8000:exp"}` and `{"unroute": "1"}` change the
 routes of a keyboard while it plays. The settings each synth takes are listed under **Messages** in
-[synths](synths.md); `cmd/examples/keyboard -route ...` tries them, and its panel has a Routes section to choose where the mod wheel and the aftertouch go while playing.
+[synths](synths.md); `cmd/examples/keyboard -route ...` tries them, and its panel has a Routes section to choose where the mod wheel and the aftertouch go while playing. `-hall-aftertouch 0.8` sends the aftertouch to the hall instead of the brightness of the synth: the harder a held key is pressed the more of the sound goes to the hall (the panel has it as the knob Aftertouch to hall under Mix).
 
 The keyboard always handles these messages:
 

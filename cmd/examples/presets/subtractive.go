@@ -23,7 +23,7 @@ func subtractiveTour() []entry {
 		cfg := subtractive.Presets[name]
 		st, octave := subtractiveStyle(strings.ToLower(name))
 		tour = append(tour, entry{"subtractive", name, st, octave, func(p *psalm.Psalm) psalm.Modular {
-			return subtractive.NewPoly(cfg(), 8).AddTo(p)
+			return subtractive.NewPoly(cfg(), subtractive.Voices(name, 8)).AddTo(p)
 		}})
 	}
 

@@ -337,3 +337,53 @@ func TestFallingPresetsFall(t *testing.T) {
 		}
 	}
 }
+
+func TestPresetVoices(t *testing.T) {
+	if n := Voices("unoOrgan", 12); n != 3 {
+		t.Errorf("unoOrgan plays with %d voices, want 3", n)
+	}
+	if n := Voices("lead", 12); n != 12 {
+		t.Errorf("lead plays with %d voices, want the default 12", n)
+	}
+	for name := range PresetVoices {
+		if _, ok := Presets[name]; !ok {
+			t.Errorf("PresetVoices has %q, not a preset", name)
+		}
+	}
+}
+
+// a voice the poly steals (cleared while it sounds) slides to its new note with the legato glide, a free one jumps
+func TestGlideLegatoStolenVoice(t *testing.T) {
+	psalm.Seed(1)
+	psalm.SetCurrentEnv(psalm.NewEnv(psalm.CurrentStackConfig()))
+	cfg := UnoOrganPreset()
+	play := func(v *Voice, pitch float64) {
+		v.NoteOn(0.8, psalm.Message{"pitch": pitch}, psalm.CtrlTick{}, v.Config())
+	}
+	v := New(cfg)
+	play(v, 57)
+	for range 20 {
+		v.Synthesize()
+	}
+	from := v.glideFreq
+	v.Clear() // what the poly does to a stolen voice
+	play(v, 69)
+	if !(v.glideFreq < v.frequency && v.glideFreq == from) {
+		t.Errorf("stolen voice starts at %v, want its old pitch %v (target %v)", v.glideFreq, from, v.frequency)
+	}
+	// a voice that had finished jumps
+	w := New(cfg)
+	play(w, 57)
+	for range 20 {
+		w.Synthesize()
+	}
+	w.NoteOff()
+	for range 3000 {
+		w.Synthesize()
+	}
+	w.Clear()
+	play(w, 69)
+	if w.glideFreq != w.frequency {
+		t.Errorf("free voice glides from %v to %v, want a jump", w.glideFreq, w.frequency)
+	}
+}
