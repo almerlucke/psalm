@@ -46,6 +46,7 @@ reaches `unisonDetune` too.
 | Setting | Default | Meaning |
 |---|---|---|
 | `Glide` | 0 | Portamento in milliseconds from the previous note of the same voice (use 1 voice for mono slides) |
+| `GlideLegato` | false | Glide only when the voice is still sounding as it gets the note (a voice stolen from a chord with more notes than voices slides to the new pitch), a free voice jumps straight to it |
 | `FilterEnvToPitch` | 0 | Semitones of pitch sweep from the filter envelope (zaps, kicks, falling sounds) |
 
 ## Filter

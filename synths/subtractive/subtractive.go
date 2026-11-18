@@ -73,6 +73,7 @@ type Config struct {
 
 	// Pitch
 	Glide            float64 // portamento time in milliseconds from the previous note of this voice
+	GlideLegato      bool    // glide only when the voice is still sounding as it gets the note (a stolen voice, a note played over another), a free voice jumps
 	FilterEnvToPitch float64 // semitones of pitch sweep driven by the filter envelope
 
 	// Filter
@@ -422,6 +423,9 @@ func (v *Voice) Note(duration float64, amplitude float64, message psalm.Message,
 func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64, message psalm.Message, tick psalm.CtrlTick) {
 	wasActive := v.IsActive()
 	v.ReceiveMessage(message)
+	if v.cfg.GlideLegato && !wasActive {
+		v.glideFreq = v.frequency
+	}
 	if !wasActive && v.drvOver != nil {
 		v.drvOver.Reset() // what is left in the filter of the note before
 	}

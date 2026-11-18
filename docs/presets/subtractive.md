@@ -69,6 +69,7 @@
 |---|---|---|
 | percOrgan | PercOrganPreset | Percussive organ: drawbar sounds at 8', 4' and 16' with a fast key click that fades |
 | rockOrgan | RockOrganPreset | Overdriven rock organ, the wheel pushes it further into the drive |
+| unoOrgan | UnoOrganPreset | Organ of an analog paraphonic synth: saws through a dark 24 dB ladder, round and soft, a small chiff, no vibrato |
 | droneFifth | DroneFifthPreset | Held drone of an open fifth in unison saws, slowly breathing |
 | darkDrone | DarkDronePreset | Low rumbling drone: a sub, a dark saw and a band of rustling noise |
 

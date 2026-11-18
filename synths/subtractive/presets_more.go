@@ -427,7 +427,7 @@ func GlassPadPreset() Config {
 	cfg.FilterEnvAmount = 0
 	cfg.KeyTrack = 0.8
 	cfg.Filter2Mode = Filter2High
-	cfg.Filter2Cutoff = 500
+	cfg.Filter2Cutoff = 800
 	cfg.Filter2KeyTrack = 0.5
 	cfg.AmpEnv = adsrEnv(1200, 800, 0.9, 2500)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 0.3, Cutoff: 0.6}
@@ -1171,5 +1171,37 @@ func JupiterPadPreset() Config {
 	cfg.AmpEnv = adsrEnv(500, 800, 0.9, 1500)
 	cfg.Mods[0] = modmatrix.Slot{Src: modmatrix.Random, Dest: "unisonDetune", Amount: 0.2}
 	cfg.Level = 1.665 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
+	return cfg
+}
+
+// UnoOrganPreset is the organ of an analog paraphonic synth (the Uno Synth Pro, three voices), not a tonewheel one: saws through
+// its two filters in series, a 24 dB ladder and a 12 dB state variable one, 36 dB an octave, closed down on the fundamental, so
+// the second harmonic is some 20 dB down and little is left above 1 kHz: a round, soft tone. The filter opens a little at the
+// key (a small chiff) and the pitch is dead steady, but the glide is on legato: with more notes than the three voices a
+// stolen voice slides to its new note (play it with NewPoly(cfg, 3))
+func UnoOrganPreset() Config {
+	cfg := DefaultConfig()
+	cfg.Osc1Waveform = blosc.Sawtooth
+	cfg.Osc2Waveform = blosc.Sawtooth
+	cfg.Osc2Detune = 0.03
+	cfg.Osc1Level = 0.5
+	cfg.Osc2Level = 0.4
+	cfg.SubLevel = 0.1
+	cfg.Drift = 1
+	cfg.Glide = 50
+	cfg.GlideLegato = true
+	cfg.FilterType = FilterLadder
+	cfg.LadderMode = ladder.LowPass24
+	cfg.Cutoff = 500
+	cfg.Resonance = 0.1
+	cfg.FilterEnvAmount = 0.5
+	cfg.KeyTrack = 1
+	cfg.Filter2Mode = Filter2Low
+	cfg.Filter2Cutoff = 800
+	cfg.Filter2Resonance = 0
+	cfg.Filter2KeyTrack = 1
+	cfg.FilterEnv = adsrEnv(1, 110, 0, 60)
+	cfg.AmpEnv = adsrEnv(18, 30, 1, 45)
+	cfg.Level = 1
 	return cfg
 }

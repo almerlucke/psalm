@@ -13,7 +13,7 @@ import (
 // morePresets are the presets of presets_more.go
 var morePresets = func() map[string]func() Config {
 	m := map[string]func() Config{}
-	for _, n := range []string{"moogBass", "pulseBass", "growlBass", "bass808", "acidSquare", "dubWobble", "pluckBass", "wideReese", "monoLead", "squareLead", "pwmLead", "tranceLead", "portaLead", "screamLead", "sineLead", "brassLead", "warmPad", "glassPad", "stringMachine", "evolvingPad", "ahChoir", "vowelPad", "darkPad", "brightPad", "hugePad", "clavinet", "harpsichord", "wurli", "marimba", "pizzicato", "tubularBell", "analogSeq", "junoBrass", "jupiterBrass", "stringSection", "percOrgan", "rockOrgan", "droneFifth", "darkDrone", "gale", "laser", "sirenFx", "noiseTexture", "kick808", "clap", "rimShot", "cowbell", "junoPad", "obStab", "jupiterPad"} {
+	for _, n := range []string{"moogBass", "pulseBass", "growlBass", "bass808", "acidSquare", "dubWobble", "pluckBass", "wideReese", "monoLead", "squareLead", "pwmLead", "tranceLead", "portaLead", "screamLead", "sineLead", "brassLead", "warmPad", "glassPad", "stringMachine", "evolvingPad", "ahChoir", "vowelPad", "darkPad", "brightPad", "hugePad", "clavinet", "harpsichord", "wurli", "marimba", "pizzicato", "tubularBell", "analogSeq", "junoBrass", "jupiterBrass", "stringSection", "percOrgan", "rockOrgan", "unoOrgan", "droneFifth", "darkDrone", "gale", "laser", "sirenFx", "noiseTexture", "kick808", "clap", "rimShot", "cowbell", "junoPad", "obStab", "jupiterPad"} {
 		m[n] = Presets[n]
 	}
 	return m

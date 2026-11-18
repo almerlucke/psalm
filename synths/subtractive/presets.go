@@ -87,6 +87,7 @@ var Presets = map[string]func() Config{
 	"stringSection": StringSectionPreset,
 	"percOrgan":     PercOrganPreset,
 	"rockOrgan":     RockOrganPreset,
+	"unoOrgan":      UnoOrganPreset,
 	"droneFifth":    DroneFifthPreset,
 	"darkDrone":     DarkDronePreset,
 	"gale":          GalePreset,
