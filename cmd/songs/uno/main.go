@@ -108,7 +108,7 @@ func main() {
 
 	const preset = "unoOrgan"
 	uno := subtractive.NewPoly(subtractive.Presets[preset](), subtractive.Voices(preset, 3)).AddTo(p)
-	keys := piano.NewPoly(piano.FeltPreset(), 8).AddTo(p)
+	keys := piano.NewPoly(piano.SatiePreset(), 8).AddTo(p)
 	uno2 := subtractive.NewPoly(subtractive.Presets[preset](), subtractive.Voices(preset, 3)).AddTo(p) // another one, for the answer
 
 	// the arpeggios: the bass rings for the bar (the _4), then seven eighths of the three notes of the chord
@@ -270,7 +270,7 @@ func main() {
 	channel := mix.Channel("uno", uno, mixer.StripConfig{Volume: -2, Pan: -0.15, Sends: map[string]float64{"hall": baseSend}})
 	answerChannel := mix.Channel("uno answer", uno2, mixer.StripConfig{Volume: -6, Pan: 0.3, Sends: map[string]float64{"hall": baseSend}})
 
-	pianoChannel := mix.Channel("piano", keys, mixer.StripConfig{Volume: -3, Pan: 0.1, Sends: map[string]float64{"hall": 0.3}})
+	pianoChannel := mix.Channel("piano", keys, mixer.StripConfig{Volume: -2.5, Pan: 0.1, Sends: map[string]float64{"hall": 0.3}})
 
 	// the leaning grows with every time round
 	pressure := arrange.Sections{
