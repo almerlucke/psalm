@@ -25,3 +25,5 @@ require (
 	github.com/mkb218/gosndfile v0.0.0-20171006180803-e0c9ef895ee2 // indirect
 	golang.org/x/text v0.43.0 // indirect
 )
+
+retract v0.1.0 // the module was too large to download: it held 850 MB of assets (v0.1.1 moves them into a module of their own)
