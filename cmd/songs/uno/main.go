@@ -104,6 +104,7 @@ func main() {
 		arrange.Section{Name: "Variation 2", Bars: 8, Dynamics: 1.2},  // syncopated, over arpeggios of sixteenths
 		arrange.Section{Name: "Variation 3", Bars: 8, Dynamics: 1.3},  // high and broad, the ending
 	)
+	form.Loop = *renderTo == "" // played live it goes round again; rendered it ends with the last chord, left to ring out
 
 	const preset = "unoOrgan"
 	uno := subtractive.NewPoly(subtractive.Presets[preset](), subtractive.Voices(preset, 3)).AddTo(p)
@@ -301,7 +302,7 @@ func main() {
 		}
 		return
 	}
-	stats, err := render.ToFile(p, *renderTo, render.Options{Seconds: arrangement.Duration(), Tail: 8})
+	stats, err := render.ToFile(p, *renderTo, render.Options{Seconds: arrangement.Duration(), Tail: 14})
 	if err != nil {
 		panic(err)
 	}
