@@ -97,7 +97,7 @@ unless `sustain_lo` says otherwise.
 
 The SFZ loader knows `<control>` (`default_path`, `note_offset`, `octave_offset`, `set_ccN`), `<global>`,
 `<master>`, `<group>`, `<region>`, `#define` and `#include`. Opcodes it doesn't know are counted
-in `Instrument.Unsupported`. Sounds load with libsndfile: wav, aiff, flac, ogg. A WAV with a loop of its own (its smpl chunk) loops there, unless the region sets `loop_mode`, `loop_start` or `loop_end` itself.
+in `Instrument.Unsupported`. Sounds load with the `sndfile` package, in pure Go: wav, aiff, mp3, flac and ogg (other formats need its `libsndfile` build tag). A WAV with a loop of its own (its smpl chunk) loops there, unless the region sets `loop_mode`, `loop_start` or `loop_end` itself.
 
 Notes take `pitch` (or `frequency`) and `velocity` (0-1). The levels are those of the recordings.
 

@@ -2,8 +2,8 @@
 // costs the memory of its first moments only, the rest is read from the file by a goroutine of the note and handed to the audio thread through a ring.
 //
 // A note starts at once: the first HeadSeconds of every file are kept in memory, and the goroutine has read on from there by the time they are played. A file
-// is read with libsndfile, so wav, aiff, flac and ogg play as the sampler loads them. The audio thread never waits for the disk: when the reader falls behind
-// (a slow disk) the sound has a gap and Voice.Underruns counts it.
+// is read with the streaming reader of the sndfile package (pure Go: wav, aiff, mp3, flac and ogg play, other formats with its libsndfile build tag). The audio thread
+// never waits for the disk: when the reader falls behind (a slow disk) the sound has a gap and Voice.Underruns counts it.
 package streamer
 
 import (
@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/almerlucke/psalm/synths/sampler"
-	"github.com/mkb218/gosndfile/sndfile"
+	"github.com/almerlucke/sndfile"
 )
 
 // HeadSeconds is how much of the start of a sound is kept in memory
@@ -95,16 +95,16 @@ func (e *Entry) open() error {
 	if e.Name == "" {
 		e.Name = strings.TrimSuffix(filepath.Base(e.Path), filepath.Ext(e.Path))
 	}
-	var info sndfile.Info
-	f, err := sndfile.Open(e.Path, sndfile.Read, &info)
+	f, err := sndfile.Open[float32](e.Path)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = f.Close() }()
-	if info.Frames <= 0 || info.Channels <= 0 || info.Samplerate <= 0 {
+	info := f.Info()
+	if info.Frames <= 0 || info.Channels <= 0 || info.SampleRate <= 0 {
 		return fmt.Errorf("%s: no sound in it", e.Path)
 	}
-	e.sr, e.channels, e.frames = float64(info.Samplerate), int(info.Channels), info.Frames
+	e.sr, e.channels, e.frames = info.SampleRate, info.Channels, info.Frames
 	frame := func(sec float64, def int64) int64 {
 		if sec <= 0 {
 			return def
@@ -128,7 +128,7 @@ func (e *Entry) open() error {
 	}
 	n := min(int64(HeadSeconds*e.sr), limit-e.startF)
 	e.head = make([]float32, 0, 2*n)
-	if _, err := f.Seek(e.startF, sndfile.Set); err != nil {
+	if err := f.SeekFrame(e.startF); err != nil {
 		return err
 	}
 	buf := make([]float32, 4096*e.channels)

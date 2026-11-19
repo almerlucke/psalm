@@ -7,8 +7,9 @@ music, a field recording. A note plays the file from the disk while it sounds. T
 second of every file is kept in memory, so the note starts at once, and a goroutine of the
 note reads the rest into a ring that the audio thread plays from. The audio thread never waits
 for the disk: when the disk is too slow the sound has a gap and `Voice.Underruns` counts it.
-Wav, aiff, flac and ogg play, whatever libsndfile reads, in any sample rate (it is played at
-the rate of the file).
+Wav, aiff, mp3, flac and ogg play, in any sample rate (it is played at the rate of the file). The file is
+read with the streaming reader of the `sndfile` package (`sndfile.Open`, `SeekFrame` and `ReadFrames`), in pure Go; formats
+it doesn't read need its `libsndfile` build tag.
 
 ```go
 inst, report, err := streamer.ParseInstrument("36 assets/sounds/various/rain-sound-188158.wav loop vol=-6")

@@ -25,7 +25,7 @@ rendering.
 |---|---|
 | `p.Listen()` | Starts the audio engine and blocks until Ctrl+C, then stops it |
 | `p.AudioStart()` / `p.AudioStop()` | Start and stop the engine yourself |
-| `p.ToSoundFile(path, format, seconds, sampleRate, normalize)` | Renders the patch offline to a file (`writer.WAV` etc. from `github.com/almerlucke/sndfile/writer`), resampling when `sampleRate` differs from the patch, optionally normalizing |
+| `p.ToSoundFile(path, format, seconds, sampleRate, normalize)` | Renders the patch offline to a file (`writer.WAV` etc. from `github.com/almerlucke/sndfile/writer`), resampling when `sampleRate` differs from the patch (a sinc resampler in pure Go, `resample.SincBest`), optionally normalizing |
 | `p.Close()` | Closes the audio engine |
 
 ## Config and environment

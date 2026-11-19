@@ -7,7 +7,7 @@ import (
 
 	"github.com/almerlucke/psalm"
 	"github.com/almerlucke/psalm/modules/poly"
-	"github.com/mkb218/gosndfile/sndfile"
+	"github.com/almerlucke/sndfile"
 )
 
 const (
@@ -202,8 +202,7 @@ func (v *Voice) read(e *Entry, gen uint64, after <-chan struct{}, done chan<- st
 	if stale() {
 		return
 	}
-	var info sndfile.Info
-	f, err := sndfile.Open(e.Path, sndfile.Read, &info)
+	f, err := sndfile.Open[float32](e.Path)
 	if err != nil {
 		v.underrun.Add(1)
 		return
@@ -218,7 +217,7 @@ func (v *Voice) read(e *Entry, gen uint64, after <-chan struct{}, done chan<- st
 	if pos >= limit && e.Loop {
 		pos = e.loopStartF
 	}
-	if _, err := f.Seek(pos, sndfile.Set); err != nil {
+	if err := f.SeekFrame(pos); err != nil {
 		v.underrun.Add(1)
 		return
 	}
@@ -234,7 +233,7 @@ func (v *Voice) read(e *Entry, gen uint64, after <-chan struct{}, done chan<- st
 				return
 			}
 			pos = e.loopStartF
-			if _, err := f.Seek(pos, sndfile.Set); err != nil {
+			if err := f.SeekFrame(pos); err != nil {
 				return
 			}
 		}

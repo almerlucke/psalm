@@ -10,8 +10,8 @@ import (
 
 	"github.com/almerlucke/psalm/audio"
 	"github.com/almerlucke/psalm/tools/signal"
+	"github.com/almerlucke/sndfile/dsp/resample"
 	"github.com/almerlucke/sndfile/writer"
-	"github.com/dh1tw/gosamplerate"
 )
 
 type Psalm struct {
@@ -270,7 +270,7 @@ func (p *Psalm) ToSoundFile(filePath string, fileFormat writer.FileFormat, numSe
 		Normalize:         normalize,
 		ConvertSampleRate: inputSampleRate != sampleRate,
 		InputSampleRate:   inputSampleRate,
-		SrConvQuality:     gosamplerate.SRC_SINC_BEST_QUALITY,
+		SrConvQuality:     resample.SincBest,
 	})
 	if err != nil {
 		return err

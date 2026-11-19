@@ -16,7 +16,7 @@ import (
 // Loader loads the sound of a file
 type Loader func(path string) (Sound, error)
 
-// LoadFile loads a sound file as it is (wav, aiff, flac, ogg: what libsndfile reads)
+// LoadFile loads a sound file as it is (wav, aiff, mp3, flac and ogg, read in pure Go by the sndfile package; other formats need its libsndfile build tag)
 func LoadFile(path string) (Sound, error) {
 	snd, err := sndfile.NewSoundFile[float32](path)
 	if err != nil {
