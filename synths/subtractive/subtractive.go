@@ -25,6 +25,15 @@ const (
 	FilterFormant                   // vowel filter, the cutoff modulation moves the vowel instead
 )
 
+// GlideMode is the shape of the glide
+type GlideMode int
+
+const (
+	GlideExponential GlideMode = iota // the pitch moves a part of the way to the note every sample (Glide is the time constant, in Hz): fast at first, slow to arrive
+	GlideTime                         // the glide takes Glide milliseconds whatever the interval, in a straight line in pitch (consistent time)
+	GlideRate                         // Glide is the milliseconds an octave takes, in a straight line in pitch: a bigger leap takes longer (consistent speed)
+)
+
 // Filter2Mode selects the second filter
 type Filter2Mode int
 
@@ -72,9 +81,10 @@ type Config struct {
 	Drift        float64 // cents, a slow random wander of the pitch (an analog oscillator is never still)
 
 	// Pitch
-	Glide            float64 // portamento time in milliseconds from the previous note of this voice
-	GlideLegato      bool    // glide only when the voice is still sounding as it gets the note (a stolen voice, a note played over another), a free voice jumps
-	FilterEnvToPitch float64 // semitones of pitch sweep driven by the filter envelope
+	Glide            float64   // portamento time in milliseconds from the previous note of this voice
+	GlideMode        GlideMode // the shape of the glide
+	GlideLegato      bool      // glide only when the voice is still sounding as it gets the note (a stolen voice, a note played over another), a free voice jumps
+	FilterEnvToPitch float64   // semitones of pitch sweep driven by the filter envelope
 
 	// Filter
 	FilterType       FilterType
@@ -198,43 +208,45 @@ const ladderStageLevel = 1.25
 
 type Voice struct {
 	*psalm.Module
-	cfg        Config
-	osc1       *blosc.Blosc
-	osc2       *blosc.Blosc
-	sub        *blosc.Blosc
-	noise      noise
-	lfo1       lfo
-	lfo2       lfo
-	svf        *svf.SVF
-	svf2       *svf.SVF
-	ladder     *ladder.Ladder
-	formant    *formant.Formant
-	ladderDrv  float64
-	ladderOver int                     // how many times a sample the ladder runs (set in the ladder)
-	drvOver    *oversample.Oversampler // the saturation of the oscillators (Drive) runs this many times a sample, with the ladder (FilterOversample); nil for once
-	drvD       float64                 // the drive of the sample in the oversampled run, and the gain that brings it back
-	drvComp    float64
-	drvShape   func(float64) float64
-	formShift  float64
-	formCount  int // counts samples until the next filter coefficient update
-	filterEnv  *adsr.ADSR
-	ampEnv     *adsr.ADSR
-	frequency  float64 // target frequency
-	glideFreq  float64 // current frequency, glides towards frequency
-	stolen     bool    // Clear came while the voice sounded (the poly steals a voice that way): the note that follows is legato for GlideLegato
-	cutoff     float64 // smoothed cutoff, ramps towards cfg.Cutoff over a buffer
-	res        float64 // smoothed resonance, ramps towards cfg.Resonance over a buffer
-	vowel      float64 // smoothed vowel, ramps towards cfg.Vowel over a buffer
-	waitSamps  int
-	expr       expression.Expression // the pitch bend; the mod wheel opens the filter
-	mods       *modmatrix.Matrix
-	uni1       [maxUnison - 1]*blosc.Blosc // the extra oscillators of unison
-	uni2       [maxUnison - 1]*blosc.Blosc
-	drift      float64 // -1 to 1, wanders
-	driftTo    float64
-	driftLeft  int
-	velocity   float64 // the amplitude of the note
-	random     float64 // a random value for the note, -1 to 1
+	cfg         Config
+	osc1        *blosc.Blosc
+	osc2        *blosc.Blosc
+	sub         *blosc.Blosc
+	noise       noise
+	lfo1        lfo
+	lfo2        lfo
+	svf         *svf.SVF
+	svf2        *svf.SVF
+	ladder      *ladder.Ladder
+	formant     *formant.Formant
+	ladderDrv   float64
+	ladderOver  int                     // how many times a sample the ladder runs (set in the ladder)
+	drvOver     *oversample.Oversampler // the saturation of the oscillators (Drive) runs this many times a sample, with the ladder (FilterOversample); nil for once
+	drvD        float64                 // the drive of the sample in the oversampled run, and the gain that brings it back
+	drvComp     float64
+	drvShape    func(float64) float64
+	formShift   float64
+	formCount   int // counts samples until the next filter coefficient update
+	filterEnv   *adsr.ADSR
+	ampEnv      *adsr.ADSR
+	frequency   float64 // target frequency
+	glideFreq   float64 // current frequency, glides towards frequency
+	glideInc    float64 // semitones a sample the pitch moves in a straight glide (GlideTime, GlideRate), towards glideTarget
+	glideTarget float64 // the frequency glideInc was made for
+	stolen      bool    // Clear came while the voice sounded (the poly steals a voice that way): the note that follows is legato for GlideLegato
+	cutoff      float64 // smoothed cutoff, ramps towards cfg.Cutoff over a buffer
+	res         float64 // smoothed resonance, ramps towards cfg.Resonance over a buffer
+	vowel       float64 // smoothed vowel, ramps towards cfg.Vowel over a buffer
+	waitSamps   int
+	expr        expression.Expression // the pitch bend; the mod wheel opens the filter
+	mods        *modmatrix.Matrix
+	uni1        [maxUnison - 1]*blosc.Blosc // the extra oscillators of unison
+	uni2        [maxUnison - 1]*blosc.Blosc
+	drift       float64 // -1 to 1, wanders
+	driftTo     float64
+	driftLeft   int
+	velocity    float64 // the amplitude of the note
+	random      float64 // a random value for the note, -1 to 1
 }
 
 func New(cfg Config) *Voice {
@@ -353,6 +365,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("unisonDetune", func(f float64) { v.cfg.UnisonDetune = max(0, f) })
 	msg.IfFltVal("drift", func(f float64) { v.cfg.Drift = max(0, f) })
 	msg.IfFltVal("glide", func(f float64) { v.cfg.Glide = f })
+	msg.IfIntVal("glideMode", func(m int) { v.cfg.GlideMode = GlideMode(max(0, min(m, int(GlideRate)))) })
 	msg.IfFltVal("filterEnvToPitch", func(f float64) { v.cfg.FilterEnvToPitch = f })
 	receiveLFOMessage(msg, "lfo1", &v.cfg.LFO1)
 	receiveLFOMessage(msg, "lfo2", &v.cfg.LFO2)
@@ -548,6 +561,17 @@ func (v *Voice) Synthesize() {
 	if cfg.Glide > 0.0 {
 		glideCoef = 1.0 - math.Exp(-1.0/(cfg.Glide*0.001*sr))
 	}
+	straight := cfg.Glide > 0 && cfg.GlideMode != GlideExponential
+	if straight && v.frequency != v.glideTarget { // a new note to glide to: the step of the straight line, in semitones a sample
+		v.glideTarget = v.frequency
+		samples := cfg.Glide * 0.001 * sr
+		dist := 12 * math.Log2(v.frequency/v.glideFreq)
+		if cfg.GlideMode == GlideTime {
+			v.glideInc = dist / samples
+		} else {
+			v.glideInc = math.Copysign(12/samples, dist)
+		}
+	}
 
 	for i := v.waitSamps; i < bufferSize; i++ {
 		v.expr.Tick(sr)
@@ -572,7 +596,15 @@ func (v *Voice) Synthesize() {
 		}
 
 		// Pitch: glide, LFO vibrato and filter envelope pitch sweep
-		v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
+		switch {
+		case !straight:
+			v.glideFreq += (v.frequency - v.glideFreq) * glideCoef
+		case v.glideFreq != v.frequency:
+			v.glideFreq *= math.Exp2(v.glideInc / 12)
+			if v.glideInc == 0 || (v.glideInc > 0) == (v.glideFreq >= v.frequency) {
+				v.glideFreq = v.frequency
+			}
+		}
 		freq := v.glideFreq
 		if semis := cfg.LFO1.Pitch*l1 + cfg.LFO2.Pitch*l2 + cfg.FilterEnvToPitch*fenv + v.expr.Semitones() + mods.Mod(dPitch) + v.wander(cfg.Drift, sr); semis != 0.0 {
 			freq *= math.Pow(2.0, semis/12.0)

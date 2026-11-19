@@ -46,6 +46,7 @@ reaches `unisonDetune` too.
 | Setting | Default | Meaning |
 |---|---|---|
 | `Glide` | 0 | Portamento in milliseconds from the previous note of the same voice (use 1 voice for mono slides) |
+| `GlideMode` | `GlideExponential` | The shape of the glide. `GlideExponential`: the pitch moves a part of the way to the note every sample, `Glide` is the time constant (fast at first, slow to arrive). `GlideTime`: a straight line in pitch that takes `Glide` ms whatever the interval (consistent time). `GlideRate`: a straight line in pitch where `Glide` is the ms an octave takes, so a leap of two semitones takes a sixth of it (consistent speed) |
 | `GlideLegato` | false | Glide only when the voice is still sounding as it gets the note (a voice stolen from a chord with more notes than voices slides to the new pitch), a free voice jumps straight to it |
 | `FilterEnvToPitch` | 0 | Semitones of pitch sweep from the filter envelope (zaps, kicks, falling sounds) |
 
@@ -141,7 +142,7 @@ module on input 5 with a slot `Ext1` to `cutoff` is a vibrato of the filter that
 
 | Group | Keys |
 |---|---|
-| Pitch | `pitch` (MIDI), `frequency` (Hz), `glide`, `filterEnvToPitch` |
+| Pitch | `pitch` (MIDI), `frequency` (Hz), `glide`, `glideMode` (0 exponential, 1 constant time, 2 constant rate), `filterEnvToPitch` |
 | Oscillators | `osc1Waveform`, `osc2Waveform`, `osc1Level`, `osc2Level`, `osc2Detune`, `osc2Octave`, `pulseWidth`, `subLevel`, `noiseLevel`, `noiseType`, `ringModLevel`, `sync`, `fmAmount`, `drive` |
 | Filter | `filterType`, `filterMode`, `ladderMode`, `filterDrive`, `filterOversample`, `cutoff`, `resonance`, `filterEnvAmount`, `keyTrack`, `vowel`, `formantShift` |
 | LFOs | `lfo1Waveform`, `lfo1Rate`, `lfo1Delay`, `lfo1KeySync`, `lfo1Pitch`, `lfo1Cutoff`, `lfo1PulseWidth`, `lfo1Amp`, and the same with `lfo2` |

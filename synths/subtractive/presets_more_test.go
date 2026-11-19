@@ -387,3 +387,50 @@ func TestGlideLegatoStolenVoice(t *testing.T) {
 		t.Errorf("free voice glides from %v to %v, want a jump", w.glideFreq, w.frequency)
 	}
 }
+
+// glideSeconds plays a voice at one pitch, moves it to another and says how long the pitch takes to get there (to the buffer; -1 if it never does)
+func glideSeconds(mode GlideMode, glide, from, to float64) float64 {
+	psalm.Seed(1)
+	psalm.SetCurrentEnv(psalm.NewEnv(psalm.CurrentStackConfig()))
+	cfg := OrganPreset()
+	cfg.Glide, cfg.GlideMode = glide, mode
+	cfg.AmpEnv = adsrEnv(1, 10, 1, 50)
+	v := New(cfg)
+	v.NoteOn(0.8, psalm.Message{"pitch": from}, psalm.CtrlTick{}, v.Config())
+	v.glideFreq = v.frequency
+	v.SetPitch(to)
+	buffer := float64(v.Config().BufferSize) / v.Config().SampleRate
+	for i := 1; i < 4000; i++ {
+		v.Synthesize()
+		if v.glideFreq == v.frequency {
+			return float64(i) * buffer
+		}
+	}
+	return -1
+}
+
+func TestGlideModes(t *testing.T) {
+	const glide = 400.0 // ms
+	near := func(name string, got, want float64) {
+		t.Helper()
+		if math.Abs(got-want) > 0.03 {
+			t.Errorf("%s: %.3f s, want about %.3f s", name, got, want)
+		}
+	}
+	// consistent time: an octave and two semitones take the same time
+	a := glideSeconds(GlideTime, glide, 57, 69)
+	b := glideSeconds(GlideTime, glide, 57, 59)
+	near("time, an octave", a, 0.4)
+	near("time, two semitones", b, 0.4)
+	// consistent speed: the glide is the time of an octave, two semitones take a sixth of it
+	c := glideSeconds(GlideRate, glide, 57, 69)
+	d := glideSeconds(GlideRate, glide, 57, 59)
+	e := glideSeconds(GlideRate, glide, 69, 57) // down as well
+	near("rate, an octave", c, 0.4)
+	near("rate, two semitones", d, 0.4/6)
+	near("rate, an octave down", e, 0.4)
+	// the exponential glide has not changed: it is still on its way after the time constant
+	if x := glideSeconds(GlideExponential, glide, 57, 69); x != -1 && x < 0.8 {
+		t.Errorf("the exponential glide arrived after %.2f s, it should take several time constants", x)
+	}
+}

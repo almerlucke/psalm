@@ -56,6 +56,7 @@ func Describe(cfg Config) params.Set {
 		params.S("Filter 2", "filter2Parallel", cfg.Filter2Parallel, params.Label("parallel")),
 
 		params.K("Pitch", "glide", 0, 2000, cfg.Glide, params.Unit("ms")),
+		params.C("Pitch", "glideMode", []string{"exponential", "constant time", "constant rate"}, int(cfg.GlideMode), params.Label("glide shape")),
 		params.K("Pitch", "filterEnvToPitch", -48, 48, cfg.FilterEnvToPitch, params.Unit("st"), params.Label("env to pitch")),
 		params.K("Pitch", "level", 0, 4, orOne(cfg.Level)),
 	}}
