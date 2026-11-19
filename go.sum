@@ -4,8 +4,8 @@ github.com/almerlucke/genny v0.1.0 h1:dTU1tHU5tSxwBZ5JWV1oJGqmuuTEjFQQiAXwo3jevD
 github.com/almerlucke/genny v0.1.0/go.mod h1:INftEQjbHJnz9uxDe0su0HBX3uITGkhT1GM8vWXBiBk=
 github.com/almerlucke/go-jack v0.0.0-20260928121326-3451e862d67e h1:o1z9touuz/VSx9rNr7kzMJVsF6E3p19Q/JrcOj6zTqo=
 github.com/almerlucke/go-jack v0.0.0-20260928121326-3451e862d67e/go.mod h1:YG4N4/vbPTKiqZGFHq7+pjm6mI/Y8IS5eHyAoLev1CY=
-github.com/almerlucke/sndfile v0.0.0-20261119140717-f71005b40301 h1:+pcKoDXQQ/6Qsep4MYcZDDF2yb30NMaItOCfr4wffGM=
-github.com/almerlucke/sndfile v0.0.0-20261119140717-f71005b40301/go.mod h1:7Gy98kIEB0zHeLkAnCPRRG5QQ0sOBD8wQ4r7Ikp1o1E=
+github.com/almerlucke/sndfile v0.1.0 h1:qLe+n7m0LrDdVKR8ub2RV+mwC1SeR1moCWfbvjcwZOQ=
+github.com/almerlucke/sndfile v0.1.0/go.mod h1:7Gy98kIEB0zHeLkAnCPRRG5QQ0sOBD8wQ4r7Ikp1o1E=
 github.com/dh1tw/gosamplerate v0.1.2 h1:oyqtZk67xB9B4l+vIZCZ3F0RYV/z66W58VOah11/ktI=
 github.com/dh1tw/gosamplerate v0.1.2/go.mod h1:zooTyHpoR7hE+FLfdE3yjLHb2QA2NpMusNfuaZqEACM=
 github.com/dlclark/regexp2/v2 v2.8.1 h1:I1jbaCbXeOxdVN8z3fb55Mvtgb94/6+Dh0zjmXjKV/0=
