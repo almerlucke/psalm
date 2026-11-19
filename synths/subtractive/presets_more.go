@@ -1188,7 +1188,8 @@ func UnoOrganPreset() Config {
 	cfg.Osc2Level = 0.4
 	cfg.SubLevel = 0.1
 	cfg.Drift = 1
-	cfg.Glide = 50
+	cfg.Glide = 50 // the ms an octave takes
+	cfg.GlideMode = GlideRate
 	cfg.GlideLegato = true
 	cfg.FilterType = FilterLadder
 	cfg.LadderMode = ladder.LowPass24

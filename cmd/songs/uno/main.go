@@ -16,11 +16,13 @@
 //
 //	go run ./cmd/songs/uno                          play it
 //	go run ./cmd/songs/uno -render uno.wav -seed 7  render it once, with the tail
+//	go run ./cmd/songs/uno -glide time              the glide of the Unos in another shape than the preset's own, a constant speed (exponential or time)
 package main
 
 import (
 	"flag"
 	"fmt"
+	"log"
 	"math"
 
 	"github.com/almerlucke/psalm"
@@ -83,7 +85,13 @@ func roll() []score.Note {
 func main() {
 	renderTo := flag.String("render", "", "render the piece once to this WAV file instead of playing it")
 	seed := flag.Uint64("seed", 0, "seed for everything random (the feel of the parts): the same seed plays the same")
+	glide := flag.String("glide", "", "the shape of the glide of the Unos instead of the preset's own (rate: a constant speed, the time is for an octave): exponential, time (a straight line that takes the same time whatever the interval) or rate")
 	flag.Parse()
+	mode := map[string]subtractive.GlideMode{"exponential": subtractive.GlideExponential, "time": subtractive.GlideTime, "rate": subtractive.GlideRate}
+	glideMode, ok := mode[*glide]
+	if !ok && *glide != "" {
+		log.Fatalf("glide %q: exponential, time or rate", *glide)
+	}
 	if *seed != 0 {
 		psalm.Seed(*seed)
 	}
@@ -107,9 +115,13 @@ func main() {
 	form.Loop = *renderTo == "" // played live it goes round again; rendered it ends with the last chord, left to ring out
 
 	const preset = "unoOrgan"
-	uno := subtractive.NewPoly(subtractive.Presets[preset](), subtractive.Voices(preset, 3)).AddTo(p)
+	unoConfig := subtractive.Presets[preset]()
+	if *glide != "" {
+		unoConfig.GlideMode = glideMode
+	}
+	uno := subtractive.NewPoly(unoConfig, subtractive.Voices(preset, 3)).AddTo(p)
 	keys := piano.NewPoly(piano.SatiePreset(), 8).AddTo(p)
-	uno2 := subtractive.NewPoly(subtractive.Presets[preset](), subtractive.Voices(preset, 3)).AddTo(p) // another one, for the answer
+	uno2 := subtractive.NewPoly(unoConfig, subtractive.Voices(preset, 3)).AddTo(p) // another one, for the answer
 
 	// the arpeggios: the bass rings for the bar (the _4), then seven eighths of the three notes of the chord
 	// going up and down, one at a time
