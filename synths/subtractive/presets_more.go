@@ -427,7 +427,7 @@ func GlassPadPreset() Config {
 	cfg.FilterEnvAmount = 0
 	cfg.KeyTrack = 0.8
 	cfg.Filter2Mode = Filter2High
-	cfg.Filter2Cutoff = 800
+	cfg.Filter2Cutoff = 500
 	cfg.Filter2KeyTrack = 0.5
 	cfg.AmpEnv = adsrEnv(1200, 800, 0.9, 2500)
 	cfg.LFO1 = LFOConfig{Waveform: LFOSine, Rate: 0.3, Cutoff: 0.6}
@@ -1202,6 +1202,6 @@ func UnoOrganPreset() Config {
 	cfg.Filter2KeyTrack = 1
 	cfg.FilterEnv = adsrEnv(1, 110, 0, 60)
 	cfg.AmpEnv = adsrEnv(18, 30, 1, 45)
-	cfg.Level = 1
+	cfg.Level = 1.175 // calibrated: -12 LUFS (or a -1 dB peak) at amplitude 1
 	return cfg
 }
