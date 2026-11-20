@@ -1,7 +1,7 @@
 # Examples
 
 The examples live in `cmd/examples` and play live through PortAudio until you press Ctrl+C.
-Run them from the repository root (they load sounds from `assets/`):
+Run them from the repository root (they load sounds from `assets/`, which is not part of this repository: the sounds, impulse responses, wavetables, MIDI files and sample libraries live in the private repository `psalm-assets`; clone it next to this one and link it with `ln -s ../psalm-assets assets`):
 
 ```
 go run ./cmd/examples/<name>
