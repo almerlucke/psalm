@@ -10,6 +10,7 @@ import (
 var morePresets = map[string]func() Config{
 	// plucked: guitars
 	"nylonClassical":  NylonClassical,
+	"ownGuitar":       OwnGuitar,
 	"steelAcoustic":   SteelAcoustic,
 	"twelveString":    TwelveString,
 	"palmMuted":       PalmMuted,
@@ -122,6 +123,22 @@ func NylonClassical() Config {
 	mod(&c, 0, modmatrix.Random, "pickPosition", 0.6)
 	mod(&c, 1, modmatrix.Velocity, "brightness", 0.5)
 	return lvl(c, 1.21)
+}
+
+// OwnGuitar is Guitar with strings that die as those of a real nylon guitar do, a recording of which it is
+// fitted to (the reference of cmd/tools/guitarcompare): the bass strings ring long and dark, the trebles
+// shorter and brighter. The fit is the Track; Decay and Damping hold at A3 and turn the whole of it
+func OwnGuitar() Config { return fitted(ownTrack) }
+
+// fitted is Guitar with a track, its Decay and Damping those of the track at its reference pitch
+func fitted(track *KeyTrack) Config {
+	c := Guitar()
+	c.Track = track
+	if len(track.Decay) > 0 {
+		ref := float64(track.Ref)
+		c.Decay, c.Damping = track.DecayAt(ref), track.DampingAt(ref)
+	}
+	return c
 }
 
 // SteelAcoustic is a steel string flat top played with the fingers (fingerpicking): the bright ring

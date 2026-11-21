@@ -112,6 +112,9 @@ type Config struct {
 	BodyMix float64 // 0-1: how much of the sound is the body
 	Level   float64 // output level (0 is treated as 1)
 
+	// How a plucked string dies at each pitch (nil: by the Decay and Damping alone, and a lower string rings longer)
+	Track *KeyTrack
+
 	Sympathetic float64 // 0-1: the sound fed into strings tuned to its octave and fifth, added back
 	LFO2Rate    float64 // Hz: the rate of the plain LFO of the matrix (0 is 2 Hz)
 
@@ -545,7 +548,8 @@ func (v *Voice) pluck() {
 	cfg := &v.cfg
 	sr := v.Config().SampleRate
 	f := v.freq
-	v.setLoss(cfg.Damping+v.mods.Mod(dDamping), cfg.Decay*math.Exp2(v.mods.Mod(dDecay)))
+	kd, kt := v.keyTrack()
+	v.setLoss(cfg.Damping+kd+v.mods.Mod(dDamping), cfg.Decay*kt*math.Exp2(v.mods.Mod(dDecay)))
 	// the loop: whole samples, the allpass for the fraction (0.5-1.5), the filter's half sample and
 	// the stiffness's delay
 	v.period = sr / f
@@ -704,7 +708,8 @@ func harmonicK(h float64, n int) int {
 func (v *Voice) legato(from float64) {
 	cfg := &v.cfg
 	sr := v.Config().SampleRate
-	v.setLoss(cfg.Damping+v.mods.Mod(dDamping), cfg.Decay*math.Exp2(v.mods.Mod(dDecay)))
+	kd, kt := v.keyTrack()
+	v.setLoss(cfg.Damping+kd+v.mods.Mod(dDamping), cfg.Decay*kt*math.Exp2(v.mods.Mod(dDecay)))
 	v.period = sr / v.freq
 	v.stiffen(true)
 	v.polOn = cfg.Polarization > 0
@@ -1106,7 +1111,8 @@ func (v *Voice) Synthesize() {
 				if cfg.Model == Membrane {
 					v.mem.setLoss(v, cfg.Damping+mods.Mod(dDamping), cfg.Decay*math.Exp2(mods.Mod(dDecay)))
 				} else {
-					v.setLoss(cfg.Damping+mods.Mod(dDamping), cfg.Decay*math.Exp2(mods.Mod(dDecay)))
+					kd, kt := v.keyTrack()
+					v.setLoss(cfg.Damping+kd+mods.Mod(dDamping), cfg.Decay*kt*math.Exp2(mods.Mod(dDecay)))
 					loopGain = v.gain
 					if v.released && cfg.Release > 0 {
 						loopGain = min(loopGain, math.Pow(10, -3/(v.freq*cfg.Release)))
