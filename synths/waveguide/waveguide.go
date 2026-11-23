@@ -75,6 +75,7 @@ type Config struct {
 	PluckWidth    float64 // 0-0.2 of the string: the width of the finger or the pick that pulls it (0 is the plain noise burst of Brightness)
 	Edge          float64 // 0-1: the pluck's top partials against its low ones (0 the string pulled aside, as smooth as it is; 1 a sharp pull, the partials falling slowly): a real pluck starts brighter than the string pulled aside is
 	Plectrum      float64 // 0-1: the pluck, from a soft finger to a hard pick (the width of the contact, the release, a click)
+	Thump         float64 // 0-1: the pluck knocks the body: a short low pulse at the start of the note, which the body rings with its own modes (air, top plate), whatever the pitch
 	FretNoise     float64 // 0-1: the finger or the pick on the string at the start of a note
 	FretBuzz      float64 // 0-1: the action, from high (0, off) to so low that the string hits the fret while it swings: a stiff one-sided spring and damper at the fret
 	FretPosition  float64 // 0.05-0.98 of the string from the bridge: the fret the string hits (0 is the one beside the finger, 0.92)
@@ -230,6 +231,8 @@ type Voice struct {
 	tmodRatio float64 // the pitch ratio the stretched string has now
 	slide     float64 // the ratio the pitch is still from the note (a legato), and its step per sample
 	slideStep float64
+	thumpAt   int // samples since the start of the note, while the knock on the body lasts
+	thumpAmp  float64
 	fretLeft  int // samples of the finger on the string
 	fretAmp   float64
 	fretLp    float64
@@ -387,6 +390,7 @@ func (v *Voice) receive(msg psalm.Message) {
 	msg.IfFltVal("pluckWidth", func(f float64) { v.cfg.PluckWidth = f })
 	msg.IfFltVal("edge", func(f float64) { v.cfg.Edge = f })
 	msg.IfFltVal("plectrum", func(f float64) { v.cfg.Plectrum = f })
+	msg.IfFltVal("thump", func(f float64) { v.cfg.Thump = f })
 	msg.IfFltVal("fretNoise", func(f float64) { v.cfg.FretNoise = f })
 	msg.IfFltVal("fretBuzz", func(f float64) { v.cfg.FretBuzz = f })
 	msg.IfFltVal("harmonic", func(f float64) { v.cfg.Harmonic = f })
@@ -518,6 +522,12 @@ const minDamping = 1.0 / 9
 
 // edgeSpan is the part of the loop (1/edgeSpan) the Edge of the pluck takes its difference over
 const edgeSpan = 40
+
+// the knock of the pluck on the body (Config.Thump): the time constant of its pulse and its level at the full Thump
+const (
+	thumpTau  = 0.0008
+	thumpGain = 8.0
+)
 
 // edgeReach is how many times higher the lowpass of the pluck goes at the full Edge
 const edgeReach = 3
@@ -717,6 +727,10 @@ func (v *Voice) pluck() {
 		v.tmodRatio = math.Exp2(tensionCents / 1200 * v.tmodAmt)
 	}
 	// the finger or the pick on the string, and the fret
+	v.thumpAt, v.thumpAmp = 0, 0
+	if cfg.Thump > 0 {
+		v.thumpAmp = thumpGain * min(cfg.Thump, 1) * (0.3 + 0.7*v.velocity)
+	}
 	v.fretLeft = 0
 	if cfg.FretNoise > 0 {
 		v.fretLen = 0.012 * sr
@@ -1247,6 +1261,15 @@ func (v *Voice) Synthesize() {
 				v.tmodE += (in*in - v.tmodE) * v.tmodAlpha
 				if i&7 == 0 {
 					v.tmodRatio = math.Exp2(tensionCents / 1200 * v.tmodAmt * min(1, v.tmodE/v.tmodE0))
+				}
+			}
+			if v.thumpAmp != 0 {
+				// the knock of the pluck on the body: the derivative of an alpha function (no DC), a low pulse
+				// that has its energy where the body has its modes
+				t := float64(v.thumpAt) / (thumpTau * sr)
+				s += v.thumpAmp * (1 - t) * math.Exp(-t)
+				if v.thumpAt++; t > 12 {
+					v.thumpAmp = 0
 				}
 			}
 			if v.fretLeft > 0 {

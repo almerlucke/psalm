@@ -56,6 +56,7 @@ func Describe(cfg Config) params.Set {
 			params.K("Pluck", "edge", 0, 1, cfg.Edge),
 			params.K("Pluck", "plectrum", 0, 1, cfg.Plectrum),
 			params.K("Pluck", "harmonic", 0, 0.5, cfg.Harmonic),
+			params.K("Pluck", "thump", 0, 1, cfg.Thump),
 			params.K("Pluck", "fretNoise", 0, 1, cfg.FretNoise, params.Label("fret noise")),
 			params.K("Pluck", "fretBuzz", 0, 1, cfg.FretBuzz, params.Label("fret buzz")),
 			params.K("Pluck", "fretPosition", 0.05, 0.98, fretPosition(cfg), params.Label("fret position")),

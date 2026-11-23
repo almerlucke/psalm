@@ -177,3 +177,36 @@ func TestKeyTrackEdge(t *testing.T) {
 		t.Errorf("a semitone above the reference the edge goes up by %g, want 0.4", d)
 	}
 }
+
+// the knock of the pluck on the body is a low pulse at the start of the note, and nothing else: a high note
+// has more below its own pitch with it, and none of it is left after the pulse
+func TestThumpOfThePluck(t *testing.T) {
+	low := func(thump float64, from, to float64) float64 {
+		cfg := Guitar()
+		cfg.BodyMix = 0
+		cfg.Thump = thump
+		sameNoise()
+		v := New(cfg)
+		v.NoteOn(1, psalm.Message{"pitch": 76.0, "velocity": 0.65}, psalm.CtrlTick{}, v.Config())
+		x := run(v, 0.2)
+		// what is left of the sound under 250 Hz: a lowpass of two poles
+		a := math.Exp(-2 * math.Pi * 250 / sr())
+		y1, y2 := 0.0, 0.0
+		e := 0.0
+		for i, s := range x {
+			y1 = (1-a)*s + a*y1
+			y2 = (1-a)*y1 + a*y2
+			if i >= int(from*sr()) && i < int(to*sr()) {
+				e += y2 * y2
+			}
+		}
+		return 10 * math.Log10(e + 1e-12)
+	}
+	if without, with := low(0, 0, 0.03), low(1, 0, 0.03); with < without+6 {
+		t.Errorf("under 250 Hz in the first 30 ms: %.1f dB without the thump, %.1f with it", without, with)
+	}
+	// 100 ms on the pulse is over, the string is the same
+	if without, with := low(0, 0.1, 0.2), low(1, 0.1, 0.2); math.Abs(with-without) > 0.5 {
+		t.Errorf("after the pulse: %.1f dB without, %.1f with", without, with)
+	}
+}
