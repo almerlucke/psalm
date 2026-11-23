@@ -134,6 +134,7 @@ func NylonClassical() Config {
 func OwnGuitar() Config {
 	c := fitted(ownTrack)
 	c.Measured = OwnGuitarBody()
+	c.OpenStrings = 0.03
 	c.Thump = 0.25 // the knock of the pluck on the body: the real guitar's low modes sound at the start of every note, high ones too
 	return c
 }

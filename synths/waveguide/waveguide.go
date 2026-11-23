@@ -121,6 +121,7 @@ type Config struct {
 	// How a plucked string dies at each pitch (nil: by the Decay and Damping alone, and a lower string rings longer)
 	Track *KeyTrack
 
+	OpenStrings float64 // 0-1: the open strings of a guitar (E A D G B E) ring along with the sound of NewPoly's voices, as they do on a real guitar (the strings that nothing plucks); the level of the sound that drives them
 	Sympathetic float64 // 0-1: the sound fed into strings tuned to its octave and fifth, added back
 	LFO2Rate    float64 // Hz: the rate of the plain LFO of the matrix (0 is 2 Hz)
 
@@ -1469,8 +1470,20 @@ func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 		voices[i] = New(cfg)
 	}
 	p := poly.New[*Voice](cfg.NumChannels, voices)
-	if stage != nil {
-		p.SetPost(stage.process)
+	// after the sum of the voices: the open strings that ring along, then the body that they, and the strings played, sound through
+	var open *openStrings
+	if cfg.OpenStrings > 0 {
+		open = newOpenStrings(cfg.OpenStrings)
+	}
+	if open != nil || stage != nil {
+		p.SetPost(func(ch psalm.Channels) {
+			if open != nil {
+				open.process(ch)
+			}
+			if stage != nil {
+				stage.process(ch)
+			}
+		})
 	}
 	return p
 }

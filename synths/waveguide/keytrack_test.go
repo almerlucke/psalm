@@ -210,3 +210,29 @@ func TestThumpOfThePluck(t *testing.T) {
 		t.Errorf("after the pulse: %.1f dB without, %.1f with", without, with)
 	}
 }
+
+// the open strings ring along: a note that is not theirs leaves a line at the pitch of an open string, long after the
+// note, and none of it without them
+func TestOpenStringsRingAlong(t *testing.T) {
+	line := func(amount float64) float64 {
+		cfg := Guitar()
+		cfg.BodyMix = 0
+		cfg.OpenStrings = amount
+		sameNoise()
+		p := NewPoly(cfg, 4)
+		monoOn(p, "a", 57) // A3, 220 Hz: the second partial of the A2 string, 110 Hz
+		x := polyRun(p, 3)
+		// the energy at 110 Hz in the last second (a Goertzel filter)
+		w := 2 * math.Pi * 110 / sr()
+		c := 2 * math.Cos(w)
+		s1, s2 := 0.0, 0.0
+		for _, v := range x[int(2*sr()):] {
+			s1, s2 = v+c*s1-s2, s1
+		}
+		return 10 * math.Log10(s1*s1+s2*s2-c*s1*s2+1e-18)
+	}
+	without, with := line(0), line(0.5)
+	if with < without+20 {
+		t.Errorf("the line at 110 Hz after 2 s: %.1f dB without the open strings, %.1f with them", without, with)
+	}
+}
