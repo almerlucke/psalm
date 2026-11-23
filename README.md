@@ -98,6 +98,10 @@ code and in [docs/examples.md](docs/examples.md)), for instance:
 mkdir assets      # then add your own files
 ```
 
+One recording is part of the repository: `synths/waveguide/ir/guitar.wav`, the body of the
+author's own nylon string guitar (taps on it, as an impulse response, 35 KB). It belongs to the
+waveguide guitar `ownGuitar`, which needs no `assets/` folder.
+
 ## Tests
 
 ```

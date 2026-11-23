@@ -128,7 +128,14 @@ func NylonClassical() Config {
 // OwnGuitar is Guitar with strings that die as those of a real nylon guitar do, a recording of which it is
 // fitted to (the reference of cmd/tools/guitarcompare): the bass strings ring long and dark, the trebles
 // shorter and brighter. The fit is the Track; Decay and Damping hold at A3 and turn the whole of it
-func OwnGuitar() Config { return fitted(ownTrack) }
+//
+// Its body is that of the guitar too: taps on it, as an impulse response (OwnGuitarBody), half of the sound next
+// to the resonators the other half is. A plain Voice has the resonators only; NewPoly adds the measured body
+func OwnGuitar() Config {
+	c := fitted(ownTrack)
+	c.Measured = OwnGuitarBody()
+	return c
+}
 
 // fitted is Guitar with a track, its Decay and Damping those of the track at its reference pitch
 func fitted(track *KeyTrack) Config {

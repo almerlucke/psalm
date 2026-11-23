@@ -110,7 +110,11 @@ type Config struct {
 
 	Body    Body
 	BodyMix float64 // 0-1: how much of the sound is the body
-	Level   float64 // output level (0 is treated as 1)
+
+	// A measured body for all the strings together, next to the resonators (nil: the resonators alone). It
+	// is a stage of NewPoly, after the sum of the voices (a single voice made with New has the resonators only)
+	Measured *Measured
+	Level    float64 // output level (0 is treated as 1)
 
 	// How a plucked string dies at each pitch (nil: by the Decay and Damping alone, and a lower string rings longer)
 	Track *KeyTrack
@@ -1389,11 +1393,21 @@ func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 	if cfg.NumChannels == 0 {
 		cfg.NumChannels = psalm.Stereo
 	}
+	// a measured body is one stage for the sum of the strings: the voices have no resonators of their own then
+	var stage *bodyStage
+	if m := cfg.Measured; m != nil && len(m.IR) > 0 && m.Blend > 0 {
+		stage = newBodyStage(cfg.Body, cfg.BodyMix, m, cfg.NumChannels)
+		cfg.BodyMix = 0
+	}
 	voices := make([]*Voice, numVoices)
 	for i := range numVoices {
 		voices[i] = New(cfg)
 	}
-	return poly.New[*Voice](cfg.NumChannels, voices)
+	p := poly.New[*Voice](cfg.NumChannels, voices)
+	if stage != nil {
+		p.SetPost(stage.process)
+	}
+	return p
 }
 
 // bowReversal is the bow's speed as a factor of its stroke: after each stroke of period samples it

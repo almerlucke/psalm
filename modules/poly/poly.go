@@ -37,6 +37,8 @@ type Poly[T Voice] struct {
 	held      []heldNote
 	timers    []monoTimer
 	durations int64 // names the notes of a duration, as notes held
+
+	post func(psalm.Channels)
 }
 
 // heldNote is a note held down in mono: its name, its note message and amplitude
@@ -384,6 +386,13 @@ func (p *Poly[T]) CallVoices(f func(T)) {
 	}
 }
 
+// SetPost sets a stage the sum of the voices goes through before it leaves (the body of an instrument,
+// which all its strings share): it works on the buffer in place
+func (p *Poly[T]) SetPost(f func(psalm.Channels)) *Poly[T] {
+	p.post = f
+	return p
+}
+
 func (p *Poly[T]) Synthesize() {
 	out := p.Output(0).Channels
 	// mono: the notes of a duration let go when their time is up
@@ -426,5 +435,8 @@ func (p *Poly[T]) Synthesize() {
 			p.activePool = p.activePool[:last]
 			p.freePool = append(p.freePool, v)
 		}
+	}
+	if p.post != nil {
+		p.post(out)
 	}
 }
