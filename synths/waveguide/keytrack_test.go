@@ -46,7 +46,7 @@ func TestOwnGuitarSettings(t *testing.T) {
 		t.Errorf("decay %g damping %g, the table has %g %g at %g", c.Decay, c.Damping, c.Track.DecayAt(ref), c.Track.DampingAt(ref), ref)
 	}
 	for p := range len(c.Track.Decay) {
-		if d, g := c.Track.Decay[p], c.Track.Damping[p]; !(d > 0.3 && d < 120 && g >= 0 && g <= 0.7) {
+		if d, g := c.Track.Decay[p], c.Track.Damping[p]; !(d > 0.3 && d < 120 && g >= -minDamping && g <= 0.7) {
 			t.Errorf("pitch %d: decay %g damping %g", c.Track.From+p, d, g)
 		}
 	}
@@ -82,5 +82,43 @@ func TestOwnGuitarFalls(t *testing.T) {
 	plain.Track = nil
 	if with, without := fall(OwnGuitar(), 62), fall(plain, 62); without > with-3 {
 		t.Errorf("at 62 the string falls %.1f dB/s with the track and %.1f without", with, without)
+	}
+}
+
+// the damping goes below 0 down to a loop filter that takes nothing: a string that keeps its top partials
+func TestDampingBelowZero(t *testing.T) {
+	top := func(damping float64) float64 {
+		cfg := Guitar()
+		cfg.BodyMix = 0
+		cfg.Damping = damping
+		sameNoise()
+		v := New(cfg)
+		v.NoteOn(1, psalm.Message{"pitch": 76.0, "velocity": 0.65}, psalm.CtrlTick{}, v.Config())
+		x := run(v, 1.5)
+		hi, all := 0.0, 0.0
+		from := int(0.5 * sr())
+		for _, s := range x[from:] {
+			all += s * s
+		}
+		// the energy above 2 kHz: what is left of a first difference taken three times
+		y := x[from:]
+		for range 3 {
+			d := make([]float64, len(y)-1)
+			for i := range d {
+				d[i] = y[i+1] - y[i]
+			}
+			y = d
+		}
+		for _, s := range y {
+			hi += s * s
+		}
+		return 10 * math.Log10(hi/all)
+	}
+	plain, open, further := top(0), top(-1.0/9), top(-0.5)
+	if open < plain+6 {
+		t.Errorf("the top partials are %.1f dB at damping 0 and %.1f at -1/9: they should be much more", plain, open)
+	}
+	if math.Abs(further-open) > 0.01 {
+		t.Errorf("below -1/9 the loop filter takes nothing, the sound is the same: %.2f and %.2f dB", open, further)
 	}
 }

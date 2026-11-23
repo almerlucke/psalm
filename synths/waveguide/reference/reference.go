@@ -99,6 +99,23 @@ func TargetHigh(pitch float64) float64 {
 	return sum / math.Max(weight, 1e-9)
 }
 
+// TargetHighResolved is the brightness (HighShare, in dB) of the real guitar at a pitch from the notes that are
+// over the noise alone (Note.Margin), those within two semitones counting by a Gaussian. weight is how much
+// of a note there is (1 is a note at that pitch): below 0.25 nothing of the guitar is known there
+func TargetHighResolved(pitch float64) (target, weight float64) {
+	sum := 0.0
+	for _, n := range Notes() {
+		if n.Margin < ResolvedMargin {
+			continue
+		}
+		d := (float64(n.Pitch) - pitch) / 2
+		w := math.Exp(-d * d / 2)
+		sum += w * n.HighDB
+		weight += w
+	}
+	return sum / math.Max(weight, 1e-9), weight
+}
+
 // ResolvedMargin is the margin (dB) over the noise from which the brightness of a note is the guitar's: below it
 // the measure is an upper bound (see Note.Margin)
 const ResolvedMargin = 3.0

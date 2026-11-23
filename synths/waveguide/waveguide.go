@@ -510,11 +510,15 @@ func (v *Voice) fillStatic() {
 	mv[modmatrix.Wheel] = v.expr.Wheel()
 }
 
+// minDamping is how far below 0 the damping goes: the loop filter (1-s) x + s x[-1] has s = 0.05 at 0, a little
+// loss of the high partials that real strings do not all have; at -1/9 it takes nothing
+const minDamping = 1.0 / 9
+
 // setLoss sets the loop filter and the gain per loop for a damping and the seconds of decay at 220 Hz
 func (v *Voice) setLoss(damping, decay float64) {
 	sr := v.Config().SampleRate
 	f := v.freq
-	v.s = 0.05 + 0.45*max(0, min(damping, 1))
+	v.s = 0.05 + 0.45*max(-minDamping, min(damping, 1))
 	// the gain per loop that rings Decay seconds at 220 Hz (longer below, shorter above), over what
 	// the loop filter takes at the fundamental
 	t60 := max(0.01, decay) * math.Sqrt(220/f)
