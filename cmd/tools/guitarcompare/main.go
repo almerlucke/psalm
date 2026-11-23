@@ -201,29 +201,46 @@ func main() {
 	type res struct{ rate, high float64 }
 	got := make([][]res, len(pitches))
 	realRate, realHigh := make([]float64, len(pitches)), make([]float64, len(pitches))
+	// the brightness is the guitar's only where it is over the hiss of the recording (reference.Note.Margin)
+	resolved := make([]bool, len(pitches))
 	for i, p := range pitches {
+		margin := 0.0
 		for _, n := range byPitch[p] {
 			realRate[i] += n.DropDBps / float64(len(byPitch[p]))
 			realHigh[i] += n.HighDB / float64(len(byPitch[p]))
+			margin += n.Margin / float64(len(byPitch[p]))
 		}
+		resolved[i] = margin >= reference.ResolvedMargin
 		for _, w := range ways {
 			x := w.play(float64(p))
 			got[i] = append(got[i], res{min(reference.DropRate(x, sampleRate), 300), reference.HighShare(x, sampleRate)})
 		}
 	}
 
-	table := func(title string, real []float64, pick func(res) float64, unit string) {
+	table := func(title string, real []float64, pick func(res) float64, unit string, resolved []bool) {
 		fmt.Printf("%s\n\n%-6s %5s %7s", title, "pitch", "notes", "real")
 		for _, w := range ways {
 			fmt.Printf(" %11s", w.name)
 		}
 		fmt.Println()
 		errSum := make([]float64, len(ways))
+		count := 0
+		for i := range pitches {
+			if resolved == nil || resolved[i] {
+				count++
+			}
+		}
 		for i, p := range pitches {
-			fmt.Printf("%-6d %5d %7.1f", p, len(byPitch[p]), real[i])
+			mark := " "
+			if resolved != nil && !resolved[i] {
+				mark = "<" // at most: the notes are not over the noise
+			}
+			fmt.Printf("%-6d %5d %s%6.1f", p, len(byPitch[p]), mark, real[i])
 			for j := range ways {
 				v := pick(got[i][j])
-				errSum[j] += math.Abs(v-real[i]) / float64(len(pitches))
+				if resolved == nil || resolved[i] {
+					errSum[j] += math.Abs(v-real[i]) / float64(count)
+				}
 				fmt.Printf(" %11.1f", v)
 			}
 			fmt.Println()
@@ -232,10 +249,14 @@ func main() {
 		for _, e := range errSum {
 			fmt.Printf(" %11.1f", e)
 		}
-		fmt.Printf("   (%s)\n\n", unit)
+		fmt.Printf("   (%s", unit)
+		if resolved != nil {
+			fmt.Printf(", over the %d pitches whose notes are over the noise; < is at most", count)
+		}
+		fmt.Printf(")\n\n")
 	}
-	table("the fall of the level (0.3-0.5 s to 2.0-2.2 s)", realRate, func(r res) float64 { return r.rate }, "dB/s")
-	table("the brightness: the energy above 2 kHz against all", realHigh, func(r res) float64 { return r.high }, "dB")
+	table("the fall of the level (0.3-0.5 s to 2.0-2.2 s)", realRate, func(r res) float64 { return r.rate }, "dB/s", nil)
+	table("the brightness: the energy above 2 kHz against all", realHigh, func(r res) float64 { return r.high }, "dB", resolved)
 }
 
 // through runs a note through a module with a stereo input and returns its left output

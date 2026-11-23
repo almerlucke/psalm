@@ -26,3 +26,26 @@ func TestTargetRateRisesWithPitch(t *testing.T) {
 		t.Errorf("falls %.1f dB/s at 40 and %.1f at 66", lo, hi)
 	}
 }
+
+// the hiss of the recording is out of the measures, and the notes that stand over it are known: most notes
+// have their high bands in the noise, a few of the high strings do not
+func TestMarginOverTheNoise(t *testing.T) {
+	over := 0
+	for _, n := range Notes() {
+		if n.Margin >= ResolvedMargin {
+			over++
+		}
+		if n.HighDB > -15 {
+			t.Errorf("note at %.1f s: %.1f dB above 2 kHz is the noise, not a guitar", n.Onset, n.HighDB)
+		}
+	}
+	if over < 4 || over > 10 {
+		t.Errorf("%d notes over the noise, want about 7", over)
+	}
+	if m := Margin(76); m < ResolvedMargin {
+		t.Errorf("the highest note has a margin of %.1f dB", m)
+	}
+	if m := Margin(45); m >= ResolvedMargin {
+		t.Errorf("a low note has a margin of %.1f dB: its brightness is the hiss", m)
+	}
+}

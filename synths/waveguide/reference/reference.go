@@ -31,6 +31,10 @@ type Note struct {
 	DropDBps float64           // the fall of the level from 0.3-0.5 s to 2.0-2.2 s, dB per second
 	HighDB   float64           // energy above 2 kHz against all (70 Hz and up, to 12 kHz), in dB
 	Bands    [NumBands]float64 // the same for the octave bands from BandEdges up
+	// Margin is how far the energy above 2 kHz is over the noise floor of the recording, in dB. Near 0 the high
+	// bands of the note are the hiss, which is taken out of the measures, and what is left of them is at most
+	// about the noise: an upper bound, not a measure of the guitar
+	Margin float64
 }
 
 // NumBands octave bands, from 80 Hz up: 80-160, 160-320 ... 5120-10240
@@ -57,7 +61,10 @@ func Notes() []Note {
 				v[j], _ = strconv.ParseFloat(s, 64)
 			}
 			n := Note{Onset: v[0], Hz: v[1], Pitch: int(v[2]), Cents: v[3], LevelDB: v[4], DropDBps: v[5], HighDB: v[6]}
-			copy(n.Bands[:], v[7:])
+			copy(n.Bands[:], v[7:7+NumBands])
+			if len(v) > 7+NumBands {
+				n.Margin = v[7+NumBands]
+			}
 			notes = append(notes, n)
 		}
 	})
@@ -87,6 +94,24 @@ func TargetHigh(pitch float64) float64 {
 		d := (float64(n.Pitch) - pitch) / 3
 		w := math.Exp(-d * d / 2)
 		sum += w * n.HighDB
+		weight += w
+	}
+	return sum / math.Max(weight, 1e-9)
+}
+
+// ResolvedMargin is the margin (dB) over the noise from which the brightness of a note is the guitar's: below it
+// the measure is an upper bound (see Note.Margin)
+const ResolvedMargin = 3.0
+
+// Margin is the margin over the noise (Note.Margin, in dB) of the real guitar at a pitch, the notes around it
+// counting as for TargetHigh. Below ResolvedMargin the brightness of the guitar there is "at most TargetHigh",
+// there is nothing to fit to
+func Margin(pitch float64) float64 {
+	sum, weight := 0.0, 0.0
+	for _, n := range Notes() {
+		d := (float64(n.Pitch) - pitch) / 3
+		w := math.Exp(-d * d / 2)
+		sum += w * n.Margin
 		weight += w
 	}
 	return sum / math.Max(weight, 1e-9)
