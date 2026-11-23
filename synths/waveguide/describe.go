@@ -53,6 +53,7 @@ func Describe(cfg Config) params.Set {
 			params.K("Pluck", "brightness", 0, 1, cfg.Brightness),
 			params.K("Pluck", "pickPosition", 0, 0.5, cfg.PickPosition, params.Label("position")),
 			params.K("Pluck", "pluckWidth", 0, 0.2, cfg.PluckWidth, params.Label("width")),
+			params.K("Pluck", "edge", 0, 1, cfg.Edge),
 			params.K("Pluck", "plectrum", 0, 1, cfg.Plectrum),
 			params.K("Pluck", "harmonic", 0, 0.5, cfg.Harmonic),
 			params.K("Pluck", "fretNoise", 0, 1, cfg.FretNoise, params.Label("fret noise")),

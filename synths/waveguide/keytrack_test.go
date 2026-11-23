@@ -46,6 +46,12 @@ func TestOwnGuitarSettings(t *testing.T) {
 		t.Errorf("decay %g damping %g, the table has %g %g at %g", c.Decay, c.Damping, c.Track.DecayAt(ref), c.Track.DampingAt(ref), ref)
 	}
 	for p := range len(c.Track.Decay) {
+		if len(c.Track.Edge) != len(c.Track.Decay) {
+			t.Fatalf("%d edges, %d decays", len(c.Track.Edge), len(c.Track.Decay))
+		}
+		if e := c.Track.Edge[p]; e < 0 || e > 1 {
+			t.Errorf("pitch %d: edge %g", c.Track.From+p, e)
+		}
 		if d, g := c.Track.Decay[p], c.Track.Damping[p]; !(d > 0.3 && d < 120 && g >= -minDamping && g <= 0.7) {
 			t.Errorf("pitch %d: decay %g damping %g", c.Track.From+p, d, g)
 		}
@@ -120,5 +126,54 @@ func TestDampingBelowZero(t *testing.T) {
 	}
 	if math.Abs(further-open) > 0.01 {
 		t.Errorf("below -1/9 the loop filter takes nothing, the sound is the same: %.2f and %.2f dB", open, further)
+	}
+}
+
+// the sharp pluck starts with more of its top partials, and is as loud: the Edge is a matter of the timbre alone
+func TestEdgeOfThePluck(t *testing.T) {
+	note := func(edge float64) (high, level float64) {
+		cfg := Guitar()
+		cfg.BodyMix = 0
+		cfg.Edge = edge
+		sameNoise()
+		v := New(cfg)
+		v.NoteOn(1, psalm.Message{"pitch": 55.0, "velocity": 0.65}, psalm.CtrlTick{}, v.Config())
+		x := run(v, 0.3)[int(0.005*sr()) : int(0.05*sr())]
+		y := x
+		for range 2 { // two first differences: what is above a few kHz
+			d := make([]float64, len(y)-1)
+			for i := range d {
+				d[i] = y[i+1] - y[i]
+			}
+			y = d
+		}
+		return 10 * math.Log10(rms(y)/rms(x)), 10 * math.Log10(rms(x))
+	}
+	h0, l0 := note(0)
+	h1, l1 := note(0.8)
+	if h1 < h0+3 {
+		t.Errorf("the top partials at the start: %.1f dB at edge 0, %.1f at 0.8: they should be more", h0, h1)
+	}
+	if math.Abs(l1-l0) > 3 {
+		t.Errorf("the level of the start: %.1f dB at edge 0, %.1f at 0.8", l0, l1)
+	}
+}
+
+// a track with an edge table moves the edge from the settings' by the distance of the pitch to the reference
+func TestKeyTrackEdge(t *testing.T) {
+	var none *KeyTrack
+	if none.EdgeAt(60) != 0 || (&KeyTrack{}).EdgeAt(60) != 0 {
+		t.Error("no table: the edge is 0")
+	}
+	k := &KeyTrack{From: 40, Ref: 41, Decay: []float64{1, 1, 1}, Damping: []float64{0, 0, 0}, Edge: []float64{0.2, 0.4, 0.8}}
+	if math.Abs(k.EdgeAt(41.5)-0.6) > 1e-9 || k.EdgeAt(90) != 0.8 {
+		t.Errorf("edge at 41.5 %g, above the table %g", k.EdgeAt(41.5), k.EdgeAt(90))
+	}
+	cfg := Guitar()
+	cfg.Track, cfg.Edge = k, 0.4
+	v := New(cfg)
+	v.NoteOn(1, psalm.Message{"pitch": 42.0, "velocity": 0.65}, psalm.CtrlTick{}, v.Config())
+	if d := v.keyEdge(); math.Abs(d-0.4) > 1e-6 {
+		t.Errorf("a semitone above the reference the edge goes up by %g, want 0.4", d)
 	}
 }

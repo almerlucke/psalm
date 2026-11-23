@@ -15,6 +15,10 @@ left out too. Per note: the onset, the pitch of the fundamental, and
   b80 ... b5120  the same for the octave bands 80-160 Hz, 160-320, ... 5120-10240 Hz: the energy of the
              band against all (dB)
 
+  e80 ... e5120  the octave bands of the start of the note: the same shares for 2048 samples (46 ms at 44.1 kHz)
+             from 5 ms after the attack (found to a millisecond: the first of the frames of 1 ms that has 1% of
+             the power of the loudest of the 60 ms from it). The pluck is loud, so the noise does not matter here
+
   margin_db  the energy above 2 kHz against that of the noise floor of the recording, in dB: near 0 the
              high_db and the bands above 1280 Hz are the hiss of the recording, not the guitar
 
@@ -104,12 +108,23 @@ for j, t in enumerate(on):
     tot = sum(net[k0:top])
     hi = sum(net[int(2000 * N / sr):top])
     margin = 10 * math.log10(sum(x * x for x in mag[int(2000 * N / sr):top]) / sum(noise_f[int(2000 * N / sr):top]) + 1e-12)
+    # the start of the note
+    s0 = int((t - 0.03) * sr)
+    fr = [sum(v * v for v in a[s0 + q * (sr // 1000):s0 + (q + 1) * (sr // 1000)]) for q in range(100)]
+    top_fr = max(fr[:60])
+    o = s0 + next(q for q, v in enumerate(fr) if v > 0.01 * top_fr) * (sr // 1000)
+    NE = 2048
+    he = [0.5 - 0.5 * math.cos(2 * math.pi * q / NE) for q in range(NE)]
+    FE = fft([a[o + int(0.005 * sr) + q] * he[q] for q in range(NE)])
+    pe = [abs(FE[q]) ** 2 for q in range(NE // 2)]
+    tote = sum(pe[int(80 * NE / sr):int(10240 * NE / sr)])
+    early = [10 * math.log10(sum(pe[int(lo * NE / sr):int(2 * lo * NE / sr)]) / tote + 1e-12) for lo in EDGES]
     drop = (level(t + 0.3, t + 0.5) - level(t + 2.0, t + 2.2)) / 1.7
     bands = [10 * math.log10(sum(net[int(lo * N / sr):int(2 * lo * N / sr)]) / tot + 1e-12) for lo in EDGES]
-    rows.append((t, f, round(m), (m - round(m)) * 100, level(t + 0.3, t + 0.5), drop, 10 * math.log10(hi / tot + 1e-12)) + tuple(bands) + (margin,))
+    rows.append((t, f, round(m), (m - round(m)) * 100, level(t + 0.3, t + 0.5), drop, 10 * math.log10(hi / tot + 1e-12)) + tuple(bands) + (margin,) + tuple(early))
 
 with open(out, 'w') as fh:
-    fh.write('onset_s,hz,pitch,cents,level_db,drop_dbps,high_db,' + ','.join('b%d' % e for e in EDGES) + ',margin_db\n')
+    fh.write('onset_s,hz,pitch,cents,level_db,drop_dbps,high_db,' + ','.join('b%d' % e for e in EDGES) + ',margin_db,' + ','.join('e%d' % e for e in EDGES) + '\n')
     for r in rows:
-        fh.write('%.2f,%.2f,%d,%.0f,%.1f,%.2f,%.1f' % r[:7] + ',%.1f' * (len(EDGES) + 1) % r[7:] + '\n')
+        fh.write('%.2f,%.2f,%d,%.0f,%.1f,%.2f,%.1f' % r[:7] + ',%.1f' * (2 * len(EDGES) + 1) % r[7:] + '\n')
 print(len(rows), 'notes ->', out, '(noise floor %.1f dB rms)' % (10 * math.log10(noise_t)))

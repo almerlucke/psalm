@@ -13,6 +13,9 @@ type KeyTrack struct {
 	Ref     int       // the pitch the settings of the string hold at
 	Decay   []float64 // seconds the string rings at 220 Hz at each pitch
 	Damping []float64 // the damping at each pitch
+	// Edge is the Edge of the pluck at each pitch (see Config.Edge), as the other tables from From up; none (or
+	// empty) leaves the pluck as the settings have it
+	Edge []float64
 }
 
 // at returns the table between its semitones (in the logarithm of the decay), and clamps outside it
@@ -38,6 +41,14 @@ func (k *KeyTrack) DecayAt(pitch float64) float64 { return k.at(k.Decay, pitch, 
 // DampingAt is the damping at a pitch
 func (k *KeyTrack) DampingAt(pitch float64) float64 { return k.at(k.Damping, pitch, false) }
 
+// EdgeAt is the Edge of the pluck at a pitch (0 without the table)
+func (k *KeyTrack) EdgeAt(pitch float64) float64 {
+	if k == nil || len(k.Edge) == 0 {
+		return 0
+	}
+	return k.at(k.Edge, pitch, false)
+}
+
 // of returns what the settings of the string at the reference pitch become at a pitch: the distance to
 // add to the damping and the factor for the decay. A track without tables changes nothing
 func (k *KeyTrack) of(pitch float64) (damping, decay float64) {
@@ -54,4 +65,14 @@ func (v *Voice) keyTrack() (damping, decay float64) {
 		return 0, 1
 	}
 	return v.cfg.Track.of(69 + 12*math.Log2(v.freq/440))
+}
+
+// keyEdge is the distance to add to the Edge of the pluck for the note it plays: the table's at the pitch against
+// its value at the reference pitch
+func (v *Voice) keyEdge() float64 {
+	k := v.cfg.Track
+	if k == nil || len(k.Edge) == 0 {
+		return 0
+	}
+	return k.EdgeAt(69+12*math.Log2(v.freq/440)) - k.EdgeAt(float64(k.Ref))
 }

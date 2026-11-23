@@ -202,6 +202,7 @@ func smooth(x []float64, width int) []float64 {
 func main() {
 	doFit := flag.Bool("fit", false, "find the decay and the damping per pitch and write the table")
 	onlyResolved := flag.Bool("resolved", false, "with -fit: fit the brightness only where the notes of the recording are over its noise (see reference.Note.Margin), with a damping below 0 allowed; the other pitches keep the table the ownGuitar preset has")
+	early := flag.Bool("early", false, "with -fit: fit the start of the notes too: the edge of the pluck to the first 50 ms, the damping to the band 640-1280 Hz of the ring, the decay to the fall; writes the Edge table as well")
 	out := flag.String("out", "synths/waveguide/keytrack_own.go", "with -fit: the file to write")
 	name := flag.String("var", "ownTrack", "with -fit: the name of the KeyTrack in the file")
 	chain := flag.Bool("chain", false, "measure the whole chain: the string, the measured body and the tone")
@@ -212,6 +213,11 @@ func main() {
 
 	if *chain {
 		compareChain(*irFile, *tune)
+		return
+	}
+
+	if *doFit && *early {
+		fitEarly(*out, *name)
 		return
 	}
 

@@ -73,6 +73,7 @@ type Config struct {
 	BodyCoupling  float64 // 0-1: the bridge gives way to the body's modes, so the string loses energy there and the body hands some back
 	TensionMod    float64 // 0-1: a hard pluck stretches the string: the pitch starts sharp and glides down (the twang)
 	PluckWidth    float64 // 0-0.2 of the string: the width of the finger or the pick that pulls it (0 is the plain noise burst of Brightness)
+	Edge          float64 // 0-1: the pluck's top partials against its low ones (0 the string pulled aside, as smooth as it is; 1 a sharp pull, the partials falling slowly): a real pluck starts brighter than the string pulled aside is
 	Plectrum      float64 // 0-1: the pluck, from a soft finger to a hard pick (the width of the contact, the release, a click)
 	FretNoise     float64 // 0-1: the finger or the pick on the string at the start of a note
 	FretBuzz      float64 // 0-1: the action, from high (0, off) to so low that the string hits the fret while it swings: a stiff one-sided spring and damper at the fret
@@ -384,6 +385,7 @@ func (v *Voice) receive(msg psalm.Message) {
 	msg.IfFltVal("bodyCoupling", func(f float64) { v.cfg.BodyCoupling = f })
 	msg.IfFltVal("tensionMod", func(f float64) { v.cfg.TensionMod = f })
 	msg.IfFltVal("pluckWidth", func(f float64) { v.cfg.PluckWidth = f })
+	msg.IfFltVal("edge", func(f float64) { v.cfg.Edge = f })
 	msg.IfFltVal("plectrum", func(f float64) { v.cfg.Plectrum = f })
 	msg.IfFltVal("fretNoise", func(f float64) { v.cfg.FretNoise = f })
 	msg.IfFltVal("fretBuzz", func(f float64) { v.cfg.FretBuzz = f })
@@ -514,6 +516,12 @@ func (v *Voice) fillStatic() {
 // loss of the high partials that real strings do not all have; at -1/9 it takes nothing
 const minDamping = 1.0 / 9
 
+// edgeSpan is the part of the loop (1/edgeSpan) the Edge of the pluck takes its difference over
+const edgeSpan = 40
+
+// edgeReach is how many times higher the lowpass of the pluck goes at the full Edge
+const edgeReach = 3
+
 // setLoss sets the loop filter and the gain per loop for a damping and the seconds of decay at 220 Hz
 func (v *Voice) setLoss(damping, decay float64) {
 	sr := v.Config().SampleRate
@@ -581,9 +589,11 @@ func (v *Voice) pluck() {
 	}
 	ex := v.excite[:n+1]
 	bright := max(0, min(cfg.Brightness+v.mods.Mod(dBrightness)+0.4*(v.velocity-0.5)+0.4*cfg.Plectrum, 1))
-	coef := math.Exp(-2 * math.Pi * min(f*(1+60*bright*bright), sr/3) / sr) // the pluck's lowpass, 12 dB/oct
+	edge := max(0, min(cfg.Edge+v.keyEdge(), 1))
+	// the pluck's lowpass, 12 dB/oct: a sharp pull reaches higher in the spectrum too
+	coef := math.Exp(-2 * math.Pi * min(f*(1+60*bright*bright)*(1+edgeReach*edge), sr/3) / sr)
 	pick := max(0, min(cfg.PickPosition+v.mods.Mod(dPickPosition), 0.5))
-	peak := 0.0
+	peak, edgePeak := 0.0, 0.0
 	if cfg.PluckWidth > 0 {
 		// a string pulled aside: the triangle held at the pick, rounded by the contact, then the
 		// lowpass of the pluck; a pick clicks as it lets go
@@ -599,6 +609,30 @@ func (v *Voice) pluck() {
 			}
 		}
 		ex[n] = ex[0]
+		if edge > 0 {
+			// the sharp pull: what the string pulled aside lacks in its top partials. A difference over a
+			// fortieth of the loop, twice (a rise in the number of the partial, whatever the pitch, as far as
+			// its twentieth or so), as far as the Edge goes. The pluck keeps the energy it had: the string is
+			// as loud as it was
+			before := energy(ex[:n])
+			for _, x := range ex[:n] {
+				edgePeak = max(edgePeak, math.Abs(x))
+			}
+			d := max(1, int(math.Round(float64(n)/edgeSpan)))
+			for range 2 {
+				v.comb = append(v.comb[:0], ex[:n]...)
+				for i := range n {
+					ex[i] = v.comb[i] - edge*v.comb[(i-d+n)%n]
+				}
+			}
+			if after := energy(ex[:n]); after > 0 {
+				g := math.Sqrt(before / after)
+				for i := range n {
+					ex[i] *= g
+				}
+			}
+			ex[n] = ex[0]
+		}
 		if click := 0.12 * cfg.Plectrum * cfg.Plectrum * bright; click > 0 {
 			lp, lp2 = 0, 0
 			for i := range n {
@@ -655,6 +689,10 @@ func (v *Voice) pluck() {
 		for _, x := range ex {
 			peak = max(peak, math.Abs(x))
 		}
+	}
+	if edgePeak > 0 {
+		// the peak of the pluck without the Edge sets the level: the sharp one is peakier, and as loud
+		peak = edgePeak
 	}
 	if peak > 0 {
 		g := 1 / peak
@@ -1428,4 +1466,13 @@ func bowReversal(t, period, ramp float64) float64 {
 		f = min(f, x/ramp)
 	}
 	return dir * f
+}
+
+// energy is the sum of the squares of x
+func energy(x []float64) float64 {
+	e := 0.0
+	for _, s := range x {
+		e += s * s
+	}
+	return e
 }

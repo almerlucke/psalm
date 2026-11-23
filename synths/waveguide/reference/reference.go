@@ -35,6 +35,8 @@ type Note struct {
 	// bands of the note are the hiss, which is taken out of the measures, and what is left of them is at most
 	// about the noise: an upper bound, not a measure of the guitar
 	Margin float64
+	// Early is the octave bands of the start of the note, 2048 samples from 5 ms after the attack (EarlyBandShares)
+	Early [NumBands]float64
 }
 
 // NumBands octave bands, from 80 Hz up: 80-160, 160-320 ... 5120-10240
@@ -64,6 +66,9 @@ func Notes() []Note {
 			copy(n.Bands[:], v[7:7+NumBands])
 			if len(v) > 7+NumBands {
 				n.Margin = v[7+NumBands]
+			}
+			if len(v) >= 8+2*NumBands {
+				copy(n.Early[:], v[8+NumBands:8+2*NumBands])
 			}
 			notes = append(notes, n)
 		}
@@ -216,4 +221,76 @@ func BandShares(x []float64, sr float64) [NumBands]float64 {
 		out[i] = 10 * math.Log10(e/total+1e-12)
 	}
 	return out
+}
+
+// EarlyBandShares is the level of each octave band (BandEdges) against all energy from 80 Hz to 10240 Hz in dB, for the
+// start of a note: 2048 samples from 5 ms after its attack, Hann windowed. The attack is found as measure.py finds
+// it: the first frame of 1 ms with 1% of the power of the loudest frame of the 60 ms from there. x starts at most
+// 30 ms before the note and holds at least 100 ms
+func EarlyBandShares(x []float64, sr float64) [NumBands]float64 {
+	const n = 2048
+	frame := int(sr / 1000)
+	power := func(i int) float64 {
+		e := 0.0
+		for _, s := range x[i*frame : (i+1)*frame] {
+			e += s * s
+		}
+		return e
+	}
+	top := 0.0
+	for i := range 60 {
+		top = max(top, power(i))
+	}
+	start := 0
+	for i := range 100 {
+		if power(i) > 0.01*top {
+			start = i * frame
+			break
+		}
+	}
+	start += int(0.005 * sr)
+	seg := make([]float64, n)
+	w := fft.HannWindow(n)
+	for i := range seg {
+		seg[i] = x[start+i] * w[i]
+	}
+	re, im := make([]float64, n/2+1), make([]float64, n/2+1)
+	fft.NewReal(n).Forward(seg, re, im)
+	bin := func(hz float64) int { return int(hz * n / sr) }
+	energy := func(lo, hi float64) float64 {
+		e := 0.0
+		for k := bin(lo); k < bin(hi); k++ {
+			e += re[k]*re[k] + im[k]*im[k]
+		}
+		return e
+	}
+	total := energy(BandEdges[0], 2*BandEdges[NumBands-1])
+	var out [NumBands]float64
+	for i, lo := range BandEdges {
+		out[i] = 10 * math.Log10(energy(lo, 2*lo)/total+1e-12)
+	}
+	return out
+}
+
+// EarlyHigh is the share of the energy above 1280 Hz in the start of a note (the three top bands of Early, in dB):
+// what the Edge of the pluck brings
+func EarlyHigh(b [NumBands]float64) float64 {
+	e := 0.0
+	for _, x := range b[4:] {
+		e += math.Pow(10, x/10)
+	}
+	return 10 * math.Log10(e + 1e-12)
+}
+
+// TargetEarlyHigh is EarlyHigh of the real guitar at a pitch: the mean over the notes around it, three semitones
+// wide as for TargetHigh
+func TargetEarlyHigh(pitch float64) float64 {
+	sum, weight := 0.0, 0.0
+	for _, n := range Notes() {
+		d := (float64(n.Pitch) - pitch) / 3
+		w := math.Exp(-d * d / 2)
+		sum += w * EarlyHigh(n.Early)
+		weight += w
+	}
+	return sum / math.Max(weight, 1e-9)
 }
