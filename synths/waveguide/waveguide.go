@@ -1528,9 +1528,10 @@ func energy(x []float64) float64 {
 
 // touchRef is the velocity the settings of a pluck hold at, touchEdge how far the Edge of the pluck goes up with
 // the velocity at the full Touch (per unit of velocity)
+// (0.2: for a player of GuitarSet a note 10 dB louder is 1.5 dB brighter in its first 50 ms, not 10)
 const (
 	touchRef  = 0.65
-	touchEdge = 0.8
+	touchEdge = 0.2
 )
 
 // velocityGain is the loudness of a pluck at a velocity: 0.3 + 0.7 v, a range of 7 dB from 0.2 to 1, and at the full

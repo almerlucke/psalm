@@ -265,7 +265,7 @@ func TestTouchOfThePluck(t *testing.T) {
 		}
 		return 10 * math.Log10(rms(y)/rms(x))
 	}
-	if soft, hard := high(0.3), high(1); hard < soft+3 {
+	if soft, hard := high(0.3), high(1); hard < soft+1 {
 		t.Errorf("the top partials at the start: %.1f dB at velocity 0.3, %.1f at 1: a harder pluck should be sharper", soft, hard)
 	}
 }
