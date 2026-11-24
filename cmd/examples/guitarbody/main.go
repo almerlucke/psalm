@@ -9,7 +9,7 @@
 //	go run ./cmd/examples/guitarbody -blend 0     the guitar as it is, with the resonators of its own
 //	go run ./cmd/examples/guitarbody -ir          the string through the measured body alone
 //	go run ./cmd/examples/guitarbody -blend 0.3   less of the measured body (0 is the resonators alone, 1 the measured alone)
-//	go run ./cmd/examples/guitarbody -piece       a miniature (chords and a melody) instead of random plucks (all of these take it)
+//	go run ./cmd/examples/guitarbody -piece       a piece of one minute (fingerpicking, a melody, strummed chords) instead of random plucks (all of these take it)
 //	go run ./cmd/examples/guitarbody -render      write guitarbody.wav, guitarbody-ir.wav and guitarbody-blend.wav (60 s each) and stop
 //
 // The body is the response of that guitar: taps of a finger (averaged: the response below 600 Hz) and of a harder
@@ -31,7 +31,6 @@ import (
 	"github.com/almerlucke/psalm/audio"
 	paengine "github.com/almerlucke/psalm/audio/portaudio"
 	"github.com/almerlucke/psalm/cmd/internal/guitartone"
-	"github.com/almerlucke/psalm/modules/controls/score"
 	"github.com/almerlucke/psalm/modules/controls/templ"
 	"github.com/almerlucke/psalm/modules/controls/timer"
 	"github.com/almerlucke/psalm/modules/effects/convolver"
@@ -57,7 +56,7 @@ func main() {
 	wetTrim := flag.Float64("wettrim", -1.5, "with -blend: the level (dB) of the measured body next to the resonators: a response with much low end (the taps) wants less")
 	only := flag.String("only", "", "with -render: write only this version (own, ir or blend)")
 	guitarName := flag.String("guitar", "ownGuitar", "the waveguide preset of the strings (ownGuitar is fitted to the recording of this guitar)")
-	piece := flag.Bool("piece", false, "play a miniature, eight bars in E minor, instead of random plucks")
+	piece := flag.Bool("piece", false, "play a piece of one minute in E minor (fingerpicked, then strummed) instead of random plucks")
 	render := flag.Bool("render", false, "write the three versions (own body, measured body, both) to wav files and stop")
 	flag.Parse()
 
@@ -110,7 +109,7 @@ func patch(guitar string, measured *waveguide.Measured, level, ring float64, ton
 
 	bpm := 100.0
 	if piece {
-		bpm = 76
+		bpm = pieceBPM
 	}
 	psalm.PushConfig(psalm.Config{
 		BPM:        bpm,
@@ -130,7 +129,7 @@ func patch(guitar string, measured *waveguide.Measured, level, ring float64, ton
 	cfg.Release *= 2.5 // a string let go goes on ringing a little
 	cfg.Decay *= ring
 	cfg.Measured = measured
-	var out psalm.Modular = waveguide.NewPoly(cfg, 16).AddTo(p)
+	var out psalm.Modular = waveguide.NewPoly(cfg, 24).AddTo(p)
 	if piece {
 		play(p, out)
 	} else {
@@ -152,56 +151,5 @@ func pluck(p *psalm.Psalm, guitars ...psalm.Modular) {
 	}).ValueIn(timer.New(random(0.5*ppq, 0.5*ppq, ppq, -0.5*ppq, 1.5*ppq)).AddTo(p))
 	for _, g := range guitars {
 		g.ValueIn(trigger)
-	}
-}
-
-// play is a miniature: eight bars in E minor, a chord strummed on the first beat of each bar with a
-// melody over it, played again and again. The chords are open guitar chords, low string first
-func play(p *psalm.Psalm, guitars ...psalm.Modular) {
-	em := []float64{40, 47, 52, 55, 59, 64}
-	c := []float64{48, 52, 55, 60, 64}
-	g := []float64{43, 47, 50, 55, 59, 67}
-	d := []float64{50, 57, 62, 66}
-	am := []float64{45, 52, 57, 60, 64}
-	b7 := []float64{47, 51, 57, 59, 66}
-
-	// a chord rings the whole bar (the last one the whole two), and goes on ringing when let go
-	chord := func(pitches []float64, bars float64) score.Note {
-		n := score.Chord(pitches, 4*bars)
-		n.Hold = 4 * bars
-		return n
-	}
-	chords := []score.Note{chord(em, 1), chord(c, 1), chord(g, 1), chord(d, 1), chord(em, 1), chord(am, 1), chord(b7, 1), chord(em, 2)}
-
-	// the melody: a note rings a bit longer than it is long
-	note := func(pitch, beats float64) score.Note {
-		n := score.N(pitch, beats)
-		n.Hold = beats * 1.6
-		return n
-	}
-	melody := []score.Note{
-		note(71, 1.5), note(67, 0.5), note(64, 2), // Em
-		note(67, 1), note(64, 1), note(72, 1.5), note(71, 0.5), // C
-		note(74, 1.5), note(71, 0.5), note(67, 2), // G
-		note(66, 1), note(69, 1), note(74, 2), // D
-		note(71, 1), note(76, 1), note(74, 1), note(71, 1), // Em
-		note(72, 1.5), note(69, 0.5), note(64, 2), // Am
-		note(63, 1), note(66, 1), note(69, 1), note(71, 1), // B7
-		note(64, 4), score.Rest(4), // Em, and the last chord rings alone
-	}
-
-	for _, part := range []psalm.Modular{
-		score.NewSequencer(chords, score.Config{
-			Amp: 0.5, Velocity: 0.55, Loop: true,
-			Feel: score.Feel{Strum: 38, Timing: 6, Velocity: 0.08, Seed: 3},
-		}).AddTo(p),
-		score.NewSequencer(melody, score.Config{
-			Amp: 0.62, Velocity: 0.75, Loop: true,
-			Feel: score.Feel{Timing: 8, Velocity: 0.1, Seed: 5},
-		}).AddTo(p),
-	} {
-		for _, g := range guitars {
-			g.ValueIn(part)
-		}
 	}
 }

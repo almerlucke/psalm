@@ -3,7 +3,7 @@
 package waveguide
 
 // ownTrack is how the strings of the guitar of the reference are plucked and die, at each pitch (see cmd/tools/guitarcompare: -fit -early -var ownTrack -out synths/waveguide/keytrack_own.go).
-// The edge of the pluck is fitted to the start of the notes, the damping (where the recording tells it: the notes over its noise) to the brightness of the ring, the decay to the fall of the level
+// The edge of the pluck is fitted to the start of the notes (and shaped by ear: the low strings have a floor, the high ones less, see shapeEdge), the damping (where the recording tells it: the notes over its noise) to the brightness of the ring, the decay to the fall of the level
 var ownTrack = &KeyTrack{
 	From: 36, Ref: 57,
 	Decay: []float64{
@@ -36,10 +36,10 @@ var ownTrack = &KeyTrack{
 		12.144,  // 62: 293.7 Hz, to fall 12.6 dB/s
 		13.572,  // 63: 311.1 Hz, to fall 12.9 dB/s
 		18.398,  // 64: 329.6 Hz, to fall 13.4 dB/s
-		33.416,  // 65: 349.2 Hz, to fall 14.2 dB/s
+		33.221,  // 65: 349.2 Hz, to fall 14.2 dB/s
 		17.050,  // 66: 370.0 Hz, to fall 15.2 dB/s
 		12.002,  // 67: 392.0 Hz, to fall 16.1 dB/s
-		11.794,  // 68: 415.3 Hz, to fall 16.3 dB/s
+		11.863,  // 68: 415.3 Hz, to fall 16.3 dB/s
 		13.492,  // 69: 440.0 Hz, to fall 16.1 dB/s
 		13.572,  // 70: 466.2 Hz, to fall 15.7 dB/s
 		14.139,  // 71: 493.9 Hz, to fall 15.5 dB/s
@@ -85,13 +85,13 @@ var ownTrack = &KeyTrack{
 		0.192,  // 60
 		0.321,  // 61
 		0.450,  // 62
-		0.360,  // 63
-		0.269,  // 64
-		0.227,  // 65
+		0.361,  // 63
+		0.272,  // 64
+		0.229,  // 65
 		0.700,  // 66
 		0.700,  // 67
-		0.100,  // 68
-		0.057,  // 69
+		0.101,  // 68
+		0.058,  // 69
 		0.016,  // 70
 		-0.025, // 71
 		-0.026, // 72
@@ -109,54 +109,54 @@ var ownTrack = &KeyTrack{
 		-0.032, // 84
 	},
 	Edge: []float64{
-		0.414, // 36: to be -12 dB above 1280 Hz at the start
-		0.427, // 37: to be -12 dB above 1280 Hz at the start
-		0.441, // 38: to be -13 dB above 1280 Hz at the start
-		0.461, // 39: to be -15 dB above 1280 Hz at the start
-		0.366, // 40: to be -17 dB above 1280 Hz at the start
-		0.264, // 41: to be -19 dB above 1280 Hz at the start
-		0.171, // 42: to be -22 dB above 1280 Hz at the start
-		0.072, // 43: to be -23 dB above 1280 Hz at the start
-		0.000, // 44: to be -25 dB above 1280 Hz at the start
-		0.000, // 45: to be -25 dB above 1280 Hz at the start
-		0.000, // 46: to be -25 dB above 1280 Hz at the start
-		0.000, // 47: to be -25 dB above 1280 Hz at the start
-		0.000, // 48: to be -25 dB above 1280 Hz at the start
-		0.000, // 49: to be -25 dB above 1280 Hz at the start
-		0.047, // 50: to be -25 dB above 1280 Hz at the start
-		0.080, // 51: to be -25 dB above 1280 Hz at the start
-		0.100, // 52: to be -25 dB above 1280 Hz at the start
-		0.100, // 53: to be -25 dB above 1280 Hz at the start
-		0.115, // 54: to be -25 dB above 1280 Hz at the start
-		0.101, // 55: to be -24 dB above 1280 Hz at the start
-		0.123, // 56: to be -24 dB above 1280 Hz at the start
-		0.180, // 57: to be -23 dB above 1280 Hz at the start
-		0.281, // 58: to be -21 dB above 1280 Hz at the start
-		0.380, // 59: to be -19 dB above 1280 Hz at the start
-		0.471, // 60: to be -17 dB above 1280 Hz at the start
-		0.545, // 61: to be -15 dB above 1280 Hz at the start
-		0.597, // 62: to be -14 dB above 1280 Hz at the start
-		0.628, // 63: to be -13 dB above 1280 Hz at the start
-		0.644, // 64: to be -13 dB above 1280 Hz at the start
-		0.649, // 65: to be -13 dB above 1280 Hz at the start
-		0.652, // 66: to be -13 dB above 1280 Hz at the start
-		0.656, // 67: to be -12 dB above 1280 Hz at the start
-		0.661, // 68: to be -12 dB above 1280 Hz at the start
-		0.674, // 69: to be -11 dB above 1280 Hz at the start
-		0.696, // 70: to be -10 dB above 1280 Hz at the start
-		0.723, // 71: to be -8 dB above 1280 Hz at the start
-		0.748, // 72: to be -7 dB above 1280 Hz at the start
-		0.773, // 73: to be -6 dB above 1280 Hz at the start
-		0.796, // 74: to be -5 dB above 1280 Hz at the start
-		0.817, // 75: to be -4 dB above 1280 Hz at the start
-		0.831, // 76: to be -3 dB above 1280 Hz at the start
-		0.849, // 77: to be -2 dB above 1280 Hz at the start
-		0.871, // 78: to be -2 dB above 1280 Hz at the start
-		0.889, // 79: to be -2 dB above 1280 Hz at the start
-		0.905, // 80: to be -1 dB above 1280 Hz at the start
-		0.922, // 81: to be -1 dB above 1280 Hz at the start
-		0.934, // 82: to be -1 dB above 1280 Hz at the start
-		0.938, // 83: to be -1 dB above 1280 Hz at the start
-		0.942, // 84: to be -1 dB above 1280 Hz at the start
+		0.414, // 36: the real notes are -12 dB above 1280 Hz at the start
+		0.427, // 37: the real notes are -12 dB above 1280 Hz at the start
+		0.441, // 38: the real notes are -13 dB above 1280 Hz at the start
+		0.461, // 39: the real notes are -15 dB above 1280 Hz at the start
+		0.366, // 40: the real notes are -17 dB above 1280 Hz at the start
+		0.264, // 41: the real notes are -19 dB above 1280 Hz at the start
+		0.250, // 42: the real notes are -22 dB above 1280 Hz at the start
+		0.250, // 43: the real notes are -23 dB above 1280 Hz at the start
+		0.250, // 44: the real notes are -25 dB above 1280 Hz at the start
+		0.250, // 45: the real notes are -25 dB above 1280 Hz at the start
+		0.250, // 46: the real notes are -25 dB above 1280 Hz at the start
+		0.250, // 47: the real notes are -25 dB above 1280 Hz at the start
+		0.250, // 48: the real notes are -25 dB above 1280 Hz at the start
+		0.225, // 49: the real notes are -25 dB above 1280 Hz at the start
+		0.200, // 50: the real notes are -25 dB above 1280 Hz at the start
+		0.175, // 51: the real notes are -25 dB above 1280 Hz at the start
+		0.150, // 52: the real notes are -25 dB above 1280 Hz at the start
+		0.125, // 53: the real notes are -25 dB above 1280 Hz at the start
+		0.115, // 54: the real notes are -25 dB above 1280 Hz at the start
+		0.101, // 55: the real notes are -24 dB above 1280 Hz at the start
+		0.120, // 56: the real notes are -24 dB above 1280 Hz at the start
+		0.171, // 57: the real notes are -23 dB above 1280 Hz at the start
+		0.260, // 58: the real notes are -21 dB above 1280 Hz at the start
+		0.342, // 59: the real notes are -19 dB above 1280 Hz at the start
+		0.413, // 60: the real notes are -17 dB above 1280 Hz at the start
+		0.463, // 61: the real notes are -15 dB above 1280 Hz at the start
+		0.493, // 62: the real notes are -14 dB above 1280 Hz at the start
+		0.503, // 63: the real notes are -13 dB above 1280 Hz at the start
+		0.500, // 64: the real notes are -13 dB above 1280 Hz at the start
+		0.489, // 65: the real notes are -13 dB above 1280 Hz at the start
+		0.491, // 66: the real notes are -13 dB above 1280 Hz at the start
+		0.494, // 67: the real notes are -12 dB above 1280 Hz at the start
+		0.497, // 68: the real notes are -12 dB above 1280 Hz at the start
+		0.507, // 69: the real notes are -11 dB above 1280 Hz at the start
+		0.522, // 70: the real notes are -10 dB above 1280 Hz at the start
+		0.542, // 71: the real notes are -8 dB above 1280 Hz at the start
+		0.561, // 72: the real notes are -7 dB above 1280 Hz at the start
+		0.579, // 73: the real notes are -6 dB above 1280 Hz at the start
+		0.597, // 74: the real notes are -5 dB above 1280 Hz at the start
+		0.612, // 75: the real notes are -4 dB above 1280 Hz at the start
+		0.623, // 76: the real notes are -3 dB above 1280 Hz at the start
+		0.637, // 77: the real notes are -2 dB above 1280 Hz at the start
+		0.653, // 78: the real notes are -2 dB above 1280 Hz at the start
+		0.667, // 79: the real notes are -2 dB above 1280 Hz at the start
+		0.679, // 80: the real notes are -1 dB above 1280 Hz at the start
+		0.691, // 81: the real notes are -1 dB above 1280 Hz at the start
+		0.701, // 82: the real notes are -1 dB above 1280 Hz at the start
+		0.704, // 83: the real notes are -1 dB above 1280 Hz at the start
+		0.706, // 84: the real notes are -1 dB above 1280 Hz at the start
 	},
 }
