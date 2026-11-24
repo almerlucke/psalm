@@ -36,9 +36,9 @@ var ownTrack = &KeyTrack{
 		12.144,  // 62: 293.7 Hz, to fall 12.6 dB/s
 		13.572,  // 63: 311.1 Hz, to fall 12.9 dB/s
 		18.398,  // 64: 329.6 Hz, to fall 13.4 dB/s
-		33.221,  // 65: 349.2 Hz, to fall 14.2 dB/s
-		14.305,  // 66: 370.0 Hz, to fall 15.2 dB/s
-		10.553,  // 67: 392.0 Hz, to fall 16.1 dB/s
+		33.416,  // 65: 349.2 Hz, to fall 14.2 dB/s
+		17.050,  // 66: 370.0 Hz, to fall 15.2 dB/s
+		12.002,  // 67: 392.0 Hz, to fall 16.1 dB/s
 		11.794,  // 68: 415.3 Hz, to fall 16.3 dB/s
 		13.492,  // 69: 440.0 Hz, to fall 16.1 dB/s
 		13.572,  // 70: 466.2 Hz, to fall 15.7 dB/s
@@ -54,7 +54,7 @@ var ownTrack = &KeyTrack{
 		13.103,  // 80: 830.6 Hz, to fall 19.5 dB/s
 		12.800,  // 81: 880.0 Hz, to fall 19.5 dB/s
 		12.504,  // 82: 932.3 Hz, to fall 19.5 dB/s
-		12.431,  // 83: 987.8 Hz, to fall 19.5 dB/s
+		12.359,  // 83: 987.8 Hz, to fall 19.5 dB/s
 		9.170,   // 84: 1046.5 Hz, to fall 19.5 dB/s
 	},
 	Damping: []float64{
@@ -85,13 +85,13 @@ var ownTrack = &KeyTrack{
 		0.192,  // 60
 		0.321,  // 61
 		0.450,  // 62
-		0.358,  // 63
-		0.266,  // 64
-		0.224,  // 65
-		0.183,  // 66
-		0.141,  // 67
+		0.360,  // 63
+		0.269,  // 64
+		0.227,  // 65
+		0.700,  // 66
+		0.700,  // 67
 		0.100,  // 68
-		0.058,  // 69
+		0.057,  // 69
 		0.016,  // 70
 		-0.025, // 71
 		-0.026, // 72
@@ -134,23 +134,23 @@ var ownTrack = &KeyTrack{
 		0.281, // 58: to be -21 dB above 1280 Hz at the start
 		0.380, // 59: to be -19 dB above 1280 Hz at the start
 		0.471, // 60: to be -17 dB above 1280 Hz at the start
-		0.544, // 61: to be -15 dB above 1280 Hz at the start
-		0.596, // 62: to be -14 dB above 1280 Hz at the start
-		0.627, // 63: to be -13 dB above 1280 Hz at the start
-		0.642, // 64: to be -13 dB above 1280 Hz at the start
-		0.648, // 65: to be -13 dB above 1280 Hz at the start
-		0.650, // 66: to be -13 dB above 1280 Hz at the start
-		0.655, // 67: to be -12 dB above 1280 Hz at the start
-		0.660, // 68: to be -12 dB above 1280 Hz at the start
+		0.545, // 61: to be -15 dB above 1280 Hz at the start
+		0.597, // 62: to be -14 dB above 1280 Hz at the start
+		0.628, // 63: to be -13 dB above 1280 Hz at the start
+		0.644, // 64: to be -13 dB above 1280 Hz at the start
+		0.649, // 65: to be -13 dB above 1280 Hz at the start
+		0.652, // 66: to be -13 dB above 1280 Hz at the start
+		0.656, // 67: to be -12 dB above 1280 Hz at the start
+		0.661, // 68: to be -12 dB above 1280 Hz at the start
 		0.674, // 69: to be -11 dB above 1280 Hz at the start
 		0.696, // 70: to be -10 dB above 1280 Hz at the start
 		0.723, // 71: to be -8 dB above 1280 Hz at the start
-		0.749, // 72: to be -7 dB above 1280 Hz at the start
+		0.748, // 72: to be -7 dB above 1280 Hz at the start
 		0.773, // 73: to be -6 dB above 1280 Hz at the start
-		0.797, // 74: to be -5 dB above 1280 Hz at the start
+		0.796, // 74: to be -5 dB above 1280 Hz at the start
 		0.817, // 75: to be -4 dB above 1280 Hz at the start
 		0.831, // 76: to be -3 dB above 1280 Hz at the start
-		0.850, // 77: to be -2 dB above 1280 Hz at the start
+		0.849, // 77: to be -2 dB above 1280 Hz at the start
 		0.871, // 78: to be -2 dB above 1280 Hz at the start
 		0.889, // 79: to be -2 dB above 1280 Hz at the start
 		0.905, // 80: to be -1 dB above 1280 Hz at the start

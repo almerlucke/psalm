@@ -146,6 +146,18 @@ func fitEarly(out, name string) {
 		p := float64(fitFrom + i)
 		dm, decay := dampings[i], base.DecayAt(p)
 		if p > from {
+			// a pitch that the recording has only under its noise: its notes are "at most this bright", and when the
+			// anchors around it have the string much brighter (6 dB) than that it is brought down to it
+			bound, resolved := math.Inf(1), false
+			for _, n := range reference.Notes() {
+				if float64(n.Pitch) == p {
+					bound = min(bound, n.HighDB)
+					resolved = resolved || n.Margin >= reference.ResolvedMargin
+				}
+			}
+			if !resolved && highEdge(p, base.DecayAt(p), dm, edges[i]) > bound+6 {
+				dm = max(dm, min(fitDampingEdge(p, bound, edges[i]), 0.7))
+			}
 			decay = fitDecayEdge(p, dm, edges[i])
 		}
 		fmt.Printf("%d: edge %.2f damping %+.3f decay %.2f\n", fitFrom+i, edges[i], dm, decay)
