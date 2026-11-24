@@ -205,6 +205,7 @@ func main() {
 	early := flag.Bool("early", false, "with -fit: fit the start of the notes too: the edge of the pluck to the first 50 ms, the damping to the band 640-1280 Hz of the ring, the decay to the fall; writes the Edge table as well")
 	out := flag.String("out", "synths/waveguide/keytrack_own.go", "with -fit: the file to write")
 	name := flag.String("var", "ownTrack", "with -fit: the name of the KeyTrack in the file")
+	steel := flag.Bool("steel", false, "with -fit: fit the steel string guitar to the measures of GuitarSet (reference.SteelEarlyHigh and the others): the edge, the damping and the decay per pitch; -out synths/waveguide/keytrack_steel.go -var steelTrack are the defaults then")
 	chain := flag.Bool("chain", false, "measure the whole chain: the string, the measured body and the tone")
 	tune := flag.Bool("tune", false, "with -chain: find the EQ that brings the string through the body closest to the real guitar")
 	irFile := flag.String("ir", "assets/IR44100/Guitar Body HAW 56.wav", "with -chain: the impulse response of the body")
@@ -213,6 +214,18 @@ func main() {
 
 	if *chain {
 		compareChain(*irFile, *tune)
+		return
+	}
+
+	if *doFit && *steel {
+		o, n := *out, *name
+		if o == "synths/waveguide/keytrack_own.go" {
+			o = "synths/waveguide/keytrack_steel.go"
+		}
+		if n == "ownTrack" {
+			n = "steelTrack"
+		}
+		fitSteel(o, n)
 		return
 	}
 

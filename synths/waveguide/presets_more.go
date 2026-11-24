@@ -11,6 +11,7 @@ var morePresets = map[string]func() Config{
 	// plucked: guitars
 	"nylonClassical":  NylonClassical,
 	"ownGuitar":       OwnGuitar,
+	"steelGuitar":     SteelGuitar,
 	"steelAcoustic":   SteelAcoustic,
 	"twelveString":    TwelveString,
 	"palmMuted":       PalmMuted,
@@ -140,9 +141,27 @@ func OwnGuitar() Config {
 	return c
 }
 
+// SteelGuitar is a steel string acoustic guitar, its strings pluck and die as those of GuitarSet do (six players on one guitar,
+// Creative Commons Attribution 4.0: see package reference, steel.go): the Edge of the pluck, the damping and the decay at each pitch
+// are fitted to the measures of its isolated notes (cmd/tools/guitarcompare -steel). It has the resonators of the guitar
+// body, no measured body: the response of the nylon guitar of OwnGuitar is not that of a steel string guitar
+func SteelGuitar() Config {
+	c := plucked(4.2, 0.18, 0.5, 0.13, 0.25, GuitarBody, 0.4, 1.079)
+	c.Inharmonicity, c.PluckWidth, c.Plectrum = 1e-4, 0.04, 0.3
+	c.Polarization, c.BodyCoupling, c.FretNoise = 0.45, 0.5, 0.1
+	c.OpenStrings = 0.03
+	c.Touch = 1
+	c.Thump = 0.25 // the knock of the pluck on the body, as for the nylon guitar
+	return fittedFrom(c, steelTrack)
+}
+
 // fitted is Guitar with a track, its Decay and Damping those of the track at its reference pitch
 func fitted(track *KeyTrack) Config {
-	c := Guitar()
+	return fittedFrom(Guitar(), track)
+}
+
+// fittedFrom is a Config with a track, its Decay, Damping and Edge those of the track at its reference pitch
+func fittedFrom(c Config, track *KeyTrack) Config {
 	c.Track = track
 	if len(track.Decay) > 0 {
 		ref := float64(track.Ref)

@@ -10,6 +10,7 @@
 //	go run ./cmd/examples/guitarbody -ir          the string through the measured body alone
 //	go run ./cmd/examples/guitarbody -blend 0.3   less of the measured body (0 is the resonators alone, 1 the measured alone)
 //	go run ./cmd/examples/guitarbody -piece       a piece of one minute (fingerpicking, a melody, strummed chords) instead of random plucks (all of these take it)
+//	go run ./cmd/examples/guitarbody -guitar steelGuitar -blend 0   a steel string guitar (fitted to GuitarSet) with the resonators of its own: the measured body is that of the nylon guitar
 //	go run ./cmd/examples/guitarbody -render      write guitarbody.wav, guitarbody-ir.wav and guitarbody-blend.wav (60 s each) and stop
 //
 // The body is the response of that guitar: taps of a finger (averaged: the response below 600 Hz) and of a harder

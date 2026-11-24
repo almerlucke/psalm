@@ -21,6 +21,10 @@ const (
 	pieceBeat = 4 * pieceBars
 )
 
+// strumFadeDown is how much softer the last string of a down stroke is than the first (see score.Feel.StrumFade); the up
+// strokes, of four strings, have 0.8 of it
+const strumFadeDown = 0.6
+
 var (
 	em = []float64{40, 47, 52, 55, 59, 64}
 	c  = []float64{48, 52, 55, 60, 64}
@@ -167,11 +171,11 @@ func play(p *psalm.Psalm, guitars ...psalm.Modular) {
 		}).AddTo(p),
 		score.NewSequencer(down, score.Config{
 			Amp: 0.33, Loop: true, Length: pieceBeat,
-			Feel: score.Feel{Strum: 26, Timing: 6, Velocity: 0.08, Seed: 7},
+			Feel: score.Feel{Strum: 26, StrumFade: strumFadeDown, Timing: 6, Velocity: 0.08, Seed: 7},
 		}).AddTo(p),
 		score.NewSequencer(up, score.Config{
 			Amp: 0.33, Loop: true, Length: pieceBeat,
-			Feel: score.Feel{Strum: -16, Timing: 7, Velocity: 0.1, Seed: 9},
+			Feel: score.Feel{Strum: -16, StrumFade: strumFadeDown * 0.8, Timing: 7, Velocity: 0.1, Seed: 9},
 		}).AddTo(p),
 		score.NewSequencer(finale(), score.Config{
 			Amp: 0.3, Loop: true, Length: pieceBeat,

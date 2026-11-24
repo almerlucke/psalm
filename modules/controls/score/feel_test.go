@@ -175,3 +175,23 @@ func TestSetFeelDoesntReplay(t *testing.T) {
 		t.Fatalf("expected each note once, got %d triggers", len(rec.got))
 	}
 }
+
+// a strum plucks the first string hardest and the others less as it passes them
+func TestStrumFade(t *testing.T) {
+	chord := []Note{Rest(1), Chord([]float64{60, 64, 67}, 4)}
+	vel := func(fade float64) []float64 {
+		got := triggers(NewSequencer(chord, Config{Velocity: 0.8, Feel: Feel{Strum: 30, StrumFade: fade}}), 1)[0]
+		var v []float64
+		for _, m := range got {
+			v = append(v, m["message"].(psalm.Message)["velocity"].(float64))
+		}
+		return v
+	}
+	if v := vel(0); v[0] != 0.8 || v[1] != 0.8 || v[2] != 0.8 {
+		t.Fatalf("no fade: %v", v)
+	}
+	v := vel(0.5)
+	if math.Abs(v[0]-0.8) > 1e-9 || math.Abs(v[1]-0.6) > 1e-9 || math.Abs(v[2]-0.4) > 1e-9 {
+		t.Fatalf("a fade of 0.5 should take the velocities from 0.8 to 0.4 in a line: %v", v)
+	}
+}

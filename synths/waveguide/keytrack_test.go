@@ -293,3 +293,29 @@ func TestOpenStringOfTheNoteIsNotDoubled(t *testing.T) {
 		t.Error("a note that is no open string holds one")
 	}
 }
+
+// the steel string guitar has its track, fitted to the measures of GuitarSet, and plays as a plain voice
+func TestSteelGuitarSettings(t *testing.T) {
+	c := SteelGuitar()
+	if c.Track == nil || len(c.Track.Decay) < 40 || len(c.Track.Edge) != len(c.Track.Decay) || len(c.Track.Damping) != len(c.Track.Decay) {
+		t.Fatal("no fitted track: go run ./cmd/tools/guitarcompare -fit -steel")
+	}
+	for p := range len(c.Track.Decay) {
+		if d, g, e := c.Track.Decay[p], c.Track.Damping[p], c.Track.Edge[p]; !(d > 0.3 && d <= 120 && g >= -minDamping && g <= 0.7 && e >= 0 && e <= 1) {
+			t.Errorf("pitch %d: decay %g damping %g edge %g", c.Track.From+p, d, g, e)
+		}
+	}
+	if _, ok := Presets["steelGuitar"]; !ok {
+		t.Error("not in Presets")
+	}
+	// the high strings are sharper at the start than the low ones, as in GuitarSet
+	if lo, hi := c.Track.EdgeAt(60), c.Track.EdgeAt(76); hi < lo {
+		t.Errorf("the edge at 76 (%g) is under that at 60 (%g)", hi, lo)
+	}
+	sameNoise()
+	v := New(c)
+	v.NoteOn(1, psalm.Message{"pitch": 55.0, "velocity": 0.65}, psalm.CtrlTick{}, v.Config())
+	if x := run(v, 0.5); rms(x) < 1e-3 {
+		t.Errorf("the note is silent: rms %g", rms(x))
+	}
+}

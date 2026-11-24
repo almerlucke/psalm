@@ -31,7 +31,10 @@ type Feel struct {
 	Timing float64 // ± milliseconds of random timing per note, the notes of a chord move together
 	Spread float64 // ± milliseconds of random timing per note within a chord, an ensemble never starts exactly together
 	Strum  float64 // milliseconds between the notes of a chord, low to high (negative is high to low)
-	Push   float64 // milliseconds every note moves: negative plays ahead of the beat, positive lays back
+	// StrumFade is how much softer the last note of a strummed chord is than the first (0 is as loud, 0.5 half as hard, 1 silent),
+	// the notes between fall in a line: the finger or the pick plucks the first string hardest and passes the others
+	StrumFade float64
+	Push      float64 // milliseconds every note moves: negative plays ahead of the beat, positive lays back
 	// (a note on the very first beat of the sequence can't play early, it plays at the start)
 
 	Velocity float64 // ± random variation of velocity and amplitude (0.1 is ±10%)
@@ -257,13 +260,17 @@ func (s *Sequencer) build() {
 		})
 
 		for k, idx := range order {
+			evVel := vel
+			if f.StrumFade > 0 && len(order) > 1 && vel > 0 {
+				evVel = max(0.01, vel*(1-min(f.StrumFade, 1)*float64(k)/float64(len(order)-1)))
+			}
 			ms := offset + math.Abs(f.Strum)*float64(k)
 			if f.Spread != 0 {
 				ms += s.tri() * f.Spread
 			}
 			tick := int64(math.Round((start + ms*msToBeat) * ppq))
 			tick = max(0, min(tick, s.length-1))
-			s.events = append(s.events, event{tick: tick, pitch: n.Pitches[idx], hold: holdBeats, amp: amp, vel: vel, note: n})
+			s.events = append(s.events, event{tick: tick, pitch: n.Pitches[idx], hold: holdBeats, amp: amp, vel: evVel, note: n})
 		}
 	}
 	sort.SliceStable(s.events, func(i, j int) bool { return s.events[i].tick < s.events[j].tick })
