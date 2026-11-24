@@ -123,8 +123,10 @@ type Config struct {
 	Track *KeyTrack
 
 	OpenStrings float64 // 0-1: the open strings of a guitar (E A D G B E) ring along with the sound of NewPoly's voices, as they do on a real guitar (the strings that nothing plucks); the level of the sound that drives them
-	Sympathetic float64 // 0-1: the sound fed into strings tuned to its octave and fifth, added back
-	LFO2Rate    float64 // Hz: the rate of the plain LFO of the matrix (0 is 2 Hz)
+
+	open        *openStrings // NewPoly's open strings: a note that is one of them is not driven along by itself
+	Sympathetic float64      // 0-1: the sound fed into strings tuned to its octave and fifth, added back
+	LFO2Rate    float64      // Hz: the rate of the plain LFO of the matrix (0 is 2 Hz)
 
 	Filter voicefilter.Config              // a filter after the string and the body (off unless its Type is set)
 	Mods   [modmatrix.Slots]modmatrix.Slot // the matrix: a source to a destination (see Dests) over an amount
@@ -577,6 +579,9 @@ func (v *Voice) pluck() {
 	cfg := &v.cfg
 	sr := v.Config().SampleRate
 	f := v.freq
+	if cfg.open != nil {
+		cfg.open.mute(f)
+	}
 	kd, kt := v.keyTrack()
 	v.setLoss(cfg.Damping+kd+v.mods.Mod(dDamping), cfg.Decay*kt*math.Exp2(v.mods.Mod(dDecay)))
 	// the loop: whole samples, the allpass for the fraction (0.5-1.5), the filter's half sample and
@@ -1472,16 +1477,17 @@ func NewPoly(cfg Config, numVoices int) *poly.Poly[*Voice] {
 		stage = newBodyStage(cfg.Body, cfg.BodyMix, m, cfg.NumChannels)
 		cfg.BodyMix = 0
 	}
+	var open *openStrings
+	if cfg.OpenStrings > 0 {
+		open = newOpenStrings(cfg.OpenStrings)
+		cfg.open = open
+	}
 	voices := make([]*Voice, numVoices)
 	for i := range numVoices {
 		voices[i] = New(cfg)
 	}
 	p := poly.New[*Voice](cfg.NumChannels, voices)
 	// after the sum of the voices: the open strings that ring along, then the body that they, and the strings played, sound through
-	var open *openStrings
-	if cfg.OpenStrings > 0 {
-		open = newOpenStrings(cfg.OpenStrings)
-	}
 	if open != nil || stage != nil {
 		p.SetPost(func(ch psalm.Channels) {
 			if open != nil {

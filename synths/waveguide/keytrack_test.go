@@ -269,3 +269,27 @@ func TestTouchOfThePluck(t *testing.T) {
 		t.Errorf("the top partials at the start: %.1f dB at velocity 0.3, %.1f at 1: a harder pluck should be sharper", soft, hard)
 	}
 }
+
+// a note that is an open string plucks it: the string is not driven along by that note as well
+func TestOpenStringOfTheNoteIsNotDoubled(t *testing.T) {
+	s := newOpenStrings(1)
+	s.mute(110) // A2
+	ch := psalm.Channels{make([]float32, 512)}
+	for i := range ch[0] {
+		ch[0][i] = float32(math.Sin(float64(i) * 0.3))
+	}
+	s.process(ch)
+	energy := func(k int) (e float64) {
+		for _, x := range s.loops[k].buf {
+			e += x * x
+		}
+		return
+	}
+	if energy(1) != 0 || energy(0) == 0 {
+		t.Errorf("the A string holds %g, the low E string %g: the first should be silent, the second driven", energy(1), energy(0))
+	}
+	s.mute(220) // A3, not an open string
+	if s.held[2].Load() > 0 || s.held[3].Load() > 0 {
+		t.Error("a note that is no open string holds one")
+	}
+}

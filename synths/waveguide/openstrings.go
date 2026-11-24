@@ -2,6 +2,7 @@ package waveguide
 
 import (
 	"math"
+	"sync/atomic"
 
 	"github.com/almerlucke/psalm"
 )
@@ -40,11 +41,25 @@ type openLoop struct {
 type openStrings struct {
 	loops []openLoop
 	level float64
+	// held[k] is the samples left that the string k is not driven: a note that is that string plucks it, and what it
+	// sounds is the note, not a second string beside it
+	held [len(openTuning)]atomic.Int64
+	sr   float64
+}
+
+// mute is called with the pitch (Hz) of a plucked note: when it is an open string (within 60 cents), that string is not
+// driven by the sound for as long as it rings
+func (s *openStrings) mute(hz float64) {
+	for k, o := range openTuning {
+		if math.Abs(12*math.Log2(hz/(440*math.Exp2((o.pitch-69)/12)))) < 0.6 {
+			s.held[k].Store(int64(o.t60 * s.sr))
+		}
+	}
 }
 
 func newOpenStrings(amount float64) *openStrings {
 	sr := psalm.CurrentConfig().SampleRate
-	st := &openStrings{level: max(0, min(amount, 1))}
+	st := &openStrings{level: max(0, min(amount, 1)), sr: sr}
 	for _, s := range openTuning {
 		f := 440 * math.Exp2((s.pitch-69)/12)
 		total := sr / f
@@ -66,6 +81,13 @@ func (s *openStrings) process(ch psalm.Channels) {
 		return
 	}
 	drive := s.level * openCoupling
+	var driven [len(openTuning)]bool
+	for k := range s.loops {
+		driven[k] = s.held[k].Load() <= 0
+		if !driven[k] {
+			s.held[k].Add(-int64(len(ch[0])))
+		}
+	}
 	for i := range ch[0] {
 		in := 0.0
 		for _, buf := range ch {
@@ -83,7 +105,11 @@ func (s *openStrings) process(ch psalm.Channels) {
 			lp := (1-openLoss)*y + openLoss*l.lpPrev
 			l.lpPrev = y
 			out := l.g * lp
-			l.buf[l.pos] = out + in
+			if driven[k] {
+				l.buf[l.pos] = out + in
+			} else {
+				l.buf[l.pos] = out
+			}
 			l.pos = (l.pos + 1) % len(l.buf)
 			sum += out
 		}
