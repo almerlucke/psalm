@@ -138,7 +138,7 @@ func TestEdgeOfThePluck(t *testing.T) {
 		sameNoise()
 		v := New(cfg)
 		v.NoteOn(1, psalm.Message{"pitch": 55.0, "velocity": 0.65}, psalm.CtrlTick{}, v.Config())
-		x := run(v, 0.3)[int(0.005*sr()) : int(0.05*sr())]
+		x := run(v, 0.3)[int(0.005*sr()):int(0.05*sr())]
 		y := x
 		for range 2 { // two first differences: what is above a few kHz
 			d := make([]float64, len(y)-1)
@@ -200,7 +200,7 @@ func TestThumpOfThePluck(t *testing.T) {
 				e += y2 * y2
 			}
 		}
-		return 10 * math.Log10(e + 1e-12)
+		return 10 * math.Log10(e+1e-12)
 	}
 	if without, with := low(0, 0, 0.03), low(1, 0, 0.03); with < without+6 {
 		t.Errorf("under 250 Hz in the first 30 ms: %.1f dB without the thump, %.1f with it", without, with)
@@ -234,5 +234,38 @@ func TestOpenStringsRingAlong(t *testing.T) {
 	without, with := line(0), line(0.5)
 	if with < without+20 {
 		t.Errorf("the line at 110 Hz after 2 s: %.1f dB without the open strings, %.1f with them", without, with)
+	}
+}
+
+// the touch: the level follows the velocity over a wider range, the same at the reference velocity, and a harder
+// pluck is sharper
+func TestTouchOfThePluck(t *testing.T) {
+	if math.Abs(velocityGain(0.65, 1)-velocityGain(0.65, 0)) > 1e-9 {
+		t.Errorf("at the reference velocity the touch changes the level: %g and %g", velocityGain(0.65, 1), velocityGain(0.65, 0))
+	}
+	span := func(touch float64) float64 { return 20 * math.Log10(velocityGain(1, touch)/velocityGain(0.2, touch)) }
+	if plain, touched := span(0), span(1); touched < plain+4 {
+		t.Errorf("the level range of velocity 0.2 to 1: %.1f dB without the touch, %.1f with it", plain, touched)
+	}
+	high := func(velocity float64) float64 {
+		cfg := Guitar()
+		cfg.BodyMix = 0
+		cfg.Touch, cfg.Edge = 1, 0.4
+		sameNoise()
+		v := New(cfg)
+		v.NoteOn(1, psalm.Message{"pitch": 71.0, "velocity": velocity}, psalm.CtrlTick{}, v.Config())
+		x := run(v, 0.3)[int(0.005*sr()):int(0.05*sr())]
+		y := x
+		for range 2 {
+			d := make([]float64, len(y)-1)
+			for i := range d {
+				d[i] = y[i+1] - y[i]
+			}
+			y = d
+		}
+		return 10 * math.Log10(rms(y)/rms(x))
+	}
+	if soft, hard := high(0.3), high(1); hard < soft+3 {
+		t.Errorf("the top partials at the start: %.1f dB at velocity 0.3, %.1f at 1: a harder pluck should be sharper", soft, hard)
 	}
 }

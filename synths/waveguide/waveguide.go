@@ -75,6 +75,7 @@ type Config struct {
 	PluckWidth    float64 // 0-0.2 of the string: the width of the finger or the pick that pulls it (0 is the plain noise burst of Brightness)
 	Edge          float64 // 0-1: the pluck's top partials against its low ones (0 the string pulled aside, as smooth as it is; 1 a sharp pull, the partials falling slowly): a real pluck starts brighter than the string pulled aside is
 	Plectrum      float64 // 0-1: the pluck, from a soft finger to a hard pick (the width of the contact, the release, a click)
+	Touch         float64 // 0-1: how a player's touch sounds, as against the plain velocity curve of the pluck (0): the louder the pluck the more of its top partials (the Edge goes up with the velocity), the level follows the velocity (a range of 14 dB from 0.2 to 1 instead of 7), and the velocity leaves the lowpass of the pluck to the Edge
 	Thump         float64 // 0-1: the pluck knocks the body: a short low pulse at the start of the note, which the body rings with its own modes (air, top plate), whatever the pitch
 	FretNoise     float64 // 0-1: the finger or the pick on the string at the start of a note
 	FretBuzz      float64 // 0-1: the action, from high (0, off) to so low that the string hits the fret while it swings: a stiff one-sided spring and damper at the fret
@@ -391,6 +392,7 @@ func (v *Voice) receive(msg psalm.Message) {
 	msg.IfFltVal("pluckWidth", func(f float64) { v.cfg.PluckWidth = f })
 	msg.IfFltVal("edge", func(f float64) { v.cfg.Edge = f })
 	msg.IfFltVal("plectrum", func(f float64) { v.cfg.Plectrum = f })
+	msg.IfFltVal("touch", func(f float64) { v.cfg.Touch = f })
 	msg.IfFltVal("thump", func(f float64) { v.cfg.Thump = f })
 	msg.IfFltVal("fretNoise", func(f float64) { v.cfg.FretNoise = f })
 	msg.IfFltVal("fretBuzz", func(f float64) { v.cfg.FretBuzz = f })
@@ -599,8 +601,13 @@ func (v *Voice) pluck() {
 		v.excite = make([]float64, n+1)
 	}
 	ex := v.excite[:n+1]
-	bright := max(0, min(cfg.Brightness+v.mods.Mod(dBrightness)+0.4*(v.velocity-0.5)+0.4*cfg.Plectrum, 1))
-	edge := max(0, min(cfg.Edge+v.keyEdge(), 1))
+	touch := max(0, min(cfg.Touch, 1))
+	pluckVel := v.velocity
+	if touch > 0 {
+		pluckVel = touchRef // the lowpass of the pluck is the same for every velocity: the Edge takes it
+	}
+	bright := max(0, min(cfg.Brightness+v.mods.Mod(dBrightness)+0.4*(pluckVel-0.5)+0.4*cfg.Plectrum, 1))
+	edge := max(0, min(cfg.Edge+v.keyEdge()+touch*touchEdge*(v.velocity-touchRef), 1))
 	// the pluck's lowpass, 12 dB/oct: a sharp pull reaches higher in the spectrum too
 	coef := math.Exp(-2 * math.Pi * min(f*(1+60*bright*bright)*(1+edgeReach*edge), sr/3) / sr)
 	pick := max(0, min(cfg.PickPosition+v.mods.Mod(dPickPosition), 0.5))
@@ -1032,7 +1039,7 @@ func (v *Voice) Synthesize() {
 	}
 	gain := level // the bow's speed is its loudness
 	if cfg.Model == Pluck {
-		gain *= v.amp * (0.3 + 0.7*v.velocity)
+		gain *= v.amp * velocityGain(v.velocity, cfg.Touch)
 	}
 	if cfg.Model == Membrane {
 		gain *= v.amp // the velocity is in the strike
@@ -1511,4 +1518,22 @@ func energy(x []float64) float64 {
 		e += s * s
 	}
 	return e
+}
+
+// touchRef is the velocity the settings of a pluck hold at, touchEdge how far the Edge of the pluck goes up with
+// the velocity at the full Touch (per unit of velocity)
+const (
+	touchRef  = 0.65
+	touchEdge = 0.8
+)
+
+// velocityGain is the loudness of a pluck at a velocity: 0.3 + 0.7 v, a range of 7 dB from 0.2 to 1, and at the full
+// Touch proportional to the velocity (14 dB), the same at touchRef
+func velocityGain(velocity, touch float64) float64 {
+	plain := 0.3 + 0.7*velocity
+	touch = max(0, min(touch, 1))
+	if touch == 0 {
+		return plain
+	}
+	return plain*(1-touch) + touch*(0.3+0.7*touchRef)*velocity/touchRef
 }
