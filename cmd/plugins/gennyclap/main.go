@@ -7,14 +7,24 @@ package main
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../local/clap/include -I${SRCDIR}
 #cgo LDFLAGS: -lm
+#include <stdlib.h>
 #include <string.h>
 #include "shim.h"
 */
 import "C"
 
 import (
+	"time"
 	"unsafe"
 )
+
+func init() {
+	logHook = func(handle, severity int, text string) {
+		s := C.CString(text)
+		C.genny_host_log(C.int(handle), C.int(severity), s)
+		C.free(unsafe.Pointer(s))
+	}
+}
 
 func at(h C.int) *instance {
 	if h < 0 || int(h) >= len(instances) {
@@ -27,6 +37,7 @@ func at(h C.int) *instance {
 func genny_new() C.int {
 	in := newInstance()
 	for i := range instances {
+		in.handle = i
 		if instances[i].CompareAndSwap(nil, in) {
 			return C.int(i)
 		}
@@ -49,7 +60,7 @@ func genny_start(h C.int) {
 	if in == nil || in.stop != nil {
 		return
 	}
-	in.stop = make(chan struct{})
+	in.stop, in.done = make(chan struct{}), make(chan struct{})
 	go in.run()
 }
 
@@ -57,7 +68,12 @@ func genny_start(h C.int) {
 func genny_stop(h C.int) {
 	if in := at(h); in != nil && in.stop != nil {
 		close(in.stop)
-		in.stop = nil
+		// a render that is going on is waited for (not long: the host is waiting), so it does not log to a host that is gone
+		select {
+		case <-in.done:
+		case <-time.After(2 * time.Second):
+		}
+		in.stop, in.done = nil, nil
 	}
 }
 

@@ -20,6 +20,24 @@ typedef struct {
 	int channel;
 } active_note;
 
+// the host of each instance, by handle, for genny_host_log (called from the goroutine that renders)
+#define MAX_HOSTS 64
+static const clap_host_t *hosts[MAX_HOSTS];
+
+void genny_host_log(int handle, int severity, const char *msg) {
+	if (handle < 0 || handle >= MAX_HOSTS) {
+		return;
+	}
+	const clap_host_t *host = __atomic_load_n(&hosts[handle], __ATOMIC_ACQUIRE);
+	if (!host) {
+		return;
+	}
+	const clap_host_log_t *log = host->get_extension(host, CLAP_EXT_LOG);
+	if (log && log->log) {
+		log->log(host, severity, msg);
+	}
+}
+
 typedef struct {
 	clap_plugin_t plugin;
 	const clap_host_t *host;
@@ -102,11 +120,18 @@ static void apply_param_events(genny_plugin *p, const clap_input_events_t *in) {
 static bool plugin_init(const clap_plugin_t *plugin) {
 	genny_plugin *p = plugin->plugin_data;
 	p->handle = genny_new();
+	if (p->handle >= 0 && p->handle < MAX_HOSTS) {
+		__atomic_store_n(&hosts[p->handle], p->host, __ATOMIC_RELEASE);
+	}
 	return p->handle >= 0;
 }
 
 static void plugin_destroy(const clap_plugin_t *plugin) {
 	genny_plugin *p = plugin->plugin_data;
+	genny_stop(p->handle); // its goroutine must be done before the host is let go
+	if (p->handle >= 0 && p->handle < MAX_HOSTS) {
+		__atomic_store_n(&hosts[p->handle], NULL, __ATOMIC_RELEASE);
+	}
 	genny_free(p->handle);
 	free(p);
 }

@@ -97,6 +97,17 @@ function render(p) {
 	}
 }
 
+// what a script logged before it failed is still given back
+func TestRenderLogWithError(t *testing.T) {
+	p, err := NewRuntime().Render(`function render() { log("before"); throw new Error("boom") }`, 1)
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("error %v", err)
+	}
+	if len(p.Log) != 1 || p.Log[0] != "before" {
+		t.Fatalf("log %q", p.Log)
+	}
+}
+
 func TestRenderErrors(t *testing.T) {
 	for _, c := range []struct{ code, want string }{
 		{`var x = ;`, "line 1"},

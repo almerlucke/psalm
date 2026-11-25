@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -313,6 +316,53 @@ func TestStateKeepsScript(t *testing.T) {
 	if !b.isScript || b.text != defaultScript {
 		t.Fatal("the script of the project was not kept")
 	}
+}
+
+// errors, what a script logs and what a render made go to the host and to the file next to the spec
+func TestLogsErrorsAndNews(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "genny.js")
+	t.Setenv("GENNY_SPEC", path)
+	var mu sync.Mutex
+	var said []string
+	logHook = func(handle, severity int, text string) {
+		mu.Lock()
+		said = append(said, fmt.Sprintf("%d %s", severity, text))
+		mu.Unlock()
+	}
+	defer func() { logHook = nil }()
+
+	if err := os.WriteFile(path, []byte(`function render() { log("hello", 1); throw new Error("boom") }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	in := newInstance()
+	in.stop, in.done = make(chan struct{}), make(chan struct{})
+	go in.run()
+	defer func() { close(in.stop); <-in.done }()
+
+	readLog := func() string { data, _ := os.ReadFile(path + ".log"); return string(data) }
+	wait(t, "the error in the log file", func() bool { return strings.Contains(readLog(), "boom") })
+	// a script that fails is not tried again and again: it said what it had to say once
+	time.Sleep(300 * time.Millisecond)
+	got := readLog()
+	if n := strings.Count(got, "boom"); n != 1 {
+		t.Fatalf("the error was reported %d times:\n%s", n, got)
+	}
+	if !strings.Contains(got, "info: script: hello 1") || !strings.Contains(got, "error: ") || !strings.Contains(got, "nothing plays") {
+		t.Fatalf("log file:\n%s", got)
+	}
+	mu.Lock()
+	if len(said) < 2 || !strings.HasPrefix(said[0], "1 genny: script: hello 1") || !strings.HasPrefix(said[1], "3 genny: ") {
+		t.Fatalf("host log: %q", said)
+	}
+	mu.Unlock()
+
+	// a repaired script says what it made
+	if err := os.WriteFile(path, []byte(`function render() { return [{pitch: 60, start: 0}, {pitch: 62, start: 1}] }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	_ = os.Chtimes(path, future, future)
+	wait(t, "the news in the log file", func() bool { return strings.Contains(readLog(), "2 notes in 4 beats") })
 }
 
 func TestBadSpecIsAnError(t *testing.T) {

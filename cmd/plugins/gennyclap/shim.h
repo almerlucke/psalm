@@ -21,4 +21,7 @@ typedef struct {
 	char name[64];
 } genny_param;
 
+// genny_host_log sends a message to the log of the host of a plugin (a severity of CLAP: 1 info, 2 warning, 3 error); any thread
+void genny_host_log(int handle, int severity, const char *msg);
+
 #endif

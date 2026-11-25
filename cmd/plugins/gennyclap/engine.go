@@ -132,6 +132,7 @@ type instance struct {
 	buf   [maxEvents]goEvent // the events of the block being made (the audio thread's)
 	want  atomic.Int64       // the cycle the transport is in, as last asked for
 	stop  chan struct{}
+	done  chan struct{} // closed when the goroutine has ended
 
 	mu       sync.Mutex // the spec text and its file (never taken by the audio thread)
 	text     string
@@ -141,6 +142,39 @@ type instance struct {
 	fromSave bool // the spec is that of the saved project, the file counts when it changes
 	specGen  uint64
 	lastErr  string
+	handle   int      // of the instance, for the host log
+	logLines []string // what it said, the last ones (the file next to the spec has them)
+}
+
+// Severities of a message, as CLAP numbers them
+const (
+	sevInfo  = 1
+	sevWarn  = 2
+	sevError = 3
+)
+
+// logHook sends a message to the log of the host (set by the shim, nil in tests that do not want it)
+var logHook func(handle, severity int, text string)
+
+// say tells the user something: the log of the host, and a file next to the spec (spec.json.log) that has the last lines, since a
+// plugin has no window yet where an error of a spec or a script could be shown. It is called from the goroutine of the instance
+func (in *instance) say(severity int, format string, args ...any) {
+	text := fmt.Sprintf(format, args...)
+	if logHook != nil {
+		logHook(in.handle, severity, "genny: "+text)
+	}
+	label := [...]string{sevInfo: "info", sevWarn: "warning", sevError: "error"}[severity]
+	line := time.Now().Format("15:04:05") + " " + label + ": " + text
+	in.mu.Lock()
+	in.logLines = append(in.logLines, line)
+	if len(in.logLines) > 200 {
+		in.logLines = in.logLines[len(in.logLines)-200:]
+	}
+	path, body := in.path, strings.Join(in.logLines, "\n")+"\n"
+	in.mu.Unlock()
+	if path != "" {
+		_ = os.WriteFile(path+".log", []byte(body), 0o644)
+	}
 }
 
 var (
@@ -260,27 +294,39 @@ func renderSpec(text string, seed uint64) (*lineData, error) {
 }
 
 // renderScript renders the script for a seed, in the runtime of the instance (which only its goroutine uses)
-func renderScript(rt *script.Runtime, text string, seed uint64) (*lineData, error) {
+func (in *instance) renderScript(rt *script.Runtime, text string, seed uint64) (*lineData, error) {
 	renderMu.Lock()
-	defer renderMu.Unlock()
 	piece, err := rt.Render(text, seed)
+	renderMu.Unlock()
+	for _, line := range piece.Log {
+		in.say(sevInfo, "script: %s", line)
+	}
 	if err != nil {
 		return nil, err
-	}
-	for _, line := range piece.Log {
-		fmt.Fprintln(os.Stderr, "genny script:", line)
 	}
 	return buildPiece(piece), nil
 }
 
+// failure is what a render that failed depended on
+type failure struct {
+	gen   uint64
+	seed  float64
+	renew bool
+	cycle int64
+}
+
 // run keeps the store up to date: the spec file, the seed, and the cycles ahead of the transport
 func (in *instance) run() {
+	if in.done != nil {
+		defer close(in.done)
+	}
 	var (
 		have    *store
 		haveGen uint64 = math.MaxUint64
 		haveSd         = -1.0
 		tick    int
 		rt      *script.Runtime // made when the first script is rendered (here, the only goroutine that uses it)
+		failed  failure         // the last render that failed (the zero value is none: no spec has generation 0)
 	)
 	for {
 		select {
@@ -299,6 +345,14 @@ func (in *instance) run() {
 		}
 		seed, renew := in.get(pSeed), in.get(pRegen) > 0.5
 		cycle := in.want.Load()
+		// what failed is not tried again until something it depends on changes (the cycle only when each pass has its own seed)
+		key := failure{gen, seed, renew, 0}
+		if renew {
+			key.cycle = cycle
+		}
+		if key == failed {
+			continue
+		}
 		rebuilt := gen != haveGen || seed != haveSd || have == nil || have.renew != renew
 		var lines map[int64]*lineData
 		if rebuilt {
@@ -321,23 +375,32 @@ func (in *instance) run() {
 				if rt == nil {
 					rt = script.NewRuntime()
 				}
-				l, err = renderScript(rt, text, uint64(seed)+uint64(c))
+				l, err = in.renderScript(rt, text, uint64(seed)+uint64(c))
 			} else {
 				l, err = renderSpec(text, uint64(seed)+uint64(c))
 			}
 			if err != nil {
 				in.mu.Lock()
-				if in.lastErr != err.Error() {
-					in.lastErr = err.Error()
-					fmt.Fprintln(os.Stderr, "genny:", err)
-				}
+				fresh := in.lastErr != err.Error()
+				in.lastErr = err.Error()
 				in.mu.Unlock()
-				haveGen, haveSd = gen, seed // do not try again until something changes
+				if fresh {
+					if have != nil {
+						in.say(sevError, "%v (the last good version goes on)", err)
+					} else {
+						in.say(sevError, "%v (nothing plays until it is fixed)", err)
+					}
+				}
+				failed = key
 				break
 			}
 			in.mu.Lock()
+			wasErr := in.lastErr != ""
 			in.lastErr = ""
 			in.mu.Unlock()
+			if rebuilt || wasErr {
+				in.say(sevInfo, "%d notes in %.4g beats, seed %d", len(l.events), l.length, int(seed)+int(c))
+			}
 			lines[c], changed = l, true
 		}
 		for c := range lines {

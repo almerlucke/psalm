@@ -105,25 +105,26 @@ func (r *Runtime) Render(code string, seed uint64) (Piece, error) {
 	_ = api.Set("seed", seed)
 
 	genny.Seed(seed)
+	// what the script logged comes back with an error as well: it is how the author finds out
 	wrapper, err := vm.RunProgram(prog)
 	if err != nil {
-		return Piece{}, cleanError(err)
+		return Piece{Log: logs}, cleanError(err)
 	}
 	f, _ := goja.AssertFunction(wrapper)
 	res, err := r.call(RenderBudget, f, api, r.shared, r.genny)
 	if err != nil {
-		return Piece{}, err
+		return Piece{Log: logs}, err
 	}
 	render, ok := goja.AssertFunction(res)
 	if !ok {
-		return Piece{}, errors.New("the script has no function render()")
+		return Piece{Log: logs}, errors.New("the script has no function render()")
 	}
 	arg := vm.NewObject()
 	_ = arg.Set("seed", seed)
 	_ = arg.Set("stepsPerBeat", 4)
 	out, err := r.call(RenderBudget, render, arg)
 	if err != nil {
-		return Piece{}, err
+		return Piece{Log: logs}, err
 	}
 	piece, err := r.piece(out)
 	piece.Log = logs
