@@ -77,7 +77,7 @@ func genny_collect(h C.int, from, to C.double, out *C.genny_event, capacity C.in
 		if e.on {
 			on = 1
 		}
-		dst[n] = C.genny_event{beat: C.double(e.beat), velocity: C.double(e.velocity), key: C.int(e.key), channel: C.int(e.channel), id: C.int(e.id), on: on}
+		dst[n] = C.genny_event{beat: C.double(e.beat), velocity: C.double(e.velocity), tune: C.double(e.tune), key: C.int(e.key), channel: C.int(e.channel), id: C.int(e.id), on: on}
 		n++
 	}
 	return C.int(n)

@@ -60,6 +60,24 @@ static void push_note(const clap_output_events_t *out, uint32_t time, int on, in
 	out->try_push(out, &e.header);
 }
 
+// push_tuning retunes a note that is on: semitones from its key (a pitch between two keys, see genny_event.tune)
+static void push_tuning(const clap_output_events_t *out, uint32_t time, int id, int key, int channel, double semitones) {
+	clap_event_note_expression_t e;
+	memset(&e, 0, sizeof e);
+	e.header.size = sizeof e;
+	e.header.time = time;
+	e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+	e.header.type = CLAP_EVENT_NOTE_EXPRESSION;
+	e.header.flags = 0;
+	e.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
+	e.note_id = id;
+	e.port_index = 0;
+	e.channel = channel;
+	e.key = key;
+	e.value = semitones;
+	out->try_push(out, &e.header);
+}
+
 static void release_all(genny_plugin *p, const clap_output_events_t *out, uint32_t time) {
 	for (int i = 0; i < p->num_active; i++) {
 		push_note(out, time, 0, p->active[i].id, p->active[i].key, p->active[i].channel, 0);
@@ -150,6 +168,9 @@ static clap_process_status plugin_process(const clap_plugin_t *plugin, const cla
 			if (p->num_active < MAX_ACTIVE) {
 				p->active[p->num_active++] = (active_note){events[i].id, events[i].key, events[i].channel};
 				push_note(process->out_events, time, 1, events[i].id, events[i].key, events[i].channel, events[i].velocity);
+				if (fabs(events[i].tune) > 1e-4) { // right after the note on, at the same time
+					push_tuning(process->out_events, time, events[i].id, events[i].key, events[i].channel, events[i].tune);
+				}
 			}
 			continue;
 		}

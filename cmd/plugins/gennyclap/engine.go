@@ -31,6 +31,7 @@ const (
 	pTranspose
 	pGain
 	pSwing
+	pMicro
 	numParams
 )
 
@@ -46,6 +47,7 @@ var params = [numParams]paramInfo{
 	pTranspose: {"transpose", true, -24, 24, 0},
 	pGain:      {"gain", false, 0, 2, 1},
 	pSwing:     {"swing (steps)", false, 0, 0.5, 0},
+	pMicro:     {"microtones", true, 0, 1, 1},
 }
 
 // ev is a note of a rendered line, times in beats
@@ -377,6 +379,7 @@ func (in *instance) collect(from, to float64) []goEvent {
 	cycle := int64(math.Floor(from / loop))
 	in.want.Store(cycle)
 	transpose, gain, swing := in.get(pTranspose), in.get(pGain), in.get(pSwing)
+	micro := in.get(pMicro) > 0.5
 	n := 0
 	put := func(e goEvent) {
 		if n < len(out) {
@@ -403,7 +406,8 @@ func (in *instance) collect(from, to float64) []goEvent {
 				// by the swing, the step is read from the start of the note
 				start, end = swungTimes(e.start, e.end, swing, l.step)
 			}
-			p := math.Round(e.pitch + transpose)
+			exact := e.pitch + transpose
+			p := math.Round(exact)
 			if p < 0 || p > 127 {
 				return
 			}
@@ -411,6 +415,9 @@ func (in *instance) collect(from, to float64) []goEvent {
 			ce := goEvent{key: int(p), channel: e.channel, id: id}
 			if on {
 				ce.beat, ce.on, ce.velocity = base+start, true, min(max(e.vel*gain, 0.01), 1)
+				if micro {
+					ce.tune = exact - p // a pitch between two keys: the key and how far from it, in semitones
+				}
 			} else {
 				ce.beat = base + end
 			}
@@ -447,6 +454,7 @@ func (in *instance) collect(from, to float64) []goEvent {
 // goEvent is a note on or off for the shim, at a position in beats
 type goEvent struct {
 	beat, velocity float64
+	tune           float64 // semitones from the key, a note on only
 	key, channel   int
 	id             int
 	on             bool

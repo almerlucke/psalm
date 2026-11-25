@@ -7,6 +7,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
 )
 
 // playFor makes an instance that plays the default spec for a seed, without the goroutine that renders
@@ -77,6 +79,77 @@ func TestSeed(t *testing.T) {
 	}
 	if slices.Equal(ea, ec) {
 		t.Fatal("another seed gave the same notes")
+	}
+}
+
+// a pitch between two keys is the nearest key and how far from it (a tuning of the note), unless microtones are off
+func TestMicrotones(t *testing.T) {
+	l := newLine([]ev{{start: 0, end: 1, pitch: 60.4, vel: 0.8}, {start: 1, end: 2, pitch: 60.6, vel: 0.8}, {start: 2, end: 3, pitch: 62, vel: 0.8}}, 4, 0.25)
+	in := newInstance()
+	in.store.Store(&store{lines: map[int64]*lineData{0: l}, length: l.length})
+
+	var ons []goEvent
+	for _, e := range in.collect(0, 4) {
+		if e.on {
+			ons = append(ons, e)
+		}
+	}
+	if len(ons) != 3 {
+		t.Fatalf("%d note ons", len(ons))
+	}
+	for i, want := range []struct {
+		key  int
+		tune float64
+	}{{60, 0.4}, {61, -0.4}, {62, 0}} {
+		if ons[i].key != want.key || math.Abs(ons[i].tune-want.tune) > 1e-9 {
+			t.Errorf("note %d: key %d, tune %v, want %d, %v", i, ons[i].key, ons[i].tune, want.key, want.tune)
+		}
+	}
+
+	in.set(pMicro, 0)
+	for _, e := range in.collect(0, 4) {
+		if e.tune != 0 {
+			t.Fatalf("microtones off, but a note is tuned by %v", e.tune)
+		}
+	}
+
+	// the end of a note is the key it started on, whatever the tuning
+	in.set(pMicro, 1)
+	keys := map[int]int{}
+	for _, e := range in.collect(0, 4) {
+		if e.on {
+			keys[e.id] = e.key
+		} else if keys[e.id] != e.key {
+			t.Fatalf("note %d ends on key %d, started on %d", e.id, e.key, keys[e.id])
+		}
+	}
+}
+
+// a script with another tuning reaches the plugin with its fractional pitches
+func TestScriptTuning(t *testing.T) {
+	rt := script.NewRuntime()
+	piece, err := rt.Render(`function render() { const t = genny.tuning({edo: 31, root: 60}); return [0, 1, 2, 3].map(d => ({pitch: t.pitch(d), start: d, duration: 1})) }`, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := buildPiece(piece)
+	in := newInstance()
+	in.store.Store(&store{lines: map[int64]*lineData{0: l}, length: l.length})
+	var tunes []float64
+	for _, e := range in.collect(0, l.length) {
+		if e.on {
+			tunes = append(tunes, e.tune)
+		}
+	}
+	// 31 steps of 38.7 cents: 0, 0.387, 0.774 (the key above, -0.226), 1.161 (the key above, +0.161)
+	want := []float64{0, 0.387, -0.226, 0.161}
+	if len(tunes) != 4 {
+		t.Fatalf("%d notes", len(tunes))
+	}
+	for i := range want {
+		if math.Abs(tunes[i]-want[i]) > 0.001 {
+			t.Errorf("note %d: tune %.3f, want %.3f", i, tunes[i], want[i])
+		}
 	}
 }
 

@@ -6,6 +6,7 @@
 typedef struct {
 	double beat;
 	double velocity;
+	double tune; // semitones from the key (a note on only): a pitch between two keys
 	int key;
 	int channel;
 	int id;
