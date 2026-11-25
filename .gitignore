@@ -68,3 +68,6 @@ recordings/
 
 # everything made or kept locally that does not belong in the repository (large or generated files, like the tuned voice of psalm139): one folder
 local/
+
+# CLAP plugins built from cmd/plugins
+*.clap
