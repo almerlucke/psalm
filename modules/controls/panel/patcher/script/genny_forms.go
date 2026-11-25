@@ -400,6 +400,8 @@ func (r *Runtime) fugueObject(f *fugue.Fugue, warning error) goja.Value {
 		return vm.NewArray(a...)
 	})
 	set("end", func(goja.FunctionCall) goja.Value { return vm.ToValue(f.End()) })
+	// bar(step): the bar (counting from 1) a step falls in
+	set("bar", func(call goja.FunctionCall) goja.Value { return vm.ToValue(f.Bar(call.Argument(0).ToFloat())) })
 	set("check", func(goja.FunctionCall) goja.Value {
 		var out []string
 		for _, p := range f.Check() {
@@ -610,6 +612,16 @@ func (r *Runtime) layerOf(c goja.Value) polyrhythm.Layer {
 		e = append(e, 0)
 		l = l.WithEuclid(e[0], e[1], e[2])
 	}
+	if v := opt(c, "euclidAccent"); !goja.IsUndefined(v) {
+		e := r.numbers(v)
+		if len(e) < 2 {
+			fail("layer: euclidAccent is [steps, pulses, rotation = 0, soft = 0.5]")
+		}
+		for len(e) < 4 {
+			e = append(e, []float64{0, 0, 0, 0.5}[len(e)])
+		}
+		l = l.WithEuclidAccent(int(e[0]), int(e[1]), int(e[2]), e[3])
+	}
 	if v := opt(c, "barlow"); !goja.IsUndefined(v) {
 		l = l.WithBarlow(optNumber(v, "soft", 0.5), int(optNumber(v, "level", 1)), r.integers(opt(v, "divisions"))...)
 	}
@@ -657,5 +669,6 @@ func (r *Runtime) modulationObject(m polyrhythm.Modulation) goja.Value {
 	_ = o.Set("tempo", func(bpm goja.Value) float64 { return m.Tempo(r.frac(bpm)).Float() })
 	_ = o.Set("factor", func() float64 { return m.Factor().Float() })
 	_ = o.Set("carryEvents", func(events goja.Value) goja.Value { return r.eventsOut(m.CarryEvents(r.events(events))) })
+	r.modulationMethods(o, m)
 	return o
 }

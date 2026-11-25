@@ -378,6 +378,7 @@ func (r *Runtime) sieveObject(s sieve.Sieve) goja.Value {
 		return wrapAs[int](r, sieve.NewGen(s, flag(call, 0, true)))
 	})
 	_ = o.Set("gate", func(length int) goja.Value { return wrapAs[bool](r, sieve.NewGate(s, length)) })
+	r.sieveMethods(o, s)
 	return o
 }
 

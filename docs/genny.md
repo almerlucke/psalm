@@ -301,6 +301,16 @@ genny.pulseGate([3, 2, 2], 6).take(12)                         // every other pu
 const fade = genny.pulseGate([3, 2, 2], genny.ramp(48, 12, 0)) // fills in over 48 steps
 ```
 
+The same weights as plain lists, to shape your own rhythm:
+
+| Call | Gives |
+|---|---|
+| `genny.pulseHierarchy(divisions)` | the importance of every pulse (0 is the least important) |
+| `genny.pulseVelocity(divisions, lo = 0.4, hi = 1)` | a velocity for every pulse, the first the strongest |
+| `genny.pulseThin(divisions, level)` | `true` for the pulses that are at least that important |
+| `genny.pulseMorph(divisionsA, divisionsB, rate)` | the importances between two meters with the same number of pulses (`rate` 0 is the first, 1 the second) |
+| `genny.metricWeight(step, barSteps = 16, beatSteps = 4)` | 3 on the first step of a bar, 2 on the other beats, 1 on half beats, 0 elsewhere |
+
 ### `genny.ratchet(p = 0.3, max = 4)` / `genny.ratchetPattern(counts)`
 
 A step that is repeated: a roll. Every step gives an array of the **starts** of its repeats, as
@@ -406,7 +416,10 @@ It returns an object:
 | `s.quantize(x)` | the nearest pitch of the scale |
 | `s.degrees(gen)` | a generator of the pitches of the degrees a generator gives |
 | `s.walk(start = 0, lo = -7, hi = 7, maxStep = 2, leap = 0.1, maxLeap = 4)` | a melody that walks over the degrees in steps of up to `maxStep`, and with chance `leap` leaps up to `maxLeap`; stays between `lo` and `hi` |
+| `s.degreeOf(x)` | the degree nearest to a pitch (the other way round of `degree`) |
 | `s.len()`, `s.root()` | number of steps, the root |
+
+`genny.hzToMidi(hz)` and `genny.midiToHz(pitch)` convert between frequencies and (fractional) pitches; 69 is A4 at 440 Hz.
 
 ```js
 const a = genny.scale(57, "minor")
@@ -535,6 +548,8 @@ Twelve tone rows as arrays of pitch classes, and the classical operations on the
 | `genny.transposeRow(row, semitones)` | moved |
 | `genny.serial(row, forms)` | a looping generator of the forms one after the other; each form is `[op, transpose]`, `op` one of `"prime"`, `"retro"`, `"invert"`, `"retroInvert"` |
 | `genny.matrix(row)` | the twelve tone matrix: an array of rows |
+| `genny.allIntervalRows(n = 12, limit = 10)` | rows of `n` pitch classes from 0 in which every interval comes once (at most `limit` of them): an array of rows |
+| `genny.permutations(elements, groupLen = all, limit = 100)` | the arrangements of the elements in every order, in a fixed order (at most 8 elements) |
 
 ```js
 const r = genny.row()
@@ -689,6 +704,9 @@ a list of numbers. Combine them with logic; use the result as a pitch set, a gat
 | `s.gen(loop = true)` | a generator of the members, in order |
 | `s.gate(length)` | a gate that is `true` on the steps that are members, over `length` steps, looping |
 | `s.scale(base)` | the members as pitches above `base` |
+| `s.select(values)` | the values at the positions that are members |
+| `s.filter(gen, length)` | the values of a generator on the steps that are members (the others `null`, a rest); after `length` steps the sieve starts again |
+| `s.interpret(pattern, kind)` | a sieve applied to a rhythm of durations (negative is a rest): kind 1 makes the non-members rests, 2 lets each member take the non-members after it, 3 and 4 the same with the roles turned around; the total stays |
 
 ```js
 const a = genny.sieve(3, 0, 0, 23)
@@ -719,6 +737,23 @@ After every `n` values the last one is repeated `k` more times.
 ```js
 genny.stutter([1, 2, 3], 1, 1).take(6)       // 1 1 2 2 3 3
 genny.stutter(melody, 4, 2)                  // every fourth note rings three times
+```
+
+### Lists of durations
+
+Durations in steps; a negative one is a rest.
+
+| Call | Gives |
+|---|---|
+| `genny.group(gen, k)` | every value of `gen` repeated `k` times; `k` is a number or a generator, read as a value starts |
+| `genny.grow(start, { mode = "geometric", amount = 2, lo = 1, hi = 16, limit = "restart" })` | a series from `start`, each value the last one times (or plus, `"arithmetic"`) `amount`; at the edge of `[lo, hi]` it stays (`"clip"`) or starts over (`"restart"`) |
+| `genny.plusMin(gen, p)` | the values of `gen`, each a rest (made negative) with chance `p` |
+| `genny.positiveNegative(gen, pos, neg)` | `pos` values as they are, then `neg` of them as rests, again and again |
+| `genny.gatherUntil(gen, total)` | values of `gen` until they add up to `total`, the last one cut to fit: fills a bar |
+| `genny.splitEvenly(value, n)` | `value` cut into `n` equal parts |
+
+```js
+const bar = genny.gatherUntil(genny.plusMin(genny.grow(1, { amount: 1, mode: "arithmetic", hi: 4 }), 0.3), 16)
 ```
 
 ---
@@ -1026,6 +1061,10 @@ tonic; steps) or `{ pitches, durations }` (all notes of the key). Gives an objec
 | `f.warning`, `f.hasCounter` | set when no countersubject was found (the voices then rest) |
 
 `genny.strettoDistances(subject, { scale, answer, voices = 2, beat = 4 })` gives the distances at which a stretto works.
+`f.bar(step)` is the bar (from 1) a step falls in. The parts on their own, to build a fugue by hand:
+`genny.fugueAnswer(subject, { scale, answer = "tonal" })` is the answer to a subject, and
+`genny.countersubject(subject, { scale, species = 2, attempts })` a line that goes with it (an error when none is found);
+both give `{ degrees, durations, length }`, a subject again.
 
 ```js
 const key = genny.scale(62, "minor")
@@ -1052,6 +1091,8 @@ A chord is `{ name, numeral, function, root, intervals, pitchClasses, of, borrow
 | `harmony.modulate(from, to)` | the chords into another key: a pivot, then the dominant seventh |
 | `harmony.realize(chords, { variety = 0, ranges })` | four voices (soprano first) with the smoothest voice leading: `{ voicings: [{ chord, notes: [s, a, t, b] }], violations: [text] }` |
 | `harmony.voices(result, { length = 16, velocity = 0.7, start = 0 })` | the voicings as four lines of notes, a chord to `length` steps |
+| `harmony.check(result)` | the rules the voices of voicings break, as texts (those of `realize`, or voicings you wrote: `{ notes: [s, a, t, b], chord }`) |
+| `harmony.dominant(key)`, `harmony.relative(key)` | the key a fifth up, the relative major or minor: `{ tonic, minor, name }`, usable as a key |
 
 ```js
 const H = genny.harmony
@@ -1066,12 +1107,12 @@ const four = H.voices(H.realize(chords), { length: 16 })      // soprano, alto, 
 
 | Function | Does |
 |---|---|
-| `polyrhythm.layer(options)` | pulses spread evenly: `{ pulses, span = 1 }`; or `{ every: period }`; or `{ tuplet: [n, m], period = 1 }` (n in the time of m periods). Also `offset`, `pattern` (booleans), `accent` (0 to 1), `pitch = 60`, `lo`, `hi` (velocities, 0 to 1), `gate = 0.5`, `euclid: [steps, pulses, rotation]`, `barlow: { soft, level, divisions }`. `layer.events(from, to, stepsPerBeat = 4)` gives its notes, `layer.period` its pulse |
+| `polyrhythm.layer(options)` | pulses spread evenly: `{ pulses, span = 1 }`; or `{ every: period }`; or `{ tuplet: [n, m], period = 1 }` (n in the time of m periods). Also `offset`, `pattern` (booleans), `accent` (0 to 1), `pitch = 60`, `lo`, `hi` (velocities, 0 to 1), `gate = 0.5`, `euclid: [steps, pulses, rotation]` (only those pulses), `euclidAccent: [steps, pulses, rotation, soft = 0.5]` (all pulses, the others softer), `barlow: { soft, level, divisions }`. `layer.events(from, to, stepsPerBeat = 4)` gives its notes, `layer.period` its pulse |
 | `polyrhythm.cycle(layers)` | the beats after which all layers are together again |
 | `polyrhythm.realign(layers)` | the beats at which each layer comes back in line with the first |
 | `polyrhythm.grid(layers)` | the finest raster all pulses fall on: `{ unit, steps, cells, text }` |
 | `polyrhythm.meter(unit, groups)` | an additive meter, 3+3+2: `{ accents, onsets, length, units, signature, layer }` |
-| `polyrhythm.modulation(old, new)`, `polyrhythm.ratio(n, m)` | a metric modulation: `m.tempo(bpm)`, `m.factor()`, `m.carryEvents(events)` |
+| `polyrhythm.modulation(old, new)`, `polyrhythm.ratio(n, m)` | a metric modulation: `m.tempo(bpm)`, `m.factor()`, `m.carry(beats)` (beats of the old tempo as beats of the new), `m.carryEvents(events)`, `m.inverse()`, `m.then(other)` (one after the other) |
 
 ```js
 const P = genny.polyrhythm

@@ -142,6 +142,8 @@ func (r *Runtime) gennyScale(s *scale.Scale) goja.Value {
 	_ = o.Set("degree", func(i int) float64 { return s.Degree(i) })
 	// quantize(x): the nearest pitch of the scale
 	_ = o.Set("quantize", func(x float64) float64 { return s.Quantize(x) })
+	// degreeOf(x): the degree nearest to a pitch (the other way round of degree)
+	_ = o.Set("degreeOf", func(x float64) int { return s.DegreeOf(x) })
 	// degrees(gen): a generator of the pitches of the degrees a generator gives
 	_ = o.Set("degrees", func(call goja.FunctionCall) goja.Value {
 		return wrapAs(r, genny.Generator[float64](scale.NewDegrees(s, r.ints(call.Argument(0)))))
