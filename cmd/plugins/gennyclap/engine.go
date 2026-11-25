@@ -8,16 +8,21 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/almerlucke/genny"
 	"github.com/almerlucke/genny/spec"
+	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
 )
 
 //go:embed default.json
 var defaultSpec string
+
+//go:embed default.js
+var defaultScript string
 
 // the parameters of the plugin (their numbers are those of the host)
 const (
@@ -57,16 +62,31 @@ type lineData struct {
 	byEnd   []int32
 	length  float64 // beats
 	overrun float64 // how far a note goes on after the end of the line, beats
+	step    float64 // a step of the spec or script, beats
 }
 
 func buildLine(res spec.Result) *lineData {
 	spb := res.File.StepsPerBeat
-	l := &lineData{length: max(res.Steps/spb, 1.0/spb)}
+	var events []ev
 	for _, t := range res.File.Tracks {
 		for _, e := range t.Events {
-			l.events = append(l.events, ev{e.Start / spb, (e.Start + e.Duration) / spb, e.Pitch, e.Velocity, t.Channel})
+			events = append(events, ev{e.Start / spb, (e.Start + e.Duration) / spb, e.Pitch, e.Velocity, t.Channel})
 		}
 	}
+	return newLine(events, res.Steps/spb, 1/spb)
+}
+
+func buildPiece(p script.Piece) *lineData {
+	var events []ev
+	for _, n := range p.Notes {
+		events = append(events, ev{n.Start / p.StepsPerBeat, (n.Start + n.Duration) / p.StepsPerBeat, n.Pitch, n.Velocity, n.Channel})
+	}
+	return newLine(events, p.Steps/p.StepsPerBeat, 1/p.StepsPerBeat)
+}
+
+// newLine makes the line of notes: a loop of length beats
+func newLine(events []ev, length, step float64) *lineData {
+	l := &lineData{events: events, length: max(length, step), step: step}
 	slices.SortStableFunc(l.events, func(a, b ev) int {
 		switch {
 		case a.start < b.start:
@@ -113,6 +133,7 @@ type instance struct {
 
 	mu       sync.Mutex // the spec text and its file (never taken by the audio thread)
 	text     string
+	isScript bool // the text is a script (a file that ends in .js), else a spec
 	path     string
 	modTime  time.Time
 	fromSave bool // the spec is that of the saved project, the file counts when it changes
@@ -143,7 +164,8 @@ func newInstance() *instance {
 	return in
 }
 
-// specPath is the file the spec is read from: $GENNY_SPEC, else ~/.config/psalm/genny.json
+// specPath is the file the piece is read from: $GENNY_SPEC, else ~/.config/psalm/genny.js when there is one (a
+// script), else ~/.config/psalm/genny.json (a spec)
 func specPath() string {
 	if p := os.Getenv("GENNY_SPEC"); p != "" {
 		return p
@@ -152,7 +174,26 @@ func specPath() string {
 	if err != nil {
 		return ""
 	}
+	if js := filepath.Join(dir, "psalm", "genny.js"); fileExists(js) {
+		return js
+	}
 	return filepath.Join(dir, "psalm", "genny.json")
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// isScriptFile is whether a file is a script, by its name
+func isScriptFile(path string) bool { return strings.EqualFold(filepath.Ext(path), ".js") }
+
+// defaultFor is the text a new file starts with
+func defaultFor(path string) string {
+	if isScriptFile(path) {
+		return defaultScript
+	}
+	return defaultSpec
 }
 
 // loadFile reads the spec file (writing the default one when there is none). It reports whether the text changed
@@ -174,11 +215,12 @@ func (in *instance) loadFile() bool {
 		if in.text != "" {
 			return false
 		}
+		def := defaultFor(in.path)
 		_ = os.MkdirAll(filepath.Dir(in.path), 0o755)
-		_ = os.WriteFile(in.path, []byte(defaultSpec), 0o644)
+		_ = os.WriteFile(in.path, []byte(def), 0o644)
 		fi, err = os.Stat(in.path)
 		if err != nil {
-			in.text, in.specGen = defaultSpec, in.specGen+1
+			in.text, in.isScript, in.specGen = def, isScriptFile(in.path), in.specGen+1
 			return true
 		}
 	}
@@ -192,14 +234,14 @@ func (in *instance) loadFile() bool {
 		return false
 	}
 	data, err := os.ReadFile(in.path)
-	if err != nil || string(data) == in.text {
+	if err != nil || (string(data) == in.text && isScriptFile(in.path) == in.isScript) {
 		return false
 	}
-	in.text, in.specGen = string(data), in.specGen+1
+	in.text, in.isScript, in.specGen = string(data), isScriptFile(in.path), in.specGen+1
 	return true
 }
 
-// render renders the spec for a seed
+// renderSpec renders the spec for a seed
 func renderSpec(text string, seed uint64) (*lineData, error) {
 	s, err := spec.ParseBytes([]byte(text))
 	if err != nil {
@@ -215,6 +257,20 @@ func renderSpec(text string, seed uint64) (*lineData, error) {
 	return buildLine(res), nil
 }
 
+// renderScript renders the script for a seed, in the runtime of the instance (which only its goroutine uses)
+func renderScript(rt *script.Runtime, text string, seed uint64) (*lineData, error) {
+	renderMu.Lock()
+	defer renderMu.Unlock()
+	piece, err := rt.Render(text, seed)
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range piece.Log {
+		fmt.Fprintln(os.Stderr, "genny script:", line)
+	}
+	return buildPiece(piece), nil
+}
+
 // run keeps the store up to date: the spec file, the seed, and the cycles ahead of the transport
 func (in *instance) run() {
 	var (
@@ -222,6 +278,7 @@ func (in *instance) run() {
 		haveGen uint64 = math.MaxUint64
 		haveSd         = -1.0
 		tick    int
+		rt      *script.Runtime // made when the first script is rendered (here, the only goroutine that uses it)
 	)
 	for {
 		select {
@@ -233,7 +290,7 @@ func (in *instance) run() {
 			in.loadFile()
 		}
 		in.mu.Lock()
-		text, gen := in.text, in.specGen
+		text, gen, isScript := in.text, in.specGen, in.isScript
 		in.mu.Unlock()
 		if text == "" {
 			continue
@@ -256,7 +313,16 @@ func (in *instance) run() {
 			if lines[c] != nil {
 				continue
 			}
-			l, err := renderSpec(text, uint64(seed)+uint64(c))
+			var l *lineData
+			var err error
+			if isScript {
+				if rt == nil {
+					rt = script.NewRuntime()
+				}
+				l, err = renderScript(rt, text, uint64(seed)+uint64(c))
+			} else {
+				l, err = renderSpec(text, uint64(seed)+uint64(c))
+			}
 			if err != nil {
 				in.mu.Lock()
 				if in.lastErr != err.Error() {
@@ -335,7 +401,7 @@ func (in *instance) collect(from, to float64) []goEvent {
 			if swing > 0 {
 				// the steps are 1/4 beat in a spec of 4 steps a beat: a note that starts on an odd step is late
 				// by the swing, the step is read from the start of the note
-				start, end = swungTimes(e.start, e.end, swing)
+				start, end = swungTimes(e.start, e.end, swing, l.step)
 			}
 			p := math.Round(e.pitch + transpose)
 			if p < 0 || p > 127 {
@@ -389,11 +455,11 @@ type goEvent struct {
 // maxEvents is the most events one block hands the shim
 const maxEvents = 512
 
-// swungTimes delays a note that starts on an odd sixteenth (beat times, 4 steps a beat) by swing steps
-func swungTimes(start, end, swing float64) (float64, float64) {
-	step := start * 4
-	if math.Abs(step-math.Round(step)) < 1e-6 && int64(math.Round(step))%2 == 1 {
-		d := swing / 4
+// swungTimes delays a note that starts on an odd step (times in beats, a step is step beats long) by swing steps
+func swungTimes(start, end, swing, step float64) (float64, float64) {
+	n := start / step
+	if math.Abs(n-math.Round(n)) < 1e-6 && int64(math.Round(n))%2 == 1 {
+		d := swing * step
 		return start + d, end + d
 	}
 	return start, end
@@ -415,7 +481,8 @@ func sortSearch(n int, f func(int) bool) int {
 // state is what is saved in the project
 type stateDoc struct {
 	Params map[string]float64 `json:"params"`
-	Spec   string             `json:"spec"`
+	Spec   string             `json:"spec"` // the text of the spec or script
+	Script bool               `json:"script,omitempty"`
 }
 
 func (in *instance) saveState() []byte {
@@ -424,7 +491,7 @@ func (in *instance) saveState() []byte {
 		doc.Params[p.name] = in.get(i)
 	}
 	in.mu.Lock()
-	doc.Spec = in.text
+	doc.Spec, doc.Script = in.text, in.isScript
 	in.mu.Unlock()
 	b, _ := json.Marshal(doc)
 	return b
@@ -442,7 +509,7 @@ func (in *instance) loadState(data []byte) {
 	}
 	if doc.Spec != "" {
 		in.mu.Lock()
-		in.text, in.specGen, in.fromSave = doc.Spec, in.specGen+1, true
+		in.text, in.isScript, in.specGen, in.fromSave = doc.Spec, doc.Script, in.specGen+1, true
 		in.mu.Unlock()
 	}
 }

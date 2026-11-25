@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -80,13 +81,17 @@ func TestSeed(t *testing.T) {
 }
 
 func TestSwingDelaysOddSteps(t *testing.T) {
-	s, e := swungTimes(0.25, 0.5, 0.4)
+	s, e := swungTimes(0.25, 0.5, 0.4, 0.25)
 	if s <= 0.25 || e <= 0.5 {
 		t.Fatalf("the note on step 1 was not delayed: %v %v", s, e)
 	}
-	s, e = swungTimes(0.5, 0.75, 0.4)
+	s, e = swungTimes(0.5, 0.75, 0.4, 0.25)
 	if s != 0.5 || e != 0.75 {
 		t.Fatalf("the note on step 2 moved: %v %v", s, e)
+	}
+	// another step: triplets of 1/3 beat
+	if s, _ := swungTimes(1.0/3, 2.0/3, 0.5, 1.0/3); s <= 1.0/3 {
+		t.Fatalf("the swing does not follow the step of the piece: %v", s)
 	}
 }
 
@@ -185,6 +190,56 @@ func TestRenewRendersTheCyclesAhead(t *testing.T) {
 		st := in.store.Load()
 		return st.lines[9] != nil && st.lines[3] == nil
 	})
+}
+
+// a file that ends in .js is a script: it is written when missing, rendered by the script runtime, and read again
+// when it is edited
+func TestScriptFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "genny.js")
+	t.Setenv("GENNY_SPEC", path)
+	in := newInstance()
+	in.stop = make(chan struct{})
+	go in.run()
+	defer close(in.stop)
+
+	wait(t, "the default script", func() bool { return in.store.Load() != nil })
+	st := in.store.Load()
+	if data, err := os.ReadFile(path); err != nil || string(data) != defaultScript {
+		t.Fatal("the default script was not written")
+	}
+	l := st.lines[0]
+	channels := map[int]bool{}
+	for _, e := range l.events {
+		channels[e.channel] = true
+	}
+	if len(l.events) < 10 || !channels[0] || !channels[1] || l.length != 16 {
+		t.Fatalf("%d events, channels %v, %v beats", len(l.events), channels, l.length)
+	}
+
+	edited := `function render(p) { return {stepsPerBeat: 3, length: 6, notes: [{pitch: 60, start: 1, duration: 1}]} }`
+	if err := os.WriteFile(path, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	_ = os.Chtimes(path, future, future)
+	wait(t, "the edited script", func() bool {
+		s := in.store.Load()
+		return s != st && len(s.lines[0].events) == 1
+	})
+	got := in.store.Load().lines[0]
+	if math.Abs(got.length-2) > 1e-9 || math.Abs(got.step-1.0/3) > 1e-9 {
+		t.Fatalf("length %v beats, step %v", got.length, got.step)
+	}
+}
+
+func TestStateKeepsScript(t *testing.T) {
+	a := newInstance()
+	a.text, a.isScript = defaultScript, true
+	b := newInstance()
+	b.loadState(a.saveState())
+	if !b.isScript || b.text != defaultScript {
+		t.Fatal("the script of the project was not kept")
+	}
 }
 
 func TestBadSpecIsAnError(t *testing.T) {
