@@ -143,6 +143,11 @@ func (r *Runtime) RenderHeld(code string, seed uint64, held []HeldNote) (Piece, 
 	}
 	_ = arg.Set("held", vm.NewArray(notes...))
 	_ = arg.Set("pitches", vm.NewArray(pitches...))
+	ps := make([]int, len(held))
+	for i, h := range held {
+		ps[i] = h.Pitch
+	}
+	_ = arg.Set("chord", r.chordOf(ps)) // what the notes held are, or null (see genny.identify)
 	out, err := r.call(RenderBudget, render, arg)
 	if err != nil {
 		return Piece{Log: logs}, err

@@ -124,6 +124,19 @@ func TestRenderHeld(t *testing.T) {
 	}
 }
 
+// p.chord says what the notes held are
+func TestRenderChord(t *testing.T) {
+	code := `function render(p) { return p.chord ? [{pitch: 60, start: 0, duration: 1, channel: p.chord.inversion}] : [] }`
+	p, err := NewRuntime().RenderHeld(code, 1, []HeldNote{{64, 1}, {67, 1}, {72, 1}})
+	if err != nil || len(p.Notes) != 1 || p.Notes[0].Channel != 1 {
+		t.Fatalf("%+v %v", p.Notes, err)
+	}
+	p, err = NewRuntime().RenderHeld(code, 1, []HeldNote{{64, 1}})
+	if err != nil || len(p.Notes) != 0 {
+		t.Fatalf("%+v %v", p.Notes, err)
+	}
+}
+
 func TestRenderErrors(t *testing.T) {
 	for _, c := range []struct{ code, want string }{
 		{`var x = ;`, "line 1"},

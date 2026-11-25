@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -385,8 +386,11 @@ func (in *instance) heldNotes() []script.HeldNote {
 
 // usesInput is whether a script looks at the notes played (it is not rendered again for them when it does not)
 func usesInput(text string) bool {
-	return strings.Contains(text, "held") || strings.Contains(text, "pitches")
+	return strings.Contains(text, "held") || strings.Contains(text, "pitches") || chordArg.MatchString(text)
 }
+
+// chordArg is p.chord (not genny.chord, which makes a chord)
+var chordArg = regexp.MustCompile(`\bp\.chord\b`)
 
 // run keeps the store up to date: the spec file, the seed, and the cycles ahead of the transport
 func (in *instance) run() {

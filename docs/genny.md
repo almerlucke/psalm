@@ -34,7 +34,7 @@ The package is [genny](https://github.com/almerlucke/genny); this page is the sc
 - [Game of Life](#game-of-life): `life`
 - [Evolving a phrase](#evolving-a-phrase): `evolve`
 - [Shapers](#shapers)
-- [In the Genny plugin](#in-the-genny-plugin): `render(p)` `p.held` `p.pitches`
+- [In the Genny plugin](#in-the-genny-plugin): `render(p)` `p.held` `p.pitches` `p.chord` `genny.identify` `genny.analyze`
 - [Randomness and seeds](#randomness-and-seeds)
 - [Recipes](#recipes)
 
@@ -1287,6 +1287,26 @@ function render(p) {
   for (let i = 0; i < 16; i++) {
     if (p.pitches.length) notes.push({ pitch: p.pitches[i % p.pitches.length] + 12, start: i, duration: 1 })
   }
+  return { length: 16, notes }
+}
+```
+
+**What the notes are.** `p.chord` is the chord the notes held make, or `null` (one note, a cluster, something it has no name for):
+`{ name: "C major", symbol: "C/E", quality, root, rootName, bass, inversion, intervals, pitchClasses }`. `root` and `bass` are pitch
+classes (0 is C); `inversion` is 0 in root position. The lowest note is tried as the root first, so C E G A is C6 and A C E G
+is Am7. `genny.identify(pitches)` does the same for any list of pitches (numbers, or notes with a pitch, so `p.held` does too).
+`genny.analyze(pitches, key = "C major")` adds what the chord is in the key: `numeral` ("V7"), `function` ("T", "S" or "D"), `degree`
+(0 is I) and `kind` ("diatonic", "borrowed" from the parallel key, or "secondary" for the dominant of a degree); without a numeral
+the key does not have it. Names use sharps.
+
+```js
+// the chord played, as a bass note and a stab in the key of C
+function render(p) {
+  const a = genny.analyze(p.pitches, "C major")
+  if (!a) return []
+  const bass = 36 + a.root
+  const notes = [{ pitch: bass, start: 0, duration: 8 }]
+  if (a.function === "D") notes.push({ pitch: bass + 19, start: 8, duration: 4 })
   return { length: 16, notes }
 }
 ```

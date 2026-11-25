@@ -145,3 +145,42 @@ func TestGapsErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestIdentify(t *testing.T) {
+	for _, c := range []struct{ name, code, want string }{
+		{"major", `const c = genny.identify([60, 64, 67]); return [c.name, c.symbol, c.inversion]`, `["C major","C",0]`},
+		{"first inversion", `const c = genny.identify([64, 67, 72]); return [c.symbol, c.inversion]`, `["C/E",1]`},
+		{"second inversion", `const c = genny.identify([67, 72, 76]); return [c.symbol, c.inversion]`, `["C/G",2]`},
+		{"minor seventh", `return genny.identify([57, 60, 64, 67]).symbol`, `"Am7"`},
+		{"sixth from the bass", `return genny.identify([48, 52, 55, 57]).symbol`, `"C6"`},
+		{"dominant seventh", `return genny.identify([55, 59, 62, 65]).symbol`, `"G7"`},
+		{"spread and doubled", `return genny.identify([36, 48, 52, 55, 64, 79]).symbol`, `"C"`},
+		{"power chord", `return genny.identify([40, 47]).symbol`, `"E5"`},
+		{"sus4", `return genny.identify([60, 65, 67]).symbol`, `"Csus4"`},
+		{"notes with a pitch", `return genny.identify([{pitch: 62, velocity: 1}, {pitch: 65}, {pitch: 69}]).symbol`, `"Dm"`},
+		{"one note", `return genny.identify([60])`, `null`},
+		{"nothing", `return genny.identify([])`, `null`},
+		{"a cluster", `return genny.identify([60, 61, 62])`, `null`},
+		{"fractions are rounded", `return genny.identify([60.2, 63.9, 67.1]).symbol`, `"C"`},
+		{"analyze V7", `const a = genny.analyze([55, 59, 62, 65], "C major"); return [a.numeral, a.function, a.kind, a.degree]`, `["V7","D","diatonic",4]`},
+		{"analyze ii in minor", `const a = genny.analyze([62, 65, 68], "C minor"); return [a.numeral, a.kind]`, `["ii°","diatonic"]`},
+		{"analyze borrowed", `const a = genny.analyze([56, 60, 63], "C major"); return [a.symbol, a.kind]`, `["G#","borrowed"]`},
+		{"analyze outside the key", `const a = genny.analyze([61, 65, 68], "C major"); return [a.symbol, a.numeral === undefined]`, `["C#",true]`},
+		{"analyze none", `return genny.analyze([60], "C major")`, `null`},
+		{"text, not pitches", `return genny.identify(["a"])`, "pitches are numbers"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := eval(t, c.code)
+			if err != nil {
+				got = err.Error()
+				if !strings.Contains(got, c.want) {
+					t.Fatal(err)
+				}
+				return
+			}
+			if got != c.want {
+				t.Errorf("%s: %s, want %s", c.code, got, c.want)
+			}
+		})
+	}
+}
