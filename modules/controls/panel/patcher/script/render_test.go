@@ -71,6 +71,32 @@ func TestRenderLog(t *testing.T) {
 	}
 }
 
+// a fugue of genny.fugue is a piece: one channel for each voice
+func TestRenderFugue(t *testing.T) {
+	code := `
+function render(p) {
+	const key = genny.scale(62, "minor")
+	const f = genny.fugue({degrees: [0, 2, 4, 2, 0, -1, 0], durations: [4, 2, 2, 4, 2, 1, 1]}, {scale: key, voices: 3})
+	f.episode({repeats: 2})
+	f.middle(0, "answer", 4, true)
+	f.close({bars: 2})
+	const notes = []
+	f.voices().forEach((voice, i) => voice.forEach(n => notes.push({...n, channel: i})))
+	return {length: Math.ceil(f.end() / 16) * 16, notes}
+}`
+	p, err := NewRuntime().Render(code, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	channels := map[int]bool{}
+	for _, n := range p.Notes {
+		channels[n.Channel] = true
+	}
+	if len(channels) != 3 || len(p.Notes) < 30 || p.Steps < 64 {
+		t.Fatalf("%d notes on %d channels, %v steps", len(p.Notes), len(channels), p.Steps)
+	}
+}
+
 func TestRenderErrors(t *testing.T) {
 	for _, c := range []struct{ code, want string }{
 		{`var x = ;`, "line 1"},

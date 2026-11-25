@@ -29,6 +29,7 @@ The package is [genny](https://github.com/almerlucke/genny); this page is the sc
 - [Distributions](#distributions): `gaussian` `exponential` `beta` `cauchy` `weibull` `pink` `lehmer`
 - [Tendency masks](#tendency-masks): `tendency` `tendencyChoice` `spray`
 - [Lines of note events](#lines-of-note-events): `line.*` `counterpoint` `chordTones` `isorhythm` `phase` `learnStyle`
+- [Forms](#forms): `fugue` `strettoDistances` `harmony.*` `polyrhythm.*` `tuning`
 - [Stochastic music](#stochastic-music): `poisson` `density` `cloud` `freeStochastic`
 - [Game of Life](#game-of-life): `life`
 - [Evolving a phrase](#evolving-a-phrase): `evolve`
@@ -991,6 +992,106 @@ style.transpose(7).phrase(8)
 ```
 
 ---
+
+## Forms
+
+Whole forms of genny: a fugue, functional harmony in four voices, exact polyrhythm and other tunings.
+They make lines of note events (the times in steps, the velocities from 0 to 1) like `genny.line`.
+Most of them draw on the random stream, so seed first.
+
+### `genny.fugue(subject, options)`
+
+The exposition of a **fugue**: the voices enter one after the other with the subject and the answer, the voice
+before it plays a countersubject. The subject is `{ degrees, durations }` (scale degrees from the tonic, 0 is the
+tonic; steps) or `{ pitches, durations }` (all notes of the key). Gives an object to go on with.
+
+| Option | Default | |
+|---|---|---|
+| `scale` | required | the key, `genny.scale(62, "minor")` |
+| `voices` | 3 | |
+| `answer` | `"tonal"` | `"tonal"` or `"real"` |
+| `stepsPerBar`, `beat` | 16, half a bar | the bar and the grid of accents (steps) |
+| `centers`, `order` | top voice at 74, a fifth lower each | the middle pitches of the voices, and the order they enter in |
+| `species`, `velocity`, `attempts` | 2, 0.8, 400 | the countersubject |
+
+| Member | Does |
+|---|---|
+| `f.episode({ voices, repeats = 3, step = -1, shift = 0, fragment })` | a sequence from the head of the subject; gives the shift to aim a middle entry at |
+| `f.middle(voice, "subject" or "answer", shift, withCounter = false)` | an entry in a new key area (2 the relative major, 4 the dominant, 3 the subdominant) |
+| `f.stretto(distance, voices)` | overlapping entries; `false` (and nothing added) when the distance does not work |
+| `f.close({ bars = 4, leadingTone = false })` | the ending: a pedal on the dominant, then the tonic |
+| `f.voices()` | the notes of every voice, the highest first: an array of lines |
+| `f.end()`, `f.check()` | where it ends (steps); the rules it breaks, as texts |
+| `f.sections()`, `f.entries()` | `{ name, start, end }` and `{ voice, start, kind, shift, section }` |
+| `f.warning`, `f.hasCounter` | set when no countersubject was found (the voices then rest) |
+
+`genny.strettoDistances(subject, { scale, answer, voices = 2, beat = 4 })` gives the distances at which a stretto works.
+
+```js
+const key = genny.scale(62, "minor")
+const f = genny.fugue({ degrees: [0, 2, 4, 2, 0, -1, 0], durations: [4, 2, 2, 4, 2, 1, 1] }, { scale: key, voices: 3 })
+f.episode({ repeats: 2 })
+f.middle(0, "answer", 4, true)
+f.close({ bars: 2 })
+const notes = []
+f.voices().forEach((voice, i) => voice.forEach(n => notes.push({ ...n, channel: i })))   // a channel for each voice
+```
+
+### `genny.harmony`
+
+**Functional harmony**: chords with a function (tonic, subdominant, dominant) in phrases that end in cadences, written
+in four voices by the rules of four part writing. A key is `"D minor"`, `"C"` (major) or `{ tonic: "D4", minor: true }`.
+A chord is `{ name, numeral, function, root, intervals, pitchClasses, of, borrowed, seventh, key }`.
+
+| Function | Does |
+|---|---|
+| `harmony.generator({ key, phraseLength = 4, cadences, seventh = 0, secondary = 0, borrowed = 0 })` | `g.next()` a chord, `g.phrase(n, cadence = "authentic")` a phrase, `g.setKey(key)`. `cadences` is weights: `{ authentic: 2, half: 1, plagal, deceptive }` |
+| `harmony.diatonic(key, degree, seventh = false)` | the chord on a degree (0 is I, 4 is V) |
+| `harmony.secondaryDominant(key, degree, seventh)` | the dominant of a degree (`V/vi`), `null` when it has none |
+| `harmony.borrowed(key, degree)` | the chord from the parallel key (iv in a major key), `null` when it is the same |
+| `harmony.modulate(from, to)` | the chords into another key: a pivot, then the dominant seventh |
+| `harmony.realize(chords, { variety = 0, ranges })` | four voices (soprano first) with the smoothest voice leading: `{ voicings: [{ chord, notes: [s, a, t, b] }], violations: [text] }` |
+| `harmony.voices(result, { length = 16, velocity = 0.7, start = 0 })` | the voicings as four lines of notes, a chord to `length` steps |
+
+```js
+const H = genny.harmony
+const key = "A minor"
+const chords = H.generator({ key, phraseLength: 4 }).phrase(4, "authentic")
+const four = H.voices(H.realize(chords), { length: 16 })      // soprano, alto, tenor, bass
+```
+
+### `genny.polyrhythm`
+
+**Exact polyrhythm**: times are beats as fractions, so 3 against 2 never drifts. A time is a number, `"2/3"` or `[2, 3]`.
+
+| Function | Does |
+|---|---|
+| `polyrhythm.layer(options)` | pulses spread evenly: `{ pulses, span = 1 }`; or `{ every: period }`; or `{ tuplet: [n, m], period = 1 }` (n in the time of m periods). Also `offset`, `pattern` (booleans), `accent` (0 to 1), `pitch = 60`, `lo`, `hi` (velocities, 0 to 1), `gate = 0.5`, `euclid: [steps, pulses, rotation]`, `barlow: { soft, level, divisions }`. `layer.events(from, to, stepsPerBeat = 4)` gives its notes, `layer.period` its pulse |
+| `polyrhythm.cycle(layers)` | the beats after which all layers are together again |
+| `polyrhythm.realign(layers)` | the beats at which each layer comes back in line with the first |
+| `polyrhythm.grid(layers)` | the finest raster all pulses fall on: `{ unit, steps, cells, text }` |
+| `polyrhythm.meter(unit, groups)` | an additive meter, 3+3+2: `{ accents, onsets, length, units, signature, layer }` |
+| `polyrhythm.modulation(old, new)`, `polyrhythm.ratio(n, m)` | a metric modulation: `m.tempo(bpm)`, `m.factor()`, `m.carryEvents(events)` |
+
+```js
+const P = genny.polyrhythm
+const three = P.layer({ tuplet: [3, 2], period: 1, pitch: 60 })      // 3 in the time of 2 beats
+const two = P.layer({ every: 1, pitch: 67 })
+const line = genny.line.merge(three.events(0, 4), two.events(0, 4))
+P.cycle([three, two])                                                 // 2 beats
+```
+
+### `genny.tuning(options)`
+
+Other tunings, as pitches in fractional semitones (a plugin or a synth that takes a pitch with decimals plays them).
+`{ edo: 31 }` or `{ edo: 13, period: 1901.955 }` (a period in cents), `{ just: [1, 9/8, 5/4, 3/2], period }`,
+`{ cents: [0, 204, 386], period = 1200 }` or `{ scl: text }` (a Scala file); `root = 60`.
+
+| Member | Does |
+|---|---|
+| `t.pitch(degree)`, `t.note(degree, octave)` | the pitch of a degree, of a degree in an octave |
+| `t.snap(p)`, `t.nearest(p)` | the nearest pitch of the tuning, its degree |
+| `t.cent(degree)`, `t.len()`, `t.pitches(lo, hi)` | cents above the root, degrees in a period, the pitches in a range |
 
 ## Stochastic music
 
