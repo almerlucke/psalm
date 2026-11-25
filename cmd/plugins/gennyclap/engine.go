@@ -134,16 +134,17 @@ type instance struct {
 	stop  chan struct{}
 	done  chan struct{} // closed when the goroutine has ended
 
-	mu       sync.Mutex // the spec text and its file (never taken by the audio thread)
-	text     string
-	isScript bool // the text is a script (a file that ends in .js), else a spec
-	path     string
-	modTime  time.Time
-	fromSave bool // the spec is that of the saved project, the file counts when it changes
-	specGen  uint64
-	lastErr  string
-	handle   int      // of the instance, for the host log
-	logLines []string // what it said, the last ones (the file next to the spec has them)
+	mu        sync.Mutex // the spec text and its file (never taken by the audio thread)
+	text      string
+	isScript  bool // the text is a script (a file that ends in .js), else a spec
+	path      string
+	modTime   time.Time
+	fromSave  bool // the spec is that of the saved project, the file counts when it changes
+	specGen   uint64
+	lastErr   string
+	savedPath string   // the file the project was saved with
+	handle    int      // of the instance, for the host log
+	logLines  []string // what it said, the last ones (the file next to the spec has them)
 }
 
 // Severities of a message, as CLAP numbers them
@@ -236,8 +237,13 @@ func defaultFor(path string) string {
 func (in *instance) loadFile() bool {
 	in.mu.Lock()
 	defer in.mu.Unlock()
-	if in.path == "" {
-		in.path = specPath()
+	// the file is looked for each time: a genny.js that appears (or goes) changes which file is played
+	if p := specPath(); p != in.path {
+		// a project keeps its own copy of the file it was saved with; another file is not a copy of that one
+		if in.path != "" || (in.savedPath != "" && in.savedPath != p) {
+			in.fromSave = false
+		}
+		in.path, in.modTime = p, time.Time{}
 	}
 	if in.path == "" {
 		if in.text == "" {
@@ -554,6 +560,7 @@ type stateDoc struct {
 	Params map[string]float64 `json:"params"`
 	Spec   string             `json:"spec"` // the text of the spec or script
 	Script bool               `json:"script,omitempty"`
+	Path   string             `json:"path,omitempty"` // the file it was read from
 }
 
 func (in *instance) saveState() []byte {
@@ -562,7 +569,7 @@ func (in *instance) saveState() []byte {
 		doc.Params[p.name] = in.get(i)
 	}
 	in.mu.Lock()
-	doc.Spec, doc.Script = in.text, in.isScript
+	doc.Spec, doc.Script, doc.Path = in.text, in.isScript, in.path
 	in.mu.Unlock()
 	b, _ := json.Marshal(doc)
 	return b
@@ -580,7 +587,7 @@ func (in *instance) loadState(data []byte) {
 	}
 	if doc.Spec != "" {
 		in.mu.Lock()
-		in.text, in.isScript, in.specGen, in.fromSave = doc.Spec, doc.Script, in.specGen+1, true
+		in.text, in.isScript, in.specGen, in.fromSave, in.savedPath = doc.Spec, doc.Script, in.specGen+1, true, doc.Path
 		in.mu.Unlock()
 	}
 }

@@ -365,6 +365,69 @@ func TestLogsErrorsAndNews(t *testing.T) {
 	wait(t, "the news in the log file", func() bool { return strings.Contains(readLog(), "2 notes in 4 beats") })
 }
 
+// a genny.js that appears next to genny.json is played from then on (the folder of the config can be a sandbox's)
+func TestScriptAppearsNextToSpec(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("GENNY_SPEC", "")
+	in := newInstance()
+	in.stop, in.done = make(chan struct{}), make(chan struct{})
+	go in.run()
+	defer func() { close(in.stop); <-in.done }()
+
+	spec := filepath.Join(dir, "psalm", "genny.json")
+	wait(t, "the default spec", func() bool { return in.store.Load() != nil && fileExists(spec) })
+	first := in.store.Load()
+	if len(first.lines[0].events) < 100 {
+		t.Fatalf("%d notes of the default spec", len(first.lines[0].events))
+	}
+	js := `function render() { return [{pitch: 61.5, start: 0, duration: 2}] }`
+	if err := os.WriteFile(filepath.Join(dir, "psalm", "genny.js"), []byte(js), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wait(t, "the script", func() bool {
+		st := in.store.Load()
+		return st != first && len(st.lines[0].events) == 1 && st.lines[0].events[0].pitch == 61.5
+	})
+	if data, _ := os.ReadFile(filepath.Join(dir, "psalm", "genny.js.log")); !strings.Contains(string(data), "1 notes in 4 beats") {
+		t.Fatalf("log of the script:\n%s", data)
+	}
+}
+
+// a project keeps its copy of the file it was saved with, but plays another file when that one is there
+func TestProjectPlaysAnotherFile(t *testing.T) {
+	dir := t.TempDir()
+	old, other := filepath.Join(dir, "genny.json"), filepath.Join(dir, "genny.js")
+	t.Setenv("GENNY_SPEC", old)
+	if err := os.WriteFile(old, []byte(defaultSpec), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := newInstance()
+	a.loadFile()
+	saved := a.saveState()
+
+	// the same file: the copy of the project is kept
+	b := newInstance()
+	b.loadState(saved)
+	b.text = "kept"
+	b.loadFile()
+	if b.text != "kept" {
+		t.Fatalf("the copy of the project was replaced: %q", b.text[:min(len(b.text), 20)])
+	}
+
+	// another file: it is played
+	t.Setenv("GENNY_SPEC", other)
+	if err := os.WriteFile(other, []byte("function render() { return [] }"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := newInstance()
+	c.loadState(saved)
+	c.loadFile()
+	if !c.isScript || !strings.HasPrefix(c.text, "function render") {
+		t.Fatalf("the other file was not played: %q", c.text[:min(len(c.text), 20)])
+	}
+}
+
 func TestBadSpecIsAnError(t *testing.T) {
 	if _, err := renderSpec(`{"tracks": [{"source": {"kind": "nope"}}]}`, 1); err == nil {
 		t.Fatal("a spec with an unknown kind rendered")
