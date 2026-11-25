@@ -1,87 +1,143 @@
-// Command gennyclap is the spike of a CLAP plugin made of genny: a note effect that plays what the generators of
-// genny make, in time with the transport of the host. Build it with build.sh, copy genny.clap to ~/.clap
+// Command gennyclap is a CLAP plugin made of genny: a note effect that plays a piece described in a genny spec
+// (JSON, see the docs of genny), in time with the transport of the host. The spec is read from a file
+// ($GENNY_SPEC, else ~/.config/psalm/genny.json) and read again when the file changes; the plugin keeps a copy of it
+// in the project. Build it with build.sh, copy genny.clap to ~/.clap
 package main
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../local/clap/include -I${SRCDIR}
+#cgo LDFLAGS: -lm
+#include <string.h>
 #include "shim.h"
 */
 import "C"
 
 import (
-	"math"
-	"sync/atomic"
 	"unsafe"
-
-	"github.com/almerlucke/genny"
-	"github.com/almerlucke/genny/euclid"
-	"github.com/almerlucke/genny/groove"
-	"github.com/almerlucke/genny/mutate"
-	"github.com/almerlucke/genny/note"
-	"github.com/almerlucke/genny/rest"
-	"github.com/almerlucke/genny/scale"
 )
 
-const (
-	stepsPerBeat = 4
-	barSteps     = 32 // two bars of four beats
-)
-
-// the notes of the loop, rendered when the plugin is activated, read by the audio thread (never changed)
-var line atomic.Pointer[[]note.Event]
-
-//export genny_prepare
-func genny_prepare() {
-	genny.Seed(7)
-	key := scale.New(57, scale.Minor)
-	phrase := mutate.New([]int{7, 9, 11, 9, 8, 7, 4, 7}, mutate.Config[int]{SwapProb: 0.6})
-	lead := note.Voice{
-		Pitch:    rest.NewGated[float64](scale.NewDegrees(key, phrase), euclid.New(16, 7, 0)),
-		Velocity: groove.NewAccent(4, 4, 4, 4),
-		Offset:   groove.NewSwing(0.15),
+func at(h C.int) *instance {
+	if h < 0 || int(h) >= len(instances) {
+		return nil
 	}
-	events := lead.Render(barSteps)
-	line.Store(&events)
+	return instances[h].Load()
 }
 
-// genny_collect writes the note on and off events that fall in the beats [from, to) of the transport
+//export genny_new
+func genny_new() C.int {
+	in := newInstance()
+	for i := range instances {
+		if instances[i].CompareAndSwap(nil, in) {
+			return C.int(i)
+		}
+	}
+	return -1
+}
+
+//export genny_free
+func genny_free(h C.int) {
+	if in := at(h); in != nil {
+		instances[h].Store(nil)
+	}
+}
+
+// genny_start starts the instance's reading of the spec (when the plugin is activated)
 //
+//export genny_start
+func genny_start(h C.int) {
+	in := at(h)
+	if in == nil || in.stop != nil {
+		return
+	}
+	in.stop = make(chan struct{})
+	go in.run()
+}
+
+//export genny_stop
+func genny_stop(h C.int) {
+	if in := at(h); in != nil && in.stop != nil {
+		close(in.stop)
+		in.stop = nil
+	}
+}
+
 //export genny_collect
-func genny_collect(from, to C.double, out *C.genny_event, capacity C.int) C.int {
-	p := line.Load()
-	if p == nil {
+func genny_collect(h C.int, from, to C.double, out *C.genny_event, capacity C.int) C.int {
+	in := at(h)
+	if in == nil {
 		return 0
 	}
-	buf := unsafe.Slice(out, int(capacity))
+	dst := unsafe.Slice(out, int(capacity))
 	n := 0
-	put := func(beat float64, on bool, e note.Event) {
-		if n >= len(buf) {
-			return
+	for _, e := range in.collect(float64(from), float64(to)) {
+		if n >= len(dst) {
+			break
 		}
-		buf[n] = C.genny_event{beat: C.double(beat), velocity: C.double(e.Velocity), key: C.int(math.Round(e.Pitch))}
-		if on {
-			buf[n].on = 1
+		on := C.int(0)
+		if e.on {
+			on = 1
 		}
+		dst[n] = C.genny_event{beat: C.double(e.beat), velocity: C.double(e.velocity), key: C.int(e.key), channel: C.int(e.channel), id: C.int(e.id), on: on}
 		n++
 	}
-	loop := float64(barSteps) / stepsPerBeat
-	f, t := float64(from), float64(to)
-	first := int(math.Floor(f/loop)) - 1 // a note that started in the cycle before can end in this block
-	last := int(math.Floor(t / loop))
-	for cycle := max(first, 0); cycle <= last; cycle++ {
-		base := float64(cycle) * loop
-		for _, e := range *p {
-			start := base + e.Start/stepsPerBeat
-			end := start + e.Duration/stepsPerBeat
-			if start >= f && start < t {
-				put(start, true, e)
-			}
-			if end >= f && end < t {
-				put(end, false, e)
-			}
-		}
-	}
 	return C.int(n)
+}
+
+//export genny_param_count
+func genny_param_count() C.int { return numParams }
+
+//export genny_param_info
+func genny_param_info(index C.int, out *C.genny_param) C.int {
+	if index < 0 || int(index) >= numParams {
+		return 0
+	}
+	p := params[index]
+	out.id = index
+	out.stepped = 0
+	if p.stepped {
+		out.stepped = 1
+	}
+	out.min, out.max, out.def = C.double(p.min), C.double(p.max), C.double(p.def)
+	name := append([]byte(p.name), 0)
+	C.memcpy(unsafe.Pointer(&out.name[0]), unsafe.Pointer(&name[0]), C.size_t(len(name)))
+	return 1
+}
+
+//export genny_param_set
+func genny_param_set(h, id C.int, value C.double) {
+	if in := at(h); in != nil && id >= 0 && int(id) < numParams {
+		in.set(int(id), float64(value))
+	}
+}
+
+//export genny_param_get
+func genny_param_get(h, id C.int) C.double {
+	if in := at(h); in != nil && id >= 0 && int(id) < numParams {
+		return C.double(in.get(int(id)))
+	}
+	return 0
+}
+
+// genny_state_write writes the state into buf when it fits, and returns its size
+//
+//export genny_state_write
+func genny_state_write(h C.int, buf *C.char, capacity C.int) C.int {
+	in := at(h)
+	if in == nil {
+		return 0
+	}
+	b := in.saveState()
+	if buf != nil && int(capacity) >= len(b) {
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(buf)), len(b)), b)
+	}
+	return C.int(len(b))
+}
+
+//export genny_state_read
+func genny_state_read(h C.int, buf *C.char, size C.int) {
+	if in := at(h); in != nil {
+		in.loadState(C.GoBytes(unsafe.Pointer(buf), size))
+	}
 }
 
 func main() {}
