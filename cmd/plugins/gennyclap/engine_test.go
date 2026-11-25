@@ -510,6 +510,7 @@ func TestRunFollowsInput(t *testing.T) {
 	if n := len(events()); n != 0 {
 		t.Fatalf("%d notes with nothing held", n)
 	}
+	in.want.Store(40) // the transport is far on: the piece must still be made again for the notes
 
 	in.input(60, 0.8, true)
 	in.input(64, 0.8, true)
@@ -523,6 +524,13 @@ func TestRunFollowsInput(t *testing.T) {
 	wait(t, "one note left", func() bool { return len(events()) == 1 })
 	in.input(60, 0, false)
 	wait(t, "nothing again", func() bool { return len(events()) == 0 })
+
+	// and it is not made again while the notes stay as they are
+	still := in.store.Load()
+	time.Sleep(300 * time.Millisecond)
+	if in.store.Load() != still {
+		t.Fatal("made again with the notes unchanged")
+	}
 
 	// a script that does not look at the notes keeps its store
 	plain := `function render(p) { return [{pitch: 60, start: 0, duration: 1}] }`

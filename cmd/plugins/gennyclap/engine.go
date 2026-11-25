@@ -432,6 +432,9 @@ func (in *instance) run() {
 		ver := in.inVersion.Load()
 		if ver != lastVer {
 			lastVer, settle = ver, 3
+			if withInput {
+				in.say(sevInfo, "input changed: %d notes held", len(in.heldNotes()))
+			}
 		}
 		if settle > 0 {
 			settle--
@@ -503,13 +506,13 @@ func (in *instance) run() {
 			wasErr := in.lastErr != ""
 			in.lastErr = ""
 			in.mu.Unlock()
-			if rebuilt || wasErr {
-				in.say(sevInfo, "%d notes in %.4g beats, seed %d", len(l.events), l.length, int(seed)+int(c))
+			if rebuilt || wasErr || remade {
+				in.say(sevInfo, "%d notes in %.4g beats, seed %d, %d held", len(l.events), l.length, int(seed)+int(c), len(held))
 			}
 			lines[c], changed = l, true
 		}
 		for c := range lines {
-			if c < cycle-1 {
+			if renew && c < cycle-1 { // without renew the one piece is cycle 0 for ever
 				delete(lines, c)
 				changed = true
 			}
