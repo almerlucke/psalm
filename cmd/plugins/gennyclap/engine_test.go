@@ -428,6 +428,141 @@ func TestProjectPlaysAnotherFile(t *testing.T) {
 	}
 }
 
+func pitchesOf(in *instance) []int {
+	var out []int
+	for _, h := range in.heldNotes() {
+		out = append(out, h.Pitch)
+	}
+	return out
+}
+
+// the notes held are those that are down, or with the latch the chord of the last notes, until a new chord is played
+func TestInputHeldAndLatch(t *testing.T) {
+	in := newInstance()
+	in.input(64, 0.5, true)
+	in.input(60, 1, true)
+	if got := pitchesOf(in); !slices.Equal(got, []int{60, 64}) {
+		t.Fatalf("held %v, want 60 64 (lowest first)", got)
+	}
+	if v := in.heldNotes()[0].Velocity; math.Abs(v-1) > 0.01 {
+		t.Fatalf("velocity %v", v)
+	}
+	in.input(60, 0, false)
+	if got := pitchesOf(in); !slices.Equal(got, []int{64}) {
+		t.Fatalf("after a release: %v", got)
+	}
+	in.input(64, 0, false)
+	if len(in.heldNotes()) != 0 {
+		t.Fatalf("held %v with nothing down", pitchesOf(in))
+	}
+
+	in.set(pLatch, 1)
+	in.input(60, 0.8, true)
+	in.input(64, 0.8, true)
+	in.input(60, 0, false)
+	in.input(64, 0, false)
+	if got := pitchesOf(in); !slices.Equal(got, []int{60, 64}) {
+		t.Fatalf("latched: %v", got)
+	}
+	in.input(67, 0.8, true) // a new chord (nothing was down) replaces the old
+	if got := pitchesOf(in); !slices.Equal(got, []int{67}) {
+		t.Fatalf("a new chord: %v", got)
+	}
+	in.input(71, 0.8, true) // while a key is down, more keys add to the chord
+	if got := pitchesOf(in); !slices.Equal(got, []int{67, 71}) {
+		t.Fatalf("a chord that grows: %v", got)
+	}
+	in.input(67, 0, false)
+	in.input(71, 0, false)
+	in.unlatch()
+	if len(in.heldNotes()) != 0 {
+		t.Fatalf("after unlatch: %v", pitchesOf(in))
+	}
+
+	in.input(-1, 1, true)
+	in.input(200, 1, true) // out of range: nothing happens
+	if len(in.heldNotes()) != 0 {
+		t.Fatalf("keys outside 0..127 counted: %v", pitchesOf(in))
+	}
+}
+
+// a script that looks at the notes played is made again when they change; one that does not look at them is not
+func TestRunFollowsInput(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "genny.js")
+	t.Setenv("GENNY_SPEC", path)
+	follow := `function render(p) { return {length: 16, notes: p.pitches.map((x, i) => ({pitch: x + 12, start: i * 4, duration: 2}))} }`
+	if err := os.WriteFile(path, []byte(follow), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	in := newInstance()
+	in.stop, in.done = make(chan struct{}), make(chan struct{})
+	go in.run()
+	defer func() { close(in.stop); <-in.done }()
+
+	events := func() []ev {
+		if st := in.store.Load(); st != nil {
+			return st.lines[0].events
+		}
+		return nil
+	}
+	wait(t, "nothing held", func() bool { return in.store.Load() != nil })
+	if n := len(events()); n != 0 {
+		t.Fatalf("%d notes with nothing held", n)
+	}
+
+	in.input(60, 0.8, true)
+	in.input(64, 0.8, true)
+	in.input(67, 0.8, true)
+	wait(t, "the chord", func() bool { return len(events()) == 3 })
+	if e := events(); e[0].pitch != 72 || e[2].pitch != 79 || e[1].start != 1 {
+		t.Fatalf("%+v", e)
+	}
+	in.input(64, 0, false)
+	in.input(67, 0, false)
+	wait(t, "one note left", func() bool { return len(events()) == 1 })
+	in.input(60, 0, false)
+	wait(t, "nothing again", func() bool { return len(events()) == 0 })
+
+	// a script that does not look at the notes keeps its store
+	plain := `function render(p) { return [{pitch: 60, start: 0, duration: 1}] }`
+	if err := os.WriteFile(path, []byte(plain), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	_ = os.Chtimes(path, future, future)
+	wait(t, "the plain script", func() bool { return len(events()) == 1 })
+	before := in.store.Load()
+	in.input(70, 1, true)
+	time.Sleep(200 * time.Millisecond)
+	if in.store.Load() != before {
+		t.Fatal("a script that ignores the notes was made again for them")
+	}
+}
+
+// the notes that sound are let go when the whole piece is replaced (a new seed), but not when it is only made longer (new cycles)
+func TestEpoch(t *testing.T) {
+	t.Setenv("GENNY_SPEC", filepath.Join(t.TempDir(), "genny.json"))
+	in := newInstance()
+	in.set(pRegen, 1)
+	in.stop, in.done = make(chan struct{}), make(chan struct{})
+	go in.run()
+	defer func() { close(in.stop); <-in.done }()
+
+	wait(t, "the first piece", func() bool { return in.store.Load() != nil })
+	first := in.store.Load().epoch
+	if first < 1 {
+		t.Fatalf("epoch %d", first)
+	}
+	in.want.Store(3) // the transport goes on: more cycles, the same piece
+	wait(t, "the cycles ahead", func() bool { st := in.store.Load(); return st.lines[5] != nil })
+	if e := in.store.Load().epoch; e != first {
+		t.Fatalf("epoch %d after more cycles, was %d", e, first)
+	}
+	in.set(pSeed, 9) // another piece
+	wait(t, "the new piece", func() bool { return in.store.Load().epoch > first })
+}
+
 func TestBadSpecIsAnError(t *testing.T) {
 	if _, err := renderSpec(`{"tracks": [{"source": {"kind": "nope"}}]}`, 1); err == nil {
 		t.Fatal("a spec with an unknown kind rendered")

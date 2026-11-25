@@ -32,6 +32,8 @@ const (
 	pGain
 	pSwing
 	pMicro
+	pLatch
+	pThru
 	numParams
 )
 
@@ -48,6 +50,8 @@ var params = [numParams]paramInfo{
 	pGain:      {"gain", false, 0, 2, 1},
 	pSwing:     {"swing (steps)", false, 0, 0.5, 0},
 	pMicro:     {"microtones", true, 0, 1, 1},
+	pLatch:     {"latch", true, 0, 1, 0},
+	pThru:      {"pass input", true, 0, 1, 0},
 }
 
 // ev is a note of a rendered line, times in beats
@@ -123,6 +127,9 @@ type store struct {
 	length float64
 	// overrun is how far the notes of a cycle go on into the next one, beats
 	overrun float64
+	// epoch counts the times the whole piece was replaced (not just made longer): the notes that sound are let go then, since the
+	// new piece does not know them
+	epoch int64
 }
 
 // instance is one plugin in the host
@@ -133,6 +140,12 @@ type instance struct {
 	want  atomic.Int64       // the cycle the transport is in, as last asked for
 	stop  chan struct{}
 	done  chan struct{} // closed when the goroutine has ended
+
+	// the notes played into the plugin (written by the audio thread, read by the goroutine that renders)
+	held      [128]atomic.Int32 // the velocity (1 to 127) of each key that counts, 0 for none
+	down      [128]atomic.Bool  // the keys that are physically down (a latched key can be held without being down)
+	downs     atomic.Int32      // how many keys are down
+	inVersion atomic.Uint64     // counts the changes of held
 
 	mu        sync.Mutex // the spec text and its file (never taken by the audio thread)
 	text      string
@@ -300,9 +313,9 @@ func renderSpec(text string, seed uint64) (*lineData, error) {
 }
 
 // renderScript renders the script for a seed, in the runtime of the instance (which only its goroutine uses)
-func (in *instance) renderScript(rt *script.Runtime, text string, seed uint64) (*lineData, error) {
+func (in *instance) renderScript(rt *script.Runtime, text string, seed uint64, held []script.HeldNote) (*lineData, error) {
 	renderMu.Lock()
-	piece, err := rt.Render(text, seed)
+	piece, err := rt.RenderHeld(text, seed, held)
 	renderMu.Unlock()
 	for _, line := range piece.Log {
 		in.say(sevInfo, "script: %s", line)
@@ -319,6 +332,60 @@ type failure struct {
 	seed  float64
 	renew bool
 	cycle int64
+	input uint64 // the notes held, when the script uses them
+}
+
+// input takes a note played into the plugin (on the audio thread, without locks or allocation). With latch on, the notes stay held
+// when they are let go, until the next note is played with nothing down: a new chord replaces the old one
+func (in *instance) input(key int, velocity float64, on bool) {
+	if key < 0 || key > 127 {
+		return
+	}
+	if on {
+		if in.get(pLatch) > 0.5 && in.downs.Load() == 0 {
+			for k := range in.held {
+				in.held[k].Store(0)
+			}
+		}
+		if !in.down[key].Swap(true) {
+			in.downs.Add(1)
+		}
+		in.held[key].Store(int32(min(max(math.Round(velocity*127), 1), 127)))
+	} else {
+		if in.down[key].Swap(false) {
+			in.downs.Add(-1)
+		}
+		if in.get(pLatch) < 0.5 {
+			in.held[key].Store(0)
+		}
+	}
+	in.inVersion.Add(1)
+}
+
+// unlatch lets go of the notes that were only held by the latch (it was turned off)
+func (in *instance) unlatch() {
+	for k := range in.held {
+		if !in.down[k].Load() {
+			in.held[k].Store(0)
+		}
+	}
+	in.inVersion.Add(1)
+}
+
+// heldNotes are the notes held, lowest first
+func (in *instance) heldNotes() []script.HeldNote {
+	var out []script.HeldNote
+	for k := range in.held {
+		if v := in.held[k].Load(); v > 0 {
+			out = append(out, script.HeldNote{Pitch: k, Velocity: float64(v) / 127})
+		}
+	}
+	return out
+}
+
+// usesInput is whether a script looks at the notes played (it is not rendered again for them when it does not)
+func usesInput(text string) bool {
+	return strings.Contains(text, "held") || strings.Contains(text, "pitches")
 }
 
 // run keeps the store up to date: the spec file, the seed, and the cycles ahead of the transport
@@ -333,6 +400,10 @@ func (in *instance) run() {
 		tick    int
 		rt      *script.Runtime // made when the first script is rendered (here, the only goroutine that uses it)
 		failed  failure         // the last render that failed (the zero value is none: no spec has generation 0)
+		haveVer uint64          // the notes held that the piece was made for
+		lastVer uint64          // the notes held at the last look
+		settle  int             // ticks to wait for more notes of a chord
+		latched bool
 	)
 	for {
 		select {
@@ -351,17 +422,41 @@ func (in *instance) run() {
 		}
 		seed, renew := in.get(pSeed), in.get(pRegen) > 0.5
 		cycle := in.want.Load()
+		// the notes played: a script that looks at them is made again when they change, once a chord has settled
+		now := in.get(pLatch) > 0.5
+		if latched && !now {
+			in.unlatch()
+		}
+		latched = now
+		withInput := isScript && usesInput(text)
+		ver := in.inVersion.Load()
+		if ver != lastVer {
+			lastVer, settle = ver, 3
+		}
+		if settle > 0 {
+			settle--
+			if withInput {
+				continue
+			}
+		}
+		if !withInput {
+			ver = haveVer // not looked at
+		}
 		// what failed is not tried again until something it depends on changes (the cycle only when each pass has its own seed)
-		key := failure{gen, seed, renew, 0}
+		key := failure{gen, seed, renew, 0, 0}
 		if renew {
 			key.cycle = cycle
+		}
+		if withInput {
+			key.input = ver
 		}
 		if key == failed {
 			continue
 		}
 		rebuilt := gen != haveGen || seed != haveSd || have == nil || have.renew != renew
+		remade := rebuilt || ver != haveVer // for the notes as well
 		var lines map[int64]*lineData
-		if rebuilt {
+		if remade {
 			lines = map[int64]*lineData{}
 		} else {
 			lines = maps(have.lines)
@@ -370,7 +465,11 @@ func (in *instance) run() {
 		if !renew {
 			first, last = 0, 0
 		}
-		changed := rebuilt
+		changed := remade
+		var held []script.HeldNote
+		if withInput {
+			held = in.heldNotes()
+		}
 		for c := first; c <= last; c++ {
 			if lines[c] != nil {
 				continue
@@ -381,7 +480,7 @@ func (in *instance) run() {
 				if rt == nil {
 					rt = script.NewRuntime()
 				}
-				l, err = in.renderScript(rt, text, uint64(seed)+uint64(c))
+				l, err = in.renderScript(rt, text, uint64(seed)+uint64(c), held)
 			} else {
 				l, err = renderSpec(text, uint64(seed)+uint64(c))
 			}
@@ -423,8 +522,18 @@ func (in *instance) run() {
 			length = l.length
 			overrun = max(overrun, l.overrun)
 		}
-		have = &store{lines: lines, renew: renew, length: length, overrun: overrun}
+		epoch := int64(1)
+		if have != nil {
+			epoch = have.epoch
+			if remade {
+				epoch++
+			}
+		}
+		have = &store{lines: lines, renew: renew, length: length, overrun: overrun, epoch: epoch}
 		haveGen, haveSd = gen, seed
+		if withInput {
+			haveVer = ver
+		}
 		in.store.Store(have)
 	}
 }

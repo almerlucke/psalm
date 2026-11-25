@@ -108,6 +108,22 @@ func TestRenderLogWithError(t *testing.T) {
 	}
 }
 
+// the notes held down are given to render, nothing held gives empty lists
+func TestRenderHeld(t *testing.T) {
+	code := `function render(p) { return {length: 16, notes: p.held.map((h, i) => ({pitch: h.pitch + 12, start: i * 2, duration: 2, velocity: h.velocity}))} }`
+	p, err := NewRuntime().RenderHeld(code, 1, []HeldNote{{60, 0.5}, {64, 1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Notes) != 2 || p.Notes[1].Pitch != 76 || p.Notes[0].Velocity != 0.5 || p.Notes[1].Start != 2 {
+		t.Fatalf("%+v", p.Notes)
+	}
+	p, err = NewRuntime().RenderHeld(`function render(p) { return p.pitches.length === 0 && p.held.length === 0 ? [] : [{pitch: 1}] }`, 1, nil)
+	if err != nil || len(p.Notes) != 0 {
+		t.Fatalf("%v %v", p.Notes, err)
+	}
+}
+
 func TestRenderErrors(t *testing.T) {
 	for _, c := range []struct{ code, want string }{
 		{`var x = ;`, "line 1"},

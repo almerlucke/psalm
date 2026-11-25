@@ -77,6 +77,18 @@ func genny_stop(h C.int) {
 	}
 }
 
+// genny_epoch counts the times the piece was replaced (0: there is none yet); when it changes the notes that sound are let go
+//
+//export genny_epoch
+func genny_epoch(h C.int) C.longlong {
+	if in := at(h); in != nil {
+		if st := in.store.Load(); st != nil {
+			return C.longlong(st.epoch)
+		}
+	}
+	return 0
+}
+
 //export genny_collect
 func genny_collect(h C.int, from, to C.double, out *C.genny_event, capacity C.int) C.int {
 	in := at(h)
@@ -97,6 +109,15 @@ func genny_collect(h C.int, from, to C.double, out *C.genny_event, capacity C.in
 		n++
 	}
 	return C.int(n)
+}
+
+// genny_input takes a note played into the plugin (audio thread)
+//
+//export genny_input
+func genny_input(h, key C.int, velocity C.double, on C.int) {
+	if in := at(h); in != nil {
+		in.input(int(key), float64(velocity), on != 0)
+	}
 }
 
 //export genny_param_count

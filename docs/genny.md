@@ -34,6 +34,7 @@ The package is [genny](https://github.com/almerlucke/genny); this page is the sc
 - [Game of Life](#game-of-life): `life`
 - [Evolving a phrase](#evolving-a-phrase): `evolve`
 - [Shapers](#shapers)
+- [In the Genny plugin](#in-the-genny-plugin): `render(p)` `p.held` `p.pitches`
 - [Randomness and seeds](#randomness-and-seeds)
 - [Recipes](#recipes)
 
@@ -1251,6 +1252,53 @@ octaves of scale). `gen.shape(s)` puts one after a generator, `s.shape(x)` calls
 name or every pitch of a chord. They are documented in [scripting.md](scripting.md#shapers).
 
 ---
+
+## In the Genny plugin
+
+`cmd/plugins/gennyclap` is a CLAP plugin (a note effect, for a host such as Bitwig) that plays what these generators make, in time
+with the transport of the host. It plays a **spec** (JSON, see the genny repository) or a **script** (JavaScript, a file that ends
+in `.js`): the same `genny.*`, `scale()`, `chord()`, `pitch()` and `log()` as everywhere here, and a function `render(p)` that makes
+a loop of notes. The plugin reads the file `genny.js` (or else `genny.json`) in the `psalm` folder of the config folder of the
+host (`~/.config/psalm`; for a Flatpak `~/.var/app/<app id>/config/psalm`), or the file of `$GENNY_SPEC`. It reads the file again
+when it is saved, and keeps the last version that worked when a new one has an error. What it says (errors, `log()`, how many notes
+it made) goes to the log of the host and to a file next to yours (`genny.js.log`). A new plugin writes an example when there is no file.
+
+```js
+function render(p) {                       // p.seed, p.stepsPerBeat = 4, p.held, p.pitches
+  const key = scale("D minor")
+  return { stepsPerBeat: 4, length: 64, notes: [                  // length: the loop, in steps
+    { pitch: key.pitch(1, 4), start: 0, duration: 2, velocity: 0.8, channel: 0 },
+  ] }
+}
+```
+
+`render` gives the notes (times in steps, a `channel` from 0 to 15 to split lines downstream), or `{ stepsPerBeat, length, notes }`.
+Without a `length` the loop is the end of the notes rounded up to a bar. The generators are seeded with `p.seed` first, so the same
+seed gives the same piece. A pitch with decimals is played with a note tuning (parameter "microtones").
+
+**Notes played into the plugin.** `p.held` is the notes held down at the moment, lowest first, `[{ pitch, velocity }]`, and `p.pitches`
+the pitches alone; both are empty when nothing is held. A script that uses them is made again when they change (a chord that is
+played over a few milliseconds counts as one), so it can follow what you play:
+
+```js
+// an arpeggio of the notes held, an octave up
+function render(p) {
+  const notes = []
+  for (let i = 0; i < 16; i++) {
+    if (p.pitches.length) notes.push({ pitch: p.pitches[i % p.pitches.length] + 12, start: i, duration: 1 })
+  }
+  return { length: 16, notes }
+}
+```
+
+| Parameter | |
+|---|---|
+| `seed` | 0 to 999: the seed of the generators |
+| `new each pass` | every pass of the loop gets its own seed (`seed + pass`) |
+| `transpose`, `gain`, `swing (steps)` | semitones, velocity, how late the odd steps are |
+| `microtones` | pitches between two keys are played with a note tuning (off: rounded to a key) |
+| `latch` | the notes held stay held when let go, until a new chord is played |
+| `pass input` | the notes played into the plugin go out as well |
 
 ## Randomness and seeds
 

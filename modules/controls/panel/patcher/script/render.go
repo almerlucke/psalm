@@ -60,9 +60,21 @@ func RenderScript(name, code string) (*goja.Program, error) {
 	return p, nil
 }
 
+// HeldNote is a note that is held down while a piece is rendered (a plugin that takes notes in)
+type HeldNote struct {
+	Pitch    int
+	Velocity float64 // 0 to 1
+}
+
 // Render renders a script (see above) for a seed. It is used on one goroutine, and the random stream of genny is
 // seeded here: callers that render on several goroutines must take turns
 func (r *Runtime) Render(code string, seed uint64) (Piece, error) {
+	return r.RenderHeld(code, seed, nil)
+}
+
+// RenderHeld is Render for a plugin that takes notes in: the notes held down are given to render, lowest first, as p.held
+// ([{ pitch, velocity }]) and p.pitches (the pitches alone), both empty when nothing is held
+func (r *Runtime) RenderHeld(code string, seed uint64, held []HeldNote) (Piece, error) {
 	prog, err := RenderScript("script", code)
 	if err != nil {
 		return Piece{}, err
@@ -122,6 +134,15 @@ func (r *Runtime) Render(code string, seed uint64) (Piece, error) {
 	arg := vm.NewObject()
 	_ = arg.Set("seed", seed)
 	_ = arg.Set("stepsPerBeat", 4)
+	notes, pitches := make([]any, len(held)), make([]any, len(held))
+	for i, h := range held {
+		n := vm.NewObject()
+		_ = n.Set("pitch", h.Pitch)
+		_ = n.Set("velocity", h.Velocity)
+		notes[i], pitches[i] = n, h.Pitch
+	}
+	_ = arg.Set("held", vm.NewArray(notes...))
+	_ = arg.Set("pitches", vm.NewArray(pitches...))
 	out, err := r.call(RenderBudget, render, arg)
 	if err != nil {
 		return Piece{Log: logs}, err

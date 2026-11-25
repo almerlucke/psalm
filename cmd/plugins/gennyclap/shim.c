@@ -1,6 +1,6 @@
 // The CLAP side of Genny: a note effect that plays what the generators of genny made, in time with the transport of
-// the host. All it does is turn beats into sample offsets and keep track of the notes that sound; the notes, the
-// parameters and the state come from Go (see main.go)
+// the host, and takes the notes played into it. All it does is turn beats into sample offsets, keep track of the notes
+// that sound and put the events in order; the notes, the parameters and the state come from Go (see main.go)
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,12 +13,23 @@
 
 #define MAX_EVENTS 512
 #define MAX_ACTIVE 512
+#define MAX_QUEUE 2048
+
+// the numbers of the parameters (see engine.go) that the audio thread looks at
+#define PARAM_THRU 7
 
 typedef struct {
 	int id;
 	int key;
 	int channel;
 } active_note;
+
+// every kind of event the plugin sends, in one place so they can be put in order of time before they go
+typedef union {
+	clap_event_header_t header;
+	clap_event_note_t note;
+	clap_event_note_expression_t expression;
+} queued_event;
 
 // the host of each instance, by handle, for genny_host_log (called from the goroutine that renders)
 #define MAX_HOSTS 64
@@ -29,7 +40,7 @@ void genny_host_log(int handle, int severity, const char *msg) {
 		return;
 	}
 	const clap_host_t *host = __atomic_load_n(&hosts[handle], __ATOMIC_ACQUIRE);
-	if (!host) {
+	if (!host || !host->get_extension) {
 		return;
 	}
 	const clap_host_log_t *log = host->get_extension(host, CLAP_EXT_LOG);
@@ -47,6 +58,9 @@ typedef struct {
 	int has_position;
 	active_note active[MAX_ACTIVE];
 	int num_active;
+	queued_event queue[MAX_QUEUE]; // what goes out in this block
+	int num_queued;
+	long long epoch; // of the piece that is playing (see genny_epoch)
 } genny_plugin;
 
 static const clap_plugin_descriptor_t descriptor = {
@@ -57,62 +71,136 @@ static const clap_plugin_descriptor_t descriptor = {
 	.url = "",
 	.manual_url = "",
 	.support_url = "",
-	.version = "0.2.0",
-	.description = "Notes from the generators of genny, from a spec file",
+	.version = "0.3.0",
+	.description = "Notes from the generators of genny, from a spec or a script, that can follow the notes played into it",
 	.features = (const char *[]){CLAP_PLUGIN_FEATURE_NOTE_EFFECT, NULL},
 };
 
-static void push_note(const clap_output_events_t *out, uint32_t time, int on, int id, int key, int channel, double velocity) {
-	clap_event_note_t e;
-	memset(&e, 0, sizeof e);
-	e.header.size = sizeof e;
-	e.header.time = time;
-	e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-	e.header.type = on ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF;
-	e.header.flags = 0;
-	e.note_id = id;
-	e.port_index = 0;
-	e.channel = channel;
-	e.key = key;
-	e.velocity = velocity;
-	out->try_push(out, &e.header);
+static queued_event *next_event(genny_plugin *p) {
+	if (p->num_queued >= MAX_QUEUE) {
+		return NULL;
+	}
+	queued_event *e = &p->queue[p->num_queued++];
+	memset(e, 0, sizeof *e);
+	return e;
 }
 
-// push_tuning retunes a note that is on: semitones from its key (a pitch between two keys, see genny_event.tune)
-static void push_tuning(const clap_output_events_t *out, uint32_t time, int id, int key, int channel, double semitones) {
-	clap_event_note_expression_t e;
-	memset(&e, 0, sizeof e);
-	e.header.size = sizeof e;
-	e.header.time = time;
-	e.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-	e.header.type = CLAP_EVENT_NOTE_EXPRESSION;
-	e.header.flags = 0;
-	e.expression_id = CLAP_NOTE_EXPRESSION_TUNING;
-	e.note_id = id;
-	e.port_index = 0;
-	e.channel = channel;
-	e.key = key;
-	e.value = semitones;
-	out->try_push(out, &e.header);
+static void queue_note(genny_plugin *p, uint32_t time, int on, int id, int key, int channel, double velocity) {
+	queued_event *q = next_event(p);
+	if (!q) {
+		return;
+	}
+	clap_event_note_t *e = &q->note;
+	e->header.size = sizeof *e;
+	e->header.time = time;
+	e->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+	e->header.type = on ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF;
+	e->header.flags = 0;
+	e->note_id = id;
+	e->port_index = 0;
+	e->channel = channel;
+	e->key = key;
+	e->velocity = velocity;
 }
 
-static void release_all(genny_plugin *p, const clap_output_events_t *out, uint32_t time) {
+// queue_tuning retunes a note that is on: semitones from its key (a pitch between two keys, see genny_event.tune)
+static void queue_tuning(genny_plugin *p, uint32_t time, int id, int key, int channel, double semitones) {
+	queued_event *q = next_event(p);
+	if (!q) {
+		return;
+	}
+	clap_event_note_expression_t *e = &q->expression;
+	e->header.size = sizeof *e;
+	e->header.time = time;
+	e->header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+	e->header.type = CLAP_EVENT_NOTE_EXPRESSION;
+	e->header.flags = 0;
+	e->expression_id = CLAP_NOTE_EXPRESSION_TUNING;
+	e->note_id = id;
+	e->port_index = 0;
+	e->channel = channel;
+	e->key = key;
+	e->value = semitones;
+}
+
+// queue_copy passes an event on as it came
+static void queue_copy(genny_plugin *p, const clap_event_header_t *h) {
+	if (h->size > sizeof(queued_event)) {
+		return;
+	}
+	queued_event *q = next_event(p);
+	if (q) {
+		memcpy(q, h, h->size);
+	}
+}
+
+// flush_queue sends the events of the block in order of time (the order they were made in when the time is the same: a note on
+// goes before its tuning, a note off before the next note on)
+static void flush_queue(genny_plugin *p, const clap_output_events_t *out) {
+	for (int i = 1; i < p->num_queued; i++) {
+		queued_event tmp = p->queue[i];
+		int j = i - 1;
+		while (j >= 0 && p->queue[j].header.time > tmp.header.time) {
+			p->queue[j + 1] = p->queue[j];
+			j--;
+		}
+		p->queue[j + 1] = tmp;
+	}
+	for (int i = 0; i < p->num_queued; i++) {
+		out->try_push(out, &p->queue[i].header);
+	}
+	p->num_queued = 0;
+}
+
+static void release_all(genny_plugin *p, uint32_t time) {
 	for (int i = 0; i < p->num_active; i++) {
-		push_note(out, time, 0, p->active[i].id, p->active[i].key, p->active[i].channel, 0);
+		queue_note(p, time, 0, p->active[i].id, p->active[i].key, p->active[i].channel, 0);
 	}
 	p->num_active = 0;
 }
 
-static void apply_param_events(genny_plugin *p, const clap_input_events_t *in) {
+// read_input takes what the host sends: the parameters, and the notes played into the plugin (passed on when "pass input" is on)
+static void read_input(genny_plugin *p, const clap_input_events_t *in) {
 	if (!in) {
 		return;
 	}
 	uint32_t n = in->size(in);
+	int thru = -1; // looked at when the first note comes
 	for (uint32_t i = 0; i < n; i++) {
 		const clap_event_header_t *h = in->get(in, i);
-		if (h->space_id == CLAP_CORE_EVENT_SPACE_ID && h->type == CLAP_EVENT_PARAM_VALUE) {
+		if (h->space_id != CLAP_CORE_EVENT_SPACE_ID) {
+			continue;
+		}
+		switch (h->type) {
+		case CLAP_EVENT_PARAM_VALUE: {
 			const clap_event_param_value_t *e = (const clap_event_param_value_t *)h;
 			genny_param_set(p->handle, (int)e->param_id, e->value);
+			break;
+		}
+		case CLAP_EVENT_NOTE_ON:
+		case CLAP_EVENT_NOTE_OFF:
+		case CLAP_EVENT_NOTE_CHOKE:
+		case CLAP_EVENT_NOTE_END: {
+			const clap_event_note_t *e = (const clap_event_note_t *)h;
+			if (h->type != CLAP_EVENT_NOTE_END) {
+				genny_input(p->handle, e->key, e->velocity, h->type == CLAP_EVENT_NOTE_ON);
+			}
+			if (thru < 0) {
+				thru = genny_param_get(p->handle, PARAM_THRU) > 0.5;
+			}
+			if (thru && h->type != CLAP_EVENT_NOTE_END) {
+				queue_copy(p, h);
+			}
+			break;
+		}
+		case CLAP_EVENT_MIDI: { // a host that sends the notes as MIDI
+			const clap_event_midi_t *e = (const clap_event_midi_t *)h;
+			int status = e->data[0] & 0xF0, key = e->data[1];
+			if (status == 0x90 || status == 0x80) {
+				genny_input(p->handle, key, e->data[2] / 127.0, status == 0x90 && e->data[2] > 0);
+			}
+			break;
+		}
 		}
 	}
 }
@@ -156,6 +244,7 @@ static void plugin_reset(const clap_plugin_t *plugin) {
 	genny_plugin *p = plugin->plugin_data;
 	p->has_position = 0;
 	p->num_active = 0;
+	p->num_queued = 0;
 }
 
 static clap_process_status plugin_process(const clap_plugin_t *plugin, const clap_process_t *process) {
@@ -163,13 +252,15 @@ static clap_process_status plugin_process(const clap_plugin_t *plugin, const cla
 	const clap_event_transport_t *tr = process->transport;
 	uint32_t frames = process->frames_count;
 
-	apply_param_events(p, process->in_events);
+	p->num_queued = 0;
+	read_input(p, process->in_events);
 
 	int playing = tr && (tr->flags & CLAP_TRANSPORT_IS_PLAYING) && (tr->flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) &&
 	              (tr->flags & CLAP_TRANSPORT_HAS_TEMPO);
 	if (!playing) {
-		release_all(p, process->out_events, 0);
+		release_all(p, 0);
 		p->has_position = 0;
+		flush_queue(p, process->out_events);
 		return CLAP_PROCESS_CONTINUE;
 	}
 
@@ -177,10 +268,13 @@ static clap_process_status plugin_process(const clap_plugin_t *plugin, const cla
 	double per_sample = tr->tempo / (60.0 * p->sample_rate); // beats per sample
 	double to = from + per_sample * frames;
 
-	// the transport jumped (a loop, a click in the ruler): what sounds is let go
-	if (p->has_position && fabs(from - p->next_beat) > 1e-4) {
-		release_all(p, process->out_events, 0);
+	// the transport jumped (a loop, a click in the ruler), or the piece was replaced (the new one does not know the notes that sound):
+	// what sounds is let go
+	long long epoch = genny_epoch(p->handle);
+	if ((p->has_position && fabs(from - p->next_beat) > 1e-4) || epoch != p->epoch) {
+		release_all(p, 0);
 	}
+	p->epoch = epoch;
 	p->next_beat = to;
 	p->has_position = 1;
 
@@ -192,36 +286,37 @@ static clap_process_status plugin_process(const clap_plugin_t *plugin, const cla
 		if (events[i].on) {
 			if (p->num_active < MAX_ACTIVE) {
 				p->active[p->num_active++] = (active_note){events[i].id, events[i].key, events[i].channel};
-				push_note(process->out_events, time, 1, events[i].id, events[i].key, events[i].channel, events[i].velocity);
+				queue_note(p, time, 1, events[i].id, events[i].key, events[i].channel, events[i].velocity);
 				if (fabs(events[i].tune) > 1e-4) { // right after the note on, at the same time
-					push_tuning(process->out_events, time, events[i].id, events[i].key, events[i].channel, events[i].tune);
+					queue_tuning(p, time, events[i].id, events[i].key, events[i].channel, events[i].tune);
 				}
 			}
 			continue;
 		}
 		for (int j = 0; j < p->num_active; j++) {
 			if (p->active[j].id == events[i].id) {
-				push_note(process->out_events, time, 0, p->active[j].id, p->active[j].key, p->active[j].channel, 0);
+				queue_note(p, time, 0, p->active[j].id, p->active[j].key, p->active[j].channel, 0);
 				p->active[j] = p->active[--p->num_active];
 				break;
 			}
 		}
 	}
+	flush_queue(p, process->out_events);
 	return CLAP_PROCESS_CONTINUE;
 }
 
-// the note port: one output
+// the note ports: one input (the notes the script can follow), one output
 
-static uint32_t note_ports_count(const clap_plugin_t *plugin, bool is_input) { return is_input ? 0 : 1; }
+static uint32_t note_ports_count(const clap_plugin_t *plugin, bool is_input) { return 1; }
 
 static bool note_ports_get(const clap_plugin_t *plugin, uint32_t index, bool is_input, clap_note_port_info_t *info) {
-	if (is_input || index != 0) {
+	if (index != 0) {
 		return false;
 	}
-	info->id = 0;
-	info->supported_dialects = CLAP_NOTE_DIALECT_CLAP;
+	info->id = is_input ? 1 : 0;
+	info->supported_dialects = is_input ? (CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI) : CLAP_NOTE_DIALECT_CLAP;
 	info->preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
-	strncpy(info->name, "Notes", sizeof info->name);
+	strncpy(info->name, is_input ? "Input" : "Notes", sizeof info->name);
 	return true;
 }
 
@@ -278,7 +373,9 @@ static bool params_text_to_value(const clap_plugin_t *plugin, clap_id id, const 
 }
 
 static void params_flush(const clap_plugin_t *plugin, const clap_input_events_t *in, const clap_output_events_t *out) {
-	apply_param_events(plugin->plugin_data, in);
+	genny_plugin *p = plugin->plugin_data;
+	read_input(p, in); // notes that come while the plugin is not processing are let through as well
+	flush_queue(p, out);
 }
 
 static const clap_plugin_params_t params = {
