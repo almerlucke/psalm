@@ -58,6 +58,7 @@ func main() {
 	only := flag.String("only", "", "with -render: write only this version (own, ir or blend)")
 	guitarName := flag.String("guitar", "ownGuitar", "the waveguide preset of the strings (ownGuitar is fitted to the recording of this guitar)")
 	piece := flag.Bool("piece", false, "play a piece of one minute in E minor (fingerpicked, then strummed) instead of random plucks")
+	thump := flag.Float64("thump", -1, "the knock of the pluck on the body, 0-1 (the preset's own when negative)")
 	render := flag.Bool("render", false, "write the three versions (own body, measured body, both) to wav files and stop")
 	flag.Parse()
 
@@ -82,7 +83,7 @@ func main() {
 			if *only != "" && *only != v.key {
 				continue
 			}
-			p := patch(*guitarName, v.body, *level, *ring, *tone, *piece, nil)
+			p := patch(*guitarName, v.body, *level, *ring, *thump, *tone, *piece, nil)
 			if err := p.ToSoundFile(v.name, writer.WAV, 60, 44100.0, false); err != nil {
 				panic(err)
 			}
@@ -99,13 +100,13 @@ func main() {
 	case *blend > 0:
 		m = body(*blend)
 	}
-	p := patch(*guitarName, m, *level, *ring, *tone, *piece, paengine.New(44100, 1024))
+	p := patch(*guitarName, m, *level, *ring, *thump, *tone, *piece, paengine.New(44100, 1024))
 	defer p.Close()
 	_ = p.Listen()
 }
 
 // patch is the guitar, a phrase of plucks, and the body (measured: the resonators alone when nil)
-func patch(guitar string, measured *waveguide.Measured, level, ring float64, tone, piece bool, engine audio.Engine) *psalm.Psalm {
+func patch(guitar string, measured *waveguide.Measured, level, ring, thump float64, tone, piece bool, engine audio.Engine) *psalm.Psalm {
 	genny.Seed(7) // the same notes every time
 
 	bpm := 100.0
@@ -130,6 +131,9 @@ func patch(guitar string, measured *waveguide.Measured, level, ring float64, ton
 	cfg.Release *= 2.5 // a string let go goes on ringing a little
 	cfg.Decay *= ring
 	cfg.Measured = measured
+	if thump >= 0 {
+		cfg.Thump = thump
+	}
 	var out psalm.Modular = waveguide.NewPoly(cfg, 24).AddTo(p)
 	if piece {
 		play(p, out)
