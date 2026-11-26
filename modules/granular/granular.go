@@ -223,7 +223,7 @@ func (gl *Granulator[P, S, E]) perFrameSynthesize() {
 	for _, param := range params {
 		if len(gl.freeGrains) > 0 {
 			g := gl.freeGrains[len(gl.freeGrains)-1]
-			g.activate(gl.nextParameter, cfg)
+			g.activate(param, cfg)
 
 			// Bookkeeping
 			interFrameOnset := param.Onset()

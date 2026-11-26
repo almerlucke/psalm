@@ -127,3 +127,75 @@ func TestVocoderTakesTwoSources(t *testing.T) {
 		}
 	}
 }
+
+// the grains synth plays sounds that are made: single cycle waves, and the sound that a grain buffer hears
+func TestGrainsOscAndLive(t *testing.T) {
+	psalm.PushConfig(psalm.Config{BPM: 240, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "A"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	roll, _ := pt.Add("noteroll", "", 0, 0)
+	pt.SettingsOf(roll).Apply(map[string]float64{"length": 4, "n/0/start": 0, "n/0/length": 3, "n/0/key": 60, "n/0/velocity": 0.9})
+	syn, err := pt.Add("grains", "glassKeys", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []patcher.Cable{{From: roll, To: syn}, {From: syn, To: "out"}} {
+		if _, err := pt.Connect(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	peak := func(blocks int) float64 {
+		var pk float64
+		for range blocks {
+			p.ResetRun()
+			p.Run()
+			for _, s := range pt.Out().Output(0).Channels[0] {
+				pk = max(pk, math.Abs(float64(s)))
+			}
+		}
+		return pk
+	}
+
+	// waves
+	_ = pt.SetText(syn, "sounds", "tone osc sine nonsense")
+	if pt.TextError(syn, "sounds") == "" {
+		t.Errorf("a wave that is not there is an error")
+	}
+	if err := pt.SetText(syn, "sounds", "tone osc saw square"); err != nil || pt.TextError(syn, "sounds") != "" {
+		t.Fatalf("%v %s", err, pt.TextError(syn, "sounds"))
+	}
+	if pk := peak(300); pk < 0.02 {
+		t.Errorf("grains of a wave: peak %g", pk)
+	}
+
+	// a buffer that is not there
+	_ = pt.SetText(syn, "sounds", "me live nobody")
+	if pt.TextError(syn, "sounds") == "" {
+		t.Errorf("a grain buffer that is not there is an error")
+	}
+
+	// a buffer, fed by a synth that plays all the time, and a second one that listens to it
+	src, _ := pt.Add("subtractive", "", 0, 0)
+	buf, err := pt.Add("grainbuffer", "", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roll2, _ := pt.Add("noteroll", "", 0, 0)
+	pt.SettingsOf(roll2).Apply(map[string]float64{"length": 4, "n/0/start": 0, "n/0/length": 4, "n/0/key": 57, "n/0/velocity": 0.9})
+	for _, c := range []patcher.Cable{{From: roll2, To: src}, {From: src, To: buf}, {From: buf, To: "out"}} {
+		if _, err := pt.Connect(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := pt.SetText(syn, "sounds", "me live"); err != nil || pt.TextError(syn, "sounds") != "" {
+		t.Fatalf("%v %s", err, pt.TextError(syn, "sounds"))
+	}
+	if err := pt.SetText(buf, "name", "two words"); err == nil && pt.TextError(buf, "name") == "" {
+		t.Errorf("a name is one word")
+	}
+	if pk := peak(600); pk < 0.01 {
+		t.Errorf("grains of the sound that came in: peak %g", pk)
+	}
+}

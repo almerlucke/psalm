@@ -19,6 +19,8 @@ func Describe(cfg Config) params.Set {
 
 		params.K("Grains", "density", 1, 200, cfg.Density, params.Exp(), params.Unit("Hz")),
 		params.K("Grains", "grainSize", 5, 1000, cfg.GrainSize, params.Exp(), params.Unit("ms"), params.Label("size")),
+		params.K("Grains", "sync", 0, 4, cfg.Sync, params.Unit("beats")),
+		params.C("Grains", "window", WindowNames, cfg.Window),
 		params.K("Grains", "shape", 0, 1, cfg.Shape),
 		params.K("Grains", "jitter", 0, 1, cfg.Jitter),
 		params.K("Grains", "reverse", 0, 1, cfg.Reverse),

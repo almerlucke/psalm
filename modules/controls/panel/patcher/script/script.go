@@ -392,8 +392,24 @@ func (s *Script) newAPI() *goja.Object {
 				}
 			case bool:
 				msg[key] = map[bool]float64{true: 1, false: 0}[x]
+			case []any: // a list of numbers: values for the grains of a granular synth one after the other (positionSeq), a scale, a stack
+				list := make([]float64, 0, len(x))
+				for _, e := range x {
+					switch n := e.(type) {
+					case float64:
+						list = append(list, n)
+					case int64:
+						list = append(list, float64(n))
+					default:
+						panic(vm.NewTypeError(fmt.Sprintf("set: %q is a list of numbers", key)))
+					}
+				}
+				if len(list) > 4096 {
+					panic(vm.NewTypeError(fmt.Sprintf("set: %q has more than 4096 numbers", key)))
+				}
+				msg[key] = list
 			default:
-				panic(vm.NewTypeError(fmt.Sprintf("set: %q is a number, a string or true/false", key)))
+				panic(vm.NewTypeError(fmt.Sprintf("set: %q is a number, a string, a list of numbers or true/false", key)))
 			}
 		}
 		if o, ok := call.Argument(0).(*goja.Object); ok && o.ClassName() == "Object" {

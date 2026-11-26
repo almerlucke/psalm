@@ -16,25 +16,33 @@ import (
 type Config struct {
 	NumChannels int
 
-	Sample    sndfile.SoundFiler[float32]
-	SoundBank sndfile.SoundBank[float32] // optional, notes can pick a sample with the "sound" key
-	RootNote  float64                    // MIDI pitch of the sample, playing this note plays it at its own pitch
-	Roots     map[string]float64         // the MIDI pitch of the sounds of the bank, by name (a note that picks a sound plays it at its own pitch around this key); without, RootNote
+	Sample    sndfile.SoundFiler[float32] // the recording the grains read ...
+	Source    Source                      // ... or any other source (a recorder of the sound that comes in, an oscillator); it is read instead of Sample
+	SoundBank sndfile.SoundBank[float32]  // optional, notes can pick a sample with the "sound" key
+	RootNote  float64                     // MIDI pitch of the sample, playing this note plays it at its own pitch
+	Roots     map[string]float64          // the MIDI pitch of the sounds of the bank, by name (a note that picks a sound plays it at its own pitch around this key); without, RootNote
 
 	Position        float64 // 0-1, where in the sample the grains come from
 	Scan            float64 // how fast the position moves through the sample: 0 freezes, 1 is the original speed, negative goes backwards
 	Spray           float64 // seconds, random spread of the grain positions around the position
 	Density         float64 // grains per second
+	Sync            float64 // beats between the grains, following the tempo (0: Density is used); 0.25 is a grain every sixteenth
 	GrainSize       float64 // milliseconds
 	PitchSpread     float64 // semitones, random detune per grain (chorus, shimmer)
 	Octave          float64 // 0-1, chance a grain plays an octave up (sparkle, shimmer)
 	StereoSpread    float64 // 0-1, random pan per grain
 	Shape           float64 // 0-1, grain window from smooth (0) to percussive (1)
+	Window          int     // the shape the grain window starts from: WindowHann, WindowGauss, WindowTukey or WindowTriangle
 	Reverse         float64 // 0-1, chance a grain plays backwards
 	Jitter          float64 // 0-1, randomness of the time between grains
 	VelocityDensity float64 // 0-1, how much the note velocity scales the density
 	Level           float64 // output level (0 is treated as 1)
 	Normalize       bool    // play every sample at the same loudness (recordings differ a lot in level)
+
+	Scale     []float64 // hold the pitch of every grain to this scale: the semitones above its root (see ScaleNamed); none leaves the pitches as they are
+	ScaleRoot float64   // the root of the scale, as a MIDI pitch (any octave)
+	Stack     []float64 // every grain is a chord: one grain for each of these semitones above the pitch (0, 4, 7 is a major triad)
+	Streams   Streams   // values for each grain that start from lists or generators (see Streams)
 
 	AmpEnv adsr.Setting // envelope of the whole note (durations in milliseconds)
 }
@@ -105,33 +113,18 @@ func sampleLoudness(s sndfile.SoundFiler[float32]) float64 {
 	return l
 }
 
-// windowCompensation scales a grain shape to the energy of the smooth window, so percussive grains
-// (which decay fast and carry less energy) aren't quieter
-func windowCompensation(shape float64) float64 {
-	if shape <= 0 {
-		return 1
-	}
-	const steps = 256
-	smooth, sh := 0.0, 0.0
-	for i := range steps {
-		t := (float64(i) + 0.5) / steps
-		ws, w := window(t, 0), window(t, shape)
-		smooth += ws * ws
-		sh += w * w
-	}
-	return math.Sqrt(smooth / sh)
-}
-
 // grain is one playing grain
 type grain struct {
-	pos    float64 // frames in the sample
+	pos    float64 // frames in the source
+	lo, hi float64 // the part of the source it reads, and wraps in
 	inc    float64 // frames per output sample (negative plays backwards)
 	depth  int     // mipmap depth for the speed
 	length int     // samples
 	age    int
+	delay  int // samples into the buffer where it starts (only in the buffer it was made in)
 	gainL  float64
 	gainR  float64
-	sample sndfile.SoundFiler[float32]
+	src    Source
 }
 
 // maxGrains is the maximum number of simultaneous grains of a voice
@@ -143,15 +136,22 @@ const maxGrains = 96
 type Voice struct {
 	*psalm.Module
 	cfg       Config
-	sample    sndfile.SoundFiler[float32]
+	src       Source
+	bank      map[string]Source // the sounds of the bank as sources
+	streams   Streams
+	st        voiceStreams
 	ampEnv    *adsr.ADSR
 	grains    []grain
 	pitch     float64
 	expr      expression.Expression // the pitch bend (new grains); the mod wheel sprays them wider
 	velocity  float64
-	position  float64 // frames, moves with the scan
+	scanned   float64 // frames the position has moved on since the note began (or the position was set)
 	countdown float64 // samples until the next grain
 	waitSamps int
+	env       []float64 // the envelope of the buffer
+	left      []float64 // the grains of the buffer, summed
+	right     []float64
+	scratch   []float64 // what a grain reads
 }
 
 func New(cfg Config) *Voice {
@@ -162,19 +162,44 @@ func New(cfg Config) *Voice {
 	v := &Voice{
 		Module:   psalm.NewModule(nil, []int{cfg.NumChannels}),
 		cfg:      cfg,
-		sample:   cfg.Sample,
+		src:      cfg.Source,
+		streams:  cfg.Streams,
 		pitch:    cfg.RootNote,
 		velocity: 1.0,
 		grains:   make([]grain, 0, maxGrains),
 	}
+	if v.src == nil && cfg.Sample != nil {
+		v.src = NewSampleSource(cfg.Sample)
+	}
+	if len(cfg.SoundBank) > 0 {
+		v.bank = make(map[string]Source, len(cfg.SoundBank))
+		for name, s := range cfg.SoundBank {
+			v.bank[name] = NewSampleSource(s)
+		}
+	}
+	v.st = v.streams.make()
+	n := v.Config().BufferSize
+	v.env, v.left, v.right, v.scratch = make([]float64, n), make([]float64, n), make([]float64, n), make([]float64, n)
 	v.ampEnv = adsr.New(&v.cfg.AmpEnv, adsr.NoteOff, v.Config().SampleRate)
 	v.SetSelf(v)
 
 	return v
 }
 
+// SetSample makes a recording what the grains read
 func (v *Voice) SetSample(sample sndfile.SoundFiler[float32]) {
-	v.sample = sample
+	v.src = NewSampleSource(sample)
+}
+
+// SetSource sets what the grains read (nil: nothing, the voice is silent)
+func (v *Voice) SetSource(src Source) {
+	v.src = src
+}
+
+// seqList reads a list of numbers of a message, nil when it is not one
+func seqList(x any) ([]float64, bool) {
+	l, ok := x.([]float64)
+	return l, ok
 }
 
 func (v *Voice) ReceiveMessage(msg psalm.Message) {
@@ -184,21 +209,40 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	// a bank of sounds (and the pitch of each) sent by a patch that built it off the audio thread; the first sound is played until a note picks one
 	if bank, ok := msg["bank"].(sndfile.SoundBank[float32]); ok {
 		cfg.SoundBank = bank
+		v.bank = make(map[string]Source, len(bank))
+		for name, s := range bank {
+			v.bank[name] = NewSampleSource(s)
+		}
 		if roots, ok := msg["roots"].(map[string]float64); ok {
 			cfg.Roots = roots
 		}
 		if first, ok := msg["first"].(string); ok {
-			if s, ok := bank[first]; ok {
-				v.sample = s
+			if s, ok := v.bank[first]; ok {
+				v.src = s
 				if r, ok := cfg.Roots[first]; ok {
 					cfg.RootNote = r
 				}
 			}
 		}
 	}
+	// a source built by a patch (a recorder's, an oscillator): the key "source" (a Source) or "sources" (named ones, "first" is played)
+	if s, ok := msg["source"].(Source); ok {
+		v.src = s
+	}
+	if all, ok := msg["sources"].(map[string]Source); ok {
+		if v.bank == nil {
+			v.bank = map[string]Source{}
+		}
+		for name, s := range all {
+			v.bank[name] = s
+		}
+		if first, ok := msg["first"].(string); ok && v.bank[first] != nil {
+			v.src = v.bank[first]
+		}
+	}
 	msg.IfStrVal("sound", func(name string) {
-		if s, ok := cfg.SoundBank[name]; ok {
-			v.sample = s
+		if s, ok := v.bank[name]; ok {
+			v.src = s
 			if r, ok := cfg.Roots[name]; ok {
 				cfg.RootNote = r
 			}
@@ -209,17 +253,41 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("scan", func(f float64) { cfg.Scan = f })
 	msg.IfFltVal("spray", func(f float64) { cfg.Spray = f })
 	msg.IfFltVal("density", func(f float64) { cfg.Density = f })
+	msg.IfFltVal("sync", func(f float64) { cfg.Sync = max(0, f) })
 	msg.IfFltVal("grainSize", func(f float64) { cfg.GrainSize = f })
 	msg.IfFltVal("pitchSpread", func(f float64) { cfg.PitchSpread = f })
 	msg.IfFltVal("stereoSpread", func(f float64) { cfg.StereoSpread = f })
 	msg.IfFltVal("octave", func(f float64) { cfg.Octave = f })
 	msg.IfFltVal("shape", func(f float64) { cfg.Shape = f })
+	msg.IfFltVal("window", func(f float64) { cfg.Window = max(0, min(int(math.Round(f)), numWindows-1)) })
 	msg.IfFltVal("reverse", func(f float64) { cfg.Reverse = f })
 	msg.IfFltVal("jitter", func(f float64) { cfg.Jitter = f })
 	msg.IfFltVal("level", func(f float64) { cfg.Level = f })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0.0, min(f, 1.0)) })
 	msg.IfFltVal("pitch", func(f float64) { v.pitch = f })
 	msg.IfFltVal("frequency", func(f float64) { v.pitch = 69.0 + 12.0*math.Log2(f/440.0) })
+	// the pitch of the grains: held to a scale (a list of the semitones above its root, or a name), several at once (a stack)
+	msg.IfFltVal("scaleRoot", func(f float64) { cfg.ScaleRoot = f })
+	if l, ok := seqList(msg["scale"]); ok {
+		cfg.Scale = append([]float64(nil), l...)
+	}
+	msg.IfStrVal("scale", func(name string) { cfg.Scale = ScaleNamed(name) })
+	if l, ok := seqList(msg["stack"]); ok {
+		cfg.Stack = append([]float64(nil), l...)
+	}
+	// a stream of a list of numbers (see streamKeys)
+	for i, key := range streamKeys {
+		l, ok := seqList(msg[key])
+		if !ok {
+			continue
+		}
+		var s Stream
+		if len(l) > 0 {
+			s = Seq(l...)
+		}
+		slots := []*Stream{&v.st.interval, &v.st.position, &v.st.pitch, &v.st.size, &v.st.pan, &v.st.amp}
+		*slots[i] = s
+	}
 }
 
 func (v *Voice) Receive(value any, index int) {
@@ -232,7 +300,7 @@ func (v *Voice) Receive(value any, index int) {
 	switch index {
 	case 1:
 		v.cfg.Position = f
-		v.position = v.positionFrames() // jump there, the scan continues from the new position
+		v.scanned = 0 // jump there, the scan continues from the new position
 	case 2:
 		v.cfg.Density = f
 	case 3:
@@ -242,13 +310,6 @@ func (v *Voice) Receive(value any, index int) {
 	case 5:
 		v.cfg.GrainSize = f
 	}
-}
-
-func (v *Voice) positionFrames() float64 {
-	if v.sample == nil {
-		return 0
-	}
-	return max(0.0, min(v.cfg.Position, 1.0)) * float64(v.sample.NumFrames()-1)
 }
 
 func (v *Voice) NoteOn(amplitude float64, message psalm.Message, tick psalm.CtrlTick, _ psalm.Config) {
@@ -264,7 +325,8 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 	v.ReceiveMessage(message)
 
 	v.waitSamps = tick.SampleOffset
-	v.position = v.positionFrames()
+	v.scanned = 0
+	v.st.reset()
 	v.countdown = 0 // the first grain starts right away
 	v.ampEnv.TriggerFull(duration*1000.0, amplitude, &v.cfg.AmpEnv, mode)
 }
@@ -283,95 +345,129 @@ func (v *Voice) IsActive() bool {
 	return !v.ampEnv.Done()
 }
 
-// smoothTable holds the sin^2 window, read with linear interpolation (an error below 1e-6): every
-// sample of every grain reads the window, a sine there costs more than all the rest of a grain
-var smoothTable = func() []float64 {
-	const n = 1024
-	t := make([]float64, n+2)
-	for i := range n + 1 {
-		s := math.Sin(math.Pi * float64(i) / n)
-		t[i] = s * s
+// quantize holds a pitch to the nearest tone of a scale (the semitones above its root, within an octave)
+func quantize(pitch float64, scale []float64, root float64) float64 {
+	if len(scale) == 0 {
+		return pitch
 	}
-	return t
-}()
-
-func smoothWindow(t float64) float64 {
-	pos := max(0, min(t, 1)) * float64(len(smoothTable)-2)
-	i := int(pos)
-	a := smoothTable[i]
-	return a + (smoothTable[i+1]-a)*(pos-float64(i))
+	rel := pitch - root
+	oct := math.Floor(rel / 12)
+	in := rel - oct*12
+	best, dist := scale[0], math.Inf(1)
+	for _, d := range scale {
+		for _, c := range []float64{d, d + 12, d - 12} {
+			if x := math.Abs(in - c); x < dist {
+				best, dist = c, x
+			}
+		}
+	}
+	return root + oct*12 + best
 }
 
-// window returns the grain envelope at t (0-1): a smooth sin^2 window, morphing to a percussive
-// shape with a fast attack and an exponential decay
-func window(t float64, shape float64) float64 {
-	smooth := smoothWindow(t)
-
-	if shape <= 0.0 {
-		return smooth
-	}
-
-	const attack = 0.03
-	var perc float64
-	if t < attack {
-		perc = t / attack
-	} else {
-		// starts at 1 where the attack ends and reaches 0 at the end of the grain
-		perc = math.Exp(-6.0*(t-attack)/(1.0-attack)) * (1.0 - t) / (1.0 - attack)
-	}
-
-	return smooth + (perc-smooth)*shape
-}
-
-// spawn starts a new grain
-func (v *Voice) spawn(sr float64) {
+// spawn starts the grains of one grain event, at sample i of the buffer (a stack makes more than one)
+func (v *Voice) spawn(i int, sr float64) {
 	cfg := &v.cfg
-	s := v.sample
-	frames := float64(s.NumFrames())
+	s := v.src
 
-	if len(v.grains) >= maxGrains || frames < 2 {
-		return
+	position := cfg.Position
+	if v.st.position != nil {
+		position = v.st.position.Next()
+	}
+	extra := 0.0
+	if v.st.pitch != nil {
+		extra = v.st.pitch.Next()
+	}
+	size := cfg.GrainSize
+	if v.st.size != nil {
+		size = v.st.size.Next()
+	}
+	pan, panSet := 0.0, false
+	if v.st.pan != nil {
+		pan, panSet = max(0, min(v.st.pan.Next(), 1)), true
+	}
+	amp := 1.0
+	if v.st.amp != nil {
+		amp = max(0, v.st.amp.Next())
+	}
+	if amp == 0 {
+		return // a rest
 	}
 
-	semis := v.pitch - cfg.RootNote + v.expr.Semitones()
-	if cfg.PitchSpread != 0 {
-		semis += cfg.PitchSpread * (v.Rand().Float64()*2.0 - 1.0)
+	stack := cfg.Stack
+	if len(stack) == 0 {
+		stack = []float64{0}
 	}
-	if cfg.Octave > 0 && v.Rand().Float64() < cfg.Octave {
-		semis += 12
+	length := max(1, int(size*0.001*sr))
+
+	for _, up := range stack {
+		if len(v.grains) >= maxGrains {
+			return
+		}
+
+		pitch := v.pitch + extra + up
+		if cfg.PitchSpread != 0 {
+			pitch += cfg.PitchSpread * (v.Rand().Float64()*2.0 - 1.0)
+		}
+		if cfg.Octave > 0 && v.Rand().Float64() < cfg.Octave {
+			pitch += 12
+		}
+		pitch = quantize(pitch, cfg.Scale, cfg.ScaleRoot)
+		semis := pitch - cfg.RootNote + v.expr.Semitones()
+		speed := math.Exp2(semis/12.0) * s.Rate() / sr
+
+		spray := (cfg.Spray + 0.3*v.expr.Wheel()) * (v.Rand().Float64()*2.0 - 1.0) * s.Rate()
+
+		if v.Rand().Float64() < cfg.Reverse {
+			speed = -speed
+		}
+
+		lead := float64(length) * (math.Abs(speed)*sr/s.Rate() - 1) // frames ahead of a source that is written as it is read
+		start, lo, hi := s.Locate(position, v.scanned, spray, max(0, lead))
+
+		if !panSet {
+			pan = 0.5 + cfg.StereoSpread*(v.Rand().Float64()-0.5)
+		}
+
+		depth := sndfile.SpeedToMipMapDepth(speed)
+		if depth >= s.Depth() {
+			depth = s.Depth() - 1
+		}
+
+		v.grains = append(v.grains, grain{
+			pos:    start,
+			lo:     lo,
+			hi:     hi,
+			inc:    speed,
+			depth:  depth,
+			length: length,
+			delay:  i,
+			gainL:  amp * math.Cos(pan*math.Pi/2.0),
+			gainR:  amp * math.Sin(pan*math.Pi/2.0),
+			src:    s,
+		})
 	}
-	speed := math.Exp2(semis/12.0) * s.SampleRate() / sr
+}
 
-	pos := v.position + (cfg.Spray+0.3*v.expr.Wheel())*(v.Rand().Float64()*2.0-1.0)*s.SampleRate()
-	pos -= math.Floor(pos/frames) * frames // wrap into the sample
-
-	if v.Rand().Float64() < cfg.Reverse {
-		speed = -speed
+// interval is the number of samples until the next grain
+func (v *Voice) interval(sr, density float64) float64 {
+	cfg := &v.cfg
+	var iv float64
+	switch {
+	case v.st.interval != nil:
+		return max(1, v.st.interval.Next()*sr)
+	case cfg.Sync > 0:
+		iv = cfg.Sync * 60 / v.BPM() * sr
+	default:
+		iv = sr / density
 	}
-
-	pan := 0.5 + cfg.StereoSpread*(v.Rand().Float64()-0.5)
-
-	depth := sndfile.SpeedToMipMapDepth(speed)
-	if depth >= s.Depth() {
-		depth = s.Depth() - 1
-	}
-
-	v.grains = append(v.grains, grain{
-		pos:    pos,
-		inc:    speed,
-		depth:  depth,
-		length: max(1, int(cfg.GrainSize*0.001*sr)),
-		gainL:  math.Cos(pan * math.Pi / 2.0),
-		gainR:  math.Sin(pan * math.Pi / 2.0),
-		sample: s,
-	})
+	return max(1, iv*(1.0+cfg.Jitter*(v.Rand().Float64()*2.0-1.0)))
 }
 
 func (v *Voice) Synthesize() {
 	outSocket := v.Output(0)
 	outSocket.Clear()
 
-	if v.ampEnv.Done() || v.sample == nil {
+	if v.ampEnv.Done() || v.src == nil || !v.src.Ready() {
 		v.grains = v.grains[:0]
 		return
 	}
@@ -379,14 +475,15 @@ func (v *Voice) Synthesize() {
 
 	var (
 		cfg     = &v.cfg
+		src     = v.src
 		sr      = v.Config().SampleRate
 		outs    = outSocket.Channels
 		bufSize = v.Config().BufferSize
-		frames  = float64(v.sample.NumFrames())
-		scanInc = cfg.Scan * v.sample.SampleRate() / sr
+		scanInc = cfg.Scan * src.Rate() / sr
 		vel     = 1.0 - cfg.VelocityDensity + cfg.VelocityDensity*v.velocity
 		density = max(0.1, cfg.Density*vel)
 		level   = cfg.Level
+		span    = src.Span()
 	)
 
 	if level <= 0 {
@@ -395,80 +492,90 @@ func (v *Voice) Synthesize() {
 
 	// overlapping grains add up: scale by the square root of the average overlap so the level
 	// stays about the same when the density or grain size changes
-	overlap := max(1.0, density*cfg.GrainSize*0.001)
+	grainMs := cfg.GrainSize
+	if v.st.size != nil {
+		grainMs = 100 // sizes that come from a stream: an average one
+	}
+	grainsPerSec := density
+	if cfg.Sync > 0 {
+		grainsPerSec = v.BPM() / 60 / cfg.Sync
+	}
+	overlap := max(1.0, grainsPerSec*grainMs*0.001*float64(max(1, len(cfg.Stack))))
 	norm := level / math.Sqrt(overlap)
 
-	norm *= windowCompensation(cfg.Shape)
+	norm *= windowCompensation(cfg.Shape, cfg.Window)
 
 	if cfg.Normalize {
-		if l := sampleLoudness(v.sample); l > 1e-6 {
+		if l := src.Loudness(); l > 1e-6 {
 			norm *= normalizedRMS / l
 		}
 	}
 
-	interval := sr / density
-
+	// the envelope of the note, and where the grains start in this buffer
+	end := bufSize
+	done := false
+	clear(v.left[:bufSize])
+	clear(v.right[:bufSize])
 	for i := v.waitSamps; i < bufSize; i++ {
-		env := v.ampEnv.Generate()
+		v.env[i] = v.ampEnv.Generate()
 
 		// start grains while the note sounds
 		v.countdown--
 		if v.countdown <= 0 {
-			v.spawn(sr)
-			v.countdown += interval * (1.0 + cfg.Jitter*(v.Rand().Float64()*2.0-1.0))
-			if v.countdown < 1 {
-				v.countdown = 1
-			}
+			v.spawn(i, sr)
+			v.countdown += v.interval(sr, density)
 		}
 
-		// move the position through the sample
-		v.position += scanInc
-		v.position -= math.Floor(v.position/frames) * frames
-
-		var left, right float64
-		for g := 0; g < len(v.grains); {
-			gr := &v.grains[g]
-			t := float64(gr.age) / float64(gr.length)
-			w := window(t, cfg.Shape)
-
-			n := float64(gr.sample.NumFrames())
-			values := gr.sample.LookupAll(gr.pos, gr.depth, true)
-			x := 0.0
-			for _, c := range values {
-				x += float64(c)
-			}
-			x = x / float64(len(values)) * w
-
-			left += x * gr.gainL
-			right += x * gr.gainR
-
-			gr.pos += gr.inc
-			gr.pos -= math.Floor(gr.pos/n) * n
-			gr.age++
-
-			if gr.age >= gr.length {
-				// swap with the last grain and drop it
-				v.grains[g] = v.grains[len(v.grains)-1]
-				v.grains = v.grains[:len(v.grains)-1]
-			} else {
-				g++
-			}
-		}
-
-		gain := env * norm
-		if len(outs) == 1 {
-			outs[0][i] = float32((left + right) * 0.5 * gain)
-		} else {
-			outs[0][i] = float32(left * gain)
-			outs[1][i] = float32(right * gain)
-		}
+		// move the position through the source
+		v.scanned += scanInc
+		v.scanned -= math.Floor(v.scanned/span) * span
 
 		if v.ampEnv.Done() {
-			v.grains = v.grains[:0]
+			end = i + 1
+			done = true
 			break
 		}
 	}
 
+	// the grains, one at a time over the whole buffer
+	for g := 0; g < len(v.grains); {
+		gr := &v.grains[g]
+		first := gr.delay
+		gr.delay = 0
+		n := min(end-first, gr.length-gr.age)
+		if n > 0 {
+			buf := v.scratch[:n]
+			gr.pos = gr.src.Read(buf, gr.pos, gr.inc, gr.depth, gr.lo, gr.hi)
+			for j, x := range buf {
+				w := windowOf(float64(gr.age+j)/float64(gr.length), cfg.Shape, cfg.Window)
+				x *= w
+				v.left[first+j] += x * gr.gainL
+				v.right[first+j] += x * gr.gainR
+			}
+			gr.age += n
+		}
+		if gr.age >= gr.length {
+			// swap with the last grain and drop it
+			v.grains[g] = v.grains[len(v.grains)-1]
+			v.grains = v.grains[:len(v.grains)-1]
+		} else {
+			g++
+		}
+	}
+
+	for i := v.waitSamps; i < end; i++ {
+		gain := v.env[i] * norm
+		if len(outs) == 1 {
+			outs[0][i] = float32((v.left[i] + v.right[i]) * 0.5 * gain)
+		} else {
+			outs[0][i] = float32(v.left[i] * gain)
+			outs[1][i] = float32(v.right[i] * gain)
+		}
+	}
+
+	if done {
+		v.grains = v.grains[:0]
+	}
 	v.waitSamps = 0
 }
 

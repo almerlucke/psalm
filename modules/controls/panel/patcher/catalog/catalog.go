@@ -196,6 +196,7 @@ func Kinds(cfg Config) []patcher.Kind {
 		samplerKind(v),
 		streamerKind(v),
 		grainsKind(v),
+		grainBufferKind(),
 		synth("pulsar", sorted(pulsar.Presets), func(n string, v int) psalm.Modular { return pulsar.NewPoly(pulsar.Presets[n](), v) },
 			func(n string) params.Set { return pulsar.Describe(pulsar.Presets[n]()) }, v),
 		synth("organ", sorted(organ.Presets), func(n string, _ int) psalm.Modular { return organ.New(organ.Presets[n]()) },
@@ -561,6 +562,7 @@ func streamerKind(voices int) patcher.Kind {
 // another with set({sound: "name"}) (the pitch of that sound goes with it)
 func grainsKind(voices int) patcher.Kind {
 	const help = "- a line a sound: `choir file.wav 62` (a name, the file, the MIDI pitch it is at; 60 without)\n" +
+		"- or a sound that is made: `tone osc sine saw` (single cycle waves: sine triangle saw square; the position picks one), or the sound of a [grain buffer](grainbuffer.md): `me live` (its name; `me live name 57`)\n" +
 		"- the first is played; a script picks another with `set({sound: \"name\"})`; # starts a comment"
 	return patcher.Kind{Name: "grains", Group: "Synths", Presets: sorted(grains.Presets), Ins: note, Outs: outs,
 		Make: func(preset string) (*patcher.Made, error) {
@@ -574,31 +576,55 @@ func grainsKind(voices int) patcher.Kind {
 						return nil, errors.New("no such text")
 					}
 					bank, roots, first := sndfile.SoundBank[float32]{}, map[string]float64{}, ""
+					made := map[string]grains.Source{}
 					for n, line := range strings.Split(value, "\n") {
 						line = strings.TrimSpace(line)
 						if line == "" || strings.HasPrefix(line, "#") {
 							continue
 						}
 						f := strings.Fields(line)
-						if len(f) < 2 || len(f) > 3 {
+						if len(f) < 2 {
 							return nil, fmt.Errorf("line %d: a name, a file and the pitch: choir file.wav 62", n+1)
 						}
+						// the pitch is the last number of the line
 						root := 60.0
-						if len(f) == 3 {
-							var err error
-							if root, err = strconv.ParseFloat(f[2], 64); err != nil {
-								return nil, fmt.Errorf("line %d: %q is not a pitch", n+1, f[2])
-							}
+						if p, err := strconv.ParseFloat(f[len(f)-1], 64); err == nil && len(f) > 2 {
+							root, f = p, f[:len(f)-1]
 						}
-						sf, ok := cache[f[1]]
-						if !ok {
-							var err error
-							if sf, err = sndfile.NewSoundFile[float32](f[1]); err != nil {
-								return nil, fmt.Errorf("line %d: %v", n+1, err)
+						switch f[1] {
+						case "osc": // a sound that is made: single cycle waves
+							names := f[2:]
+							for _, w := range names {
+								if !slices.Contains(grains.Waves, w) {
+									return nil, fmt.Errorf("line %d: %q is not a wave (%s)", n+1, w, strings.Join(grains.Waves, ", "))
+								}
 							}
-							cache[f[1]] = sf
+							made[f[0]] = grains.NewOscillator(names...)
+						case "live": // the sound of a grain buffer
+							name := grains.DefaultRecorderName
+							if len(f) > 2 {
+								name = f[2]
+							}
+							rec := grains.RecorderNamed(name)
+							if rec == nil {
+								return nil, fmt.Errorf("line %d: no grain buffer named %q (add one and cable a sound to it)", n+1, name)
+							}
+							made[f[0]] = rec.Source()
+						default:
+							if len(f) != 2 {
+								return nil, fmt.Errorf("line %d: a name, a file and the pitch: choir file.wav 62", n+1)
+							}
+							sf, ok := cache[f[1]]
+							if !ok {
+								var err error
+								if sf, err = sndfile.NewSoundFile[float32](f[1]); err != nil {
+									return nil, fmt.Errorf("line %d: %v", n+1, err)
+								}
+								cache[f[1]] = sf
+							}
+							bank[f[0]] = sf
 						}
-						bank[f[0]], roots[f[0]] = sf, root
+						roots[f[0]] = root
 						if first == "" {
 							first = f[0]
 						}
@@ -606,7 +632,26 @@ func grainsKind(voices int) patcher.Kind {
 					if first == "" {
 						return nil, errors.New("no sounds")
 					}
-					return psalm.Message{"bank": bank, "roots": roots, "first": first}, nil
+					return psalm.Message{"bank": bank, "sources": made, "roots": roots, "first": first}, nil
 				}}, nil
 		}}
+}
+
+// grainBufferKind keeps the last seconds of the sound that comes in, for the grains of a grains module to play (a line of its sounds:
+// `me live`). The sound goes on to the output, so it can sit in a chain
+func grainBufferKind() patcher.Kind {
+	return patcher.Kind{Name: "grainbuffer", Group: "Effects", Ins: ins, Outs: outs, Make: func(string) (*patcher.Made, error) {
+		rec := grains.NewRecorder(8)
+		return &patcher.Made{Module: rec,
+			Describe: func(string) params.Set {
+				return params.Set{Name: "grainbuffer", Params: []params.Param{params.S("Buffer", "freeze", false)}}
+			},
+			Texts: []patcher.Text{{Key: "name", Label: "name", Value: grains.DefaultRecorderName, Lines: 1, Help: "the name a grains module uses for it: `me live name`"}},
+			TextMessage: func(key, value string) (psalm.Message, error) {
+				if key != "name" || strings.TrimSpace(value) == "" || strings.ContainsAny(value, " \t\n") {
+					return nil, errors.New("a name of one word")
+				}
+				return psalm.Message{"name": strings.TrimSpace(value)}, nil
+			}}, nil
+	}}
 }

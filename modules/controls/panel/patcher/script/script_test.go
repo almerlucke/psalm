@@ -277,7 +277,16 @@ function trigger(ev) {
 	if r.rec.order[0] != "set" || r.rec.order[1] != "note" {
 		t.Errorf("the settings come before the notes of their tick: %v", r.rec.order[:4])
 	}
-	for _, code := range []string{`function trigger() { set("chainA", "wobble 3") }`, `function trigger() { set("x", [1, 2]) }`, `function trigger() { set("x") }`, `function trigger() { set() }`} {
+	// a list of numbers goes as it is (a granular synth's positionSeq)
+	r.code(s, `function trigger() { set({positionSeq: [0.1, 2, 3], scale: "minor"}) }`)
+	r.run(0.2)
+	if st := r.status(s); strings.HasPrefix(st, "error") {
+		t.Errorf("a list of numbers: %s", st)
+	}
+	if l, ok := r.rec.settings[len(r.rec.settings)-1]["positionSeq"].([]float64); !ok || len(l) != 3 || l[0] != 0.1 || l[1] != 2 {
+		t.Errorf("a list is sent as numbers: %v", r.rec.settings[len(r.rec.settings)-1]["positionSeq"])
+	}
+	for _, code := range []string{`function trigger() { set("chainA", "wobble 3") }`, `function trigger() { set("x", [1, "a"]) }`, `function trigger() { set("x", {a: 1}) }`, `function trigger() { set("x") }`, `function trigger() { set() }`} {
 		r.code(s, code)
 		r.run(0.2)
 		if st := r.status(s); !strings.HasPrefix(st, "error") {
