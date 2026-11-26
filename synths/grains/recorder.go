@@ -107,6 +107,45 @@ func (r *Recorder) Synthesize() {
 // Tail: the recorder has no sound of its own
 func (r *Recorder) Tail() float64 { return 0 }
 
+// LiveSource is the source of the recorder that has a name, found when the grains need it: the recorder may be made later than the
+// voice that listens to it (a patch loads its modules one after the other), or replaced. Until there is one the source is silent
+func LiveSource(name string) Source { return &namedSource{name: strings.TrimSpace(name)} }
+
+// namedSource asks the recorder of a name for its source every time the recorder it found is not the one with the name any more
+type namedSource struct {
+	name string
+	r    *Recorder
+	src  *liveSource
+}
+
+func (s *namedSource) get() *liveSource {
+	if r := RecorderNamed(s.name); r != s.r {
+		s.r = r
+		s.src = nil
+		if r != nil {
+			s.src = &liveSource{r: r}
+		}
+	}
+	return s.src
+}
+
+func (s *namedSource) Rate() float64     { return psalm.SampleRate() }
+func (s *namedSource) Depth() int        { return 1 }
+func (s *namedSource) Loudness() float64 { return 0 }
+func (s *namedSource) Ready() bool       { l := s.get(); return l != nil && l.Ready() }
+func (s *namedSource) Span() float64 {
+	if l := s.get(); l != nil {
+		return l.Span()
+	}
+	return 1
+}
+func (s *namedSource) Locate(position, scanned, spray, lead float64) (float64, float64, float64) {
+	return s.get().Locate(position, scanned, spray, lead)
+}
+func (s *namedSource) Read(dst []float64, pos, inc float64, depth int, lo, hi float64) float64 {
+	return s.get().Read(dst, pos, inc, depth, lo, hi)
+}
+
 // liveSource reads the ring of a recorder
 type liveSource struct{ r *Recorder }
 

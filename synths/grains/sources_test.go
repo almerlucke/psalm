@@ -360,3 +360,41 @@ func TestWindows(t *testing.T) {
 		}
 	}
 }
+
+// a voice can listen to a recorder that is made after it, by the name
+func TestLiveSourceByName(t *testing.T) {
+	src := LiveSource("later")
+	if src.Ready() {
+		t.Fatal("there is no recorder yet")
+	}
+	cfg := DefaultConfig()
+	cfg.Source = src
+	v := New(cfg)
+	v.NoteOn(0.5, psalm.Message{}, psalm.CtrlTick{}, v.Config())
+	v.Synthesize() // silent, no panic
+
+	rec := NewRecorder(1)
+	rec.SetName("later")
+	n := v.Config().BufferSize
+	for range 20 {
+		for c := range 2 {
+			for i := range n {
+				rec.Input(0).Channels[c][i] = 0.5
+			}
+		}
+		rec.Synthesize()
+	}
+	if !src.Ready() {
+		t.Fatal("the recorder is there now")
+	}
+	var peak float64
+	for range 10 {
+		v.Synthesize()
+		for _, s := range v.Output(0).Channels[0] {
+			peak = max(peak, math.Abs(float64(s)))
+		}
+	}
+	if peak == 0 {
+		t.Fatal("the voice does not hear the recorder that was made later")
+	}
+}

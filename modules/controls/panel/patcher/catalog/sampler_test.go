@@ -170,10 +170,9 @@ func TestGrainsOscAndLive(t *testing.T) {
 		t.Errorf("grains of a wave: peak %g", pk)
 	}
 
-	// a buffer that is not there
-	_ = pt.SetText(syn, "sounds", "me live nobody")
-	if pt.TextError(syn, "sounds") == "" {
-		t.Errorf("a grain buffer that is not there is an error")
+	// a buffer that is not there (yet: a patch loads its modules in order, the grains may come first): no error, silent until it is
+	if err := pt.SetText(syn, "sounds", "me live nobody"); err != nil || pt.TextError(syn, "sounds") != "" {
+		t.Fatalf("a buffer that comes later is no error: %v %s", err, pt.TextError(syn, "sounds"))
 	}
 
 	// a buffer, fed by a synth that plays all the time, and a second one that listens to it

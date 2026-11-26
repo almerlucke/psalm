@@ -605,11 +605,7 @@ func grainsKind(voices int) patcher.Kind {
 							if len(f) > 2 {
 								name = f[2]
 							}
-							rec := grains.RecorderNamed(name)
-							if rec == nil {
-								return nil, fmt.Errorf("line %d: no grain buffer named %q (add one and cable a sound to it)", n+1, name)
-							}
-							made[f[0]] = rec.Source()
+							made[f[0]] = grains.LiveSource(name) // the buffer may be added later (a patch loads in order): it is found when it is played
 						default:
 							if len(f) != 2 {
 								return nil, fmt.Errorf("line %d: a name, a file and the pitch: choir file.wav 62", n+1)
