@@ -105,7 +105,10 @@ func genny_collect(h C.int, from, to C.double, out *C.genny_event, capacity C.in
 		if e.on {
 			on = 1
 		}
-		dst[n] = C.genny_event{beat: C.double(e.beat), velocity: C.double(e.velocity), tune: C.double(e.tune), key: C.int(e.key), channel: C.int(e.channel), id: C.int(e.id), on: on}
+		if e.kill {
+			on = 2
+		}
+		dst[n] = C.genny_event{beat: C.double(e.beat), velocity: C.double(e.velocity), tune: C.double(e.tune), key: C.int(e.key), channel: C.int(e.channel), id: C.int(e.id), voice: C.int(e.voice), on: on}
 		n++
 	}
 	return C.int(n)
@@ -114,9 +117,19 @@ func genny_collect(h C.int, from, to C.double, out *C.genny_event, capacity C.in
 // genny_input takes a note played into the plugin (audio thread)
 //
 //export genny_input
-func genny_input(h, key C.int, velocity C.double, on C.int) {
+func genny_input(h, key C.int, velocity C.double, on C.int, beat C.double) {
 	if in := at(h); in != nil {
 		in.input(int(key), float64(velocity), on != 0)
+		in.keyAt(int(key), float64(velocity), on != 0, float64(beat))
+	}
+}
+
+// genny_reset forgets the voices of the key trigger (the audio thread; the transport started, stopped or jumped)
+//
+//export genny_reset
+func genny_reset(h C.int) {
+	if in := at(h); in != nil {
+		in.resetVoices()
 	}
 }
 

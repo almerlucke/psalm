@@ -137,6 +137,19 @@ func TestRenderChord(t *testing.T) {
 	}
 }
 
+// p.key is the key the piece is made for, 60 when it is not played from a key
+func TestRenderKey(t *testing.T) {
+	code := `function render(p) { return [{pitch: p.key, start: 0, duration: 1}] }`
+	p, err := NewRuntime().RenderHeld(code, 1, nil)
+	if err != nil || p.Notes[0].Pitch != 60 {
+		t.Fatalf("%+v %v", p.Notes, err)
+	}
+	p, err = NewRuntime().RenderKey(code, 1, nil, 73)
+	if err != nil || p.Notes[0].Pitch != 73 {
+		t.Fatalf("%+v %v", p.Notes, err)
+	}
+}
+
 func TestRenderErrors(t *testing.T) {
 	for _, c := range []struct{ code, want string }{
 		{`var x = ;`, "line 1"},

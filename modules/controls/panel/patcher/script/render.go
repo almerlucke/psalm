@@ -75,6 +75,12 @@ func (r *Runtime) Render(code string, seed uint64) (Piece, error) {
 // RenderHeld is Render for a plugin that takes notes in: the notes held down are given to render, lowest first, as p.held
 // ([{ pitch, velocity }]) and p.pitches (the pitches alone), both empty when nothing is held
 func (r *Runtime) RenderHeld(code string, seed uint64, held []HeldNote) (Piece, error) {
+	return r.RenderKey(code, seed, held, 60)
+}
+
+// RenderKey is RenderHeld for a plugin that plays the piece for each key that is played (as the key), given to render as p.key; a
+// piece that is not played from a key is made for 60 (middle C)
+func (r *Runtime) RenderKey(code string, seed uint64, held []HeldNote, key int) (Piece, error) {
 	prog, err := RenderScript("script", code)
 	if err != nil {
 		return Piece{}, err
@@ -134,6 +140,7 @@ func (r *Runtime) RenderHeld(code string, seed uint64, held []HeldNote) (Piece, 
 	arg := vm.NewObject()
 	_ = arg.Set("seed", seed)
 	_ = arg.Set("stepsPerBeat", 4)
+	_ = arg.Set("key", key)
 	notes, pitches := make([]any, len(held)), make([]any, len(held))
 	for i, h := range held {
 		n := vm.NewObject()

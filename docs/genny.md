@@ -34,7 +34,7 @@ The package is [genny](https://github.com/almerlucke/genny); this page is the sc
 - [Game of Life](#game-of-life): `life`
 - [Evolving a phrase](#evolving-a-phrase): `evolve`
 - [Shapers](#shapers)
-- [In the Genny plugin](#in-the-genny-plugin): `render(p)` `p.held` `p.pitches` `p.chord` `genny.identify` `genny.analyze`; [the editor](#in-the-genny-plugin)
+- [In the Genny plugin](#in-the-genny-plugin): `render(p)` `p.held` `p.pitches` `p.chord` `p.key` `genny.identify` `genny.analyze`; [the editor](#in-the-genny-plugin)
 - [Randomness and seeds](#randomness-and-seeds)
 - [Recipes](#recipes)
 
@@ -1318,12 +1318,31 @@ the file with Ctrl+S, and shows the log and the notes held. A saved text plays a
 up in the page as long as you have not typed. With more than one plugin in the host, a menu picks which one. The page is only served to
 this machine, and a page of another website cannot change anything through it. `GENNY_EDITOR=off` turns the server off.
 
+**A piece for each key.** With the parameter `key trigger` on, the plugin does not loop one piece with the transport: every key that is
+played starts the piece, from the moment it is played, and several keys play at the same time. A script is made for each key (all
+128, the middle first) and is told which one in `p.key`, so it can sound relative to the key; a spec has no keys and is moved by the
+distance from middle C. The velocity of the key multiplies the velocities of the notes. With `once` the piece plays to its end
+however short the key is pressed (drums, a phrase); with `loop` it starts again at its end for as long as the key is held and the notes
+are let go with the key. Playing a key again that is still sounding stops its old piece. `snap` waits for the next sixteenth, beat or
+bar of the transport before the piece starts (with the transport stopped the plugin counts beats on its own clock, so it plays and snaps
+too). A script that throws for some keys (a pitch out of range) leaves those keys silent and says so in the log. `p.key` is 60 when
+the plugin is not in this mode, so the same script works in both.
+
+```js
+// a chord of the key, strummed up, whatever key is played
+function render(p) {
+  return [0, 4, 7, 12].map((iv, i) => ({ pitch: p.key + iv, start: i * 2, duration: 8, velocity: 0.8 - i * 0.1 }))
+}
+```
+
 | Parameter | |
 |---|---|
 | `seed` | 0 to 999: the seed of the generators |
 | `new each pass` | every pass of the loop gets its own seed (`seed + pass`) |
 | `transpose`, `gain`, `swing (steps)` | semitones, velocity, how late the odd steps are |
 | `microtones` | pitches between two keys are played with a note tuning (off: rounded to a key) |
+| `key trigger` | off, once, loop: every key played starts the piece (see above) |
+| `snap` | the pieces of the keys start on: off, a sixteenth, a beat, a bar |
 | `latch` | the notes held stay held when let go, until a new chord is played |
 | `pass input` | the notes played into the plugin go out as well |
 

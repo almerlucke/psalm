@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -35,6 +36,8 @@ const (
 	pMicro
 	pLatch
 	pThru
+	pKeys
+	pSnap
 	numParams
 )
 
@@ -53,6 +56,8 @@ var params = [numParams]paramInfo{
 	pMicro:     {"microtones", true, 0, 1, 1},
 	pLatch:     {"latch", true, 0, 1, 0},
 	pThru:      {"pass input", true, 0, 1, 0},
+	pKeys:      {"key trigger", true, 0, 2, 0},
+	pSnap:      {"snap", true, 0, 3, 0},
 }
 
 // ev is a note of a rendered line, times in beats
@@ -147,6 +152,14 @@ type instance struct {
 	down      [128]atomic.Bool  // the keys that are physically down (a latched key can be held without being down)
 	downs     atomic.Int32      // how many keys are down
 	inVersion atomic.Uint64     // counts the changes of held
+
+	// the key trigger: the piece made for each key (by the goroutine that renders), and the voices of the keys that are down (the
+	// audio thread's)
+	keys     atomic.Pointer[keySet]
+	voices   [128]voice
+	salt     int // the last voice number
+	pending  [64]goEvent
+	npending int
 
 	mu        sync.Mutex // the spec text and its file (never taken by the audio thread)
 	text      string
@@ -408,6 +421,8 @@ func (in *instance) run() {
 		lastVer uint64          // the notes held at the last look
 		settle  int             // ticks to wait for more notes of a chord
 		latched bool
+		keysGen uint64 = math.MaxUint64 // what the pieces of the keys were made for
+		keysSd         = -1.0
 	)
 	for {
 		select {
@@ -430,6 +445,31 @@ func (in *instance) run() {
 			continue
 		}
 		seed, renew := in.get(pSeed), in.get(pRegen) > 0.5
+		if in.get(pKeys) > 0.5 {
+			// the key trigger: the piece of each key instead of the one that loops
+			if kf := (failure{gen, seed, false, -2, 0}); (gen != keysGen || seed != keysSd) && kf != failed {
+				switch err := in.renderKeys(&rt, text, isScript, uint64(seed)); {
+				case err == nil:
+					keysGen, keysSd = gen, seed
+					in.mu.Lock()
+					in.lastErr = ""
+					in.mu.Unlock()
+				case errors.Is(err, errStopped):
+					return
+				default:
+					failed = kf
+					in.mu.Lock()
+					fresh := in.lastErr != err.Error()
+					in.lastErr = err.Error()
+					in.mu.Unlock()
+					if fresh {
+						in.say(sevError, "%v (nothing plays until it is fixed)", err)
+					}
+				}
+			}
+			continue
+		}
+		keysGen = math.MaxUint64 // made again when the trigger is turned on again
 		cycle := in.want.Load()
 		// the notes played: a script that looks at them is made again when they change, once a chord has settled
 		now := in.get(pLatch) > 0.5
@@ -558,18 +598,10 @@ func maps(m map[int64]*lineData) map[int64]*lineData {
 	return out
 }
 
-// collect writes the note on and off events in the beats [from, to), sorted by time. It does not allocate
+// collect writes the note on and off events in the beats [from, to), sorted by time. It does not allocate. The piece that plays with
+// the transport (the store), or the voices of the keys that were played (with the key trigger on)
 func (in *instance) collect(from, to float64) []goEvent {
 	out := in.buf[:]
-	st := in.store.Load()
-	if st == nil {
-		return nil
-	}
-	loop := st.length
-	cycle := int64(math.Floor(from / loop))
-	in.want.Store(cycle)
-	transpose, gain, swing := in.get(pTranspose), in.get(pGain), in.get(pSwing)
-	micro := in.get(pMicro) > 0.5
 	n := 0
 	put := func(e goEvent) {
 		if n < len(out) {
@@ -577,14 +609,45 @@ func (in *instance) collect(from, to float64) []goEvent {
 			n++
 		}
 	}
-	// start of a step as played: the notes on odd steps are late by the swing
+	if in.get(pKeys) < 0.5 {
+		in.endVoices(from, put)
+		if st := in.store.Load(); st != nil {
+			in.want.Store(int64(math.Floor(from / st.length)))
+			in.emit(st, 0, from, to, 0, false, 0, 1, put)
+		}
+	} else {
+		in.collectVoices(from, to, put)
+	}
+	slices.SortFunc(out[:n], func(a, b goEvent) int {
+		switch {
+		case a.beat < b.beat:
+			return -1
+		case a.beat > b.beat:
+			return 1
+		case !a.on && b.on: // an off (or the end of a voice) before an on at the same time
+			return -1
+		case a.on && !b.on:
+			return 1
+		}
+		return 0
+	})
+	return out[:n]
+}
+
+// emit puts the events of a store in the beats [from, to) (counted from offset, the events go out at offset + their time) in put. A
+// voice is a store of one line that plays once or for ever, with its own id for the notes, shifted by a number of semitones and
+// with the velocity of its key
+func (in *instance) emit(st *store, offset, from, to float64, voice int, once bool, shift, velocity float64, put func(goEvent)) {
+	loop := st.length
+	transpose, gain, swing := in.get(pTranspose)+shift, in.get(pGain)*velocity, in.get(pSwing)
+	micro := in.get(pMicro) > 0.5
 	for c := int64(math.Floor((from - st.overrun - 1.0) / loop)); c <= int64(math.Floor(to/loop)); c++ {
 		key := c
 		if !st.renew {
 			key = 0
 		}
 		l := st.lines[key]
-		if l == nil || c < 0 {
+		if l == nil || c < 0 || (once && c > 0) {
 			continue
 		}
 		base := float64(c) * loop
@@ -601,8 +664,8 @@ func (in *instance) collect(from, to float64) []goEvent {
 			if p < 0 || p > 127 {
 				return
 			}
-			id := int((c*2654435+int64(i))*2+1) & 0x7fffffff
-			ce := goEvent{key: int(p), channel: e.channel, id: id}
+			id := int(((c*2654435+int64(i))*2 + 1 + int64(voice)*7919003) & 0x7fffffff)
+			ce := goEvent{key: int(p), channel: e.channel, id: id, voice: voice}
 			if on {
 				ce.beat, ce.on, ce.velocity = base+start, true, min(max(e.vel*gain, 0.01), 1)
 				if micro {
@@ -612,6 +675,7 @@ func (in *instance) collect(from, to float64) []goEvent {
 				ce.beat = base + end
 			}
 			if ce.beat >= from && ce.beat < to {
+				ce.beat += offset
 				put(ce)
 			}
 		}
@@ -625,20 +689,6 @@ func (in *instance) collect(from, to float64) []goEvent {
 			emit(int(l.byEnd[i]), false)
 		}
 	}
-	slices.SortFunc(out[:n], func(a, b goEvent) int {
-		switch {
-		case a.beat < b.beat:
-			return -1
-		case a.beat > b.beat:
-			return 1
-		case !a.on && b.on: // an off before an on at the same time
-			return -1
-		case a.on && !b.on:
-			return 1
-		}
-		return 0
-	})
-	return out[:n]
 }
 
 // goEvent is a note on or off for the shim, at a position in beats
@@ -648,6 +698,8 @@ type goEvent struct {
 	key, channel   int
 	id             int
 	on             bool
+	kill           bool // not a note: let go of the notes of a voice (its voice number) that still sound
+	voice          int  // the voice that made the note, 0 for the piece of the transport
 }
 
 // maxEvents is the most events one block hands the shim

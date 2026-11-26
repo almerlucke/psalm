@@ -10,7 +10,8 @@ typedef struct {
 	int key;
 	int channel;
 	int id;
-	int on;
+	int voice; // the voice of the key trigger that made the note, 0 for the piece of the transport
+	int on;    // 1 a note on, 0 a note off, 2 not a note: let go of the notes that the voice still has on
 } genny_event;
 
 // a parameter of the plugin, as the Go side describes it

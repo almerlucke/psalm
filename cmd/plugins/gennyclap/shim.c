@@ -17,11 +17,13 @@
 
 // the numbers of the parameters (see engine.go) that the audio thread looks at
 #define PARAM_THRU 7
+#define PARAM_KEYS 8
 
 typedef struct {
 	int id;
 	int key;
 	int channel;
+	int voice; // that made the note (see genny_event), 0 for the piece of the transport
 } active_note;
 
 // every kind of event the plugin sends, in one place so they can be put in order of time before they go
@@ -61,6 +63,9 @@ typedef struct {
 	queued_event queue[MAX_QUEUE]; // what goes out in this block
 	int num_queued;
 	long long epoch; // of the piece that is playing (see genny_epoch)
+	double tempo;      // the last tempo the host gave, for the clock that runs when the transport does not
+	double free_beat;  // that clock: where the block begins, in beats from when the transport stopped
+	int clock;         // what the beats come from: 0 nothing plays, 1 the transport, 2 the free clock (key trigger, transport stopped)
 } genny_plugin;
 
 static const clap_plugin_descriptor_t descriptor = {
@@ -160,7 +165,7 @@ static void release_all(genny_plugin *p, uint32_t time) {
 }
 
 // read_input takes what the host sends: the parameters, and the notes played into the plugin (passed on when "pass input" is on)
-static void read_input(genny_plugin *p, const clap_input_events_t *in) {
+static void read_input(genny_plugin *p, const clap_input_events_t *in, double from, double per_sample) {
 	if (!in) {
 		return;
 	}
@@ -183,7 +188,7 @@ static void read_input(genny_plugin *p, const clap_input_events_t *in) {
 		case CLAP_EVENT_NOTE_END: {
 			const clap_event_note_t *e = (const clap_event_note_t *)h;
 			if (h->type != CLAP_EVENT_NOTE_END) {
-				genny_input(p->handle, e->key, e->velocity, h->type == CLAP_EVENT_NOTE_ON);
+				genny_input(p->handle, e->key, e->velocity, h->type == CLAP_EVENT_NOTE_ON, from + h->time * per_sample);
 			}
 			if (thru < 0) {
 				thru = genny_param_get(p->handle, PARAM_THRU) > 0.5;
@@ -197,7 +202,7 @@ static void read_input(genny_plugin *p, const clap_input_events_t *in) {
 			const clap_event_midi_t *e = (const clap_event_midi_t *)h;
 			int status = e->data[0] & 0xF0, key = e->data[1];
 			if (status == 0x90 || status == 0x80) {
-				genny_input(p->handle, key, e->data[2] / 127.0, status == 0x90 && e->data[2] > 0);
+				genny_input(p->handle, key, e->data[2] / 127.0, status == 0x90 && e->data[2] > 0, from + h->time * per_sample);
 			}
 			break;
 		}
@@ -243,8 +248,10 @@ static void plugin_stop_processing(const clap_plugin_t *plugin) {}
 static void plugin_reset(const clap_plugin_t *plugin) {
 	genny_plugin *p = plugin->plugin_data;
 	p->has_position = 0;
+	p->clock = 0;
 	p->num_active = 0;
 	p->num_queued = 0;
+	genny_reset(p->handle);
 }
 
 static clap_process_status plugin_process(const clap_plugin_t *plugin, const clap_process_t *process) {
@@ -253,26 +260,45 @@ static clap_process_status plugin_process(const clap_plugin_t *plugin, const cla
 	uint32_t frames = process->frames_count;
 
 	p->num_queued = 0;
-	read_input(p, process->in_events);
 
+	// where the block is, in beats: the transport when it plays; the clock of the plugin when it does not but the key trigger is on (the
+	// keys are played with the transport stopped as well); otherwise nothing plays
+	if (tr && (tr->flags & CLAP_TRANSPORT_HAS_TEMPO) && tr->tempo > 0) {
+		p->tempo = tr->tempo;
+	}
 	int playing = tr && (tr->flags & CLAP_TRANSPORT_IS_PLAYING) && (tr->flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) &&
 	              (tr->flags & CLAP_TRANSPORT_HAS_TEMPO);
-	if (!playing) {
+	int keys = genny_param_get(p->handle, PARAM_KEYS) > 0.5;
+	int clock = playing ? 1 : (keys ? 2 : 0);
+	if (clock != p->clock) { // the beats come from somewhere else: what sounds is let go, the voices forgotten
 		release_all(p, 0);
+		genny_reset(p->handle);
 		p->has_position = 0;
+		p->free_beat = 0;
+		p->clock = clock;
+	}
+	double per_sample = (p->tempo > 0 ? p->tempo : 120.0) / (60.0 * p->sample_rate); // beats per sample
+	double from = clock == 1 ? (double)tr->song_pos_beats / (double)CLAP_BEATTIME_FACTOR : p->free_beat;
+	double to = from + per_sample * frames;
+
+	read_input(p, process->in_events, from, per_sample);
+
+	if (clock == 0) {
 		flush_queue(p, process->out_events);
 		return CLAP_PROCESS_CONTINUE;
 	}
-
-	double from = (double)tr->song_pos_beats / (double)CLAP_BEATTIME_FACTOR;
-	double per_sample = tr->tempo / (60.0 * p->sample_rate); // beats per sample
-	double to = from + per_sample * frames;
+	if (clock == 2) {
+		p->free_beat = to;
+	}
 
 	// the transport jumped (a loop, a click in the ruler), or the piece was replaced (the new one does not know the notes that sound):
 	// what sounds is let go
 	long long epoch = genny_epoch(p->handle);
 	if ((p->has_position && fabs(from - p->next_beat) > 1e-4) || epoch != p->epoch) {
 		release_all(p, 0);
+		if (clock == 1 && p->has_position && fabs(from - p->next_beat) > 1e-4) {
+			genny_reset(p->handle);
+		}
 	}
 	p->epoch = epoch;
 	p->next_beat = to;
@@ -283,9 +309,20 @@ static clap_process_status plugin_process(const clap_plugin_t *plugin, const cla
 	for (int i = 0; i < n; i++) {
 		double offset = (events[i].beat - from) / per_sample;
 		uint32_t time = offset < 0 ? 0 : (offset >= frames ? frames - 1 : (uint32_t)offset);
+		if (events[i].on == 2) { // the end of a voice: the notes it still has on are let go
+			for (int j = 0; j < p->num_active;) {
+				if (p->active[j].voice == events[i].voice) {
+					queue_note(p, time, 0, p->active[j].id, p->active[j].key, p->active[j].channel, 0);
+					p->active[j] = p->active[--p->num_active];
+				} else {
+					j++;
+				}
+			}
+			continue;
+		}
 		if (events[i].on) {
 			if (p->num_active < MAX_ACTIVE) {
-				p->active[p->num_active++] = (active_note){events[i].id, events[i].key, events[i].channel};
+				p->active[p->num_active++] = (active_note){events[i].id, events[i].key, events[i].channel, events[i].voice};
 				queue_note(p, time, 1, events[i].id, events[i].key, events[i].channel, events[i].velocity);
 				if (fabs(events[i].tune) > 1e-4) { // right after the note on, at the same time
 					queue_tuning(p, time, events[i].id, events[i].key, events[i].channel, events[i].tune);
@@ -374,7 +411,7 @@ static bool params_text_to_value(const clap_plugin_t *plugin, clap_id id, const 
 
 static void params_flush(const clap_plugin_t *plugin, const clap_input_events_t *in, const clap_output_events_t *out) {
 	genny_plugin *p = plugin->plugin_data;
-	read_input(p, in); // notes that come while the plugin is not processing are let through as well
+	read_input(p, in, p->next_beat, 0); // notes that come while the plugin is not processing are let through as well
 	flush_queue(p, out);
 }
 
