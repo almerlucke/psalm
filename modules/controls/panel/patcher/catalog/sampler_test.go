@@ -198,3 +198,53 @@ func TestGrainsOscAndLive(t *testing.T) {
 		t.Errorf("grains of the sound that came in: peak %g", pk)
 	}
 }
+
+// a new grains module plays at once (the choir is its first recording), and the setting "source" picks a wave or the live sound from the module
+func TestGrainsSourceSetting(t *testing.T) {
+	if _, err := os.Stat("../../../../../assets/sounds/various/mixkit-angelical-choir-654.wav"); err != nil {
+		t.Skip("no choir in assets")
+	}
+	t.Chdir("../../../../..") // the default recording is a path from the folder psalm runs in
+	psalm.PushConfig(psalm.Config{BPM: 240, PPQ: 240, SampleRate: 44100, BufferSize: 256})
+	defer psalm.PopConfig()
+	p := psalm.New(nil)
+	pt := patcher.New(p, panel.New(p, "A"), "Patch", catalog.Kinds(catalog.Config{Input: midi.NewQueue()}))
+	p.Out(pt.Out())
+	roll, _ := pt.Add("noteroll", "", 0, 0)
+	pt.SettingsOf(roll).Apply(map[string]float64{"length": 4, "n/0/start": 0, "n/0/length": 3, "n/0/key": 60, "n/0/velocity": 0.9})
+	syn, err := pt.Add("grains", "glassKeys", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []patcher.Cable{{From: roll, To: syn}, {From: syn, To: "out"}} {
+		if _, err := pt.Connect(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if texts := pt.Texts(syn); len(texts) != 2 || !strings.HasPrefix(texts[0].Value, "choir ") || texts[1].Key != "buffer" || texts[1].Value != "live" {
+		t.Fatalf("the boxes of a new module: %+v", texts)
+	}
+	peak := func(blocks int) float64 {
+		var pk float64
+		for range blocks {
+			p.ResetRun()
+			p.Run()
+			for _, s := range pt.Out().Output(0).Channels[0] {
+				pk = max(pk, math.Abs(float64(s)))
+			}
+		}
+		return pk
+	}
+	if pk := peak(200); pk < 0.02 {
+		t.Errorf("a new module should play the choir: peak %g", pk)
+	}
+	pt.SettingsOf(syn).Apply(map[string]float64{"source": 1, "wave": 2}) // a saw
+	if pk := peak(300); pk < 0.02 {
+		t.Errorf("the source wave: peak %g", pk)
+	}
+	pt.SettingsOf(syn).Apply(map[string]float64{"source": 2}) // live: no buffer, silence, no crash
+	peak(100)
+	if err := pt.SetText(syn, "buffer", "two words"); err != nil || pt.TextError(syn, "buffer") == "" {
+		t.Errorf("a name is one word: %v %q", err, pt.TextError(syn, "buffer"))
+	}
+}

@@ -557,21 +557,42 @@ func streamerKind(voices int) patcher.Kind {
 		}}
 }
 
-// grainsKind is the granular sampler: the usual presets and settings, and its sounds as a text in its side panel, a line each: a name, a
-// file and the MIDI pitch it is at (`choir assets/sounds/chants/Johannes.Hymnus.wav 62`). The first is what it plays; a script picks
-// another with set({sound: "name"}) (the pitch of that sound goes with it)
+// defaultChoir is the recording a new grains module starts with (a line of its recordings), when the folder it runs in has it
+const defaultChoir = "assets/sounds/various/mixkit-angelical-choir-654.wav"
+
+// grainsKind is the granular synth: the usual presets and settings; what it plays is the setting "source" (a recording, a wave, the sound of a
+// grain buffer), the recordings are a text in its side panel, a line each: a name, a file and the MIDI pitch it is at
+// (`choir assets/sounds/chants/Johannes.Hymnus.wav 62`). The first is what it plays; a script picks another with set({sound: "name"}) (the pitch
+// of that sound goes with it). The grain buffer it listens to is the text "buffer" (its name)
 func grainsKind(voices int) patcher.Kind {
-	const help = "- a line a sound: `choir file.wav 62` (a name, the file, the MIDI pitch it is at; 60 without)\n" +
-		"- or a sound that is made: `tone osc sine saw` (single cycle waves: sine triangle saw square; the position picks one), or the sound of a [grain buffer](grainbuffer.md): `me live` (its name; `me live name 57`)\n" +
-		"- the first is played; a script picks another with `set({sound: \"name\"})`; # starts a comment"
+	const help = "- one recording a line: `choir file.wav 62` (a name, the file, the MIDI pitch it is at; 60 without)\n" +
+		"- the first line is what the setting **source: recording** plays; a script picks another with `set({sound: \"name\"})`\n" +
+		"- a line can also be a sound that is made: `tone osc sine saw` (waves) or `me live` (a [grain buffer](grainbuffer.md)); # starts a comment"
 	return patcher.Kind{Name: "grains", Group: "Synths", Presets: sorted(grains.Presets), Ins: note, Outs: outs,
 		Make: func(preset string) (*patcher.Made, error) {
-			mk := func(name string) psalm.Modular { return grains.NewPoly(grains.Presets[name](nil, 60), voices) }
 			var cache = map[string]sndfile.SoundFiler[float32]{}
+			// a new module has a recording to play (the choir, when it is there), so the first note makes a sound and the box shows what a line is
+			var start sndfile.SoundFiler[float32]
+			startText := ""
+			if sf, err := sndfile.NewSoundFile[float32](defaultChoir); err == nil {
+				start, startText = sf, "choir "+defaultChoir+" 60"
+				cache[defaultChoir] = sf
+			}
+			mk := func(name string) psalm.Modular { return grains.NewPoly(grains.Presets[name](start, 60), voices) }
 			return &patcher.Made{Module: mk(preset), Rebuild: mk,
 				Describe: func(n string) params.Set { return grains.Describe(grains.Presets[n](nil, 60)) },
-				Texts:    []patcher.Text{{Key: "sounds", Label: "sounds", Lines: 5, Help: help}},
+				Texts: []patcher.Text{
+					{Key: "sounds", Label: "recordings (a name, a file, its pitch)", Value: startText, Lines: 5, Help: help},
+					{Key: "buffer", Label: "grain buffer to listen to", Value: grains.DefaultRecorderName, Lines: 1,
+						Help: "the name of a [grain buffer](grainbuffer.md) module: **source: live** plays what it hears"},
+				},
 				TextMessage: func(key, value string) (psalm.Message, error) {
+					if key == "buffer" {
+						if name := strings.TrimSpace(value); name != "" && !strings.ContainsAny(name, " \t\n") {
+							return psalm.Message{"buffer": name}, nil
+						}
+						return nil, errors.New("a name of one word")
+					}
 					if key != "sounds" {
 						return nil, errors.New("no such text")
 					}

@@ -23,6 +23,9 @@ Use mipmapped sound files, so grains that play faster don't alias.
 |---|---|---|
 | `Sample` | | The recording (`sndfile.SoundFiler[float32]`) |
 | `Source` | | Any other [source](#sources), read in place of `Sample` |
+| `SourceKind` | `SourceRecording` | What the settings pick to play: `SourceRecording`, `SourceWave` (the shared oscillator) or `SourceLive` (the grain buffer called `Buffer`) |
+| `Wave` | 0 | The wave of `SourceWave`: 0 sine, 1 triangle, 2 saw, 3 square, 4 as the position says |
+| `Buffer` | `live` | The name of the recorder `SourceLive` plays |
 | `SoundBank` | | Optional, notes pick a sample with the `sound` key |
 | `RootNote` | 60 | MIDI pitch of the recording: playing this note plays it at its own pitch |
 | `Position` | 0.3 | 0-1, where in the recording the grains come from |
@@ -55,8 +58,7 @@ grains, so modulating them never clicks.
 
 **Messages**: `pitch`, `frequency`, `velocity`, `sound`, `rootNote`, `position`, `scan`, `spray`,
 `density`, `sync`, `grainSize`, `window`, `scale`, `scaleRoot`, `stack`, `pitchSpread`, `octave`, `stereoSpread`, `shape`, `reverse`, `jitter`,
-`level`; the lists `positionSeq`, `intervalSeq`, `pitchSeq`, `sizeSeq`, `panSeq` and `ampSeq` (see [streams](#streams)); `source`
-and `sources` (sources made by a patch).
+`level`; the lists `positionSeq`, `intervalSeq`, `pitchSeq`, `sizeSeq`, `panSeq` and `ampSeq` (see [streams](#streams)); `source` (a number: the choice recording, wave or live; a `Source`: any source), `wave`, `buffer` (a name), `sources` (sources made by a patch). `scale` and `stack` take a list, a name or the number of the choice shown in the editor.
 
 ## Sources
 

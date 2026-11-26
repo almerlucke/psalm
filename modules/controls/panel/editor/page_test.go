@@ -62,3 +62,27 @@ func TestPageEditor(t *testing.T) {
 	paneltest.Eventually(t, "my preset loaded back", func() bool { tick(); return r.got["cutoff"] == saved })
 	tb.WaitFor(`!document.querySelectorAll(".ed-presets button")[1].disabled`, "delete enabled for one of mine")
 }
+
+// a setting says what it does when the pointer rests on it, a group has a line under its title, an envelope a hint too
+func TestPageEditorHints(t *testing.T) {
+	b := paneltest.Start(t)
+	set := params.Set{Name: "test", Params: []params.Param{
+		params.K("Filter", "cutoff", 20, 18000, 800, params.Exp(), params.Hint("where the sound gets dull")),
+		params.C("Filter", "wave", []string{"sine", "saw"}, 0, params.Hint("the wave")),
+	}, Envelopes: []params.Envelope{
+		{Prefix: "amp", Label: "Volume", Group: "Filter", Stages: "ADSR", Attack: 5, Decay: 200, Sustain: 0.7, Release: 300, Hint: "how a note goes"},
+	}, GroupHints: map[string]string{"Filter": "what the sound is made of"}}
+	ctl := panel.New(psalm.New(nil), "Test")
+	Add(ctl, "Synth", &receiver{got: map[string]float64{}}, set)
+	ctl.CtrlTick(psalm.CtrlTick{SampleTimestamp: 1})
+	tb := b.Open(t, paneltest.Serve(t, ctl.Handler()), `document.querySelectorAll(".ed-group").length === 1`)
+	tb.Size(1100, 700)
+	if got := tb.Eval(`document.querySelector(".ed-group .ed-hint").textContent`); got != "what the sound is made of" {
+		t.Errorf("the line under the group: %v", got)
+	}
+	for _, want := range []string{"where the sound gets dull", "the wave", "how a note goes"} {
+		if n := tb.Eval(`[...document.querySelectorAll(".editor [title]")].filter(e => e.title === ` + `"` + want + `"` + `).length`); n != 1.0 {
+			t.Errorf("hint %q is on %v elements", want, n)
+		}
+	}
+}

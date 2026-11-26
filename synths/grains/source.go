@@ -2,6 +2,7 @@ package grains
 
 import (
 	"math"
+	"sync"
 
 	"github.com/almerlucke/sndfile"
 )
@@ -81,9 +82,35 @@ var Waves = []string{"sine", "triangle", "saw", "square"}
 
 const (
 	oscLen    = 2048 // frames of a cycle
-	oscLevels = 16   // levels of the mipmap: fewer harmonics for faster reading
+	oscLevels = 64   // levels of the mipmap: fewer harmonics for faster reading (up to 64 frames a sample: 1.4 kHz)
 	oscTop    = oscLen / 2
 )
+
+// sineCycle is one cycle of a sine, the harmonics of the waves are read from it (no sine for every sample of every harmonic)
+var sineCycle = func() []float64 {
+	t := make([]float64, oscLen)
+	for i := range t {
+		t[i] = math.Sin(2 * math.Pi * float64(i) / oscLen)
+	}
+	return t
+}()
+
+var (
+	sharedOnce sync.Once
+	shared     Source
+)
+
+// SharedOscillator is the oscillator with all the waves, made once for every voice that plays the wave of its settings
+func SharedOscillator() Source {
+	sharedOnce.Do(func() { shared = NewOscillator() })
+	return shared
+}
+
+// Waved is a source with waves to pick from: the position of a grain picks one
+type Waved interface {
+	// NumWaves is how many waves there are
+	NumWaves() int
+}
 
 // oscSource is a set of single cycle waves. A grain is a short burst of one of them (the position picks the wave), at the
 // pitch of the note: the grains of a wavetable, of a pulsar or of an FOF voice. Every wave is made of its harmonics, with
@@ -152,13 +179,14 @@ func cycle(name string, h int) []float64 {
 			amp = 1
 		}
 		for i := range oscLen {
-			t[i] += sign * amp * math.Sin(2*math.Pi*float64(k*i)/oscLen)
+			t[i] += sign * amp * sineCycle[(k*i)&(oscLen-1)]
 		}
 	}
 	t[oscLen] = t[0]
 	return t
 }
 
+func (o *oscSource) NumWaves() int     { return len(o.tables) }
 func (o *oscSource) Rate() float64     { return oscLen * 261.6255653005986 }
 func (o *oscSource) Span() float64     { return oscLen }
 func (o *oscSource) Depth() int        { return oscLevels }

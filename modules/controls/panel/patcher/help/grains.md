@@ -2,7 +2,16 @@
 
 A **granular sampler** you play like any synth. Every note starts a stream of grains: very short windowed slices of a recording, played at the pitch of the note. Moving where the grains come from, how dense and long they are and how much they spread turns any recording into pads, drones, keys, textures or a rhythmic stutter. It takes `notes`.
 
-The recording is the text **sounds** in the window of the module, a line each: a name, a file and the MIDI pitch the recording is at (60 without). The first is what it plays. A line can also be a sound that is made: `tone osc sine saw` (single cycle waves, see below) or `me live` (what a [grain buffer](grainbuffer.md) hears, as it is played). The presets are ways of using the grains (`choirPad`, `frozenDrone`, `glassKeys`, `pluck`, `shimmer`, `stutter`, `texture`) and work with any recording. A text that cannot be read (a missing file) is reported and leaves the sound as it was.
+## What is on the module
+
+- **source** (the first group) says what the grains play: a **recording**, a single cycle **wave**, or **live** (the sound a [grain buffer](grainbuffer.md) hears). A new module plays a choir (when the folder has it), so the first note already sounds.
+- The box **recordings** is a list of sounds to play with the source **recording**: a line each, a name, a file and the MIDI pitch the recording is at (60 without): `choir assets/sounds/chants/Johannes.Hymnus.wav 62`. The first line is what plays; a [script](script.md) can pick another with `set({sound: "name"})`. A line may also be a sound that is made: `tone osc sine saw` (single cycle waves) or `me live` (a grain buffer): a script picks those by name too. A text that cannot be read (a missing file) is reported and leaves the sound as it was.
+- The box **grain buffer to listen to** is the name of the grain buffer that the source **live** plays (`live` unless you named it otherwise).
+- The groups: **Source** (where the grains are taken from), **Grains** (how often, how long, what shape), **Pitch** (a scale, chords, scatter), **Output** (stereo, level, and the envelope of a note). Rest the pointer on any control to read what it does.
+- The **Note volume** envelope is the volume of a whole note: how fast it comes in when a key is pressed (A), how far it falls while the key is held (D, to the level S), and how long it fades after the key is let go (R). It is not the shape of a grain: that is **window** and **shape**.
+- A script can do more than the controls: it gives every grain its own value (see below).
+
+The presets are ways of using the grains (`choirPad`, `frozenDrone`, `glassKeys`, `pluck`, `shimmer`, `stutter`, `texture`) and work with any sound.
 
 ## Tutorial
 
@@ -50,6 +59,8 @@ jitter = 0.1
 
 | Setting | What it does |
 |---|---|
+| `source` | What the grains play: `recording`, `wave` or `live`. |
+| `wave` | The wave of the source `wave`: sine, triangle, saw or square; with `morph` the position picks the wave (0 the first, 1 the last). |
 | `rootNote` | The MIDI pitch of the recording: playing this note plays it at its own pitch. |
 | `position` | Where in the recording the grains come from (0 to 1). |
 | `scan` | How fast the position moves: 0 freezes, 1 is the original speed, negative goes backwards. It starts over at every note. |
@@ -61,6 +72,9 @@ jitter = 0.1
 | `shape` | The window of a grain, from the window above (0) to percussive (1). |
 | `jitter` | How uneven the time between grains is. |
 | `reverse` | The chance that a grain plays backwards. |
+| `scale` | Holds the pitch of every grain to a scale (`off`, `major`, `minor`, `pentatonic`, `blues`...), so the cloud is always in key. |
+| `scale root` | The note the scale starts on. |
+| `stack` | Every grain is a chord (`octave`, `fifth`, `major`, `minor`, `major 7`...): a grain for each of its notes. |
 | `pitchSpread` | A random detune of each grain, in semitones: a chorus, a smear. |
 | `octave` | The chance that a grain plays an octave up: sparkle. |
 | `stereoSpread` | A random place in the stereo field for each grain. |
@@ -70,8 +84,9 @@ The level stays about the same when the density, size or shape change. The veloc
 
 ## Other sounds than a recording
 
-- `tone osc sine saw` in the sounds: single cycle waves (`sine`, `triangle`, `saw`, `square`) in place of a recording. **position** picks the wave (0 the first, 1 the last), a grain is a short burst of it at the pitch of the note: grains of a wavetable, with a smooth cloud or a rough buzz by **density** and **grainSize**. The waves are made of their harmonics, fewer for the high notes, so they do not alias.
-- `me live` plays what a [grain buffer](grainbuffer.md) hears: **position** is how far back the grains look.
+- **source: wave** plays a single cycle wave. Pick it with **wave** (sine, triangle, saw, square), or choose `morph` and let **position** pick (0 the first, 1 the last). A grain is a short burst of the wave at the pitch of the note: grains of a wavetable, a smooth cloud or a rough buzz by **density**, **size** and **window**. The waves are made of their harmonics, fewer for the high notes, so they do not alias.
+- **source: live** plays what a [grain buffer](grainbuffer.md) hears (the one named in the box *grain buffer to listen to*): **position** is how far back the grains look, 0 is just now.
+- A script picks any of the lines of the box *recordings* by name, also the made ones (`tone osc sine saw`, `me live`), and so can switch the sound while it plays.
 
 ## Controlling each grain from a script
 

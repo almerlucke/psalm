@@ -1,6 +1,9 @@
 package grains
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // scales are the scales the pitch of grains can be held to, by name: the semitones above the root
 var scales = map[string][]float64{
@@ -31,3 +34,56 @@ func ScaleNamed(name string) []float64 {
 	}
 	return nil
 }
+
+// ScaleChoices are the choices of the setting "scale": none, then the scales
+var ScaleChoices = append([]string{"off"}, ScaleNames...)
+
+// scaleIndex is the choice of a scale (0 when it is none or one of your own)
+func scaleIndex(scale []float64) int {
+	for i, name := range ScaleNames {
+		if slices.Equal(ScaleNamed(name), scale) && len(scale) > 0 {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// stacks are the chords a grain can be: the semitones above its pitch, by name
+var stacks = []struct {
+	name string
+	up   []float64
+}{
+	{"off", nil}, {"octave", []float64{0, 12}}, {"fifth", []float64{0, 7}}, {"power", []float64{0, 7, 12}},
+	{"major", []float64{0, 4, 7}}, {"minor", []float64{0, 3, 7}}, {"sus4", []float64{0, 5, 7}}, {"major 7", []float64{0, 4, 7, 11}},
+	{"minor 7", []float64{0, 3, 7, 10}}, {"cluster", []float64{0, 1, 2}},
+}
+
+// StackChoices are the choices of the setting "stack": none, then chords
+var StackChoices = func() []string {
+	var n []string
+	for _, s := range stacks {
+		n = append(n, s.name)
+	}
+	return n
+}()
+
+// StackNamed is the chord of a choice of "stack" (by its index), nil for none
+func stackOf(i int) []float64 {
+	if i <= 0 || i >= len(stacks) {
+		return nil
+	}
+	return append([]float64(nil), stacks[i].up...)
+}
+
+// stackIndex is the choice of a chord (0 when it is none or one of your own)
+func stackIndex(up []float64) int {
+	for i, s := range stacks {
+		if i > 0 && slices.Equal(s.up, up) {
+			return i
+		}
+	}
+	return 0
+}
+
+// NoteNames are the names of the twelve pitch classes, for the setting "scaleRoot"
+var NoteNames = []string{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}

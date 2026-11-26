@@ -17,3 +17,4 @@
 .editor .ed-fold::before { content: "\25BE\00a0"; }
 .editor .ed-group.closed .ed-fold::before { content: "\25B8\00a0"; }
 .editor .ed-group.closed .ed-controls { display: none; }
+.editor .ed-hint { font-size: 11px; color: var(--muted); margin: -3px 0 7px; text-align: left; width: 0; min-width: 100%; line-height: 1.3; }

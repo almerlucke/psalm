@@ -18,7 +18,14 @@ psalm.register("editor", (p, api) => {
 		h.textContent = g;
 		const row = document.createElement("div");
 		row.className = "ed-controls";
-		card.append(h, row);
+		card.append(h);
+		if (d.groupHints && d.groupHints[g]) {
+			const hint = document.createElement("div");
+			hint.className = "ed-hint";
+			hint.textContent = d.groupHints[g];
+			card.append(hint);
+		}
+		card.append(row);
 		if (crowded) {
 			const n = d.params.filter(q => q.group === g).length;
 			h.textContent = `${g} (${n})`;
@@ -91,6 +98,7 @@ psalm.register("editor", (p, api) => {
 		else w = api.control("knob", q);
 		partWidgets[pt.name] = w;
 		api.bindable(w, pt);
+		if (s.hint) w.el.title = s.hint;
 		add(s.group, w);
 	}
 
@@ -105,6 +113,7 @@ psalm.register("editor", (p, api) => {
 			partWidgets[a.name] = {el: document.createElement("div"), show: v => w.show(v)};
 			for (const x of [dd, ss, r]) partWidgets[x.name] = {el: document.createElement("div"), show: v => w.part(x.name, v)};
 			w.el.classList.add("ed-envelope");
+			if (e.hint) w.el.title = e.hint;
 			add(e.group, w);
 			continue;
 		}
@@ -114,6 +123,7 @@ psalm.register("editor", (p, api) => {
 		t.className = "name"; t.textContent = e.label;
 		const row = document.createElement("div");
 		row.className = "ed-controls";
+		if (e.hint) box.title = e.hint;
 		box.append(t, row);
 		for (const pt of parts) {
 			const w = api.control("knob", pt);

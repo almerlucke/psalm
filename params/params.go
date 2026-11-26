@@ -27,6 +27,7 @@ type Param struct {
 	Unit     string  // "Hz", "ms", "dB", "st"
 	Options  []string
 	Value    float64 // where it is now
+	Hint     string  // what it does, in a sentence: shown when the pointer rests on it
 }
 
 // Envelope is an envelope set by the messages of blocks/envelope: "<Prefix>Attack", ...
@@ -35,6 +36,7 @@ type Envelope struct {
 	Label  string // "Amp envelope"
 	Group  string
 	Stages string // which of A, D, S and R it has ("ADSR", "AR" for an attack and a release)
+	Hint   string // what it does, in a sentence
 	// where it is now: milliseconds, the sustain a level 0-1
 	Attack, Decay, Sustain, Release float64
 }
@@ -44,6 +46,8 @@ type Set struct {
 	Name      string
 	Params    []Param
 	Envelopes []Envelope
+	// GroupHints say what a group of settings is, by its name: a line under its title
+	GroupHints map[string]string
 }
 
 // Option sets something of a setting
@@ -57,6 +61,9 @@ func Unit(u string) Option { return func(p *Param) { p.Unit = u } }
 
 // Step rounds a setting to steps of a size (1 for whole numbers)
 func Step(s float64) Option { return func(p *Param) { p.Step = s } }
+
+// Hint says what a setting does (shown when the pointer rests on it)
+func Hint(h string) Option { return func(p *Param) { p.Hint = h } }
 
 // Label shows a setting by another name than its key
 func Label(l string) Option { return func(p *Param) { p.Label = l } }

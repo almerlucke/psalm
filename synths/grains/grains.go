@@ -16,11 +16,17 @@ import (
 type Config struct {
 	NumChannels int
 
-	Sample    sndfile.SoundFiler[float32] // the recording the grains read ...
-	Source    Source                      // ... or any other source (a recorder of the sound that comes in, an oscillator); it is read instead of Sample
-	SoundBank sndfile.SoundBank[float32]  // optional, notes can pick a sample with the "sound" key
-	RootNote  float64                     // MIDI pitch of the sample, playing this note plays it at its own pitch
-	Roots     map[string]float64          // the MIDI pitch of the sounds of the bank, by name (a note that picks a sound plays it at its own pitch around this key); without, RootNote
+	Sample sndfile.SoundFiler[float32] // the recording the grains read ...
+	Source Source                      // ... or any other source (a recorder of the sound that comes in, an oscillator); it is read instead of Sample
+
+	// what the grains read, as the settings pick it (SourceRecording ...): a recording (Sample, or the sound of the bank), a single cycle wave of
+	// the shared oscillator (Wave: 0 sine, 1 triangle, 2 saw, 3 square, 4 as the position says), or the grain buffer called Buffer ("live" without)
+	SourceKind int
+	Wave       int
+	Buffer     string
+	SoundBank  sndfile.SoundBank[float32] // optional, notes can pick a sample with the "sound" key
+	RootNote   float64                    // MIDI pitch of the sample, playing this note plays it at its own pitch
+	Roots      map[string]float64         // the MIDI pitch of the sounds of the bank, by name (a note that picks a sound plays it at its own pitch around this key); without, RootNote
 
 	Position        float64 // 0-1, where in the sample the grains come from
 	Scan            float64 // how fast the position moves through the sample: 0 freezes, 1 is the original speed, negative goes backwards
@@ -113,6 +119,21 @@ func sampleLoudness(s sndfile.SoundFiler[float32]) float64 {
 	return l
 }
 
+// the sources a voice picks between by its settings (SourceKind)
+const (
+	SourceRecording = iota
+	SourceWave
+	SourceLive
+	numSourceKinds
+	sourceCustom = -1 // a source that a patch (a text of sounds, a script) picked by its name
+)
+
+// SourceNames are the names of the sources a voice picks between, in the order of SourceKind
+var SourceNames = []string{"recording", "wave", "live"}
+
+// WaveChoices are the choices of Wave: the waves, then "morph" (the position picks)
+var WaveChoices = []string{"sine", "triangle", "saw", "square", "morph"}
+
 // grain is one playing grain
 type grain struct {
 	pos    float64 // frames in the source
@@ -137,6 +158,9 @@ type Voice struct {
 	*psalm.Module
 	cfg       Config
 	src       Source
+	kind      int    // which source of the settings is read (SourceKind), sourceCustom for one picked by name
+	rec       Source // the recording of the settings
+	live      Source
 	bank      map[string]Source // the sounds of the bank as sources
 	streams   Streams
 	st        voiceStreams
@@ -177,6 +201,14 @@ func New(cfg Config) *Voice {
 			v.bank[name] = NewSampleSource(s)
 		}
 	}
+	// the source of the settings: a Source in the config is the recording
+	v.rec = v.src
+	v.kind = cfg.SourceKind
+	if cfg.Source != nil && cfg.SourceKind == SourceRecording {
+		v.kind = sourceCustom
+	}
+	v.live = LiveSource(cfg.liveName())
+	v.pick()
 	v.st = v.streams.make()
 	n := v.Config().BufferSize
 	v.env, v.left, v.right, v.scratch = make([]float64, n), make([]float64, n), make([]float64, n), make([]float64, n)
@@ -186,14 +218,49 @@ func New(cfg Config) *Voice {
 	return v
 }
 
+func (c *Config) liveName() string {
+	if c.Buffer == "" {
+		return DefaultRecorderName
+	}
+	return c.Buffer
+}
+
+// pick makes the source of the settings the one that is read (not when a patch picked one by its name)
+func (v *Voice) pick() {
+	switch v.kind {
+	case SourceRecording:
+		v.src = v.rec
+	case SourceWave:
+		v.src = SharedOscillator()
+	case SourceLive:
+		v.src = v.live
+	}
+}
+
 // SetSample makes a recording what the grains read
 func (v *Voice) SetSample(sample sndfile.SoundFiler[float32]) {
-	v.src = NewSampleSource(sample)
+	v.rec = NewSampleSource(sample)
+	v.kind = SourceRecording
+	v.pick()
 }
 
 // SetSource sets what the grains read (nil: nothing, the voice is silent)
 func (v *Voice) SetSource(src Source) {
 	v.src = src
+	v.kind = sourceCustom
+}
+
+// useNamed reads the source a sounds text calls by a name: a recording is the recording of the settings, a made source (a wave, a
+// buffer) is read as it is
+func (v *Voice) useNamed(s Source) {
+	if _, ok := s.(*sampleSource); ok {
+		v.rec = s
+		v.kind = SourceRecording
+		v.pick()
+		return
+	}
+	v.src = s
+	v.kind = sourceCustom
 }
 
 // seqList reads a list of numbers of a message, nil when it is not one
@@ -218,7 +285,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 		}
 		if first, ok := msg["first"].(string); ok {
 			if s, ok := v.bank[first]; ok {
-				v.src = s
+				v.useNamed(s)
 				if r, ok := cfg.Roots[first]; ok {
 					cfg.RootNote = r
 				}
@@ -227,7 +294,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	}
 	// a source built by a patch (a recorder's, an oscillator): the key "source" (a Source) or "sources" (named ones, "first" is played)
 	if s, ok := msg["source"].(Source); ok {
-		v.src = s
+		v.SetSource(s)
 	}
 	if all, ok := msg["sources"].(map[string]Source); ok {
 		if v.bank == nil {
@@ -237,15 +304,28 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 			v.bank[name] = s
 		}
 		if first, ok := msg["first"].(string); ok && v.bank[first] != nil {
-			v.src = v.bank[first]
+			v.useNamed(v.bank[first])
 		}
 	}
 	msg.IfStrVal("sound", func(name string) {
 		if s, ok := v.bank[name]; ok {
-			v.src = s
+			v.useNamed(s)
 			if r, ok := cfg.Roots[name]; ok {
 				cfg.RootNote = r
 			}
+		}
+	})
+	msg.IfFltVal("source", func(f float64) {
+		cfg.SourceKind = max(0, min(int(math.Round(f)), numSourceKinds-1))
+		v.kind = cfg.SourceKind
+		v.pick()
+	})
+	msg.IfFltVal("wave", func(f float64) { cfg.Wave = max(0, min(int(math.Round(f)), len(WaveChoices)-1)) })
+	msg.IfStrVal("buffer", func(name string) {
+		cfg.Buffer = name
+		v.live = LiveSource(cfg.liveName())
+		if v.kind == SourceLive {
+			v.pick()
 		}
 	})
 	msg.IfFltVal("rootNote", func(f float64) { cfg.RootNote = f })
@@ -268,12 +348,26 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("frequency", func(f float64) { v.pitch = 69.0 + 12.0*math.Log2(f/440.0) })
 	// the pitch of the grains: held to a scale (a list of the semitones above its root, or a name), several at once (a stack)
 	msg.IfFltVal("scaleRoot", func(f float64) { cfg.ScaleRoot = f })
-	if l, ok := seqList(msg["scale"]); ok {
-		cfg.Scale = append([]float64(nil), l...)
+	// the scale and the stack: a list (the semitones), a name, or the number of the choice of the setting (see ScaleChoices and StackChoices)
+	switch x := msg["scale"].(type) {
+	case []float64:
+		cfg.Scale = append([]float64(nil), x...)
+	case string:
+		cfg.Scale = ScaleNamed(x)
+	case nil:
+	default:
+		if i := int(math.Round(psalm.FltVal[float64](x))); i > 0 && i <= len(ScaleNames) {
+			cfg.Scale = ScaleNamed(ScaleNames[i-1])
+		} else {
+			cfg.Scale = nil
+		}
 	}
-	msg.IfStrVal("scale", func(name string) { cfg.Scale = ScaleNamed(name) })
-	if l, ok := seqList(msg["stack"]); ok {
-		cfg.Stack = append([]float64(nil), l...)
+	switch x := msg["stack"].(type) {
+	case []float64:
+		cfg.Stack = append([]float64(nil), x...)
+	case nil:
+	default:
+		cfg.Stack = stackOf(int(math.Round(psalm.FltVal[float64](x))))
 	}
 	// a stream of a list of numbers (see streamKeys)
 	for i, key := range streamKeys {
@@ -373,6 +467,9 @@ func (v *Voice) spawn(i int, sr float64) {
 	if v.st.position != nil {
 		position = v.st.position.Next()
 	}
+	if w, ok := s.(Waved); ok && v.kind == SourceWave && cfg.Wave < len(WaveChoices)-1 {
+		position = float64(cfg.Wave) / float64(max(1, w.NumWaves()-1)) // one wave of the settings, not where the position is
+	}
 	extra := 0.0
 	if v.st.pitch != nil {
 		extra = v.st.pitch.Next()
@@ -412,7 +509,11 @@ func (v *Voice) spawn(i int, sr float64) {
 			pitch += 12
 		}
 		pitch = quantize(pitch, cfg.Scale, cfg.ScaleRoot)
-		semis := pitch - cfg.RootNote + v.expr.Semitones()
+		root := cfg.RootNote
+		if v.kind == SourceWave {
+			root = 60 // the shared waves sound at middle C
+		}
+		semis := pitch - root + v.expr.Semitones()
 		speed := math.Exp2(semis/12.0) * s.Rate() / sr
 
 		spray := (cfg.Spray + 0.3*v.expr.Wheel()) * (v.Rand().Float64()*2.0 - 1.0) * s.Rate()

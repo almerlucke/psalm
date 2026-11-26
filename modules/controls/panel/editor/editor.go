@@ -52,6 +52,7 @@ type param struct {
 	Group   string   `json:"group"`
 	Kind    string   `json:"kind"` // knob, switch, choice
 	Options []string `json:"options,omitempty"`
+	Hint    string   `json:"hint,omitempty"`
 }
 
 // envelope is an envelope as the page sees it
@@ -60,6 +61,7 @@ type envelope struct {
 	Label  string `json:"label"`
 	Group  string `json:"group"`
 	Stages string `json:"stages"`
+	Hint   string `json:"hint,omitempty"`
 }
 
 type data struct {
@@ -67,6 +69,8 @@ type data struct {
 	Groups    []string   `json:"groups"`
 	Params    []param    `json:"params"`
 	Envelopes []envelope `json:"envelopes"`
+	// GroupHints say what a group is, a line under its title
+	GroupHints map[string]string `json:"groupHints,omitempty"`
 }
 
 // the ranges of the envelopes' stages
@@ -89,17 +93,17 @@ var stages = map[byte]struct {
 func Add(ctl *panel.Panel, name string, to Receiver, set params.Set, opts ...panel.Option) *Editor {
 	ctl.Use(widgets.Plugin)
 	ctl.Use(Plugin)
-	d := data{Name: set.Name, Groups: set.Groups(), Params: []param{}, Envelopes: []envelope{}}
+	d := data{Name: set.Name, Groups: set.Groups(), Params: []param{}, Envelopes: []envelope{}, GroupHints: set.GroupHints}
 	for _, p := range set.Params {
 		kind := map[params.Kind]string{params.Knob: "knob", params.Switch: "switch", params.Choice: "choice"}[p.Kind]
 		label := p.Label
 		if label == "" {
 			label = p.Key
 		}
-		d.Params = append(d.Params, param{Key: p.Key, Label: label, Group: p.Group, Kind: kind, Options: p.Options})
+		d.Params = append(d.Params, param{Key: p.Key, Label: label, Group: p.Group, Kind: kind, Options: p.Options, Hint: p.Hint})
 	}
 	for _, e := range set.Envelopes {
-		d.Envelopes = append(d.Envelopes, envelope{Prefix: e.Prefix, Label: e.Label, Group: e.Group, Stages: e.Stages})
+		d.Envelopes = append(d.Envelopes, envelope{Prefix: e.Prefix, Label: e.Label, Group: e.Group, Stages: e.Stages, Hint: e.Hint})
 	}
 	e := &Editor{parts: map[string]*panel.Param{}, to: to}
 	e.store = NewStore(func() map[string]float64 {
