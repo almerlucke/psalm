@@ -196,6 +196,8 @@ type instance struct {
 	fromSave  bool // the spec is that of the saved project, the file counts when it changes
 	specGen   uint64
 	lastErr   string
+	name      string   // what the person called the plugin (kept in the project)
+	track     string   // the name of the track the host says it is on
 	pinned    bool     // the file (or none) is chosen, not looked for again
 	lostPath  string   // the file the project was saved with when it is not there (the project's copy of the text plays)
 	savedPath string   // the file the project was saved with
@@ -210,6 +212,16 @@ const (
 	sevError = 3
 )
 
+// mainHook asks the host to call the plugin back on its main thread (set by the shim, nil in tests): what the plugin shows of itself
+// (the name of its page of remote controls) and what it saves (the name, the script) has changed
+var mainHook func(handle int)
+
+func (in *instance) changed() {
+	if mainHook != nil {
+		mainHook(in.handle)
+	}
+}
+
 // logHook sends a message to the log of the host (set by the shim, nil in tests that do not want it)
 var logHook func(handle, severity int, text string)
 
@@ -218,7 +230,15 @@ var logHook func(handle, severity int, text string)
 func (in *instance) say(severity int, format string, args ...any) {
 	text := fmt.Sprintf(format, args...)
 	if logHook != nil {
-		logHook(in.handle, severity, "genny: "+text)
+		prefix := "genny"
+		in.mu.Lock()
+		if n := in.name; n != "" {
+			prefix += " (" + n + ")"
+		} else if in.track != "" {
+			prefix += " (" + in.track + ")"
+		}
+		in.mu.Unlock()
+		logHook(in.handle, severity, prefix+": "+text)
 	}
 	label := [...]string{sevInfo: "info", sevWarn: "warning", sevError: "error"}[severity]
 	line := time.Now().Format("15:04:05") + " " + label + ": " + text
@@ -280,6 +300,39 @@ func (in *instance) chooseFile() (string, bool) {
 	return "", true
 }
 
+// title is the name the editor shows for the plugin: what the person called it, else the track it is on, else its file (or untitled)
+// with its place among the plugins of the host (the handle)
+func (in *instance) title() string {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	return in.titleLocked()
+}
+
+func (in *instance) titleLocked() string {
+	switch {
+	case in.name != "":
+		return in.name
+	case in.track != "":
+		return in.track
+	case in.path != "":
+		return filepath.Base(in.path)
+	}
+	return "Genny " + strconv.Itoa(in.handle+1)
+}
+
+// rename gives the plugin a name (empty: go back to the name of the track)
+func (in *instance) rename(name string) error {
+	name = strings.TrimSpace(name)
+	if len([]rune(name)) > 60 || strings.ContainsAny(name, "\n\r\t") {
+		return fmt.Errorf("a name is up to 60 characters on one line")
+	}
+	in.mu.Lock()
+	in.name = name
+	in.mu.Unlock()
+	in.changed()
+	return nil
+}
+
 // fileNameOK is whether a name can be a file of the plugin: a plain name of letters, digits, dots, dashes, ending in .js or .json
 var fileNameOK = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,60}\.(js|json)$`)
 
@@ -332,6 +385,7 @@ func (in *instance) save(text string, script bool) error {
 		in.text, in.isScript, in.specGen = text, script, in.specGen+1
 	}
 	in.fromSave = false
+	defer in.changed()
 	return nil
 }
 
@@ -362,6 +416,7 @@ func (in *instance) saveAs(name, text string, overwrite bool) error {
 	if script := isScriptFile(path); text != in.text || script != in.isScript {
 		in.text, in.isScript, in.specGen = text, script, in.specGen+1
 	}
+	in.changed()
 	return nil
 }
 
@@ -382,6 +437,7 @@ func (in *instance) openFile(name string) error {
 	in.mu.Unlock()
 	in.loadFile()
 	in.say(sevInfo, "script file: %s", path)
+	in.changed()
 	return nil
 }
 
@@ -905,6 +961,7 @@ type stateDoc struct {
 	Spec   string             `json:"spec"` // the text of the spec or script
 	Script bool               `json:"script,omitempty"`
 	Path   string             `json:"path,omitempty"` // the file it was read from
+	Name   string             `json:"name,omitempty"` // what the person called the plugin
 }
 
 func (in *instance) saveState() []byte {
@@ -913,7 +970,7 @@ func (in *instance) saveState() []byte {
 		doc.Params[p.name] = in.get(i)
 	}
 	in.mu.Lock()
-	doc.Spec, doc.Script, doc.Path = in.text, in.isScript, in.path
+	doc.Spec, doc.Script, doc.Path, doc.Name = in.text, in.isScript, in.path, in.name
 	in.mu.Unlock()
 	b, _ := json.Marshal(doc)
 	return b
@@ -929,6 +986,9 @@ func (in *instance) loadState(data []byte) {
 			in.set(i, v)
 		}
 	}
+	in.mu.Lock()
+	in.name = doc.Name
+	in.mu.Unlock()
 	if doc.Spec != "" {
 		in.mu.Lock()
 		in.text, in.isScript, in.specGen, in.fromSave, in.savedPath = doc.Spec, doc.Script, in.specGen+1, true, doc.Path

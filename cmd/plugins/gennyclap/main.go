@@ -14,11 +14,13 @@ package main
 import "C"
 
 import (
+	"strings"
 	"time"
 	"unsafe"
 )
 
 func init() {
+	mainHook = func(handle int) { C.genny_host_request(C.int(handle)) }
 	logHook = func(handle, severity int, text string) {
 		s := C.CString(text)
 		C.genny_host_log(C.int(handle), C.int(severity), s)
@@ -180,6 +182,34 @@ func genny_param_parse(id C.int, text *C.char, out *C.double) C.int {
 		return 0
 	}
 	*out = C.double(v)
+	return 1
+}
+
+// genny_set_track takes the name of the track the plugin is on (the host's, on the main thread)
+//
+//export genny_set_track
+func genny_set_track(h C.int, name *C.char) {
+	if in := at(h); in != nil {
+		in.mu.Lock()
+		in.track = strings.TrimSpace(C.GoString(name))
+		in.mu.Unlock()
+		in.changed()
+	}
+}
+
+// genny_title writes the name of the plugin (see instance.title) into buf (size bytes)
+//
+//export genny_title
+func genny_title(h C.int, buf *C.char, size C.int) C.int {
+	in := at(h)
+	if in == nil || size < 1 {
+		return 0
+	}
+	b := append([]byte(in.title()), 0)
+	if len(b) > int(size) {
+		b = append(b[:size-1], 0)
+	}
+	C.memcpy(unsafe.Pointer(buf), unsafe.Pointer(&b[0]), C.size_t(len(b)))
 	return 1
 }
 

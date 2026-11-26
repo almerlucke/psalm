@@ -1322,6 +1322,12 @@ is not there any more (a project on another machine) the copy of the project pla
 is in the editor and the log of the host (there is no file to put a `.log` beside). `GENNY_SPEC=<file>` makes every plugin play that
 file.
 
+**The name of a plugin.** A plugin is named by what you call it (*Rename…* in the editor, kept in the project), else by the track it is on
+when the host tells it (CLAP track info), else by its file, else *Genny 1*, *Genny 2*... The name is the title of the editor page, in
+its plugin menu, in the log of the host, and the name of the plugin's page of remote controls: in Bitwig the remote controls of the
+Genny device show a page with that name and the parameters that are used most (key trigger, snap, seed, transpose, gain, swing,
+latch, pass input). The device itself keeps the name Bitwig gives it (rename it there with F2): a plugin cannot change that.
+
 **The editor.** The plugin serves a page on this machine, `http://127.0.0.1:7870/` (the next free port when that one is taken; the
 address is the first line of the log, `genny.js.log`, and in the log of the host). It shows the text that plays (or the name of its file, or *untitled*), checks it while you
 type (the error with its line, or the notes it makes in a piano roll, made with the current seed and the notes you hold), saves it with Ctrl+S, and shows the log and the notes held. A saved text plays at once. A file that is changed by another program shows

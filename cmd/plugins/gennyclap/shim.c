@@ -18,6 +18,12 @@
 // the numbers of the parameters (see engine.go) that the audio thread looks at
 #define PARAM_THRU 7
 #define PARAM_KEYS 8
+#define PARAM_SNAP 9
+#define PARAM_SEED 0
+#define PARAM_TRANSPOSE 2
+#define PARAM_GAIN 3
+#define PARAM_SWING 4
+#define PARAM_LATCH 6
 
 typedef struct {
 	int id;
@@ -210,12 +216,34 @@ static void read_input(genny_plugin *p, const clap_input_events_t *in, double fr
 	}
 }
 
+// read_track asks the host for the name of the track the plugin is on, which the editor shows as the name of the plugin
+static void read_track(genny_plugin *p) {
+	if (p->handle < 0 || !p->host || !p->host->get_extension) {
+		return;
+	}
+	const clap_host_track_info_t *ti = p->host->get_extension(p->host, CLAP_EXT_TRACK_INFO);
+	if (!ti) {
+		ti = p->host->get_extension(p->host, CLAP_EXT_TRACK_INFO_COMPAT);
+	}
+	clap_track_info_t info;
+	memset(&info, 0, sizeof info);
+	if (ti && ti->get && ti->get(p->host, &info) && (info.flags & CLAP_TRACK_INFO_HAS_TRACK_NAME)) {
+		info.name[sizeof info.name - 1] = 0;
+		genny_set_track(p->handle, info.name);
+	}
+}
+
+static void track_info_changed(const clap_plugin_t *plugin) { read_track(plugin->plugin_data); }
+
+static const clap_plugin_track_info_t track_info = {.changed = track_info_changed};
+
 static bool plugin_init(const clap_plugin_t *plugin) {
 	genny_plugin *p = plugin->plugin_data;
 	p->handle = genny_new();
 	if (p->handle >= 0 && p->handle < MAX_HOSTS) {
 		__atomic_store_n(&hosts[p->handle], p->host, __ATOMIC_RELEASE);
 	}
+	read_track(p);
 	return p->handle >= 0;
 }
 
@@ -466,6 +494,59 @@ static bool state_load(const clap_plugin_t *plugin, const clap_istream_t *stream
 
 static const clap_plugin_state_t state = {.save = state_save, .load = state_load};
 
+// the host runs this on its main thread after genny_host_request: the page of remote controls has another name, and the state (the
+// name, the script) is not what the host saved
+static void plugin_on_main_thread(const clap_plugin_t *plugin) {
+	genny_plugin *p = plugin->plugin_data;
+	if (!p->host || !p->host->get_extension) {
+		return;
+	}
+	const clap_host_remote_controls_t *rc = p->host->get_extension(p->host, CLAP_EXT_REMOTE_CONTROLS);
+	if (!rc) {
+		rc = p->host->get_extension(p->host, CLAP_EXT_REMOTE_CONTROLS_COMPAT);
+	}
+	if (rc && rc->changed) {
+		rc->changed(p->host);
+	}
+	const clap_host_state_t *st = p->host->get_extension(p->host, CLAP_EXT_STATE);
+	if (st && st->mark_dirty) {
+		st->mark_dirty(p->host);
+	}
+}
+
+// genny_host_request asks the host to call plugin_on_main_thread; any thread
+void genny_host_request(int handle) {
+	if (handle < 0 || handle >= MAX_HOSTS) {
+		return;
+	}
+	const clap_host_t *host = __atomic_load_n(&hosts[handle], __ATOMIC_ACQUIRE);
+	if (host && host->request_callback) {
+		host->request_callback(host);
+	}
+}
+
+// remote controls: one page, named after the plugin (what the person called it, its track or its file), with the parameters that
+// are used most
+static uint32_t remote_count(const clap_plugin_t *plugin) { return 1; }
+
+static bool remote_get(const clap_plugin_t *plugin, uint32_t index, clap_remote_controls_page_t *page) {
+	genny_plugin *p = plugin->plugin_data;
+	if (index != 0) {
+		return false;
+	}
+	memset(page, 0, sizeof *page);
+	strncpy(page->section_name, "Genny", sizeof page->section_name - 1);
+	page->page_id = 1;
+	if (!genny_title(p->handle, page->page_name, (int)sizeof page->page_name)) {
+		strncpy(page->page_name, "Genny", sizeof page->page_name - 1);
+	}
+	static const clap_id ids[CLAP_REMOTE_CONTROLS_COUNT] = {PARAM_KEYS, PARAM_SNAP, PARAM_SEED, PARAM_TRANSPOSE, PARAM_GAIN, PARAM_SWING, PARAM_LATCH, PARAM_THRU};
+	memcpy(page->param_ids, ids, sizeof ids);
+	return true;
+}
+
+static const clap_plugin_remote_controls_t remote_controls = {.count = remote_count, .get = remote_get};
+
 static const void *plugin_get_extension(const clap_plugin_t *plugin, const char *id) {
 	if (!strcmp(id, CLAP_EXT_NOTE_PORTS)) {
 		return &note_ports;
@@ -476,10 +557,15 @@ static const void *plugin_get_extension(const clap_plugin_t *plugin, const char 
 	if (!strcmp(id, CLAP_EXT_STATE)) {
 		return &state;
 	}
+	if (!strcmp(id, CLAP_EXT_REMOTE_CONTROLS) || !strcmp(id, CLAP_EXT_REMOTE_CONTROLS_COMPAT)) {
+		return &remote_controls;
+	}
+	if (!strcmp(id, CLAP_EXT_TRACK_INFO) || !strcmp(id, CLAP_EXT_TRACK_INFO_COMPAT)) {
+		return &track_info;
+	}
 	return NULL;
 }
 
-static void plugin_on_main_thread(const clap_plugin_t *plugin) {}
 
 static uint32_t factory_count(const clap_plugin_factory_t *factory) { return 1; }
 

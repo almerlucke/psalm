@@ -25,4 +25,8 @@ typedef struct {
 // genny_host_log sends a message to the log of the host of a plugin (a severity of CLAP: 1 info, 2 warning, 3 error); any thread
 void genny_host_log(int handle, int severity, const char *msg);
 
+// genny_host_request asks the host to call the plugin back on its main thread (the page of remote controls is named after the plugin and
+// the state has changed); any thread
+void genny_host_request(int handle);
+
 #endif

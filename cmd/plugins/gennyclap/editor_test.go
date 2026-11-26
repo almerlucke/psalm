@@ -213,3 +213,49 @@ func TestEditorUntitled(t *testing.T) {
 		t.Fatalf("files: %v", entries)
 	}
 }
+
+// a plugin has a name: the one it was given, else its track, else its file; the project keeps the one it was given
+func TestEditorNames(t *testing.T) {
+	t.Setenv("GENNY_SPEC", filepath.Join(t.TempDir(), "tune.js"))
+	in := newInstance()
+	in.handle = 3
+	instances[3].Store(in)
+	defer instances[3].Store(nil)
+	in.loadFile()
+	h := editorHandler(host)
+	if n := in.title(); n != "tune.js" {
+		t.Fatalf("by its file: %q", n)
+	}
+	in.track = "Bass"
+	if n := in.title(); n != "Bass" {
+		t.Fatalf("by its track: %q", n)
+	}
+	if w := call(t, h, "PUT", "/api/rename?i=3", "  Lead pad ", true); w.Code != 200 {
+		t.Fatalf("rename: %d", w.Code)
+	}
+	st := decode(t, call(t, h, "GET", "/api/state?i=3", "", false))
+	if st["name"] != "Lead pad" || st["custom"] != true || st["track"] != "Bass" {
+		t.Fatalf("state: %v", st)
+	}
+	b := newInstance()
+	b.loadState(in.saveState())
+	if b.name != "Lead pad" {
+		t.Fatalf("the project lost the name: %q", b.name)
+	}
+	if w := call(t, h, "PUT", "/api/rename?i=3", strings.Repeat("x", 61), true); w.Code != 400 {
+		t.Fatalf("a long name: %d", w.Code)
+	}
+	if w := call(t, h, "PUT", "/api/rename?i=3", "two\nlines", true); w.Code != 400 {
+		t.Fatalf("two lines: %d", w.Code)
+	}
+	if w := call(t, h, "PUT", "/api/rename?i=3", "x", false); w.Code != 403 {
+		t.Fatalf("without the header: %d", w.Code)
+	}
+	if w := call(t, h, "PUT", "/api/rename?i=3", "", true); w.Code != 200 || in.title() != "Bass" {
+		t.Fatalf("clearing the name: %d %q", w.Code, in.title())
+	}
+	in.track, in.path = "", ""
+	if n := in.title(); n != "Genny 4" {
+		t.Fatalf("by its place: %q", n)
+	}
+}

@@ -101,7 +101,7 @@ func editorHandler(addr string) http.Handler {
 		for i := range instances {
 			if in := instances[i].Load(); in != nil {
 				in.mu.Lock()
-				out = append(out, map[string]any{"i": i, "path": in.path, "file": fileLabel(in.path), "script": in.isScript})
+				out = append(out, map[string]any{"i": i, "path": in.path, "file": fileLabel(in.path), "script": in.isScript, "name": in.titleLocked(), "custom": in.name != "", "track": in.track})
 				in.mu.Unlock()
 			}
 		}
@@ -114,7 +114,7 @@ func editorHandler(addr string) http.Handler {
 			return
 		}
 		in.mu.Lock()
-		st := map[string]any{"path": in.path, "file": fileLabel(in.path), "linked": in.path != "", "script": in.isScript, "gen": in.specGen, "log": append([]string(nil), in.logLines...), "error": in.lastErr}
+		st := map[string]any{"name": in.titleLocked(), "custom": in.name != "", "track": in.track, "path": in.path, "file": fileLabel(in.path), "linked": in.path != "", "script": in.isScript, "gen": in.specGen, "log": append([]string(nil), in.logLines...), "error": in.lastErr}
 		if r.URL.Query().Get("text") == "1" {
 			st["text"] = in.text
 		}
@@ -125,6 +125,26 @@ func editorHandler(addr string) http.Handler {
 		}
 		st["held"] = held
 		reply(w, st)
+	})
+	// rename: the plugin is given a name (the body of the call; empty: the name of its track)
+	mux.HandleFunc("/api/rename", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			fail(w, http.StatusMethodNotAllowed, "PUT")
+			return
+		}
+		in := instanceOf(w, r)
+		if in == nil {
+			return
+		}
+		name, ok := bodyText(w, r)
+		if !ok {
+			return
+		}
+		if err := in.rename(name); err != nil {
+			fail(w, http.StatusBadRequest, "%v", err)
+			return
+		}
+		reply(w, map[string]any{"name": in.title()})
 	})
 	// the files the plugin can open, and the one it plays ("" when it has none)
 	mux.HandleFunc("/api/files", func(w http.ResponseWriter, r *http.Request) {
