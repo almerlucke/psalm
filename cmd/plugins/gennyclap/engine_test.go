@@ -351,7 +351,7 @@ func TestLogsErrorsAndNews(t *testing.T) {
 		t.Fatalf("log file:\n%s", got)
 	}
 	mu.Lock()
-	if len(said) < 2 || !strings.HasPrefix(said[0], "1 genny: script: hello 1") || !strings.HasPrefix(said[1], "3 genny: ") {
+	if len(said) < 3 || !strings.HasPrefix(said[0], "1 genny: script file: ") || !strings.HasPrefix(said[1], "1 genny: script: hello 1") || !strings.HasPrefix(said[2], "3 genny: ") {
 		t.Fatalf("host log: %q", said)
 	}
 	mu.Unlock()
@@ -365,8 +365,8 @@ func TestLogsErrorsAndNews(t *testing.T) {
 	wait(t, "the news in the log file", func() bool { return strings.Contains(readLog(), "2 notes in 4 beats") })
 }
 
-// a genny.js that appears next to genny.json is played from then on (the folder of the config can be a sandbox's)
-func TestScriptAppearsNextToSpec(t *testing.T) {
+// an instance with nothing else to go by plays a file of its own, made from the demo, and plays it again when it is edited
+func TestRunPlaysItsOwnFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("GENNY_SPEC", "")
@@ -375,21 +375,29 @@ func TestScriptAppearsNextToSpec(t *testing.T) {
 	go in.run()
 	defer func() { close(in.stop); <-in.done }()
 
-	spec := filepath.Join(dir, "psalm", "genny.json")
-	wait(t, "the default spec", func() bool { return in.store.Load() != nil && fileExists(spec) })
+	wait(t, "the demo", func() bool { return in.store.Load() != nil })
 	first := in.store.Load()
 	if len(first.lines[0].events) < 100 {
-		t.Fatalf("%d notes of the default spec", len(first.lines[0].events))
+		t.Fatalf("%d notes of the demo", len(first.lines[0].events))
 	}
-	js := `function render() { return [{pitch: 61.5, start: 0, duration: 2}] }`
-	if err := os.WriteFile(filepath.Join(dir, "psalm", "genny.js"), []byte(js), 0o644); err != nil {
+	files, _ := filepath.Glob(filepath.Join(dir, "psalm", "genny-*.json"))
+	if len(files) != 1 {
+		t.Fatalf("files: %v", files)
+	}
+	js := filepath.Join(dir, "psalm", "genny-mine.js")
+	if err := in.switchFile("genny-mine.js"); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(js, []byte(`function render() { return [{pitch: 61.5, start: 0, duration: 2}] }`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	_ = os.Chtimes(js, future, future)
 	wait(t, "the script", func() bool {
 		st := in.store.Load()
 		return st != first && len(st.lines[0].events) == 1 && st.lines[0].events[0].pitch == 61.5
 	})
-	if data, _ := os.ReadFile(filepath.Join(dir, "psalm", "genny.js.log")); !strings.Contains(string(data), "1 notes in 4 beats") {
+	if data, _ := os.ReadFile(js + ".log"); !strings.Contains(string(data), "1 notes in 4 beats") {
 		t.Fatalf("log of the script:\n%s", data)
 	}
 }

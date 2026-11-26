@@ -45,6 +45,8 @@ canvas { width: 100%; height: 220px; display: block; }
 <header>
   <h1>Genny</h1>
   <select id="plugin" hidden></select>
+  <select id="file" title="the file this plugin plays and edits" aria-label="file"></select>
+  <button id="newfile" title="a new file, a copy of this one">New…</button>
   <span class="path" id="path"></span>
   <span class="dirty" id="dirty"></span>
   <span class="spacer"></span>
@@ -88,7 +90,7 @@ async function plugins() {
   const list = await (await fetch('/api/plugins')).json()
   const sel = $('plugin')
   sel.innerHTML = ''
-  list.forEach(p => sel.add(new Option('Genny ' + (p.i + 1), p.i)))
+  list.forEach(p => sel.add(new Option('Genny ' + (p.i + 1) + ' · ' + p.file, p.i)))
   sel.hidden = list.length < 2
   if (!list.length) { $('status').textContent = 'No Genny plugin is running in the host.'; return false }
   if (plugin === null || !list.some(p => String(p.i) === String(plugin))) plugin = String(list[0].i)
@@ -96,7 +98,23 @@ async function plugins() {
   return true
 }
 
+async function files() {
+  const f = await (await fetch('/api/files?i=' + plugin)).json()
+  const sel = $('file')
+  sel.innerHTML = ''
+  f.files.forEach(n => sel.add(new Option(n, n)))
+  sel.value = f.current
+}
+
+async function switchTo(name) {
+  if ($('text').value !== saved && !confirm('Leave the unsaved changes in this file?')) { await files(); return }
+  const r = await post('/api/switch?i=' + plugin + '&name=' + encodeURIComponent(name), 'PUT', '')
+  if (!r.ok) { alert(await r.text()); await files(); return }
+  await load()
+}
+
 async function load() {
+  await files()
   const s = await (await fetch('/api/state?text=1&i=' + plugin)).json()
   $('text').value = saved = s.text
   lastGen = s.gen
@@ -208,6 +226,13 @@ $('text').addEventListener('keydown', e => {
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save() } })
 $('save').onclick = save
 $('revert').onclick = () => { $('text').value = saved; dirty(); check() }
+$('file').onchange = e => switchTo(e.target.value)
+$('newfile').onclick = () => {
+  let name = prompt('Name of the new file (a copy of the one that plays). Letters, digits, . - _ ; it ends in .js (a script) or .json (a spec)', 'genny-mine.js')
+  if (!name) return
+  if (!/\.(js|json)$/.test(name)) name += '.js'
+  switchTo(name)
+}
 $('plugin').onchange = e => { plugin = e.target.value; load() }
 addEventListener('resize', draw)
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw)

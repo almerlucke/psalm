@@ -100,7 +100,7 @@ func editorHandler(addr string) http.Handler {
 		for i := range instances {
 			if in := instances[i].Load(); in != nil {
 				in.mu.Lock()
-				out = append(out, map[string]any{"i": i, "path": in.path, "script": in.isScript})
+				out = append(out, map[string]any{"i": i, "path": in.path, "file": filepath.Base(in.path), "script": in.isScript})
 				in.mu.Unlock()
 			}
 		}
@@ -124,6 +124,30 @@ func editorHandler(addr string) http.Handler {
 		}
 		st["held"] = held
 		reply(w, st)
+	})
+	// the files of the folder the plugin plays from, and the one it plays
+	mux.HandleFunc("/api/files", func(w http.ResponseWriter, r *http.Request) {
+		in := instanceOf(w, r)
+		if in == nil {
+			return
+		}
+		reply(w, map[string]any{"current": filepath.Base(in.pathNow()), "files": in.files()})
+	})
+	// switch: the plugin plays another file from now on (a new one starts as a copy of what plays)
+	mux.HandleFunc("/api/switch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			fail(w, http.StatusMethodNotAllowed, "PUT")
+			return
+		}
+		in := instanceOf(w, r)
+		if in == nil {
+			return
+		}
+		if err := in.switchFile(r.URL.Query().Get("name")); err != nil {
+			fail(w, http.StatusBadRequest, "%v", err)
+			return
+		}
+		reply(w, map[string]any{"switched": true})
 	})
 	// check: the text in the body is rendered the way the plugin would (with the seed and the notes held now) without playing it
 	mux.HandleFunc("/api/check", func(w http.ResponseWriter, r *http.Request) {

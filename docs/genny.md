@@ -1311,11 +1311,18 @@ function render(p) {
 }
 ```
 
+**A file for each plugin.** Every Genny plugin in a host plays and edits a file of its own, `genny-xxxx.js` (or `.json`) in the folder of
+the plugin (`~/.config/psalm`, or `~/.var/app/<app>/config/psalm` for a Flatpak). A new plugin starts as a copy of `genny.js` or
+`genny.json` there if you have one (what earlier versions played for every plugin), else as the demo. The project remembers which file
+a plugin plays; the first line of the log (`<file>.log`) names it, and so does the editor. Several plugins can play one file when you
+switch them to the same one in the editor. A project that was saved with a file that is gone makes a new file of the text it saved.
+`GENNY_SPEC=<file>` makes every plugin play that file.
+
 **The editor.** The plugin serves a page on this machine, `http://127.0.0.1:7870/` (the next free port when that one is taken; the
 address is the first line of the log, `genny.js.log`, and in the log of the host). It shows the text that plays, checks it while you
 type (the error with its line, or the notes it makes in a piano roll, made with the current seed and the notes you hold), saves it to
 the file with Ctrl+S, and shows the log and the notes held. A saved text plays at once. A file that is changed by another program shows
-up in the page as long as you have not typed. With more than one plugin in the host, a menu picks which one. The page is only served to
+up in the page as long as you have not typed. With more than one plugin in the host, a menu picks which one. A second menu switches the plugin to another file of the folder, and *New…* makes a new file as a copy of the one that plays. The page is only served to
 this machine, and a page of another website cannot change anything through it. `GENNY_EDITOR=off` turns the server off.
 
 **A piece for each key.** With the parameter `key trigger` on, the plugin does not loop one piece with the transport: every key that is
@@ -1341,7 +1348,7 @@ function render(p) {
 | `new each pass` | every pass of the loop gets its own seed (`seed + pass`) |
 | `transpose`, `gain`, `swing (steps)` | semitones, velocity, how late the odd steps are |
 | `microtones` | pitches between two keys are played with a note tuning (off: rounded to a key) |
-| `key trigger` | off, once, loop: every key played starts the piece (see above) |
+| `key trigger` | off, once, loop while held: every key played starts the piece (see above) |
 | `snap` | the pieces of the keys start on: off, a sixteenth, a beat, a bar |
 | `latch` | the notes held stay held when let go, until a new chord is played |
 | `pass input` | the notes played into the plugin go out as well |

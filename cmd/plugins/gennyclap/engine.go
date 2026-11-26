@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,19 +48,45 @@ type paramInfo struct {
 	name          string
 	stepped       bool
 	min, max, def float64
+	labels        []string // what each value of a stepped parameter is called (the first is the minimum), for the host to show
 }
 
 var params = [numParams]paramInfo{
-	pSeed:      {"seed", true, 0, 999, 7},
-	pRegen:     {"new each pass", true, 0, 1, 0},
-	pTranspose: {"transpose", true, -24, 24, 0},
-	pGain:      {"gain", false, 0, 2, 1},
-	pSwing:     {"swing (steps)", false, 0, 0.5, 0},
-	pMicro:     {"microtones", true, 0, 1, 1},
-	pLatch:     {"latch", true, 0, 1, 0},
-	pThru:      {"pass input", true, 0, 1, 0},
-	pKeys:      {"key trigger", true, 0, 2, 0},
-	pSnap:      {"snap", true, 0, 3, 0},
+	pSeed:      {"seed", true, 0, 999, 7, nil},
+	pRegen:     {"new each pass", true, 0, 1, 0, []string{"off", "on"}},
+	pTranspose: {"transpose", true, -24, 24, 0, nil},
+	pGain:      {"gain", false, 0, 2, 1, nil},
+	pSwing:     {"swing (steps)", false, 0, 0.5, 0, nil},
+	pMicro:     {"microtones", true, 0, 1, 1, []string{"off", "on"}},
+	pLatch:     {"latch", true, 0, 1, 0, []string{"off", "on"}},
+	pThru:      {"pass input", true, 0, 1, 0, []string{"off", "on"}},
+	pKeys:      {"key trigger", true, 0, 2, 0, []string{"off", "once", "loop while held"}},
+	pSnap:      {"snap", true, 0, 3, 0, []string{"off", "1/16 beat", "1 beat", "1 bar (4 beats)"}},
+}
+
+// paramText is a value of a parameter as the host shows it: the name of the value, or the number
+func paramText(id int, v float64) string {
+	p := params[id]
+	if i := int(math.Round(v - p.min)); p.stepped && i >= 0 && i < len(p.labels) {
+		return p.labels[i]
+	}
+	if p.stepped {
+		return strconv.Itoa(int(math.Round(v)))
+	}
+	return strconv.FormatFloat(v, 'f', 2, 64)
+}
+
+// paramValue is the value a text means (what the host got from the user): a name of a value, or a number
+func paramValue(id int, text string) (float64, bool) {
+	p := params[id]
+	text = strings.TrimSpace(text)
+	for i, l := range p.labels {
+		if strings.EqualFold(text, l) {
+			return p.min + float64(i), true
+		}
+	}
+	v, err := strconv.ParseFloat(text, 64)
+	return v, err == nil
 }
 
 // ev is a note of a rendered line, times in beats
@@ -169,6 +198,7 @@ type instance struct {
 	fromSave  bool // the spec is that of the saved project, the file counts when it changes
 	specGen   uint64
 	lastErr   string
+	pinned    bool     // the file is the instance's own (chosen, or switched to), not looked for again
 	savedPath string   // the file the project was saved with
 	handle    int      // of the instance, for the host log
 	logLines  []string // what it said, the last ones (the file next to the spec has them)
@@ -228,20 +258,102 @@ func newInstance() *instance {
 	return in
 }
 
-// specPath is the file the piece is read from: $GENNY_SPEC, else ~/.config/psalm/genny.js when there is one (a
-// script), else ~/.config/psalm/genny.json (a spec)
-func specPath() string {
-	if p := os.Getenv("GENNY_SPEC"); p != "" {
-		return p
-	}
+// configDir is the folder of the files of the plugin, "" when the machine has none
+func configDir() string {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return ""
 	}
-	if js := filepath.Join(dir, "psalm", "genny.js"); fileExists(js) {
-		return js
+	return filepath.Join(dir, "psalm")
+}
+
+// chooseFile is the file an instance plays, and whether it is its own for good: $GENNY_SPEC when it is set (for all instances, looked at
+// again each time); the file the project was saved with, when it is still there; else a file of its own, genny-xxxx.js in the folder
+// of the plugin, that starts as the text the project was saved with, or else as a copy of genny.js or genny.json there (what earlier
+// versions played for all), or else as the demo. The instances of a host each play and edit their own file
+func (in *instance) chooseFile() (string, bool) {
+	if p := os.Getenv("GENNY_SPEC"); p != "" {
+		return p, false
 	}
-	return filepath.Join(dir, "psalm", "genny.json")
+	if in.savedPath != "" && fileExists(in.savedPath) {
+		return in.savedPath, true
+	}
+	dir := configDir()
+	if dir == "" {
+		return "", false
+	}
+	ext, text := ".json", in.text
+	switch {
+	case text != "":
+		if in.isScript {
+			ext = ".js"
+		}
+	default:
+		if b, err := os.ReadFile(filepath.Join(dir, "genny.js")); err == nil {
+			ext, text = ".js", string(b)
+		} else if b, err := os.ReadFile(filepath.Join(dir, "genny.json")); err == nil {
+			text = string(b)
+		} else {
+			text = defaultSpec
+		}
+	}
+	for range 100 {
+		var b [2]byte
+		_, _ = rand.Read(b[:])
+		path := filepath.Join(dir, "genny-"+hex.EncodeToString(b[:])+ext)
+		if fileExists(path) {
+			continue
+		}
+		_ = os.MkdirAll(dir, 0o755)
+		if os.WriteFile(path, []byte(text), 0o644) == nil {
+			return path, true
+		}
+		break
+	}
+	return "", false
+}
+
+// fileNameOK is whether a name can be a file of the plugin: a plain name of letters, digits, dots, dashes, ending in .js or .json
+var fileNameOK = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,60}\.(js|json)$`)
+
+// switchFile makes the instance play another file of the folder of the plugin (one that is not there yet is made as a copy of the
+// text that plays)
+func (in *instance) switchFile(name string) error {
+	if !fileNameOK.MatchString(name) || strings.Contains(name, "..") {
+		return fmt.Errorf("%q is not a name for a file: letters, digits, . - _ and it ends in .js or .json", name)
+	}
+	in.mu.Lock()
+	if in.path == "" {
+		in.mu.Unlock()
+		return fmt.Errorf("there is no folder for the files of the plugin")
+	}
+	path := filepath.Join(filepath.Dir(in.path), name)
+	if !fileExists(path) {
+		if err := os.WriteFile(path, []byte(in.text), 0o644); err != nil {
+			in.mu.Unlock()
+			return err
+		}
+	}
+	in.path, in.pinned, in.modTime, in.fromSave = path, true, time.Time{}, false
+	in.mu.Unlock()
+	in.loadFile()
+	in.say(sevInfo, "script file: %s", path)
+	return nil
+}
+
+// files are the files of the folder the instance plays from that it can switch to
+func (in *instance) files() []string {
+	in.mu.Lock()
+	dir := filepath.Dir(in.path)
+	in.mu.Unlock()
+	entries, _ := os.ReadDir(dir)
+	out := []string{}
+	for _, e := range entries {
+		if !e.IsDir() && fileNameOK.MatchString(e.Name()) {
+			out = append(out, e.Name())
+		}
+	}
+	return out
 }
 
 func fileExists(path string) bool {
@@ -264,13 +376,17 @@ func defaultFor(path string) string {
 func (in *instance) loadFile() bool {
 	in.mu.Lock()
 	defer in.mu.Unlock()
-	// the file is looked for each time: a genny.js that appears (or goes) changes which file is played
-	if p := specPath(); p != in.path {
-		// a project keeps its own copy of the file it was saved with; another file is not a copy of that one
-		if in.path != "" || (in.savedPath != "" && in.savedPath != p) {
-			in.fromSave = false
+	// the file is chosen once (see chooseFile) and then kept, except when $GENNY_SPEC points the plugin at a file
+	if !in.pinned {
+		p, pin := in.chooseFile()
+		if p != in.path {
+			// a project keeps its own copy of the file it was saved with; another file is not a copy of that one
+			if in.path != "" || (in.savedPath != "" && in.savedPath != p) {
+				in.fromSave = false
+			}
+			in.path, in.modTime = p, time.Time{}
 		}
-		in.path, in.modTime = p, time.Time{}
+		in.pinned = pin
 	}
 	if in.path == "" {
 		if in.text == "" {
@@ -433,6 +549,10 @@ func (in *instance) run() {
 		if tick++; tick%30 == 1 {
 			in.loadFile()
 			if tick == 1 {
+				in.mu.Lock()
+				path := in.path
+				in.mu.Unlock()
+				in.say(sevInfo, "script file: %s", path)
 				if line := editorLine(); line != "" {
 					in.say(sevInfo, "%s", line)
 				}
@@ -761,6 +881,9 @@ func (in *instance) loadState(data []byte) {
 	if doc.Spec != "" {
 		in.mu.Lock()
 		in.text, in.isScript, in.specGen, in.fromSave, in.savedPath = doc.Spec, doc.Script, in.specGen+1, true, doc.Path
+		if in.pinned && doc.Path != "" && doc.Path != in.path && fileExists(doc.Path) {
+			in.path, in.modTime = doc.Path, time.Time{} // a host that loads the project after the plugin has started
+		}
 		in.mu.Unlock()
 	}
 }

@@ -153,6 +153,36 @@ func genny_param_info(index C.int, out *C.genny_param) C.int {
 	return 1
 }
 
+// genny_param_text writes how a value of a parameter is shown into buf (size bytes)
+//
+//export genny_param_text
+func genny_param_text(id C.int, value C.double, buf *C.char, size C.int) C.int {
+	if id < 0 || int(id) >= numParams || size < 1 {
+		return 0
+	}
+	b := append([]byte(paramText(int(id), float64(value))), 0)
+	if len(b) > int(size) {
+		b = append(b[:size-1], 0)
+	}
+	C.memcpy(unsafe.Pointer(buf), unsafe.Pointer(&b[0]), C.size_t(len(b)))
+	return 1
+}
+
+// genny_param_parse reads a text a user typed for a parameter
+//
+//export genny_param_parse
+func genny_param_parse(id C.int, text *C.char, out *C.double) C.int {
+	if id < 0 || int(id) >= numParams {
+		return 0
+	}
+	v, ok := paramValue(int(id), C.GoString(text))
+	if !ok {
+		return 0
+	}
+	*out = C.double(v)
+	return 1
+}
+
 //export genny_param_set
 func genny_param_set(h, id C.int, value C.double) {
 	if in := at(h); in != nil && id >= 0 && int(id) < numParams {

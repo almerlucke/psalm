@@ -239,3 +239,28 @@ func TestRunMakesKeys(t *testing.T) {
 }
 
 func timeNow() time.Time { return time.Now() }
+
+// the host shows the name of a value, and takes the name typed
+func TestParamText(t *testing.T) {
+	for _, c := range []struct {
+		id   int
+		v    float64
+		want string
+	}{
+		{pKeys, 0, "off"}, {pKeys, 1, "once"}, {pKeys, 2, "loop while held"}, {pSnap, 2, "1 beat"}, {pLatch, 1, "on"},
+		{pSeed, 7, "7"}, {pTranspose, -3, "-3"}, {pGain, 1.5, "1.50"}, {pKeys, 9, "9"},
+	} {
+		if got := paramText(c.id, c.v); got != c.want {
+			t.Errorf("%s %v: %q, want %q", params[c.id].name, c.v, got, c.want)
+		}
+	}
+	if v, ok := paramValue(pKeys, "Loop while held"); !ok || v != 2 {
+		t.Errorf("%v %v", v, ok)
+	}
+	if v, ok := paramValue(pSnap, "2"); !ok || v != 2 {
+		t.Errorf("%v %v", v, ok)
+	}
+	if _, ok := paramValue(pKeys, "sideways"); ok {
+		t.Error("nonsense is a value")
+	}
+}

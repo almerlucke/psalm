@@ -387,26 +387,11 @@ static bool params_get_value(const clap_plugin_t *plugin, clap_id id, double *va
 }
 
 static bool params_value_to_text(const clap_plugin_t *plugin, clap_id id, double value, char *out, uint32_t size) {
-	genny_param g;
-	if (!genny_param_info((int)id, &g)) {
-		return false;
-	}
-	if (g.stepped) {
-		snprintf(out, size, "%d", (int)lround(value));
-	} else {
-		snprintf(out, size, "%.2f", value);
-	}
-	return true;
+	return genny_param_text((int)id, value, out, (int)size) != 0;
 }
 
 static bool params_text_to_value(const clap_plugin_t *plugin, clap_id id, const char *text, double *value) {
-	char *end;
-	double v = strtod(text, &end);
-	if (end == text) {
-		return false;
-	}
-	*value = v;
-	return true;
+	return genny_param_parse((int)id, (char *)text, value) != 0;
 }
 
 static void params_flush(const clap_plugin_t *plugin, const clap_input_events_t *in, const clap_output_events_t *out) {

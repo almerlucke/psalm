@@ -10,7 +10,12 @@ import (
 	"testing"
 )
 
-func init() { os.Setenv("GENNY_EDITOR", "off") } // the tests that run a plugin do not start the server
+func init() {
+	os.Setenv("GENNY_EDITOR", "off") // the tests that run a plugin do not start the server
+	// and none writes in the folder of the plugin of the person who runs them
+	dir, _ := os.MkdirTemp("", "gennyclap-config")
+	os.Setenv("XDG_CONFIG_HOME", dir)
+}
 
 const host = "127.0.0.1:7870"
 
@@ -102,6 +107,24 @@ func TestEditor(t *testing.T) {
 	}
 	if r := decode(t, call(t, h, "POST", "/api/check?i=5", defaultSpec, true)); r["ok"] != true {
 		t.Fatalf("default spec: %v", r)
+	}
+
+	// the files, and switching to another (a new one is a copy of what plays)
+	files := decode(t, call(t, h, "GET", "/api/files?i=5", "", false))
+	if files["current"] != "other.json" {
+		t.Fatalf("files: %v", files)
+	}
+	if w := call(t, h, "PUT", "/api/switch?i=5&name=second.js", "", true); w.Code != 200 {
+		t.Fatalf("switch: %d %s", w.Code, w.Body.String())
+	}
+	if filepath.Base(in.pathNow()) != "second.js" {
+		t.Fatalf("plays %q", in.pathNow())
+	}
+	if w := call(t, h, "PUT", "/api/switch?i=5&name=../evil.js", "", true); w.Code != 400 {
+		t.Fatalf("a bad name: %d", w.Code)
+	}
+	if w := call(t, h, "PUT", "/api/switch?i=5&name=x.js", "", false); w.Code != 403 {
+		t.Fatalf("without the header: %d", w.Code)
 	}
 
 	// no such plugin
