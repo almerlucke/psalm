@@ -184,3 +184,42 @@ func TestIdentify(t *testing.T) {
 		})
 	}
 }
+
+func TestFlatNames(t *testing.T) {
+	for _, c := range []struct{ name, code, want string }{
+		{"sharps by default", `return genny.identify([58, 62, 65]).symbol`, `"A#"`},
+		{"flats asked", `return genny.identify([58, 62, 65], {flats: true}).symbol`, `"Bb"`},
+		{"flat names", `const c = genny.identify([61, 65, 68], {flats: true}); return [c.name, c.rootName, c.symbol]`, `["Db major","Db","Db"]`},
+		{"flat inversion", `return genny.identify([62, 65, 70], {flats: true}).symbol`, `"Bb/D"`},
+		{"bass name", `return genny.identify([62, 65, 70], {flats: true}).bassName`, `"D"`},
+		{"a flat key chooses flats", `return genny.analyze([58, 62, 65], "F major").symbol`, `"Bb"`},
+		{"a flat key is flat in minor too", `return genny.analyze([55, 58, 62], "D minor").symbol`, `"Gm"`},
+		{"minor flat key", `return genny.analyze([58, 62, 65], "G minor").symbol`, `"Bb"`},
+		{"a sharp key keeps sharps", `return genny.analyze([66, 70, 73], "D major").symbol`, `"F#"`},
+		{"C major", `return genny.analyze([58, 62, 65], "C major").symbol`, `"A#"`},
+		{"override in a flat key", `return genny.analyze([58, 62, 65], "F major", {flats: false}).symbol`, `"A#"`},
+		{"noteName", `return [genny.noteName(60), genny.noteName(61), genny.noteName(61, {flats: true}), genny.noteName(70.4, {flats: true, octave: false}), genny.noteName(0), genny.noteName(-1)]`, `["C4","C#4","Db4","Bb","C-1","B-2"]`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := eval(t, c.code)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != c.want {
+				t.Errorf("%s: %s, want %s", c.code, got, c.want)
+			}
+		})
+	}
+	// the runtime's own choice, for p.chord and the calls that do not say
+	r := NewRuntime()
+	r.Flats = true
+	p, err := r.RenderHeld(`function render(p) { log(p.chord.symbol, genny.identify(p.pitches).symbol, genny.noteName(70)); return [] }`, 1, []HeldNote{{58, 1}, {62, 1}, {65, 1}})
+	if err != nil || len(p.Log) != 1 || p.Log[0] != "Bb Bb Bb4" {
+		t.Fatalf("%v %v", p.Log, err)
+	}
+	if _, err := pitchFromText("Bb4"); err != nil {
+		t.Fatalf("a script cannot write a flat: %v", err)
+	}
+}
+
+func pitchFromText(s string) (float64, error) { return pitchOf(NewRuntime().vm.ToValue(s)) }

@@ -39,6 +39,7 @@ const (
 	pThru
 	pKeys
 	pSnap
+	pNames
 	numParams
 )
 
@@ -60,6 +61,7 @@ var params = [numParams]paramInfo{
 	pThru:      {"pass input", true, 0, 1, 0, []string{"off", "on"}},
 	pKeys:      {"key trigger", true, 0, 2, 0, []string{"off", "once", "loop while held"}},
 	pSnap:      {"snap", true, 0, 3, 0, []string{"off", "1/16 beat", "1 beat", "1 bar (4 beats)"}},
+	pNames:     {"note names", true, 0, 1, 0, []string{"sharps", "flats"}},
 }
 
 // paramText is a value of a parameter as the host shows it: the name of the value, or the number
@@ -544,6 +546,7 @@ func renderSpec(text string, seed uint64) (*lineData, error) {
 
 // renderScript renders the script for a seed, in the runtime of the instance (which only its goroutine uses)
 func (in *instance) renderScript(rt *script.Runtime, text string, seed uint64, held []script.HeldNote) (*lineData, error) {
+	rt.Flats = in.get(pNames) > 0.5
 	renderMu.Lock()
 	piece, err := rt.RenderHeld(text, seed, held)
 	renderMu.Unlock()
@@ -627,18 +630,20 @@ func (in *instance) run() {
 		defer close(in.done)
 	}
 	var (
-		have    *store
-		haveGen uint64 = math.MaxUint64
-		haveSd         = -1.0
-		tick    int
-		rt      *script.Runtime // made when the first script is rendered (here, the only goroutine that uses it)
-		failed  failure         // the last render that failed (the zero value is none: no spec has generation 0)
-		haveVer uint64          // the notes held that the piece was made for
-		lastVer uint64          // the notes held at the last look
-		settle  int             // ticks to wait for more notes of a chord
-		latched bool
-		keysGen uint64 = math.MaxUint64 // what the pieces of the keys were made for
-		keysSd         = -1.0
+		have      *store
+		haveGen   uint64 = math.MaxUint64
+		haveSd           = -1.0
+		haveNames        = -1.0 // the note names the piece was made with
+		tick      int
+		rt        *script.Runtime // made when the first script is rendered (here, the only goroutine that uses it)
+		failed    failure         // the last render that failed (the zero value is none: no spec has generation 0)
+		haveVer   uint64          // the notes held that the piece was made for
+		lastVer   uint64          // the notes held at the last look
+		settle    int             // ticks to wait for more notes of a chord
+		latched   bool
+		keysGen   uint64 = math.MaxUint64 // what the pieces of the keys were made for
+		keysSd           = -1.0
+		keysNames        = -1.0
 	)
 	for {
 		select {
@@ -671,13 +676,13 @@ func (in *instance) run() {
 		if text == "" {
 			continue
 		}
-		seed, renew := in.get(pSeed), in.get(pRegen) > 0.5
+		seed, renew, names := in.get(pSeed), in.get(pRegen) > 0.5, in.get(pNames)
 		if in.get(pKeys) > 0.5 {
 			// the key trigger: the piece of each key instead of the one that loops
-			if kf := (failure{gen, seed, false, -2, 0}); (gen != keysGen || seed != keysSd) && kf != failed {
+			if kf := (failure{gen, seed, false, -2, 0}); (gen != keysGen || seed != keysSd || names != keysNames) && kf != failed {
 				switch err := in.renderKeys(&rt, text, isScript, uint64(seed)); {
 				case err == nil:
-					keysGen, keysSd = gen, seed
+					keysGen, keysSd, keysNames = gen, seed, names
 					in.mu.Lock()
 					in.lastErr = ""
 					in.mu.Unlock()
@@ -732,7 +737,7 @@ func (in *instance) run() {
 		if key == failed {
 			continue
 		}
-		rebuilt := gen != haveGen || seed != haveSd || have == nil || have.renew != renew
+		rebuilt := gen != haveGen || seed != haveSd || names != haveNames || have == nil || have.renew != renew
 		remade := rebuilt || ver != haveVer // for the notes as well
 		var lines map[int64]*lineData
 		if remade {
@@ -809,7 +814,7 @@ func (in *instance) run() {
 			}
 		}
 		have = &store{lines: lines, renew: renew, length: length, overrun: overrun, epoch: epoch}
-		haveGen, haveSd = gen, seed
+		haveGen, haveSd, haveNames = gen, seed, names
 		if withInput {
 			haveVer = ver
 		}

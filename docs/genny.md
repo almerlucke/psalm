@@ -1294,10 +1294,12 @@ function render(p) {
 **What the notes are.** `p.chord` is the chord the notes held make, or `null` (one note, a cluster, something it has no name for):
 `{ name: "C major", symbol: "C/E", quality, root, rootName, bass, inversion, intervals, pitchClasses }`. `root` and `bass` are pitch
 classes (0 is C); `inversion` is 0 in root position. The lowest note is tried as the root first, so C E G A is C6 and A C E G
-is Am7. `genny.identify(pitches)` does the same for any list of pitches (numbers, or notes with a pitch, so `p.held` does too).
-`genny.analyze(pitches, key = "C major")` adds what the chord is in the key: `numeral` ("V7"), `function` ("T", "S" or "D"), `degree`
+is Am7. `genny.identify(pitches, { flats })` does the same for any list of pitches (numbers, or notes with a pitch, so `p.held` does too).
+`genny.analyze(pitches, key = "C major", { flats })` adds what the chord is in the key: `numeral` ("V7"), `function` ("T", "S" or "D"), `degree`
 (0 is I) and `kind` ("diatonic", "borrowed" from the parallel key, or "secondary" for the dominant of a degree); without a numeral
-the key does not have it. Names use sharps.
+the key does not have it. Names use sharps, or flats (Bb, Db) with `{ flats: true }`, in a key that has them (F, Bb, Eb, Ab, Db, Gb major and
+their relative minors) with `analyze`, and everywhere when the plugin's parameter `note names` is `flats`. `genny.noteName(pitch, { flats, octave = true })`
+spells a pitch: `noteName(70, { flats: true })` is "Bb4", `noteName(61, { octave: false })` is "C#".
 
 ```js
 // the chord played, as a bass note and a stab in the key of C
@@ -1331,7 +1333,7 @@ latch, pass input). The device itself keeps the name Bitwig gives it (rename it 
 **The editor.** The plugin serves a page on this machine, `http://127.0.0.1:7870/` (the next free port when that one is taken; the
 address is the first line of the log, `genny.js.log`, and in the log of the host). It shows the text that plays (or the name of its file, or *untitled*), checks it while you
 type (the error with its line, or the notes it makes in a piano roll, made with the current seed and the notes you hold), saves it with Ctrl+S, and shows the log and the notes held. A saved text plays at once. A file that is changed by another program shows
-up in the page as long as you have not typed. With more than one plugin in the host, a menu picks which one. *New script* and *New spec* start a new text (untitled until you save it as a file). The page is only served to
+up in the page as long as you have not typed. With more than one plugin in the host, a menu picks which one. *New script* and *New spec* start a new text (untitled until you save it as a file). With the key trigger on the preview shows a keyboard: click a key to make the preview for it (`p.key`), keys that have a piece are tinted, the ones the script made nothing for are marked, and the keys held show in green. The page is only served to
 this machine, and a page of another website cannot change anything through it. `GENNY_EDITOR=off` turns the server off.
 
 **A piece for each key.** With the parameter `key trigger` on, the plugin does not loop one piece with the transport: every key that is
@@ -1357,6 +1359,7 @@ function render(p) {
 | `new each pass` | every pass of the loop gets its own seed (`seed + pass`) |
 | `transpose`, `gain`, `swing (steps)` | semitones, velocity, how late the odd steps are |
 | `microtones` | pitches between two keys are played with a note tuning (off: rounded to a key) |
+| `note names` | sharps or flats: the names of notes and chords that scripts get (`p.chord`, `genny.identify`, `genny.noteName`) and the editor shows |
 | `key trigger` | off, once, loop while held: every key played starts the piece (see above) |
 | `snap` | the pieces of the keys start on: off, a sixteenth, a beat, a bar |
 | `latch` | the notes held stay held when let go, until a new chord is played |

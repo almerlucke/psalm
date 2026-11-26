@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -257,5 +258,71 @@ func TestEditorNames(t *testing.T) {
 	in.track, in.path = "", ""
 	if n := in.title(); n != "Genny 4" {
 		t.Fatalf("by its place: %q", n)
+	}
+}
+
+// the preview can be made for a key, the keys that have a piece are told, the page is told the mode and the names
+func TestEditorKeys(t *testing.T) {
+	t.Setenv("GENNY_SPEC", filepath.Join(t.TempDir(), "k.js"))
+	in := newInstance()
+	instances[8].Store(in)
+	defer instances[8].Store(nil)
+	in.loadFile()
+	h := editorHandler(host)
+	st := decode(t, call(t, h, "GET", "/api/state?i=8", "", false))
+	if st["mode"] != 0.0 || st["flats"] != false {
+		t.Fatalf("state: %v", st)
+	}
+	if k := decode(t, call(t, h, "GET", "/api/keys?i=8", "", false)); k["mode"] != 0.0 || len(k["made"].([]any)) != 0 {
+		t.Fatalf("keys: %v", k)
+	}
+	in.set(pKeys, 1)
+	in.set(pNames, 1)
+	picky := `function render(p) { if (p.key > 100) throw new Error("too high"); return [{pitch: p.key, start: 0, duration: 1}] }`
+	var rt *script.Runtime
+	if err := in.renderKeys(&rt, picky, true, 7); err != nil {
+		t.Fatal(err)
+	}
+	k := decode(t, call(t, h, "GET", "/api/keys?i=8", "", false))
+	made := map[float64]bool{}
+	for _, x := range k["made"].([]any) {
+		made[x.(float64)] = true
+	}
+	if k["mode"] != 1.0 || !made[60] || !made[100] || made[101] || len(made) != 101 {
+		t.Fatalf("keys: %d made, mode %v", len(made), k["mode"])
+	}
+	st = decode(t, call(t, h, "GET", "/api/state?i=8", "", false))
+	if st["mode"] != 1.0 || st["flats"] != true {
+		t.Fatalf("state: %v", st)
+	}
+	pitchOf := func(url, body string) float64 {
+		r := decode(t, call(t, h, "POST", url, body, true))
+		if r["ok"] != true {
+			t.Fatalf("%v", r)
+		}
+		return r["notes"].([]any)[0].([]any)[2].(float64)
+	}
+	if p := pitchOf("/api/check?i=8&script=1", picky); p != 60 {
+		t.Fatalf("the preview without a key is for middle C: %v", p)
+	}
+	if p := pitchOf("/api/check?i=8&script=1&key=72", picky); p != 72 {
+		t.Fatalf("for key 72: %v", p)
+	}
+	if r := decode(t, call(t, h, "POST", "/api/check?i=8&script=1&key=101", picky, true)); r["ok"] != false {
+		t.Fatalf("a key the script fails for: %v", r)
+	}
+	// a spec is moved by the distance from middle C
+	spec := func(key string) float64 {
+		in.mu.Lock()
+		in.path = filepath.Join(filepath.Dir(in.path), "k.json")
+		in.mu.Unlock()
+		r := decode(t, call(t, h, "POST", "/api/check?i=8"+key, defaultSpec, true))
+		if r["ok"] != true {
+			t.Fatalf("%v", r)
+		}
+		return r["notes"].([]any)[0].([]any)[2].(float64)
+	}
+	if spec("&key=67")-spec("") != 7 {
+		t.Fatal("a spec is not moved by the key")
 	}
 }

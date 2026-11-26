@@ -27,7 +27,31 @@ var qualities = []quality{
 	{"dominant9", "9", chord.Dominant9}, {"major9", "maj9", chord.Major9}, {"minor9", "m9", chord.Minor9},
 }
 
-var pitchNames = []string{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
+var (
+	sharpNames = []string{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
+	flatNames  = []string{"C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"}
+)
+
+// pitchClassName is the name of a pitch class, with sharps or with flats
+func pitchClassName(pc int, flats bool) string {
+	if flats {
+		return flatNames[pc]
+	}
+	return sharpNames[pc]
+}
+
+// flatKey is whether the notes of a key are written with flats: F, Bb, Eb, Ab, Db, Gb major and their relative minors
+func flatKey(k gharmony.Key) bool {
+	t := ((k.Tonic % 12) + 12) % 12
+	if k.Minor {
+		t = (t + 3) % 12
+	}
+	switch t {
+	case 5, 10, 3, 8, 1, 6:
+		return true
+	}
+	return false
+}
 
 func pc(x int) int { return ((x % 12) + 12) % 12 }
 
@@ -38,11 +62,11 @@ type found struct {
 	pitchClasses          []int // the distinct pitch classes, root first
 }
 
-func (f found) name() string { return pitchNames[f.root] + " " + f.q.name }
-func (f found) symbol() string {
-	s := pitchNames[f.root] + f.q.symbol
+func (f found) name(flats bool) string { return pitchClassName(f.root, flats) + " " + f.q.name }
+func (f found) symbol(flats bool) string {
+	s := pitchClassName(f.root, flats) + f.q.symbol
 	if f.bass != f.root {
-		s += "/" + pitchNames[f.bass]
+		s += "/" + pitchClassName(f.bass, flats)
 	}
 	return s
 }
@@ -130,13 +154,14 @@ func (r *Runtime) pitchList(v goja.Value, who string) []int {
 }
 
 // foundValue is a recognised chord for a script
-func (r *Runtime) foundValue(f found) *goja.Object {
+func (r *Runtime) foundValue(f found, flats bool) *goja.Object {
 	o := r.vm.NewObject()
-	_ = o.Set("name", f.name())
-	_ = o.Set("symbol", f.symbol())
+	_ = o.Set("name", f.name(flats))
+	_ = o.Set("symbol", f.symbol(flats))
 	_ = o.Set("quality", f.q.name)
 	_ = o.Set("root", f.root)
-	_ = o.Set("rootName", pitchNames[f.root])
+	_ = o.Set("rootName", pitchClassName(f.root, flats))
+	_ = o.Set("bassName", pitchClassName(f.bass, flats))
 	_ = o.Set("bass", f.bass)
 	_ = o.Set("inversion", f.inversion)
 	_ = o.Set("intervals", f.q.ivs)
@@ -147,7 +172,7 @@ func (r *Runtime) foundValue(f found) *goja.Object {
 // chordOf is p.chord: what the pitches are, or null
 func (r *Runtime) chordOf(pitches []int) goja.Value {
 	if f, ok := identify(pitches); ok {
-		return r.foundValue(f)
+		return r.foundValue(f, r.Flats)
 	}
 	return goja.Null()
 }
@@ -185,26 +210,43 @@ func analyze(f found, k gharmony.Key) (c gharmony.Chord, how string, degree int,
 	return gharmony.Chord{}, "", -1, false
 }
 
-// identifyGenny adds identify and analyze to genny
+// flatsOf is whether names are written with flats: the option flats of a call when it has one, else def
+func flatsOf(opts goja.Value, def bool) bool {
+	if opts == nil || goja.IsUndefined(opts) || goja.IsNull(opts) {
+		return def
+	}
+	if f := opt(opts, "flats"); f != nil && !goja.IsUndefined(f) && !goja.IsNull(f) {
+		return f.ToBoolean()
+	}
+	return def
+}
+
+// identifyGenny adds identify, analyze and noteName to genny
 func (r *Runtime) identifyGenny(set func(string, func(goja.FunctionCall) goja.Value)) {
-	// identify(pitches): the chord those pitches make, { name: "C major", symbol: "Cmaj7/E", quality, root (pitch class), rootName,
-	// bass (pitch class), inversion (0 is root position), intervals, pitchClasses }, or null when they are no chord it knows. The
-	// pitches are numbers or notes with a pitch, so p.held and p.pitches both do
+	// identify(pitches, { flats }): the chord those pitches make, { name: "C major", symbol: "Cmaj7/E", quality, root (pitch class), rootName,
+	// bass (pitch class), bassName, inversion (0 is root position), intervals, pitchClasses }, or null when they are no chord it knows. The
+	// pitches are numbers or notes with a pitch, so p.held and p.pitches both do. Names have sharps, or flats with { flats: true } (and
+	// when the plugin's parameter "note names" is flats)
 	set("identify", r.guarded("identify", func(call goja.FunctionCall) goja.Value {
-		return r.chordOf(r.pitchList(call.Argument(0), "identify"))
+		f, ok := identify(r.pitchList(call.Argument(0), "identify"))
+		if !ok {
+			return goja.Null()
+		}
+		return r.foundValue(f, flatsOf(call.Argument(1), r.Flats))
 	}))
-	// analyze(pitches, key = "C major"): identify, and what the chord is in the key: { numeral: "V7", function: "T" | "S" | "D",
-	// degree (0 is I), kind: "diatonic" | "borrowed" | "secondary" } or no numeral at all when the key does not have it
+	// analyze(pitches, key = "C major", { flats }): identify, and what the chord is in the key: { numeral: "V7", function: "T" | "S" |
+	// "D", degree (0 is I), kind: "diatonic" | "borrowed" | "secondary" } or no numeral at all when the key does not have it. The names
+	// have flats in a key that has them (F major, Bb major, D minor...) unless { flats } says otherwise
 	set("analyze", r.guarded("analyze", func(call goja.FunctionCall) goja.Value {
 		f, ok := identify(r.pitchList(call.Argument(0), "analyze"))
 		if !ok {
 			return goja.Null()
 		}
-		o := r.foundValue(f)
 		key := gharmony.Key{}
 		if k := call.Argument(1); !goja.IsUndefined(k) && !goja.IsNull(k) {
 			key = r.keyArg(k)
 		}
+		o := r.foundValue(f, flatsOf(call.Argument(2), flatKey(key) || r.Flats))
 		if c, how, d, ok := analyze(f, key); ok {
 			_ = o.Set("numeral", c.Numeral)
 			_ = o.Set("function", c.Function.String())
@@ -213,5 +255,14 @@ func (r *Runtime) identifyGenny(set func(string, func(goja.FunctionCall) goja.Va
 			_ = o.Set("of", c.Of)
 		}
 		return o
+	}))
+	// noteName(pitch, { flats, octave = true }): "C4" for 60, "Db4" with flats, "Db" without the octave; a pitch with decimals is rounded
+	set("noteName", r.guarded("noteName", func(call goja.FunctionCall) goja.Value {
+		p := int(math.Round(call.Argument(0).ToFloat()))
+		name := pitchClassName(pc(p), flatsOf(call.Argument(1), r.Flats))
+		if o := opt(call.Argument(1), "octave"); goja.IsUndefined(o) || o.ToBoolean() {
+			name += strconv.Itoa(int(math.Floor(float64(p)/12)) - 1)
+		}
+		return r.vm.ToValue(name)
 	}))
 }

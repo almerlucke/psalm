@@ -114,7 +114,7 @@ func editorHandler(addr string) http.Handler {
 			return
 		}
 		in.mu.Lock()
-		st := map[string]any{"name": in.titleLocked(), "custom": in.name != "", "track": in.track, "path": in.path, "file": fileLabel(in.path), "linked": in.path != "", "script": in.isScript, "gen": in.specGen, "log": append([]string(nil), in.logLines...), "error": in.lastErr}
+		st := map[string]any{"flats": in.get(pNames) > 0.5, "mode": int(in.get(pKeys)), "name": in.titleLocked(), "custom": in.name != "", "track": in.track, "path": in.path, "file": fileLabel(in.path), "linked": in.path != "", "script": in.isScript, "gen": in.specGen, "log": append([]string(nil), in.logLines...), "error": in.lastErr}
 		if r.URL.Query().Get("text") == "1" {
 			st["text"] = in.text
 		}
@@ -125,6 +125,22 @@ func editorHandler(addr string) http.Handler {
 		}
 		st["held"] = held
 		reply(w, st)
+	})
+	// keys: the keys of the key trigger that have a piece (made, or silent: the script throws for them), and the mode
+	mux.HandleFunc("/api/keys", func(w http.ResponseWriter, r *http.Request) {
+		in := instanceOf(w, r)
+		if in == nil {
+			return
+		}
+		made := []int{}
+		if ks := in.keys.Load(); ks != nil {
+			for k, st := range ks.stores {
+				if st != nil {
+					made = append(made, k)
+				}
+			}
+		}
+		reply(w, map[string]any{"mode": int(in.get(pKeys)), "made": made})
 	})
 	// rename: the plugin is given a name (the body of the call; empty: the name of its track)
 	mux.HandleFunc("/api/rename", func(w http.ResponseWriter, r *http.Request) {
@@ -217,7 +233,11 @@ func editorHandler(addr string) http.Handler {
 		if !ok {
 			return
 		}
-		reply(w, in.check(text, in.kindOf(r.URL.Query().Get("script"))))
+		key := 60
+		if k, err := strconv.Atoi(r.URL.Query().Get("key")); err == nil && k >= 0 && k <= 127 {
+			key = k
+		}
+		reply(w, in.check(text, in.kindOf(r.URL.Query().Get("script")), key))
 	})
 	// save: the text is written to the file the plugin reads and played from now on
 	mux.HandleFunc("/api/save", func(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +314,7 @@ func (in *instance) kindOf(script string) bool {
 
 // check renders text the way the plugin would and describes what it makes: { ok, error, length, notes: [[start, end, pitch,
 // velocity, channel]] (beats), log }. The runtime is a new one, so a check never disturbs the one that plays
-func (in *instance) check(text string, isScript bool) map[string]any {
+func (in *instance) check(text string, isScript bool, key int) map[string]any {
 	seed := uint64(in.get(pSeed))
 	var l *lineData
 	var logs []string
@@ -302,7 +322,9 @@ func (in *instance) check(text string, isScript bool) map[string]any {
 	if isScript {
 		renderMu.Lock()
 		var piece script.Piece
-		piece, err = script.NewRuntime().RenderHeld(text, seed, in.heldNotes())
+		rt := script.NewRuntime()
+		rt.Flats = in.get(pNames) > 0.5
+		piece, err = rt.RenderKey(text, seed, in.heldNotes(), key)
 		renderMu.Unlock()
 		logs = piece.Log
 		if err == nil {
@@ -315,12 +337,16 @@ func (in *instance) check(text string, isScript bool) map[string]any {
 		return map[string]any{"ok": false, "error": err.Error(), "log": logs}
 	}
 	const most = 4000
+	shift := 0.0
+	if !isScript { // a spec has no keys: it is moved by the distance from middle C (as the plugin does for a key played)
+		shift = float64(key - 60)
+	}
 	notes := make([][5]float64, 0, min(len(l.events), most))
 	for _, e := range l.events {
 		if len(notes) == most {
 			break
 		}
-		notes = append(notes, [5]float64{e.start, e.end, e.pitch, e.vel, float64(e.channel)})
+		notes = append(notes, [5]float64{e.start, e.end, e.pitch + shift, e.vel, float64(e.channel)})
 	}
 	return map[string]any{"ok": true, "length": l.length, "count": len(l.events), "notes": notes, "log": logs}
 }

@@ -50,6 +50,9 @@ type Runtime struct {
 	shared *goja.Object
 	genny  *goja.Object
 
+	// Flats makes the names of notes and chords that a script gets have flats (Bb) in place of sharps (A#), unless the call says otherwise
+	Flats bool
+
 	// the watchdog: it stops a call that goes on beyond its budget (the call it was set for only)
 	timer  *time.Timer
 	mu     sync.Mutex

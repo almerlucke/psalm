@@ -176,6 +176,7 @@ func (in *instance) renderKeys(rt **script.Runtime, text string, isScript bool, 
 			return errStopped
 		default:
 		}
+		(*rt).Flats = in.get(pNames) > 0.5
 		renderMu.Lock()
 		piece, err := (*rt).RenderKey(text, seed, nil, key)
 		renderMu.Unlock()
@@ -194,7 +195,7 @@ func (in *instance) renderKeys(rt **script.Runtime, text string, isScript bool, 
 		l := buildPiece(piece)
 		ks.stores[key] = &store{lines: map[int64]*lineData{0: l}, length: l.length, overrun: l.overrun, epoch: 1}
 		made++
-		if n%16 == 15 || n == len(keyOrder)-1 { // what is made so far
+		if n%16 == 15 { // what is made so far
 			cp := *ks
 			in.keys.Store(&cp)
 		}
@@ -202,6 +203,7 @@ func (in *instance) renderKeys(rt **script.Runtime, text string, isScript bool, 
 	if made == 0 {
 		return first
 	}
+	in.keys.Store(ks) // all of them (the last keys may have failed, which skips the batches above)
 	if failed > 0 {
 		in.say(sevWarn, "%d keys have no notes: %v", failed, first)
 	}
