@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Genny editor</title>
+<style>
+:root {
+  --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --dim: #6d6b64; --line: #dcd9d0; --accent: #2b6cb0;
+  --bad: #b3261e; --good: #2e7d32; --note: #2b6cb0; --grid: #ecebe5; --key: #f0eee8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17171a; --panel: #1f1f24; --ink: #e8e6df; --dim: #98958c; --line: #33333a; --accent: #6aa9ee;
+    --bad: #ff8a80; --good: #7fd18b; --note: #6aa9ee; --grid: #2a2a30; --key: #26262c;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; display: flex; flex-direction: column; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+h1 { font-size: 15px; margin: 0; font-weight: 650; }
+.path { color: var(--dim); font: 12px ui-monospace, monospace; overflow-wrap: anywhere; }
+.spacer { flex: 1; }
+button, select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button:disabled { opacity: .5; cursor: default; }
+main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 12px; padding: 12px 16px; }
+@media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+section > h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: baseline; }
+section > h2 .r { margin-left: auto; text-transform: none; letter-spacing: 0; }
+textarea { flex: 1; min-height: 260px; width: 100%; resize: none; border: 0; outline: none; padding: 12px; background: transparent; color: var(--ink); font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; tab-size: 2; }
+.side { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+#status { padding: 8px 12px; font-size: 13px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; white-space: pre-wrap; }
+#status.ok { color: var(--good); } #status.bad { color: var(--bad); font-family: ui-monospace, monospace; font-size: 12px; }
+canvas { width: 100%; height: 220px; display: block; }
+#log { margin: 0; padding: 8px 12px; font: 12px/1.5 ui-monospace, monospace; overflow: auto; max-height: 260px; color: var(--dim); white-space: pre-wrap; }
+#log .error { color: var(--bad); } #log .warning { color: #b7791f; }
+.held { padding: 8px 12px; font: 13px ui-monospace, monospace; color: var(--dim); }
+.dirty { color: var(--accent); font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Genny</h1>
+  <select id="plugin" hidden></select>
+  <span class="path" id="path"></span>
+  <span class="dirty" id="dirty"></span>
+  <span class="spacer"></span>
+  <button id="revert" disabled>Revert</button>
+  <button id="save" class="primary" disabled>Save <small>Ctrl+S</small></button>
+</header>
+<main>
+  <section>
+    <h2>Script <span class="r" id="kind"></span></h2>
+    <textarea id="text" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="the text that plays"></textarea>
+  </section>
+  <div class="side">
+    <section>
+      <h2>Preview <span class="r" id="count"></span></h2>
+      <div id="status"></div>
+      <canvas id="roll" aria-label="the notes the text makes"></canvas>
+    </section>
+    <section>
+      <h2>Held <span class="r">notes played into the plugin</span></h2>
+      <div class="held" id="held">nothing</div>
+    </section>
+    <section style="flex:1">
+      <h2>Log</h2>
+      <pre id="log"></pre>
+    </section>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id)
+const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+const noteName = p => names[((p % 12) + 12) % 12] + (Math.floor(p / 12) - 1)
+const post = (url, method, body) => fetch(url, { method, body, headers: { 'X-Genny': '1' } })
+
+let plugin = new URLSearchParams(location.search).get('i')
+let saved = ''        // the text of the file as last read or written
+let lastGen = null    // the generation of the text the plugin plays
+let preview = null    // the last check
+let timer = null
+
+async function plugins() {
+  const list = await (await fetch('/api/plugins')).json()
+  const sel = $('plugin')
+  sel.innerHTML = ''
+  list.forEach(p => sel.add(new Option('Genny ' + (p.i + 1), p.i)))
+  sel.hidden = list.length < 2
+  if (!list.length) { $('status').textContent = 'No Genny plugin is running in the host.'; return false }
+  if (plugin === null || !list.some(p => String(p.i) === String(plugin))) plugin = String(list[0].i)
+  sel.value = plugin
+  return true
+}
+
+async function load() {
+  const s = await (await fetch('/api/state?text=1&i=' + plugin)).json()
+  $('text').value = saved = s.text
+  lastGen = s.gen
+  $('path').textContent = s.path
+  $('kind').textContent = s.script ? 'JavaScript: function render(p)' : 'JSON spec'
+  dirty()
+  check()
+}
+
+function dirty() {
+  const d = $('text').value !== saved
+  $('dirty').textContent = d ? 'not saved' : ''
+  $('save').disabled = $('revert').disabled = !d
+}
+
+async function check() {
+  const text = $('text').value
+  const r = await post('/api/check?i=' + plugin, 'POST', text)
+  if (!r.ok) { setStatus(false, await r.text()); return }
+  preview = await r.json()
+  if (text !== $('text').value) return // typed on meanwhile
+  if (preview.ok) {
+    setStatus(true, preview.count + ' notes in ' + (+preview.length.toFixed(3)) + ' beats')
+    $('count').textContent = preview.count ? preview.count + ' notes' : ''
+  } else {
+    setStatus(false, preview.error)
+    $('count').textContent = ''
+  }
+  draw()
+}
+
+function setStatus(ok, text) {
+  const s = $('status')
+  s.className = ok ? 'ok' : 'bad'
+  s.textContent = ok ? text : text
+}
+
+function draw() {
+  const c = $('roll'), dpr = window.devicePixelRatio || 1
+  const w = c.clientWidth, h = c.clientHeight
+  c.width = w * dpr; c.height = h * dpr
+  const g = c.getContext('2d')
+  g.scale(dpr, dpr)
+  const css = getComputedStyle(document.documentElement)
+  const col = n => css.getPropertyValue(n).trim()
+  g.clearRect(0, 0, w, h)
+  if (!preview || !preview.ok || !preview.notes.length) {
+    g.fillStyle = col('--dim'); g.font = '13px system-ui'
+    g.fillText(preview && preview.ok ? 'no notes' : '', 12, 24)
+    return
+  }
+  const notes = preview.notes
+  let lo = Math.min(...notes.map(n => n[2])), hi = Math.max(...notes.map(n => n[2]))
+  lo = Math.floor(lo) - 1; hi = Math.ceil(hi) + 1
+  const span = Math.max(hi - lo, 12)
+  const len = preview.length, left = 34
+  const x = b => left + (w - left - 6) * b / len, rowH = (h - 6) / span
+  const y = p => h - 3 - (p - lo + 1) * rowH
+  g.font = '10px system-ui'
+  for (let p = lo; p <= lo + span; p++) {
+    if ([1, 3, 6, 8, 10].includes(((p % 12) + 12) % 12)) { g.fillStyle = col('--key'); g.fillRect(left, y(p), w - left, rowH) }
+    if (p % 12 === 0) { g.fillStyle = col('--dim'); g.fillText(noteName(p), 2, y(p) + rowH - 1) }
+  }
+  g.strokeStyle = col('--grid'); g.lineWidth = 1
+  for (let b = 0; b <= len + 1e-9; b++) { const px = Math.round(x(b)) + .5; g.beginPath(); g.moveTo(px, 0); g.lineTo(px, h); g.stroke() }
+  g.fillStyle = col('--note')
+  for (const [s, e, p, v] of notes) {
+    g.globalAlpha = .35 + .65 * Math.min(Math.max(v, 0), 1)
+    const bh = Math.max(rowH - 1, 2)
+    g.fillRect(x(s), y(p) + (rowH - bh) / 2, Math.max(x(e) - x(s), 2), bh)
+  }
+  g.globalAlpha = 1
+}
+
+async function refresh() {
+  try {
+    const s = await (await fetch('/api/state?i=' + plugin)).json()
+    $('log').innerHTML = s.log.map(l => {
+      const k = / (error|warning): /.exec(l)
+      return '<div' + (k ? ' class="' + k[1] + '"' : '') + '>' + l.replace(/[&<]/g, c => c === '&' ? '&amp;' : '&lt;') + '</div>'
+    }).join('')
+    $('log').scrollTop = $('log').scrollHeight
+    $('held').textContent = s.held.length ? s.held.map(noteName).join('  ') : 'nothing'
+    if (s.gen !== lastGen && $('text').value === saved) { await load() } // the file changed (edited elsewhere): shown when nothing is typed
+    else if (s.gen !== lastGen) { lastGen = s.gen }
+  } catch (e) { /* the host may be gone */ }
+}
+
+async function save() {
+  if ($('save').disabled) return
+  const text = $('text').value
+  const r = await post('/api/save?i=' + plugin, 'PUT', text)
+  if (!r.ok) { setStatus(false, await r.text()); return }
+  saved = text
+  const s = await (await fetch('/api/state?i=' + plugin)).json()
+  lastGen = s.gen
+  dirty()
+}
+
+$('text').addEventListener('input', () => { dirty(); clearTimeout(timer); timer = setTimeout(check, 350) })
+$('text').addEventListener('keydown', e => {
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault()
+    const t = e.target, a = t.selectionStart
+    t.setRangeText('  ', a, t.selectionEnd, 'end')
+    t.dispatchEvent(new Event('input'))
+  }
+})
+addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save() } })
+$('save').onclick = save
+$('revert').onclick = () => { $('text').value = saved; dirty(); check() }
+$('plugin').onchange = e => { plugin = e.target.value; load() }
+addEventListener('resize', draw)
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw)
+
+plugins().then(ok => { if (ok) { load(); setInterval(refresh, 1000) } })
+</script>
+</body>
+</html>

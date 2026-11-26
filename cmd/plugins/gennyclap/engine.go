@@ -417,6 +417,11 @@ func (in *instance) run() {
 		}
 		if tick++; tick%30 == 1 {
 			in.loadFile()
+			if tick == 1 {
+				if line := editorLine(); line != "" {
+					in.say(sevInfo, "%s", line)
+				}
+			}
 		}
 		in.mu.Lock()
 		text, gen, isScript := in.text, in.specGen, in.isScript

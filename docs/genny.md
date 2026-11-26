@@ -34,7 +34,7 @@ The package is [genny](https://github.com/almerlucke/genny); this page is the sc
 - [Game of Life](#game-of-life): `life`
 - [Evolving a phrase](#evolving-a-phrase): `evolve`
 - [Shapers](#shapers)
-- [In the Genny plugin](#in-the-genny-plugin): `render(p)` `p.held` `p.pitches` `p.chord` `genny.identify` `genny.analyze`
+- [In the Genny plugin](#in-the-genny-plugin): `render(p)` `p.held` `p.pitches` `p.chord` `genny.identify` `genny.analyze`; [the editor](#in-the-genny-plugin)
 - [Randomness and seeds](#randomness-and-seeds)
 - [Recipes](#recipes)
 
@@ -1310,6 +1310,13 @@ function render(p) {
   return { length: 16, notes }
 }
 ```
+
+**The editor.** The plugin serves a page on this machine, `http://127.0.0.1:7870/` (the next free port when that one is taken; the
+address is the first line of the log, `genny.js.log`, and in the log of the host). It shows the text that plays, checks it while you
+type (the error with its line, or the notes it makes in a piano roll, made with the current seed and the notes you hold), saves it to
+the file with Ctrl+S, and shows the log and the notes held. A saved text plays at once. A file that is changed by another program shows
+up in the page as long as you have not typed. With more than one plugin in the host, a menu picks which one. The page is only served to
+this machine, and a page of another website cannot change anything through it. `GENNY_EDITOR=off` turns the server off.
 
 | Parameter | |
 |---|---|
