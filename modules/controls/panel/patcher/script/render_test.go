@@ -150,6 +150,20 @@ func TestRenderKey(t *testing.T) {
 	}
 }
 
+// a key pressed: its velocity, where its piece starts, the keys held
+func TestRenderPress(t *testing.T) {
+	code := `function render(p) { return [{pitch: p.key + p.pitches.length, start: p.beat, duration: 1, velocity: p.velocity}] }`
+	p, err := NewRuntime().RenderPress(code, 1, []HeldNote{{60, 1}, {64, 1}}, 60, 0.5, 8)
+	if err != nil || len(p.Notes) != 1 || p.Notes[0].Pitch != 62 || p.Notes[0].Velocity != 0.5 || p.Notes[0].Start != 8 {
+		t.Fatalf("%+v %v", p.Notes, err)
+	}
+	// without a press: a velocity of 1 at beat 0
+	p, err = NewRuntime().RenderKey(code, 1, nil, 61)
+	if err != nil || p.Notes[0].Velocity != 1 || p.Notes[0].Start != 0 {
+		t.Fatalf("%+v %v", p.Notes, err)
+	}
+}
+
 func TestRenderErrors(t *testing.T) {
 	for _, c := range []struct{ code, want string }{
 		{`var x = ;`, "line 1"},

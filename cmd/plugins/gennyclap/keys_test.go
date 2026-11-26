@@ -264,3 +264,170 @@ func TestParamText(t *testing.T) {
 		t.Error("nonsense is a value")
 	}
 }
+
+const pressScript = `function render(p) { return {length: 16, notes: [
+	{pitch: p.key + p.held.length, start: 0, duration: 2, velocity: p.velocity},
+	{pitch: p.key + 12, start: 8, duration: 2, velocity: p.velocity}]} }`
+
+// ons are the note ons among the events
+func ons(evs []goEvent) []goEvent {
+	var out []goEvent
+	for _, e := range evs {
+		if e.on {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// an instance that makes the piece of a key when it is pressed
+func pressing(t *testing.T) (*instance, **script.Runtime) {
+	t.Helper()
+	in := newInstance()
+	in.set(pKeys, 1)
+	in.set(pSnap, 2) // a beat
+	in.set(pRender, 1)
+	in.pressMode.Store(true)
+	var rt *script.Runtime
+	return in, &rt
+}
+
+// the piece is made for the press (its velocity, the keys held) while the snap waits for the grid
+func TestPressMade(t *testing.T) {
+	in, rt := pressing(t)
+	in.input(60, 0.9, true)
+	in.keyAt(60, 0.9, true, 10.3) // starts at 11
+	if got := in.collect(10, 11); len(got) != 0 {
+		t.Fatalf("%v", summary(got))
+	}
+	in.servePresses(rt, pressScript, 7, false, 0)
+	got := ons(in.collect(11, 12))
+	if len(got) != 1 || !got[0].on || got[0].key != 61 || math.Abs(got[0].velocity-0.9) > 1e-9 || got[0].beat != 11 {
+		t.Fatalf("%+v", got)
+	}
+	// the velocity of the key is the script's business, the notes are not scaled by it again
+	if in.voices[60].velocity != 1 {
+		t.Fatalf("scaled twice: %v", in.voices[60].velocity)
+	}
+}
+
+// the keys of a chord are held when the piece is made
+func TestPressChord(t *testing.T) {
+	in, rt := pressing(t)
+	for _, k := range []int{60, 64, 67} {
+		in.input(k, 0.8, true)
+		in.keyAt(k, 0.8, true, 10.1)
+	}
+	in.servePresses(rt, pressScript, 7, false, 0)
+	got := ons(in.collect(11, 12))
+	var pitches []int
+	for _, e := range got {
+		pitches = append(pitches, e.key)
+	}
+	slices.Sort(pitches)
+	if !slices.Equal(pitches, []int{63, 67, 70}) { // each key plus the 3 held
+		t.Fatalf("%v", pitches)
+	}
+}
+
+// the press waits a moment for the rest of a chord
+func TestPressSettles(t *testing.T) {
+	in, rt := pressing(t)
+	in.input(60, 0.8, true)
+	in.keyAt(60, 0.8, true, 10.1)
+	in.servePresses(rt, pressScript, 7, false, time.Hour)
+	if in.presses[60].Load() != nil {
+		t.Fatal("made before it settled")
+	}
+	in.servePresses(rt, pressScript, 7, false, 0)
+	if in.presses[60].Load() == nil {
+		t.Fatal("not made")
+	}
+}
+
+// a piece that comes late plays what is still to come
+func TestPressLate(t *testing.T) {
+	in, rt := pressing(t)
+	in.input(60, 0.8, true)
+	in.keyAt(60, 0.8, true, 10.1) // starts at 11
+	if got := in.collect(11, 12.5); len(got) != 0 {
+		t.Fatalf("%v", summary(got))
+	}
+	in.servePresses(rt, pressScript, 7, false, 0)
+	got := ons(in.collect(12.5, 14)) // the first note was due at 11, the second at 11 + 2 beats
+	if len(got) != 1 || got[0].key != 72 || got[0].beat != 13 {
+		t.Fatalf("%+v", got)
+	}
+}
+
+// a key let go before its piece is made, and a script that fails, leave nothing playing
+func TestPressFailsAndEnds(t *testing.T) {
+	in, rt := pressing(t)
+	in.set(pKeys, 2) // loop
+	in.keyAt(60, 0.8, true, 10.1)
+	in.keyAt(60, 0, false, 11.5) // let go after it started, before it is made
+	if got := in.collect(11, 12); len(got) != 0 {
+		t.Fatalf("%v", summary(got))
+	}
+	in.servePresses(rt, pressScript, 7, false, 0)
+	if got := in.collect(12, 20); len(got) != 0 || in.voices[60].on {
+		t.Fatalf("a voice of a key that was let go plays: %v", summary(got))
+	}
+	in.keyAt(62, 0.8, true, 20.1)
+	in.servePresses(rt, `function render(p) { throw new Error("boom") }`, 7, false, 0)
+	if got := in.collect(21, 24); len(got) != 0 || in.voices[62].on {
+		t.Fatalf("%v", summary(got))
+	}
+	if r := in.presses[62].Load(); r == nil || r.err == nil {
+		t.Fatal("the failure is not kept")
+	}
+}
+
+// with new each pass every press has its own seed; the pieces of two presses differ
+func TestPressSeeds(t *testing.T) {
+	in, rt := pressing(t)
+	random := `function render(p) { return [{pitch: 40 + Math.floor(genny.sequence([0]).take(1)[0] + p.seed % 50), start: 0, duration: 1}] }`
+	in.keyAt(60, 1, true, 10.1)
+	in.keyAt(61, 1, true, 10.1)
+	in.servePresses(rt, random, 7, true, 0)
+	a, b := in.presses[60].Load(), in.presses[61].Load()
+	if a == nil || b == nil || a.err != nil || b.err != nil {
+		t.Fatalf("%+v %+v", a, b)
+	}
+	if a.st.lines[0].events[0].pitch == b.st.lines[0].events[0].pitch {
+		t.Fatal("the presses have the same seed")
+	}
+	in.keyAt(62, 1, true, 10.1)
+	in.keyAt(63, 1, true, 10.1)
+	in.servePresses(rt, random, 7, false, 0)
+	if in.presses[62].Load().st.lines[0].events[0].pitch != in.presses[63].Load().st.lines[0].events[0].pitch {
+		t.Fatal("the presses have another seed without new each pass")
+	}
+}
+
+// the goroutine of the instance decides: on press needs a snap (and a script); without them the pieces are made beforehand
+func TestRunPressMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "genny.js")
+	t.Setenv("GENNY_SPEC", path)
+	if err := os.WriteFile(path, []byte(pressScript), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	in := newInstance()
+	in.set(pKeys, 1)
+	in.set(pRender, 1) // no snap yet
+	in.stop, in.done = make(chan struct{}), make(chan struct{})
+	go in.run()
+	defer func() { close(in.stop); <-in.done }()
+	wait(t, "the keys made beforehand", func() bool { ks := in.keys.Load(); return ks != nil && ks.stores[60] != nil })
+	if in.pressMode.Load() {
+		t.Fatal("on press without a snap")
+	}
+	in.set(pSnap, 2)
+	wait(t, "on press", func() bool { return in.pressMode.Load() })
+	in.input(60, 0.8, true)
+	in.keyAt(60, 0.8, true, 10.2)
+	wait(t, "the piece of the press", func() bool { r := in.presses[60].Load(); return r != nil && r.st != nil })
+	in.set(pSnap, 0)
+	wait(t, "ahead again", func() bool { return !in.pressMode.Load() })
+}

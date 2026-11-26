@@ -40,6 +40,7 @@ const (
 	pKeys
 	pSnap
 	pNames
+	pRender
 	numParams
 )
 
@@ -62,6 +63,7 @@ var params = [numParams]paramInfo{
 	pKeys:      {"key trigger", true, 0, 2, 0, []string{"off", "once", "loop while held"}},
 	pSnap:      {"snap", true, 0, 3, 0, []string{"off", "1/16 beat", "1 beat", "1 bar (4 beats)"}},
 	pNames:     {"note names", true, 0, 1, 0, []string{"sharps", "flats"}},
+	pRender:    {"key render", true, 0, 1, 0, []string{"ahead", "on press"}},
 }
 
 // paramText is a value of a parameter as the host shows it: the name of the value, or the number
@@ -184,11 +186,15 @@ type instance struct {
 
 	// the key trigger: the piece made for each key (by the goroutine that renders), and the voices of the keys that are down (the
 	// audio thread's)
-	keys     atomic.Pointer[keySet]
-	voices   [128]voice
-	salt     int // the last voice number
-	pending  [64]goEvent
-	npending int
+	keys      atomic.Pointer[keySet]
+	voices    [128]voice
+	salt      int                              // the last voice number
+	requests  chan pressReq                    // the keys pressed that a piece is wanted for (the audio thread writes, the renderer reads)
+	presses   [128]atomic.Pointer[pressResult] // what was made for the last press of each key
+	pressMode atomic.Bool                      // pieces are made when a key is pressed (the renderer decides, the audio thread looks)
+	waiting   []pressReq                       // the renderer's: presses that wait a moment for more keys of a chord
+	pending   [64]goEvent
+	npending  int
 
 	mu        sync.Mutex // the spec text and its file (never taken by the audio thread)
 	text      string
@@ -272,7 +278,7 @@ func (in *instance) set(id int, v float64) {
 }
 
 func newInstance() *instance {
-	in := &instance{}
+	in := &instance{requests: make(chan pressReq, 64)}
 	for i, p := range params {
 		in.set(i, p.def)
 	}
@@ -677,6 +683,14 @@ func (in *instance) run() {
 			continue
 		}
 		seed, renew, names := in.get(pSeed), in.get(pRegen) > 0.5, in.get(pNames)
+		press := in.get(pKeys) > 0.5 && in.get(pSnap) > 0.5 && in.get(pRender) > 0.5 && isScript
+		in.pressMode.Store(press)
+		if press {
+			// the key trigger, a piece made for each key press (the snap gives the time): no piece is made beforehand
+			keysGen = math.MaxUint64
+			in.servePresses(&rt, text, seed, in.get(pRegen) > 0.5, pressSettle)
+			continue
+		}
 		if in.get(pKeys) > 0.5 {
 			// the key trigger: the piece of each key instead of the one that loops
 			if kf := (failure{gen, seed, false, -2, 0}); (gen != keysGen || seed != keysSd || names != keysNames) && kf != failed {

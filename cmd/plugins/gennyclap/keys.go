@@ -5,6 +5,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/almerlucke/psalm/modules/controls/panel/patcher/script"
 )
@@ -29,6 +30,7 @@ type voice struct {
 	velocity   float64
 	shift      float64
 	on         bool
+	waiting    bool // the piece is being made for this press (see pressMode)
 }
 
 // snapBeats are the grids a key can be started on: not at all, a sixteenth, a beat, a bar of four
@@ -54,13 +56,23 @@ func (in *instance) keyAt(key int, velocity float64, on bool, beat float64) {
 		in.kill(v.salt, beat) // the key again: the old voice stops
 		v.on = false
 	}
-	ks := in.keys.Load()
-	if ks == nil || ks.stores[key] == nil {
-		return // not made (yet)
-	}
 	start := beat
 	if snap := snapBeats(int(in.get(pSnap))); snap > 0 {
 		start = math.Ceil(beat/snap-1e-9) * snap
+	}
+	if in.pressMode.Load() { // the piece is made for this press: the voice waits for it (the notes already past when it comes are lost)
+		in.salt++
+		*v = voice{start: start, end: math.Inf(1), salt: in.salt, loop: mode == 2, velocity: 1, on: true, waiting: true}
+		select {
+		case in.requests <- pressReq{key: key, velocity: min(max(velocity, 0.01), 1), start: start, salt: in.salt}:
+		default: // the renderer is far behind: this press is silent
+			v.on = false
+		}
+		return
+	}
+	ks := in.keys.Load()
+	if ks == nil || ks.stores[key] == nil {
+		return // not made (yet)
 	}
 	in.salt++
 	shift := 0.0
@@ -91,6 +103,20 @@ func (in *instance) collectVoices(from, to float64, put func(goEvent)) {
 		v := &in.voices[k]
 		if !v.on || to <= v.start {
 			continue
+		}
+		if v.waiting {
+			r := in.presses[k].Load()
+			switch {
+			case r == nil || r.salt != v.salt: // not made yet; a key that is let go before it is has nothing to stop
+				if v.end < to {
+					v.on = false
+				}
+				continue
+			case r.err != nil:
+				v.on = false
+				continue
+			}
+			v.st, v.waiting = r.st, false
 		}
 		hi := to - v.start
 		ending := v.end < to
@@ -220,3 +246,85 @@ func (e keyError) Error() string { return "key " + strconv.Itoa(e.key) + ": " + 
 func (e keyError) Unwrap() error { return e.err }
 
 func errWithKey(key int, err error) error { return keyError{key, err} }
+
+// pressReq is a key press that a piece is wanted for
+type pressReq struct {
+	key      int
+	velocity float64
+	start    float64   // where the piece starts, beats
+	salt     int       // the voice
+	got      time.Time // when the renderer took it
+}
+
+// pressResult is what was made for a press
+type pressResult struct {
+	salt int
+	st   *store
+	err  error
+}
+
+// pressSettle is how long a press waits before its piece is made, for the other keys of a chord to come
+const pressSettle = 30 * time.Millisecond
+
+// servePresses makes the pieces of the presses that have waited long enough (the goroutine of the instance). The notes held are
+// those of the moment it is made; the velocity is the key's, so the script decides what it does (the plugin does not scale the notes
+// by it a second time). With renew each press has its own seed
+func (in *instance) servePresses(rt **script.Runtime, text string, seed float64, renew bool, settle time.Duration) {
+	for drained := false; !drained; {
+		select {
+		case rq := <-in.requests:
+			rq.got = time.Now()
+			in.waiting = append(in.waiting, rq)
+		default:
+			drained = true
+		}
+	}
+	rest := in.waiting[:0]
+	for _, rq := range in.waiting {
+		if time.Since(rq.got) < settle {
+			rest = append(rest, rq)
+			continue
+		}
+		in.renderPress(rt, text, uint64(seed), renew, rq)
+	}
+	in.waiting = rest
+}
+
+func (in *instance) renderPress(rt **script.Runtime, text string, seed uint64, renew bool, rq pressReq) {
+	held := in.heldNotes()
+	if !slices.ContainsFunc(held, func(h script.HeldNote) bool { return h.Pitch == rq.key }) { // let go already: it counts
+		held = append(held, script.HeldNote{Pitch: rq.key, Velocity: rq.velocity})
+		slices.SortFunc(held, func(a, b script.HeldNote) int { return a.Pitch - b.Pitch })
+	}
+	if *rt == nil {
+		*rt = script.NewRuntime()
+	}
+	if renew {
+		seed += uint64(rq.salt)
+	}
+	(*rt).Flats = in.get(pNames) > 0.5
+	renderMu.Lock()
+	piece, err := (*rt).RenderPress(text, seed, held, rq.key, rq.velocity, rq.start)
+	renderMu.Unlock()
+	for _, line := range piece.Log {
+		in.say(sevInfo, "script: %s", line)
+	}
+	res := &pressResult{salt: rq.salt}
+	if err != nil {
+		res.err = err
+		in.mu.Lock()
+		fresh := in.lastErr != err.Error()
+		in.lastErr = err.Error()
+		in.mu.Unlock()
+		if fresh {
+			in.say(sevError, "key %d: %v", rq.key, err)
+		}
+	} else {
+		l := buildPiece(piece)
+		res.st = &store{lines: map[int64]*lineData{0: l}, length: l.length, overrun: l.overrun, epoch: 1}
+		in.mu.Lock()
+		in.lastErr = ""
+		in.mu.Unlock()
+	}
+	in.presses[rq.key].Store(res)
+}

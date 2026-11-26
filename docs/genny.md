@@ -1346,6 +1346,17 @@ bar of the transport before the piece starts (with the transport stopped the plu
 too). A script that throws for some keys (a pitch out of range) leaves those keys silent and says so in the log. `p.key` is 60 when
 the plugin is not in this mode, so the same script works in both.
 
+**Made when the key is pressed.** The pieces of the keys are made beforehand, so the script cannot know how hard the key was pressed, which
+other keys are held, or where in the song it starts. With `key render` on `on press` (and `snap` on, and a script) the piece is made
+for each press instead: `p.velocity` is the velocity played (0 to 1), `p.held`, `p.pitches` and `p.chord` are the keys held (the
+plugin waits 30 ms after a press, so the keys of a chord count as one), `p.beat` is the beat of the transport where the piece starts (a
+start, in beats, of the grid point that `snap` waits for). The notes are not scaled by the key's velocity then: the script decides.
+The wait for the snap hides the time the script takes; a piece that is made late still plays what is to come (the notes already past
+are lost), and a script that throws leaves that press silent and says so in the log. With `new each pass` on each press has its own
+seed (`seed` + its number), else every press is made with the same one. Without a snap, or with a spec, the pieces are made beforehand
+as usual (`on press` is ignored). In both modes `p.velocity` is 1 before the key is pressed, so a script that writes `velocity: p.velocity
+* 0.8` works in both.
+
 ```js
 // a chord of the key, strummed up, whatever key is played
 function render(p) {
@@ -1359,6 +1370,7 @@ function render(p) {
 | `new each pass` | every pass of the loop gets its own seed (`seed + pass`) |
 | `transpose`, `gain`, `swing (steps)` | semitones, velocity, how late the odd steps are |
 | `microtones` | pitches between two keys are played with a note tuning (off: rounded to a key) |
+| `key render` | the pieces of the keys are made `ahead`, or `on press` (needs `snap` and a script; see above) |
 | `note names` | sharps or flats: the names of notes and chords that scripts get (`p.chord`, `genny.identify`, `genny.noteName`) and the editor shows |
 | `key trigger` | off, once, loop while held: every key played starts the piece (see above) |
 | `snap` | the pieces of the keys start on: off, a sixteenth, a beat, a bar |

@@ -81,6 +81,13 @@ func (r *Runtime) RenderHeld(code string, seed uint64, held []HeldNote) (Piece, 
 // RenderKey is RenderHeld for a plugin that plays the piece for each key that is played (as the key), given to render as p.key; a
 // piece that is not played from a key is made for 60 (middle C)
 func (r *Runtime) RenderKey(code string, seed uint64, held []HeldNote, key int) (Piece, error) {
+	return r.RenderPress(code, seed, held, key, 1, 0)
+}
+
+// RenderPress is RenderKey for a key that was just played, as it was played: p.velocity (0 to 1) is how hard, p.beat the position in the
+// transport (in beats) where the piece starts, p.held the keys held (this one among them). RenderKey is made for a velocity of 1
+// (the plugin scales the notes by the real velocity) and a beat of 0
+func (r *Runtime) RenderPress(code string, seed uint64, held []HeldNote, key int, velocity, beat float64) (Piece, error) {
 	prog, err := RenderScript("script", code)
 	if err != nil {
 		return Piece{}, err
@@ -141,6 +148,8 @@ func (r *Runtime) RenderKey(code string, seed uint64, held []HeldNote, key int) 
 	_ = arg.Set("seed", seed)
 	_ = arg.Set("stepsPerBeat", 4)
 	_ = arg.Set("key", key)
+	_ = arg.Set("velocity", velocity)
+	_ = arg.Set("beat", beat)
 	notes, pitches := make([]any, len(held)), make([]any, len(held))
 	for i, h := range held {
 		n := vm.NewObject()
