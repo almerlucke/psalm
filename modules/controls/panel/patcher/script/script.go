@@ -3,6 +3,7 @@ package script
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -373,7 +374,17 @@ func (s *Script) newAPI() *goja.Object {
 	set("set", func(call goja.FunctionCall) goja.Value {
 		msg := psalm.Message{}
 		add := func(key string, v goja.Value) {
-			switch x := v.Export().(type) {
+			exported := v.Export()
+			// the list a generator's take() gives is a list of values of the script, not of Go values
+			if o, ok := v.(*goja.Object); ok && o.ClassName() == "Array" {
+				n := int(o.Get("length").ToInteger())
+				list := make([]any, 0, min(n, 4097))
+				for i := 0; i < n && i <= 4096; i++ {
+					list = append(list, o.Get(strconv.Itoa(i)).Export())
+				}
+				exported = list
+			}
+			switch x := exported.(type) {
 			case float64:
 				msg[key] = x
 			case int64:

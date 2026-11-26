@@ -278,13 +278,17 @@ function trigger(ev) {
 		t.Errorf("the settings come before the notes of their tick: %v", r.rec.order[:4])
 	}
 	// a list of numbers goes as it is (a granular synth's positionSeq)
-	r.code(s, `function trigger() { set({positionSeq: [0.1, 2, 3], scale: "minor"}) }`)
+	r.code(s, `const g = genny.rwalk(0.5, 0, 1, 0.1)
+function trigger() { set({positionSeq: [0.1, 2, 3], panSeq: g.take(4), scale: "minor"}) }`)
 	r.run(0.2)
 	if st := r.status(s); strings.HasPrefix(st, "error") {
 		t.Errorf("a list of numbers: %s", st)
 	}
 	if l, ok := r.rec.settings[len(r.rec.settings)-1]["positionSeq"].([]float64); !ok || len(l) != 3 || l[0] != 0.1 || l[1] != 2 {
 		t.Errorf("a list is sent as numbers: %v", r.rec.settings[len(r.rec.settings)-1]["positionSeq"])
+	}
+	if l, ok := r.rec.settings[len(r.rec.settings)-1]["panSeq"].([]float64); !ok || len(l) != 4 {
+		t.Errorf("the take of a generator is a list too: %v", r.rec.settings[len(r.rec.settings)-1]["panSeq"])
 	}
 	for _, code := range []string{`function trigger() { set("chainA", "wobble 3") }`, `function trigger() { set("x", [1, "a"]) }`, `function trigger() { set("x", {a: 1}) }`, `function trigger() { set("x") }`, `function trigger() { set() }`} {
 		r.code(s, code)
