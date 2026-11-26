@@ -365,43 +365,6 @@ func TestLogsErrorsAndNews(t *testing.T) {
 	wait(t, "the news in the log file", func() bool { return strings.Contains(readLog(), "2 notes in 4 beats") })
 }
 
-// an instance with nothing else to go by plays a file of its own, made from the demo, and plays it again when it is edited
-func TestRunPlaysItsOwnFile(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("GENNY_SPEC", "")
-	in := newInstance()
-	in.stop, in.done = make(chan struct{}), make(chan struct{})
-	go in.run()
-	defer func() { close(in.stop); <-in.done }()
-
-	wait(t, "the demo", func() bool { return in.store.Load() != nil })
-	first := in.store.Load()
-	if len(first.lines[0].events) < 100 {
-		t.Fatalf("%d notes of the demo", len(first.lines[0].events))
-	}
-	files, _ := filepath.Glob(filepath.Join(dir, "psalm", "genny-*.json"))
-	if len(files) != 1 {
-		t.Fatalf("files: %v", files)
-	}
-	js := filepath.Join(dir, "psalm", "genny-mine.js")
-	if err := in.switchFile("genny-mine.js"); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(js, []byte(`function render() { return [{pitch: 61.5, start: 0, duration: 2}] }`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	future := time.Now().Add(2 * time.Second)
-	_ = os.Chtimes(js, future, future)
-	wait(t, "the script", func() bool {
-		st := in.store.Load()
-		return st != first && len(st.lines[0].events) == 1 && st.lines[0].events[0].pitch == 61.5
-	})
-	if data, _ := os.ReadFile(js + ".log"); !strings.Contains(string(data), "1 notes in 4 beats") {
-		t.Fatalf("log of the script:\n%s", data)
-	}
-}
-
 // a project keeps its copy of the file it was saved with, but plays another file when that one is there
 func TestProjectPlaysAnotherFile(t *testing.T) {
 	dir := t.TempDir()

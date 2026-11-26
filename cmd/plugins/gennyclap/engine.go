@@ -1,9 +1,7 @@
 package main
 
 import (
-	"crypto/rand"
 	_ "embed"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -198,7 +196,8 @@ type instance struct {
 	fromSave  bool // the spec is that of the saved project, the file counts when it changes
 	specGen   uint64
 	lastErr   string
-	pinned    bool     // the file is the instance's own (chosen, or switched to), not looked for again
+	pinned    bool     // the file (or none) is chosen, not looked for again
+	lostPath  string   // the file the project was saved with when it is not there (the project's copy of the text plays)
 	savedPath string   // the file the project was saved with
 	handle    int      // of the instance, for the host log
 	logLines  []string // what it said, the last ones (the file next to the spec has them)
@@ -267,10 +266,9 @@ func configDir() string {
 	return filepath.Join(dir, "psalm")
 }
 
-// chooseFile is the file an instance plays, and whether it is its own for good: $GENNY_SPEC when it is set (for all instances, looked at
-// again each time); the file the project was saved with, when it is still there; else a file of its own, genny-xxxx.js in the folder
-// of the plugin, that starts as the text the project was saved with, or else as a copy of genny.js or genny.json there (what earlier
-// versions played for all), or else as the demo. The instances of a host each play and edit their own file
+// chooseFile is the file an instance is linked to, and whether that is for good: $GENNY_SPEC when it is set (for all instances, looked
+// at again each time); else the file the project was saved with, when it is still there; else none. A plugin without a file is
+// "untitled": it plays the text the project saved (or the demo), and a file only comes into being when the person saves it as one
 func (in *instance) chooseFile() (string, bool) {
 	if p := os.Getenv("GENNY_SPEC"); p != "" {
 		return p, false
@@ -278,61 +276,107 @@ func (in *instance) chooseFile() (string, bool) {
 	if in.savedPath != "" && fileExists(in.savedPath) {
 		return in.savedPath, true
 	}
-	dir := configDir()
-	if dir == "" {
-		return "", false
-	}
-	ext, text := ".json", in.text
-	switch {
-	case text != "":
-		if in.isScript {
-			ext = ".js"
-		}
-	default:
-		if b, err := os.ReadFile(filepath.Join(dir, "genny.js")); err == nil {
-			ext, text = ".js", string(b)
-		} else if b, err := os.ReadFile(filepath.Join(dir, "genny.json")); err == nil {
-			text = string(b)
-		} else {
-			text = defaultSpec
-		}
-	}
-	for range 100 {
-		var b [2]byte
-		_, _ = rand.Read(b[:])
-		path := filepath.Join(dir, "genny-"+hex.EncodeToString(b[:])+ext)
-		if fileExists(path) {
-			continue
-		}
-		_ = os.MkdirAll(dir, 0o755)
-		if os.WriteFile(path, []byte(text), 0o644) == nil {
-			return path, true
-		}
-		break
-	}
-	return "", false
+	in.lostPath, in.savedPath = in.savedPath, ""
+	return "", true
 }
 
 // fileNameOK is whether a name can be a file of the plugin: a plain name of letters, digits, dots, dashes, ending in .js or .json
 var fileNameOK = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,60}\.(js|json)$`)
 
-// switchFile makes the instance play another file of the folder of the plugin (one that is not there yet is made as a copy of the
-// text that plays)
-func (in *instance) switchFile(name string) error {
+func checkName(name string) error {
 	if !fileNameOK.MatchString(name) || strings.Contains(name, "..") {
 		return fmt.Errorf("%q is not a name for a file: letters, digits, . - _ and it ends in .js or .json", name)
 	}
-	in.mu.Lock()
-	if in.path == "" {
-		in.mu.Unlock()
-		return fmt.Errorf("there is no folder for the files of the plugin")
+	return nil
+}
+
+// dir is the folder the files of the plugin are in: that of the file it plays, else the folder of the plugin
+func (in *instance) dir() string {
+	if in.path != "" {
+		return filepath.Dir(in.path)
 	}
-	path := filepath.Join(filepath.Dir(in.path), name)
-	if !fileExists(path) {
-		if err := os.WriteFile(path, []byte(in.text), 0o644); err != nil {
-			in.mu.Unlock()
+	return configDir()
+}
+
+// writeFile writes a file beside its place and moves it there, so a half-written file is never read
+func writeFile(path, text string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".new"
+	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// save makes the plugin play a text. A plugin that plays a file writes it there as well; one that does not (untitled) only keeps the
+// text, in the project. script says what the text is when there is no file name to tell
+func (in *instance) save(text string, script bool) error {
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	if in.path != "" {
+		if err := writeFile(in.path, text); err != nil {
 			return err
 		}
+		if fi, err := os.Stat(in.path); err == nil {
+			in.modTime = fi.ModTime()
+		}
+		script = isScriptFile(in.path)
+	}
+	if text != in.text || script != in.isScript {
+		in.text, in.isScript, in.specGen = text, script, in.specGen+1
+	}
+	in.fromSave = false
+	return nil
+}
+
+// saveAs writes the text to a file of the folder of the plugin and plays from that file from now on. A file that is there is not
+// written over unless overwrite is set (the error says it exists)
+func (in *instance) saveAs(name, text string, overwrite bool) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	dir := in.dir()
+	if dir == "" {
+		return fmt.Errorf("there is no folder for the files of the plugin")
+	}
+	path := filepath.Join(dir, name)
+	if fileExists(path) && !overwrite {
+		return errExists
+	}
+	if err := writeFile(path, text); err != nil {
+		return err
+	}
+	in.path, in.pinned, in.fromSave = path, true, false
+	in.modTime = time.Time{}
+	if fi, err := os.Stat(path); err == nil {
+		in.modTime = fi.ModTime()
+	}
+	if script := isScriptFile(path); text != in.text || script != in.isScript {
+		in.text, in.isScript, in.specGen = text, script, in.specGen+1
+	}
+	return nil
+}
+
+var errExists = errors.New("that file exists")
+
+// openFile makes the plugin play a file of the folder of the plugin, in place of its own text
+func (in *instance) openFile(name string) error {
+	if err := checkName(name); err != nil {
+		return err
+	}
+	in.mu.Lock()
+	path := filepath.Join(in.dir(), name)
+	if in.dir() == "" || !fileExists(path) {
+		in.mu.Unlock()
+		return fmt.Errorf("there is no file %s", name)
 	}
 	in.path, in.pinned, in.modTime, in.fromSave = path, true, time.Time{}, false
 	in.mu.Unlock()
@@ -341,10 +385,10 @@ func (in *instance) switchFile(name string) error {
 	return nil
 }
 
-// files are the files of the folder the instance plays from that it can switch to
+// files are the files of the folder of the plugin that it can open
 func (in *instance) files() []string {
 	in.mu.Lock()
-	dir := filepath.Dir(in.path)
+	dir := in.dir()
 	in.mu.Unlock()
 	entries, _ := os.ReadDir(dir)
 	out := []string{}
@@ -550,9 +594,16 @@ func (in *instance) run() {
 			in.loadFile()
 			if tick == 1 {
 				in.mu.Lock()
-				path := in.path
+				path, lost := in.path, in.lostPath
 				in.mu.Unlock()
-				in.say(sevInfo, "script file: %s", path)
+				switch {
+				case path != "":
+					in.say(sevInfo, "script file: %s", path)
+				case lost != "":
+					in.say(sevWarn, "the file %s of the project is not there: the copy of the project plays (save it as a file to keep it)", lost)
+				default:
+					in.say(sevInfo, "untitled: the script is kept in the project (save it as a file in the editor to reuse it)")
+				}
 				if line := editorLine(); line != "" {
 					in.say(sevInfo, "%s", line)
 				}

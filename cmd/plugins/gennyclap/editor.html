@@ -20,7 +20,9 @@ html, body { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; display: flex; flex-direction: column; }
 header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
 h1 { font-size: 15px; margin: 0; font-weight: 650; }
-.path { color: var(--dim); font: 12px ui-monospace, monospace; overflow-wrap: anywhere; }
+.name { color: var(--dim); font: 13px ui-monospace, monospace; overflow-wrap: anywhere; }
+#changed { padding: 8px 16px; background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-bottom: 1px solid var(--line); }
+#changed[hidden] { display: none; }
 .spacer { flex: 1; }
 button, select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -45,14 +47,22 @@ canvas { width: 100%; height: 220px; display: block; }
 <header>
   <h1>Genny</h1>
   <select id="plugin" hidden></select>
-  <select id="file" title="the file this plugin plays and edits" aria-label="file"></select>
-  <button id="newfile" title="a new file, a copy of this one">New…</button>
-  <span class="path" id="path"></span>
+  <span class="name" id="name" title="the file this plugin plays; untitled: the script is kept in the project only"></span>
   <span class="dirty" id="dirty"></span>
+  <select id="kind" title="what the text is (a file says it by its name)" aria-label="kind">
+    <option value="js">JavaScript</option>
+    <option value="json">JSON spec</option>
+  </select>
   <span class="spacer"></span>
+  <select id="open" title="play a file of the folder of the plugin" aria-label="open a file"></select>
+  <button id="newscript" title="a new script, kept in the project until it is saved as a file">New script</button>
+  <button id="newspec" title="a new spec, kept in the project until it is saved as a file">New spec</button>
+  <button id="saveas" title="write the text to a file; the plugin plays that file from then on">Save as…</button>
   <button id="revert" disabled>Revert</button>
   <button id="save" class="primary" disabled>Save <small>Ctrl+S</small></button>
 </header>
+<div id="changed" hidden>The file was changed on disk, and the plugin plays that version now. You have unsaved edits.
+  <button id="loadit">Load the file's version</button> <button id="keepmine">Keep my edits</button></div>
 <main>
   <section>
     <h2>Script <span class="r" id="kind"></span></h2>
@@ -81,10 +91,14 @@ const noteName = p => names[((p % 12) + 12) % 12] + (Math.floor(p / 12) - 1)
 const post = (url, method, body) => fetch(url, { method, body, headers: { 'X-Genny': '1' } })
 
 let plugin = new URLSearchParams(location.search).get('i')
-let saved = ''        // the text of the file as last read or written
+let saved = ''        // the text the plugin plays, as last read or written here
+let linked = false    // the plugin plays a file
 let lastGen = null    // the generation of the text the plugin plays
 let preview = null    // the last check
 let timer = null
+
+const isScript = () => linked ? /\.js$/.test($('name').textContent) : $('kind').value === 'js'
+const q = () => 'i=' + plugin + '&script=' + (isScript() ? 1 : 0)
 
 async function plugins() {
   const list = await (await fetch('/api/plugins')).json()
@@ -100,17 +114,19 @@ async function plugins() {
 
 async function files() {
   const f = await (await fetch('/api/files?i=' + plugin)).json()
-  const sel = $('file')
+  const sel = $('open')
   sel.innerHTML = ''
+  sel.add(new Option('Open file…', ''))
   f.files.forEach(n => sel.add(new Option(n, n)))
-  sel.value = f.current
+  sel.value = ''
 }
 
-async function switchTo(name) {
-  if ($('text').value !== saved && !confirm('Leave the unsaved changes in this file?')) { await files(); return }
-  const r = await post('/api/switch?i=' + plugin + '&name=' + encodeURIComponent(name), 'PUT', '')
-  if (!r.ok) { alert(await r.text()); await files(); return }
-  await load()
+function showState(s) {
+  linked = s.linked
+  $('name').textContent = s.file
+  $('kind').hidden = linked
+  $('kind').value = s.script ? 'js' : 'json'
+  $('kind').disabled = false
 }
 
 async function load() {
@@ -118,8 +134,8 @@ async function load() {
   const s = await (await fetch('/api/state?text=1&i=' + plugin)).json()
   $('text').value = saved = s.text
   lastGen = s.gen
-  $('path').textContent = s.path
-  $('kind').textContent = s.script ? 'JavaScript: function render(p)' : 'JSON spec'
+  showState(s)
+  $('changed').hidden = true
   dirty()
   check()
 }
@@ -128,11 +144,12 @@ function dirty() {
   const d = $('text').value !== saved
   $('dirty').textContent = d ? 'not saved' : ''
   $('save').disabled = $('revert').disabled = !d
+  $('kind').title = d ? 'what the text is' : 'what the text is (a file says it by its name)'
 }
 
 async function check() {
   const text = $('text').value
-  const r = await post('/api/check?i=' + plugin, 'POST', text)
+  const r = await post('/api/check?' + q(), 'POST', text)
   if (!r.ok) { setStatus(false, await r.text()); return }
   preview = await r.json()
   if (text !== $('text').value) return // typed on meanwhile
@@ -149,7 +166,7 @@ async function check() {
 function setStatus(ok, text) {
   const s = $('status')
   s.className = ok ? 'ok' : 'bad'
-  s.textContent = ok ? text : text
+  s.textContent = text
 }
 
 function draw() {
@@ -198,20 +215,61 @@ async function refresh() {
     }).join('')
     $('log').scrollTop = $('log').scrollHeight
     $('held').textContent = s.held.length ? s.held.map(noteName).join('  ') : 'nothing'
-    if (s.gen !== lastGen && $('text').value === saved) { await load() } // the file changed (edited elsewhere): shown when nothing is typed
-    else if (s.gen !== lastGen) { lastGen = s.gen }
+    if (s.gen !== lastGen) {
+      // the plugin plays another text (the file was changed on disk, or another page saved): shown unless there are edits here
+      if ($('text').value === saved) await load()
+      else { lastGen = s.gen; $('changed').hidden = false }
+    }
   } catch (e) { /* the host may be gone */ }
 }
 
 async function save() {
   if ($('save').disabled) return
   const text = $('text').value
-  const r = await post('/api/save?i=' + plugin, 'PUT', text)
+  const r = await post('/api/save?' + q(), 'PUT', text)
   if (!r.ok) { setStatus(false, await r.text()); return }
   saved = text
+  $('changed').hidden = true
   const s = await (await fetch('/api/state?i=' + plugin)).json()
   lastGen = s.gen
   dirty()
+}
+
+async function saveAs() {
+  let name = prompt('Save as a file (letters, digits, . - _ ; it ends in .js or .json)', linked ? $('name').textContent : (isScript() ? 'my-script.js' : 'my-spec.json'))
+  if (!name) return
+  if (!/\.(js|json)$/.test(name)) name += isScript() ? '.js' : '.json'
+  const text = $('text').value
+  let r = await post('/api/saveas?i=' + plugin + '&name=' + encodeURIComponent(name), 'PUT', text)
+  if (r.status === 409) {
+    if (!confirm(name + ' exists. Write over it?')) return
+    r = await post('/api/saveas?i=' + plugin + '&name=' + encodeURIComponent(name) + '&overwrite=1', 'PUT', text)
+  }
+  if (!r.ok) { alert(await r.text()); return }
+  await plugins()
+  await load()
+}
+
+async function openFile(name) {
+  if (!name) return
+  if ($('text').value !== saved && !confirm('Leave the unsaved edits?')) { await files(); return }
+  const r = await post('/api/open?i=' + plugin + '&name=' + encodeURIComponent(name), 'PUT', '')
+  if (!r.ok) { alert(await r.text()); await files(); return }
+  await plugins()
+  await load()
+}
+
+// a new text starts in the editor; the plugin plays it when it is saved. It stays untitled (kept in the project) until saved as a file
+async function newText(kind) {
+  if ($('text').value !== saved && !confirm('Leave the unsaved edits?')) return
+  const t = await (await fetch('/api/template?kind=' + kind)).json()
+  linked = false
+  $('name').textContent = 'untitled'
+  $('kind').hidden = false
+  $('kind').value = kind
+  $('text').value = t.text
+  dirty()
+  check()
 }
 
 $('text').addEventListener('input', () => { dirty(); clearTimeout(timer); timer = setTimeout(check, 350) })
@@ -225,14 +283,14 @@ $('text').addEventListener('keydown', e => {
 })
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save() } })
 $('save').onclick = save
+$('saveas').onclick = saveAs
 $('revert').onclick = () => { $('text').value = saved; dirty(); check() }
-$('file').onchange = e => switchTo(e.target.value)
-$('newfile').onclick = () => {
-  let name = prompt('Name of the new file (a copy of the one that plays). Letters, digits, . - _ ; it ends in .js (a script) or .json (a spec)', 'genny-mine.js')
-  if (!name) return
-  if (!/\.(js|json)$/.test(name)) name += '.js'
-  switchTo(name)
-}
+$('open').onchange = e => openFile(e.target.value)
+$('newscript').onclick = () => newText('js')
+$('newspec').onclick = () => newText('json')
+$('kind').onchange = () => { dirty(); check() }
+$('loadit').onclick = load
+$('keepmine').onclick = () => { $('changed').hidden = true }
 $('plugin').onchange = e => { plugin = e.target.value; load() }
 addEventListener('resize', draw)
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw)

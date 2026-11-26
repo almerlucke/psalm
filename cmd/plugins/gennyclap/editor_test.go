@@ -82,7 +82,7 @@ func TestEditor(t *testing.T) {
 
 	// a save writes the file and is played at once
 	text := `function render(p) { return [{pitch: 72, start: 0, duration: 1}] }`
-	if w := call(t, h, "PUT", "/api/save?i=5", text, true); w.Code != 200 {
+	if w := call(t, h, "PUT", "/api/save?i=5&script=1", text, true); w.Code != 200 {
 		t.Fatalf("save: %d %s", w.Code, w.Body.String())
 	}
 	if data, _ := os.ReadFile(path); string(data) != text {
@@ -109,22 +109,34 @@ func TestEditor(t *testing.T) {
 		t.Fatalf("default spec: %v", r)
 	}
 
-	// the files, and switching to another (a new one is a copy of what plays)
+	// the files: save as, open
 	files := decode(t, call(t, h, "GET", "/api/files?i=5", "", false))
 	if files["current"] != "other.json" {
 		t.Fatalf("files: %v", files)
 	}
-	if w := call(t, h, "PUT", "/api/switch?i=5&name=second.js", "", true); w.Code != 200 {
-		t.Fatalf("switch: %d %s", w.Code, w.Body.String())
+	if w := call(t, h, "PUT", "/api/saveas?i=5&name=second.js", textA, true); w.Code != 200 {
+		t.Fatalf("save as: %d %s", w.Code, w.Body.String())
 	}
-	if filepath.Base(in.pathNow()) != "second.js" {
-		t.Fatalf("plays %q", in.pathNow())
+	if filepath.Base(in.pathNow()) != "second.js" || in.text != textA || !in.isScript {
+		t.Fatalf("plays %q %q", in.pathNow(), in.text)
 	}
-	if w := call(t, h, "PUT", "/api/switch?i=5&name=../evil.js", "", true); w.Code != 400 {
+	if w := call(t, h, "PUT", "/api/saveas?i=5&name=second.js", textB, true); w.Code != 409 {
+		t.Fatalf("over a file: %d", w.Code)
+	}
+	if w := call(t, h, "PUT", "/api/saveas?i=5&name=second.js&overwrite=1", textB, true); w.Code != 200 {
+		t.Fatalf("overwrite: %d", w.Code)
+	}
+	if w := call(t, h, "PUT", "/api/open?i=5&name=other.json", "", true); w.Code != 400 {
+		t.Fatalf("a file that is not there: %d", w.Code) // other.json was never written in this test
+	}
+	if w := call(t, h, "PUT", "/api/saveas?i=5&name=../evil.js", "x", true); w.Code != 400 {
 		t.Fatalf("a bad name: %d", w.Code)
 	}
-	if w := call(t, h, "PUT", "/api/switch?i=5&name=x.js", "", false); w.Code != 403 {
+	if w := call(t, h, "PUT", "/api/open?i=5&name=x.js", "", false); w.Code != 403 {
 		t.Fatalf("without the header: %d", w.Code)
+	}
+	if tpl := decode(t, call(t, h, "GET", "/api/template?kind=js", "", false)); !strings.Contains(tpl["text"].(string), "render") {
+		t.Fatalf("template: %v", tpl)
 	}
 
 	// no such plugin
@@ -171,5 +183,33 @@ func TestEditorURL(t *testing.T) {
 	defer ln.Close()
 	if a := ln.Addr().String(); !strings.HasPrefix(a, "127.0.0.1:") {
 		t.Fatalf("%q", a)
+	}
+}
+
+// an untitled plugin: checked and saved as the page says (script=1), no file is written
+func TestEditorUntitled(t *testing.T) {
+	config := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", config)
+	t.Setenv("GENNY_SPEC", "")
+	in := newInstance()
+	instances[7].Store(in)
+	defer instances[7].Store(nil)
+	in.loadFile()
+	h := editorHandler(host)
+	if r := decode(t, call(t, h, "POST", "/api/check?i=7&script=1", textA, true)); r["ok"] != true || r["count"] != 1.0 {
+		t.Fatalf("script: %v", r)
+	}
+	if r := decode(t, call(t, h, "POST", "/api/check?i=7&script=0", textA, true)); r["ok"] != false {
+		t.Fatalf("the same text as a spec: %v", r)
+	}
+	if w := call(t, h, "PUT", "/api/save?i=7&script=1", textA, true); w.Code != 200 || !in.isScript || in.text != textA {
+		t.Fatalf("save: %d %q", w.Code, in.text)
+	}
+	st := decode(t, call(t, h, "GET", "/api/state?i=7", "", false))
+	if st["linked"] != false || st["file"] != "untitled" {
+		t.Fatalf("state: %v", st)
+	}
+	if entries, _ := os.ReadDir(config); len(entries) != 0 {
+		t.Fatalf("files: %v", entries)
 	}
 }

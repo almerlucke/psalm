@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -100,7 +101,7 @@ func editorHandler(addr string) http.Handler {
 		for i := range instances {
 			if in := instances[i].Load(); in != nil {
 				in.mu.Lock()
-				out = append(out, map[string]any{"i": i, "path": in.path, "file": filepath.Base(in.path), "script": in.isScript})
+				out = append(out, map[string]any{"i": i, "path": in.path, "file": fileLabel(in.path), "script": in.isScript})
 				in.mu.Unlock()
 			}
 		}
@@ -113,7 +114,7 @@ func editorHandler(addr string) http.Handler {
 			return
 		}
 		in.mu.Lock()
-		st := map[string]any{"path": in.path, "script": in.isScript, "gen": in.specGen, "log": append([]string(nil), in.logLines...), "error": in.lastErr}
+		st := map[string]any{"path": in.path, "file": fileLabel(in.path), "linked": in.path != "", "script": in.isScript, "gen": in.specGen, "log": append([]string(nil), in.logLines...), "error": in.lastErr}
 		if r.URL.Query().Get("text") == "1" {
 			st["text"] = in.text
 		}
@@ -125,16 +126,22 @@ func editorHandler(addr string) http.Handler {
 		st["held"] = held
 		reply(w, st)
 	})
-	// the files of the folder the plugin plays from, and the one it plays
+	// the files the plugin can open, and the one it plays ("" when it has none)
 	mux.HandleFunc("/api/files", func(w http.ResponseWriter, r *http.Request) {
 		in := instanceOf(w, r)
 		if in == nil {
 			return
 		}
-		reply(w, map[string]any{"current": filepath.Base(in.pathNow()), "files": in.files()})
+		in.mu.Lock()
+		current := ""
+		if in.path != "" {
+			current = filepath.Base(in.path)
+		}
+		in.mu.Unlock()
+		reply(w, map[string]any{"current": current, "files": in.files()})
 	})
-	// switch: the plugin plays another file from now on (a new one starts as a copy of what plays)
-	mux.HandleFunc("/api/switch", func(w http.ResponseWriter, r *http.Request) {
+	// open: the plugin plays a file from now on, in place of its own text
+	mux.HandleFunc("/api/open", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut {
 			fail(w, http.StatusMethodNotAllowed, "PUT")
 			return
@@ -143,11 +150,42 @@ func editorHandler(addr string) http.Handler {
 		if in == nil {
 			return
 		}
-		if err := in.switchFile(r.URL.Query().Get("name")); err != nil {
+		if err := in.openFile(r.URL.Query().Get("name")); err != nil {
 			fail(w, http.StatusBadRequest, "%v", err)
 			return
 		}
-		reply(w, map[string]any{"switched": true})
+		reply(w, map[string]any{"opened": true})
+	})
+	// saveas: the text in the body is written to a file, which the plugin plays from now on (409 when the file is there and overwrite is not 1)
+	mux.HandleFunc("/api/saveas", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			fail(w, http.StatusMethodNotAllowed, "PUT")
+			return
+		}
+		in := instanceOf(w, r)
+		if in == nil {
+			return
+		}
+		text, ok := bodyText(w, r)
+		if !ok {
+			return
+		}
+		switch err := in.saveAs(r.URL.Query().Get("name"), text, r.URL.Query().Get("overwrite") == "1"); {
+		case errors.Is(err, errExists):
+			fail(w, http.StatusConflict, "%v", err)
+		case err != nil:
+			fail(w, http.StatusBadRequest, "%v", err)
+		default:
+			reply(w, map[string]any{"saved": true})
+		}
+	})
+	// template: what a new script or spec starts as
+	mux.HandleFunc("/api/template", func(w http.ResponseWriter, r *http.Request) {
+		text := defaultSpec
+		if r.URL.Query().Get("kind") == "js" {
+			text = defaultScript
+		}
+		reply(w, map[string]any{"text": text})
 	})
 	// check: the text in the body is rendered the way the plugin would (with the seed and the notes held now) without playing it
 	mux.HandleFunc("/api/check", func(w http.ResponseWriter, r *http.Request) {
@@ -159,7 +197,7 @@ func editorHandler(addr string) http.Handler {
 		if !ok {
 			return
 		}
-		reply(w, in.check(text, isScriptFile(in.pathNow())))
+		reply(w, in.check(text, in.kindOf(r.URL.Query().Get("script"))))
 	})
 	// save: the text is written to the file the plugin reads and played from now on
 	mux.HandleFunc("/api/save", func(w http.ResponseWriter, r *http.Request) {
@@ -175,11 +213,11 @@ func editorHandler(addr string) http.Handler {
 		if !ok {
 			return
 		}
-		if err := in.save(text); err != nil {
+		if err := in.save(text, r.URL.Query().Get("script") == "1"); err != nil {
 			fail(w, http.StatusInternalServerError, "%v", err)
 			return
 		}
-		reply(w, map[string]any{"saved": true})
+		reply(w, map[string]any{"saved": true, "linked": in.pathNow() != ""})
 	})
 	return guard(addr, mux)
 }
@@ -212,10 +250,26 @@ func bodyText(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return string(data), true
 }
 
+// fileLabel is how the page names a file: its name, or untitled
+func fileLabel(path string) string {
+	if path == "" {
+		return "untitled"
+	}
+	return filepath.Base(path)
+}
+
 func (in *instance) pathNow() string {
 	in.mu.Lock()
 	defer in.mu.Unlock()
 	return in.path
+}
+
+// kindOf is whether the text of the editor is a script: by the name of the file the plugin plays, else as the page says (script=1)
+func (in *instance) kindOf(script string) bool {
+	if p := in.pathNow(); p != "" {
+		return isScriptFile(p)
+	}
+	return script == "1"
 }
 
 // check renders text the way the plugin would and describes what it makes: { ok, error, length, notes: [[start, end, pitch,
@@ -249,35 +303,6 @@ func (in *instance) check(text string, isScript bool) map[string]any {
 		notes = append(notes, [5]float64{e.start, e.end, e.pitch, e.vel, float64(e.channel)})
 	}
 	return map[string]any{"ok": true, "length": l.length, "count": len(l.events), "notes": notes, "log": logs}
-}
-
-// save writes the text to the file the plugin reads (written beside it and moved over it, so a half-written file is never read) and
-// plays it from now on
-func (in *instance) save(text string) error {
-	in.mu.Lock()
-	defer in.mu.Unlock()
-	if in.path == "" {
-		return fmt.Errorf("there is no file to save to")
-	}
-	if err := os.MkdirAll(filepath.Dir(in.path), 0o755); err != nil {
-		return err
-	}
-	tmp := in.path + ".new"
-	if err := os.WriteFile(tmp, []byte(text), 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, in.path); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if fi, err := os.Stat(in.path); err == nil {
-		in.modTime = fi.ModTime()
-	}
-	if text != in.text || isScriptFile(in.path) != in.isScript {
-		in.text, in.isScript, in.specGen = text, isScriptFile(in.path), in.specGen+1
-	}
-	in.fromSave = false
-	return nil
 }
 
 // editorLine is what the log says about the editor, once for each plugin
