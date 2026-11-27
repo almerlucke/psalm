@@ -45,9 +45,9 @@ function trigger(ev) {
   }
   set({
     sound: cfg.sound, scan: 0, spray: cfg.spray, density: cfg.density, grainSize: cfg.size,
-    octave: cfg.octave || 0,
+    octave: cfg.octave || (high ? 0.1 : 0.03),
     // every grain has a filter, opened a little and closed by a slow lfo (a breath of about 14 s); the high choir has a soft echo of itself
-    filter: 1, cutoff: cfg.cut || (high ? 5000 : 2800), resonance: 0.1, keyTrack: 0.3,
+    filter: 1, cutoff: cfg.cut || (high ? 7500 : 3800), resonance: 0.1, keyTrack: 0.3,
     mod1Source: 1, mod1Dest: 5, mod1Amount: 0.3, mod1Rate: high ? 0.06 : 0.08,
     feedback: cfg.echo || 0, feedbackTime: 0.9, feedbackPitch: 0,
     positionSeq: shared.rot(pos, count * 7), pitchSeq: shared.rot(fix, count * 7),

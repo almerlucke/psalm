@@ -13,11 +13,17 @@ const high = shared.line(`
   B5 - - - - - A5 - - - F#5 - - - E5 -
   D5 - - - - - - - . . . . . . . .
 `)
+// one bell a bar, high and alone
+const sparse = shared.line(`
+  A5 - - - - - - - - - - - - - - -
+  . . . . . . . . . . . . . . . .
+`)
 const plan = {
-  Wind:       { line: figure, on: bar => bar >= 6, preset: "glassBell", vel: 0.45 },
-  Fire:       { line: figure, preset: "churchBell", vel: 0.5 },
-  Indwelling: { line: high, preset: "glassBell", vel: 0.45 },
-  Glory:      { line: high, up: 2, preset: "churchBell", vel: 0.5 },
+  Waiting:    { line: sparse, on: bar => bar >= 3, preset: "glassBell", vel: 0.4 },
+  Wind:       { line: figure, on: bar => bar >= 2, preset: "glassBell", vel: 0.5 },
+  Fire:       { line: high, preset: "glassBell", vel: 0.55, twin: 12 },
+  Indwelling: { line: high, preset: "glassBell", vel: 0.5, twin: 12 },
+  Glory:      { line: high, up: 2, preset: "glassBell", vel: 0.55, twin: 12 },
   Amen:       { line: figure, on: bar => bar < 6, preset: "glassBell", vel: 0.4 },
 }
 let part = null
@@ -26,5 +32,7 @@ function trigger(ev) {
   if (!part || (part.on && !part.on(song.bar))) return
   const n = part.line[(song.bar * 16 + ev.step % 16) % part.line.length]
   if (!n) return
-  note(shared.fit(n.pitch + (part.up || 0), shared.chordFor(song.section, song.bar)), part.vel, Math.max(1, n.len - 0.5))
+  const p = shared.fit(n.pitch + (part.up || 0), shared.chordFor(song.section, song.bar))
+  // a twin an octave up, a little softer: the strike that rings twice
+  note(part.twin ? [p, p + part.twin] : p, part.vel, Math.max(1, n.len - 0.5))
 }

@@ -35,6 +35,9 @@ var droneScript string
 //go:embed scripts/halo.js
 var haloScript string
 
+//go:embed scripts/chimes.js
+var chimesScript string
+
 //go:embed scripts/pulse.js
 var pulseScript string
 
@@ -128,6 +131,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		{name: "halo", code: haloScript, kind: "grains", preset: "glassKeys"},
 		{name: "cloud", code: cloudScript, kind: "grains", preset: "frozenDrone"},
 		{name: "sparkle", code: sparkleScript, kind: "grains", preset: "choirPad"},
+		{name: "chimes", code: chimesScript, kind: "grains", preset: "glassKeys"},
 		{name: "pulse", code: pulseScript, kind: "grains", preset: "stutter"},
 		{name: "breath", code: breathScript, kind: "grains", preset: "frozenDrone"},
 		{name: "pad", code: padScript, kind: "shaper", preset: "airPad", buffer: "pad"},
@@ -166,6 +170,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	for i, name := range []string{"low", "high", "drone", "halo", "cloud", "sparkle", "pulse", "breath"} {
 		connect(patcher.Cable{From: ids.synths[name], To: mixer, In: i})
 	}
+	connect(patcher.Cable{From: ids.synths["chimes"], To: mixer, In: 10})
 	connect(patcher.Cable{From: bufs[0], To: mixer, In: 8})
 	connect(patcher.Cable{From: bufs[1], To: mixer, In: 9})
 	connect(patcher.Cable{From: mixer, Out: 1, To: hall})
@@ -193,6 +198,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"window": 1, "jitter": 0.6, "level": 0})
 	pt.SettingsOf(ids.synths["sparkle"]).Apply(map[string]float64{"source": 2, "ampAttack": 600, "ampDecay": 300, "ampSustain": 1, "ampRelease": 4000,
 		"window": 1, "jitter": 0.5, "level": 0})
+	pt.SettingsOf(ids.synths["chimes"]).Apply(map[string]float64{"source": 1, "wave": 0, "ampAttack": 3, "ampDecay": 300, "ampSustain": 1, "ampRelease": 1500, "level": 0})
 	pt.SettingsOf(ids.synths["pulse"]).Apply(map[string]float64{"source": 0, "ampAttack": 300, "ampDecay": 300, "ampSustain": 1, "ampRelease": 1500, "level": 0, "reverse": 0})
 	pt.SettingsOf(ids.synths["breath"]).Apply(map[string]float64{"source": 0, "ampAttack": 2500, "ampDecay": 300, "ampSustain": 1, "ampRelease": 4000, "level": 0})
 	// the mix: low, high, drone, halo, cloud, sparkle, then the two buffers (not heard); the send is the hall
@@ -203,9 +209,10 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"level4": 0.4, "pan4": 0, "sendA4": 0.5,
 		"level5": 2, "pan5": 0, "sendA5": 0.4,
 		"level6": 4, "pan6": 0, "sendA6": 0.5,
-		"level7": 1, "pan7": 0.2, "sendA7": 0.5,
+		"level7": 0.4, "pan7": 0.2, "sendA7": 0.5,
 		"level8": 2, "pan8": 0, "sendA8": 0.5,
 		"level9": 0, "level10": 0,
+		"level11": 0.9, "pan11": 0, "sendA11": 0.6,
 		"returnA": 1,
 	})
 	// the hall: a big room, mostly wet
