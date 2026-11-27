@@ -44,6 +44,9 @@ var pulseScript string
 //go:embed scripts/hands.js
 var handsScript string
 
+//go:embed scripts/piano.js
+var pianoScript string
+
 //go:embed scripts/breath.js
 var breathScript string
 
@@ -137,6 +140,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		{name: "chimes", code: chimesScript, kind: "grains", preset: "glassKeys"},
 		{name: "pulse", code: pulseScript, kind: "grains", preset: "stutter"},
 		{name: "hands", code: handsScript, kind: "grains", preset: "stutter"},
+		{name: "piano", code: pianoScript, kind: "piano", preset: "grand"},
 		{name: "breath", code: breathScript, kind: "grains", preset: "frozenDrone"},
 		{name: "pad", code: padScript, kind: "shaper", preset: "airPad", buffer: "pad"},
 		{name: "bells", code: bellsScript, kind: "shaper", preset: "churchBell", buffer: "bells"},
@@ -176,6 +180,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	}
 	connect(patcher.Cable{From: ids.synths["chimes"], To: mixer, In: 10})
 	connect(patcher.Cable{From: ids.synths["hands"], To: mixer, In: 11})
+	connect(patcher.Cable{From: ids.synths["piano"], To: mixer, In: 12})
 	connect(patcher.Cable{From: bufs[0], To: mixer, In: 8})
 	connect(patcher.Cable{From: bufs[1], To: mixer, In: 9})
 	connect(patcher.Cable{From: mixer, Out: 1, To: hall})
@@ -221,6 +226,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"level9": 0, "level10": 0,
 		"level11": 0.9, "pan11": 0, "sendA11": 0.6,
 		"level12": 1.2, "pan12": -0.2, "sendA12": 0.45,
+		"level13": 1.6, "pan13": 0, "sendA13": 0.4,
 		"returnA": 1,
 	})
 	// the hall: a big room, mostly wet

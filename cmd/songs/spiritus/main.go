@@ -74,7 +74,7 @@ func main() {
 		log.Fatal(err)
 	}
 	master := mixer.New(p)
-	master.Channel("patch", pt.Out(), mixer.StripConfig{Volume: 2.8})
+	master.Channel("patch", pt.Out(), mixer.StripConfig{Volume: 2.3})
 	p.Out(master.Master())
 
 	if *profile {
