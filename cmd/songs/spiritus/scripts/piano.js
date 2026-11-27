@@ -33,7 +33,7 @@ const plan = {
   Amen:       { cells: ["sparse", "one"], vel: 0.42, on: bar => bar < 10, grid: { bass: [0], stab: [] }, range: [62, 81], grace: 0, fade: true },
 }
 const arc = [0.85, 1, 1.12, 0.92] // the swell of the four bars of a phrase
-const gain = { Waiting: 22, Wind: 22, Fire: 20, Indwelling: 29, Glory: 13, Amen: 24 }
+const gain = { Waiting: 22, Wind: 22, Fire: 20, Indwelling: 29, Glory: 9, Amen: 24 }
 let cfg = null, last = null, cur = 72, bar = null
 function section(name) { cfg = plan[name]; last = null; cur = 72; bar = null; set({ level: gain[name] || 16 }) }
 
