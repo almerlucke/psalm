@@ -21,9 +21,9 @@ const sparse = shared.line(`
 const plan = {
   Waiting:    { line: sparse, on: bar => bar >= 3, preset: "glassBell", vel: 0.4 },
   Wind:       { line: figure, on: bar => bar >= 2, preset: "glassBell", vel: 0.5 },
-  Fire:       { line: high, preset: "glassBell", vel: 0.55, twin: 12 },
-  Indwelling: { line: high, preset: "glassBell", vel: 0.5, twin: 12 },
-  Glory:      { line: high, up: 2, preset: "glassBell", vel: 0.55, twin: 12 },
+  Fire:       { line: high, preset: "glassBell", vel: 0.55, twin: 7 },
+  Indwelling: { line: high, preset: "glassBell", vel: 0.5, twin: 7 },
+  Glory:      { line: high, up: 2, preset: "glassBell", vel: 0.55, twin: 7 },
   Amen:       { line: figure, on: bar => bar < 6, preset: "glassBell", vel: 0.4 },
 }
 let part = null

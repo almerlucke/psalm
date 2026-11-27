@@ -21,8 +21,8 @@ function trigger(ev) {
   const root = song.section === "Glory" ? 64 : 62
   set({
     level: lerp(cfg.level[0], cfg.level[1]), density: cfg.density, grainSize: 700, jitter: 0.9, window: 1, shape: 1, wave: 0, scan: 0,
-    scale: "pentatonic", scaleRoot: root, stack: [0, 12, 19], stereoSpread: 1, spray: 0, pitchSeq: walk.take(32),
-    filter: 1, cutoff: 9000, resonance: 0.1,
+    scale: "pentatonic", scaleRoot: root, stack: [0, 7, 12], stereoSpread: 1, spray: 0, pitchSeq: walk.take(32),
+    filter: 1, cutoff: 5000, resonance: 0.1,
   })
-  if (song.bar % 4 === 0) note(root + 12, 0.6, Math.min(4, song.bars - song.bar) * 16 - 0.5)
+  if (song.bar % 4 === 0) note(root, 0.55, Math.min(4, song.bars - song.bar) * 16 - 0.5)
 }

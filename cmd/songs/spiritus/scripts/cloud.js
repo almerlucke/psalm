@@ -19,9 +19,9 @@ function trigger(ev) {
     level: lerp(cfg.level[0], cfg.level[1]), position: lerp(cfg.pos[0], cfg.pos[1]), grainSize: cfg.size, density: cfg.density,
     spray: cfg.spray, octave: cfg.octave, sync: cfg.sync, scan: 0, stereoSpread: 1,
     // a filter that breathes (an lfo on the cutoff) and a look-back that drifts slowly (an lfo on the position)
-    filter: 1, cutoff: 5500, resonance: 0.1, mod1Source: 1, mod1Dest: 5, mod1Amount: 0.3, mod1Rate: 0.05,
+    filter: 1, cutoff: 4500, resonance: 0.1, mod1Source: 1, mod1Dest: 5, mod1Amount: 0.3, mod1Rate: 0.05,
     mod2Source: 1, mod2Dest: 0, mod2Amount: 0.08, mod2Rate: 0.03,
   })
   // one long note for the section, and a new one every eight bars so the voices do not stay the same
-  if (song.bar % 8 === 0) note([60, 72], cfg.vel, Math.min(8, song.bars - song.bar) * 16 - 0.5)
+  if (song.bar % 8 === 0) note([60, 67], cfg.vel, Math.min(8, song.bars - song.bar) * 16 - 0.5)
 }

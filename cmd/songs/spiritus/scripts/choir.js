@@ -13,11 +13,11 @@ const plan = {
   Wind:       { low: { sound: "factus", level: [0.32, 0.63], vel: 0.5, density: 10, size: 420, spray: 0.04 },
                 high: { sound: "factus", level: [0, 0.42], vel: 0.5, density: 8, size: 380, spray: 0.03, on: bar => bar >= 5 } },
   Fire:       { low: { sound: "epistle", level: [0.56, 0.7], vel: 0.5, density: 12, size: 360, spray: 0.03 },
-                high: { sound: "factus", level: [0.42, 0.63], vel: 0.55, density: 11, size: 300, spray: 0.03, octave: 0.05, echo: 0.25 } },
+                high: { sound: "factus", level: [0.42, 0.63], vel: 0.55, density: 11, size: 300, spray: 0.03, octave: 0.02, echo: 0.25 } },
   Indwelling: { low: { sound: "crux", level: [0.63, 0.7], vel: 0.5, density: 12, size: 380, spray: 0.03, both: true },
                 high: { sound: "epistle", level: [0.35, 0.56], vel: 0.5, density: 9, size: 400, spray: 0.03, on: bar => bar >= 4 } },
   Glory:      { low: { sound: "crux", level: [0.7, 0.7], vel: 0.55, density: 14, size: 340, spray: 0.03, both: true },
-                high: { sound: "adte", level: [0.56, 0.7], vel: 0.5, density: 12, size: 320, spray: 0.03, octave: 0.05, echo: 0.3 } },
+                high: { sound: "adte", level: [0.56, 0.7], vel: 0.5, density: 12, size: 320, spray: 0.03, octave: 0.02, echo: 0.3 } },
   Amen:       { low: { sound: "adte", level: [0.42, 0.21], vel: 0.55, density: 8, size: 480, spray: 0.03 },
                 high: { sound: "factus", level: [0.42, 0], vel: 0.45, density: 7, size: 420, spray: 0.03, on: bar => bar < 8, echo: 0.25 } },
 }
@@ -45,9 +45,9 @@ function trigger(ev) {
   }
   set({
     sound: cfg.sound, scan: 0, spray: cfg.spray, density: cfg.density, grainSize: cfg.size,
-    octave: cfg.octave || (high ? 0.1 : 0.03),
+    octave: cfg.octave || (high ? 0.04 : 0.02),
     // every grain has a filter, opened a little and closed by a slow lfo (a breath of about 14 s); the high choir has a soft echo of itself
-    filter: 1, cutoff: cfg.cut || (high ? 7500 : 3800), resonance: 0.1, keyTrack: 0.3,
+    filter: 1, cutoff: cfg.cut || (high ? 5500 : 3800), resonance: 0.1, keyTrack: 0.3,
     mod1Source: 1, mod1Dest: 5, mod1Amount: 0.3, mod1Rate: high ? 0.06 : 0.08,
     feedback: cfg.echo || 0, feedbackTime: 0.9, feedbackPitch: 0,
     positionSeq: shared.rot(pos, count * 7), pitchSeq: shared.rot(fix, count * 7),
