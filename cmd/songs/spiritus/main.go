@@ -5,7 +5,9 @@
 // of grains of bells (two synths that play into grain buffers and are not on the mixer), a drone of grains of a sine and
 // the tongues of fire (short sine grains in the pentatonic scale). Every grain has a lowpass filter that a slow lfo opens and
 // closes (the grain filter and the modulation matrix of the grains synth), the high choir echoes itself softly (the feedback), and
-// there is only a hall, no shimmer. Gentle, slow, in D major; the Glory lifts a whole step
+// there is only a hall, no shimmer. Two more recordings: a **pulse** of slices (hand percussion, unpitched, cut at its onsets and played
+// as a soft heartbeat from the Indwelling on) and a **breath** of time stretch (a cymbal played backwards and stretched eight times:
+// a wind that swells in the Wind, the Fire and the Glory). Gentle, slow, in D major; the Glory lifts a whole step
 // to E major. Six sections at 60 bpm, about six minutes: Waiting (a drone, a chant far off), Wind (a sound from heaven:
 // the chant swells), Fire (flames on every one of them: bells and sparks), Indwelling (the Spirit in us: the choir of
 // the Crux, a heartbeat of grains), Glory (the lift, from glory to glory) and Amen (the chant of the beginning, and rest).
