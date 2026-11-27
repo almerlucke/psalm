@@ -46,6 +46,13 @@ Use mipmapped sound files, so grains that play faster don't alias.
 | `ScaleRoot` | 0 | The root of the scale, as a MIDI pitch (any octave) |
 | `Stack` | | Every grain is a chord: one grain for each of these semitones above the pitch (`0, 4, 7`) |
 | `Streams` | | A value for each grain from a list or a generator, see [streams](#streams) |
+| `Filter` | `FilterOff` | A filter on every grain: `FilterLowpass`, `FilterHighpass` or `FilterBandpass` |
+| `Cutoff`, `Resonance`, `KeyTrack` | 4000, 0.2, 0 | Hz; 0-1; 0-1, how much the cutoff follows the pitch of the grain |
+| `Mods` | | The [modulation matrix](#filter-modulation-feedback-stretch-and-slices): four slots of a source, a destination, an amount and a rate |
+| `Feedback`, `FeedbackTime`, `FeedbackPitch` | 0, 0.35, 0 | The chance that a grain plays what the voice itself played a moment ago; seconds back; semitones added |
+| `Stretch` | 0 | Time stretch: the recording moves this many times slower (4 is four times as long; negative goes backwards) at the same pitch. 0 is off, `Scan` is used |
+| `Overlap` | 0 | The number of grains that sound at once; the density follows the grain size (0 is off) |
+| `Slices`, `Slice` | off, 0 | Markers in a recording: `SliceChoices` (off, onsets, 4, 8, 16, 32 equal parts); which one the grains play |
 | `Normalize` | true | Play every recording at the same loudness (measured over the parts that sound) |
 | `Level` | 1 | Output level |
 | `AmpEnv` | | ADSR of the whole note (ms) |
@@ -58,7 +65,7 @@ grains, so modulating them never clicks.
 
 **Messages**: `pitch`, `frequency`, `velocity`, `sound`, `rootNote`, `position`, `scan`, `spray`,
 `density`, `sync`, `grainSize`, `window`, `scale`, `scaleRoot`, `stack`, `pitchSpread`, `octave`, `stereoSpread`, `shape`, `reverse`, `jitter`,
-`level`; the lists `positionSeq`, `intervalSeq`, `pitchSeq`, `sizeSeq`, `panSeq` and `ampSeq` (see [streams](#streams)); `source` (a number: the choice recording, wave or live; a `Source`: any source), `wave`, `buffer` (a name), `sources` (sources made by a patch). `scale` and `stack` take a list, a name or the number of the choice shown in the editor.
+`level`, `filter`, `cutoff`, `resonance`, `keyTrack`, `mod1Source`/`mod1Dest`/`mod1Amount`/`mod1Rate` (to `mod4`), `feedback`, `feedbackTime`, `feedbackPitch`, `stretch`, `overlap`, `slices`, `slice`; the lists `positionSeq`, `intervalSeq`, `pitchSeq`, `sizeSeq`, `panSeq`, `ampSeq`, `cutoffSeq` and `sliceSeq` (see [streams](#streams)); `source` (a number: the choice recording, wave or live; a `Source`: any source), `wave`, `buffer` (a name), `sources` (sources made by a patch). `scale` and `stack` take a list, a name or the number of the choice shown in the editor.
 
 ## Sources
 
@@ -102,12 +109,32 @@ cfg.Streams = grains.Streams{
 | `Size` | milliseconds | `GrainSize` |
 | `Pan` | 0 to 1 | `StereoSpread` |
 | `Amp` | the level of the grain; 0 is a rest, no grain | |
+| `Cutoff` | Hz, the cutoff of the filter of the grain | `Cutoff` |
+| `Slice` | the slice the grain plays (counting from 0, round and round) | `Slice` |
 
 `grains.Seq(values...)` cycles a list, `grains.Gen(g)` takes any generator of genny (`genny.Generator[float64]`: a walk (`rwalk`) or a ramp for the
 `Position`, a distribution (`gaussian`, `exponential`) for the `Interval`, a map of a sequence of scale degrees for the `Pitch`); a generator that ends goes on with
 its last value. The functions make a stream for each voice, so the voices of a poly synth do not share a place in a list. Streams start
 over at every note. From a script of the patcher the same lists are sent with `set({positionSeq: [...]})`; see the
 [grains help](../../modules/controls/panel/patcher/help/grains.md).
+
+## Filter, modulation, feedback, stretch and slices
+
+- **Filter**: every grain has its own state variable filter (low, high or band pass), its cutoff from the setting, a `Cutoff` stream, the
+  modulation, and the pitch of the grain (`KeyTrack`). A cutoff that changes per grain makes a cloud that is bright and dark at once.
+- **Modulation**: four slots. A *source* (`lfo` of `Rate` Hz, `random` for each grain, `rise` from 0 to 1 over the first `1/Rate` seconds of the note,
+  `velocity`, `envelope` of the note volume) times the *amount* (-1 to 1) moves a *destination* of every grain that starts: the
+  `position` (by the amount), the `pitch` (12 semitones), the `size` (2 octaves), the `pan`, the `level` (1 + value), the `cutoff` (4 octaves) or the `density`
+  (2 octaves faster). Slots that go to the same destination add up.
+- **Feedback**: the voice keeps the last seconds of what it played. With `Feedback` a share of the grains plays that instead of the source,
+  `FeedbackTime` seconds back and `FeedbackPitch` semitones higher: echoes that feed on themselves, and swells that climb an octave with every
+  round (12). The ring is soft limited, and the grains of it are a little quieter than the others, so it dies away.
+- **Time stretch**: `Stretch` 4 moves the position at a quarter of the speed of the recording and leaves the pitch alone (a negative number goes backwards).
+  `Overlap` makes the density follow the grain size, so that many grains sound at once whatever the size: a smooth stretch without a setting to match.
+  Long grains (200 ms and more), a small `Spray` and an `Overlap` of 4 or more are the settings of a stretch.
+- **Slices**: `Slices` puts markers in the recording, at its onsets (where the level jumps by 6 dB) or in 4 to 32 equal parts. `Slice` picks one; the
+  position is then a place in the slice, the scan goes round in it and the spray stays inside it. The `Slice` stream (`sliceSeq`) picks a slice
+  for every grain: a recording played as a beat.
 
 ## Presets
 

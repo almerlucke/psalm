@@ -50,6 +50,23 @@ type Config struct {
 	Stack     []float64 // every grain is a chord: one grain for each of these semitones above the pitch (0, 4, 7 is a major triad)
 	Streams   Streams   // values for each grain that start from lists or generators (see Streams)
 
+	Filter    int     // a filter for every grain: FilterOff, FilterLowpass, FilterHighpass or FilterBandpass
+	Cutoff    float64 // Hz
+	Resonance float64 // 0-1
+	KeyTrack  float64 // 0-1, how much the cutoff follows the pitch of the grain (1: an octave up in pitch is an octave up in cutoff)
+
+	Mods [numMods]Mod // the modulation matrix: sources that move the position, pitch, size, pan, level, cutoff or density of every grain
+
+	Feedback      float64 // 0-1, the chance that a grain plays what the voice itself played a moment ago (echoes and swells that feed on themselves)
+	FeedbackTime  float64 // seconds back that those grains look
+	FeedbackPitch float64 // semitones added to those grains (12 climbs an octave with every round)
+
+	Stretch float64 // time stretch: how many times slower the position moves than the recording (4: four times as long, negative backwards), 0 is off and the Scan is used
+	Overlap float64 // 0 is off; else the number of grains that sound at once: the density follows the grain size, whatever the stretch is
+
+	Slices int // markers in a recording: SliceChoices (off, onsets, equal parts); the position is then a place in the slice
+	Slice  int // which slice the grains play (counting from 0, round and round)
+
 	AmpEnv adsr.Setting // envelope of the whole note (durations in milliseconds)
 }
 
@@ -66,6 +83,10 @@ func DefaultConfig() Config {
 		Jitter:       0.3,
 		Level:        1.0,
 		Normalize:    true,
+		Cutoff:       4000,
+		Resonance:    0.2,
+		FeedbackTime: 0.35,
+		Mods:         [numMods]Mod{{Rate: 1}, {Rate: 1}, {Rate: 1}, {Rate: 1}},
 		AmpEnv:       *adsr.NewSetting(1.0, 50.0, 0.9, 200.0, 1.0, 500.0),
 	}
 }
@@ -146,6 +167,8 @@ type grain struct {
 	gainL  float64
 	gainR  float64
 	src    Source
+	fx     svf  // the filter of the grain
+	filt   bool // it has one
 }
 
 // maxGrains is the maximum number of simultaneous grains of a voice
@@ -156,26 +179,34 @@ const maxGrains = 96
 // 4 spray, 5 grain size. They only affect new grains, so changing them never clicks
 type Voice struct {
 	*psalm.Module
-	cfg       Config
-	src       Source
-	kind      int    // which source of the settings is read (SourceKind), sourceCustom for one picked by name
-	rec       Source // the recording of the settings
-	live      Source
-	bank      map[string]Source // the sounds of the bank as sources
-	streams   Streams
-	st        voiceStreams
-	ampEnv    *adsr.ADSR
-	grains    []grain
-	pitch     float64
-	expr      expression.Expression // the pitch bend (new grains); the mod wheel sprays them wider
-	velocity  float64
-	scanned   float64 // frames the position has moved on since the note began (or the position was set)
-	countdown float64 // samples until the next grain
-	waitSamps int
-	env       []float64 // the envelope of the buffer
-	left      []float64 // the grains of the buffer, summed
-	right     []float64
-	scratch   []float64 // what a grain reads
+	cfg        Config
+	src        Source
+	kind       int    // which source of the settings is read (SourceKind), sourceCustom for one picked by name
+	rec        Source // the recording of the settings
+	live       Source
+	bank       map[string]Source // the sounds of the bank as sources
+	streams    Streams
+	st         voiceStreams
+	ampEnv     *adsr.ADSR
+	grains     []grain
+	pitch      float64
+	expr       expression.Expression // the pitch bend (new grains); the mod wheel sprays them wider
+	velocity   float64
+	scanned    float64 // frames the position has moved on since the note began (or the position was set)
+	countdown  float64 // samples until the next grain
+	waitSamps  int
+	env        []float64 // the envelope of the buffer
+	left       []float64 // the grains of the buffer, summed
+	right      []float64
+	scratch    []float64 // what a grain reads
+	modOn      bool      // a slot of the matrix is on
+	age        float64   // seconds since the note began (for the lfos and the rise)
+	curEnv     float64   // the note volume envelope now
+	fb         *Recorder // the last seconds of what the voice played (a feedback), made when it is first used
+	fbSrc      Source
+	bounds     []float64 // the slices of the source
+	boundsFor  Source
+	boundsMode int
 }
 
 func New(cfg Config) *Voice {
@@ -343,6 +374,30 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 	msg.IfFltVal("reverse", func(f float64) { cfg.Reverse = f })
 	msg.IfFltVal("jitter", func(f float64) { cfg.Jitter = f })
 	msg.IfFltVal("level", func(f float64) { cfg.Level = f })
+	msg.IfFltVal("filter", func(f float64) { cfg.Filter = max(0, min(int(math.Round(f)), numFilters-1)) })
+	msg.IfFltVal("cutoff", func(f float64) { cfg.Cutoff = max(20, f) })
+	msg.IfFltVal("resonance", func(f float64) { cfg.Resonance = max(0, min(f, 1)) })
+	msg.IfFltVal("keyTrack", func(f float64) { cfg.KeyTrack = max(0, min(f, 1)) })
+	for i := range cfg.Mods {
+		n := "mod" + string(rune('1'+i))
+		msg.IfFltVal(n+"Source", func(f float64) { cfg.Mods[i].Source = max(0, min(int(math.Round(f)), numModSources-1)) })
+		msg.IfFltVal(n+"Dest", func(f float64) { cfg.Mods[i].Dest = max(0, min(int(math.Round(f)), numModDests-1)) })
+		msg.IfFltVal(n+"Amount", func(f float64) { cfg.Mods[i].Amount = max(-1, min(f, 1)) })
+		msg.IfFltVal(n+"Rate", func(f float64) { cfg.Mods[i].Rate = max(0.001, f) })
+	}
+	msg.IfFltVal("feedback", func(f float64) {
+		cfg.Feedback = max(0, min(f, 0.95))
+		if cfg.Feedback > 0 && v.fb == nil {
+			v.fb = &Recorder{ring: make([]float64, int(feedbackSeconds*v.Config().SampleRate))}
+			v.fbSrc = &liveSource{r: v.fb}
+		}
+	})
+	msg.IfFltVal("feedbackTime", func(f float64) { cfg.FeedbackTime = max(0.01, min(f, feedbackSeconds-0.2)) })
+	msg.IfFltVal("feedbackPitch", func(f float64) { cfg.FeedbackPitch = f })
+	msg.IfFltVal("stretch", func(f float64) { cfg.Stretch = f })
+	msg.IfFltVal("overlap", func(f float64) { cfg.Overlap = max(0, f) })
+	msg.IfFltVal("slices", func(f float64) { cfg.Slices = max(0, min(int(math.Round(f)), len(SliceChoices)-1)) })
+	msg.IfFltVal("slice", func(f float64) { cfg.Slice = int(math.Round(f)) })
 	msg.IfFltVal("velocity", func(f float64) { v.velocity = max(0.0, min(f, 1.0)) })
 	msg.IfFltVal("pitch", func(f float64) { v.pitch = f })
 	msg.IfFltVal("frequency", func(f float64) { v.pitch = 69.0 + 12.0*math.Log2(f/440.0) })
@@ -379,7 +434,7 @@ func (v *Voice) ReceiveMessage(msg psalm.Message) {
 		if len(l) > 0 {
 			s = Seq(l...)
 		}
-		slots := []*Stream{&v.st.interval, &v.st.position, &v.st.pitch, &v.st.size, &v.st.pan, &v.st.amp}
+		slots := []*Stream{&v.st.interval, &v.st.position, &v.st.pitch, &v.st.size, &v.st.pan, &v.st.amp, &v.st.cutoff, &v.st.slice}
 		*slots[i] = s
 	}
 }
@@ -420,6 +475,7 @@ func (v *Voice) note(mode adsr.ReleaseMode, duration float64, amplitude float64,
 
 	v.waitSamps = tick.SampleOffset
 	v.scanned = 0
+	v.age = 0
 	v.st.reset()
 	v.countdown = 0 // the first grain starts right away
 	v.ampEnv.TriggerFull(duration*1000.0, amplitude, &v.cfg.AmpEnv, mode)
@@ -486,8 +542,36 @@ func (v *Voice) spawn(i int, sr float64) {
 	if v.st.amp != nil {
 		amp = max(0, v.st.amp.Next())
 	}
+	// the modulation matrix (nothing is drawn when no slot is on)
+	var modPan float64
+	cutoff := cfg.Cutoff
+	if v.st.cutoff != nil {
+		cutoff = v.st.cutoff.Next()
+	}
+	if v.modOn {
+		position = max(0, min(position+v.modValue(ModPosition), 1))
+		extra += 12 * v.modValue(ModPitch)
+		size *= math.Exp2(2 * v.modValue(ModSize))
+		modPan = 0.5 * v.modValue(ModPan)
+		amp *= max(0, 1+v.modValue(ModAmp))
+		cutoff *= math.Exp2(4 * v.modValue(ModCutoff))
+	}
 	if amp == 0 {
 		return // a rest
+	}
+
+	// slices: the position is a place in the slice that is played
+	var sliceA, sliceLen float64 // frames
+	if b := v.sliceBounds(); len(b) > 1 {
+		n := len(b) - 1
+		idx := cfg.Slice
+		if v.st.slice != nil {
+			idx = int(math.Round(v.st.slice.Next()))
+		}
+		idx = ((idx % n) + n) % n
+		span := s.Span()
+		sliceA, sliceLen = b[idx]*span, (b[idx+1]-b[idx])*span
+		position = b[idx] + max(0, min(position, 1))*(b[idx+1]-b[idx])
 	}
 
 	stack := cfg.Stack
@@ -516,25 +600,45 @@ func (v *Voice) spawn(i int, sr float64) {
 		semis := pitch - root + v.expr.Semitones()
 		speed := math.Exp2(semis/12.0) * s.Rate() / sr
 
-		spray := (cfg.Spray + 0.3*v.expr.Wheel()) * (v.Rand().Float64()*2.0 - 1.0) * s.Rate()
+		sprayU := v.Rand().Float64()*2.0 - 1.0
+		spray := (cfg.Spray + 0.3*v.expr.Wheel()) * sprayU * s.Rate()
 
 		if v.Rand().Float64() < cfg.Reverse {
 			speed = -speed
 		}
 
-		lead := float64(length) * (math.Abs(speed)*sr/s.Rate() - 1) // frames ahead of a source that is written as it is read
-		start, lo, hi := s.Locate(position, v.scanned, spray, max(0, lead))
+		src, gain := s, amp
+		var start, lo, hi float64
+		if v.fb != nil && cfg.Feedback > 0 && v.fb.count > int(0.05*sr) && v.Rand().Float64() < cfg.Feedback {
+			// a grain of what the voice played a moment ago, as many semitones above it as this grain is above the note
+			src, gain = v.fbSrc, amp*fbGain
+			speed = math.Copysign(math.Exp2((cfg.FeedbackPitch+pitch-v.pitch)/12.0), speed)
+			lead := float64(length) * (math.Abs(speed) - 1)
+			back := cfg.FeedbackTime * sr
+			start, lo, hi = src.Locate(back/float64(max(1, v.fb.count-1)), 0, (cfg.Spray+0.3*v.expr.Wheel())*sprayU*sr, max(0, lead))
+		} else {
+			lead := float64(length) * (math.Abs(speed)*sr/s.Rate() - 1) // frames ahead of a source that is written as it is read
+			if sliceLen > 0 {
+				scanned := wrap(v.scanned, sliceLen)
+				start, lo, hi = s.Locate(position, scanned, 0, max(0, lead))
+				half := sliceLen / 2
+				start = sliceA + wrap(start-sliceA+max(-half, min(spray, half)), sliceLen)
+			} else {
+				start, lo, hi = s.Locate(position, v.scanned, spray, max(0, lead))
+			}
+		}
 
 		if !panSet {
 			pan = 0.5 + cfg.StereoSpread*(v.Rand().Float64()-0.5)
 		}
+		gpan := max(0, min(pan+modPan, 1))
 
 		depth := sndfile.SpeedToMipMapDepth(speed)
-		if depth >= s.Depth() {
-			depth = s.Depth() - 1
+		if depth >= src.Depth() {
+			depth = src.Depth() - 1
 		}
 
-		v.grains = append(v.grains, grain{
+		g := grain{
 			pos:    start,
 			lo:     lo,
 			hi:     hi,
@@ -542,10 +646,15 @@ func (v *Voice) spawn(i int, sr float64) {
 			depth:  depth,
 			length: length,
 			delay:  i,
-			gainL:  amp * math.Cos(pan*math.Pi/2.0),
-			gainR:  amp * math.Sin(pan*math.Pi/2.0),
-			src:    s,
-		})
+			gainL:  gain * math.Cos(gpan*math.Pi/2.0),
+			gainR:  gain * math.Sin(gpan*math.Pi/2.0),
+			src:    src,
+		}
+		if cfg.Filter != FilterOff {
+			g.filt = true
+			g.fx = newSVF(cfg.Filter, cutoff*math.Exp2(cfg.KeyTrack*(pitch-60)/12), cfg.Resonance, sr)
+		}
+		v.grains = append(v.grains, g)
 	}
 }
 
@@ -556,10 +665,13 @@ func (v *Voice) interval(sr, density float64) float64 {
 	switch {
 	case v.st.interval != nil:
 		return max(1, v.st.interval.Next()*sr)
-	case cfg.Sync > 0:
+	case cfg.Sync > 0 && cfg.Overlap == 0:
 		iv = cfg.Sync * 60 / v.BPM() * sr
 	default:
 		iv = sr / density
+	}
+	if v.modOn {
+		iv *= math.Exp2(-2 * v.modValue(ModDensity))
 	}
 	return max(1, iv*(1.0+cfg.Jitter*(v.Rand().Float64()*2.0-1.0)))
 }
@@ -590,6 +702,16 @@ func (v *Voice) Synthesize() {
 	if level <= 0 {
 		level = 1
 	}
+	if cfg.Stretch != 0 {
+		scanInc = src.Rate() / sr / cfg.Stretch // time stretch: the position moves 1/Stretch times the speed of the recording, the pitch stays
+	}
+	if cfg.Overlap > 0 {
+		density = cfg.Overlap * 1000 / max(1, cfg.GrainSize) // as many grains at once as asked, whatever the size
+	}
+	v.modOn = false
+	for _, m := range cfg.Mods {
+		v.modOn = v.modOn || (m.Source != ModOff && m.Amount != 0)
+	}
 
 	// overlapping grains add up: scale by the square root of the average overlap so the level
 	// stays about the same when the density or grain size changes
@@ -598,7 +720,7 @@ func (v *Voice) Synthesize() {
 		grainMs = 100 // sizes that come from a stream: an average one
 	}
 	grainsPerSec := density
-	if cfg.Sync > 0 {
+	if cfg.Sync > 0 && cfg.Overlap == 0 {
 		grainsPerSec = v.BPM() / 60 / cfg.Sync
 	}
 	overlap := max(1.0, grainsPerSec*grainMs*0.001*float64(max(1, len(cfg.Stack))))
@@ -619,6 +741,8 @@ func (v *Voice) Synthesize() {
 	clear(v.right[:bufSize])
 	for i := v.waitSamps; i < bufSize; i++ {
 		v.env[i] = v.ampEnv.Generate()
+		v.curEnv = v.env[i]
+		v.age += 1 / sr
 
 		// start grains while the note sounds
 		v.countdown--
@@ -647,6 +771,9 @@ func (v *Voice) Synthesize() {
 		if n > 0 {
 			buf := v.scratch[:n]
 			gr.pos = gr.src.Read(buf, gr.pos, gr.inc, gr.depth, gr.lo, gr.hi)
+			if gr.filt {
+				gr.fx.run(buf)
+			}
 			for j, x := range buf {
 				w := windowOf(float64(gr.age+j)/float64(gr.length), cfg.Shape, cfg.Window)
 				x *= w
@@ -671,6 +798,16 @@ func (v *Voice) Synthesize() {
 		} else {
 			outs[0][i] = float32(v.left[i] * gain)
 			outs[1][i] = float32(v.right[i] * gain)
+		}
+	}
+	if v.fb != nil {
+		// what the voice plays goes round again: kept soft, so the feedback cannot run away
+		for i := range bufSize {
+			x := 0.0
+			if i >= v.waitSamps && i < end {
+				x = math.Tanh((v.left[i] + v.right[i]) * 0.5 * v.env[i] * norm)
+			}
+			v.fb.write(x)
 		}
 	}
 

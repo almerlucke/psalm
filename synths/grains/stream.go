@@ -56,13 +56,15 @@ func (s *gen) Reset() { s.g.Reset() }
 //	Size      milliseconds, the length of the grain
 //	Pan       0 to 1, left to right
 //	Amp       the level of the grain (0 is a rest: the grain does not sound)
+//	Cutoff    Hz, the cutoff of the filter of the grain
+//	Slice     the slice the grain plays (counting from 0, see Config.Slices)
 type Streams struct {
-	Interval, Position, Pitch, Size, Pan, Amp func() Stream
+	Interval, Position, Pitch, Size, Pan, Amp, Cutoff, Slice func() Stream
 }
 
 // voiceStreams are the streams of one voice
 type voiceStreams struct {
-	interval, position, pitch, size, pan, amp Stream
+	interval, position, pitch, size, pan, amp, cutoff, slice Stream
 }
 
 func (s Streams) make() voiceStreams {
@@ -72,11 +74,11 @@ func (s Streams) make() voiceStreams {
 		}
 		return f()
 	}
-	return voiceStreams{mk(s.Interval), mk(s.Position), mk(s.Pitch), mk(s.Size), mk(s.Pan), mk(s.Amp)}
+	return voiceStreams{mk(s.Interval), mk(s.Position), mk(s.Pitch), mk(s.Size), mk(s.Pan), mk(s.Amp), mk(s.Cutoff), mk(s.Slice)}
 }
 
 func (s *voiceStreams) reset() {
-	for _, st := range []Stream{s.interval, s.position, s.pitch, s.size, s.pan, s.amp} {
+	for _, st := range []Stream{s.interval, s.position, s.pitch, s.size, s.pan, s.amp, s.cutoff, s.slice} {
 		if st != nil {
 			st.Reset()
 		}
@@ -85,4 +87,4 @@ func (s *voiceStreams) reset() {
 
 // streamKeys are the messages that set a stream from a list of numbers (a script's set("positionSeq", [0.1, 0.5, 0.3]), an empty list
 // takes the stream away again)
-var streamKeys = []string{"intervalSeq", "positionSeq", "pitchSeq", "sizeSeq", "panSeq", "ampSeq"}
+var streamKeys = []string{"intervalSeq", "positionSeq", "pitchSeq", "sizeSeq", "panSeq", "ampSeq", "cutoffSeq", "sliceSeq"}

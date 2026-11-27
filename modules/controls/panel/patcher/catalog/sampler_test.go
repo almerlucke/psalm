@@ -238,6 +238,13 @@ func TestGrainsSourceSetting(t *testing.T) {
 	if pk := peak(200); pk < 0.02 {
 		t.Errorf("a new module should play the choir: peak %g", pk)
 	}
+	// the filter, the modulation, the feedback, the stretch and the slices of the settings sound and stay clean
+	pt.SettingsOf(syn).Apply(map[string]float64{"filter": 1, "cutoff": 900, "resonance": 0.5, "mod1Source": 1, "mod1Dest": 5, "mod1Amount": 0.5, "mod1Rate": 3,
+		"feedback": 0.5, "feedbackPitch": 12, "stretch": 4, "overlap": 4, "slices": 2, "slice": 1})
+	if pk := peak(300); pk < 0.005 || pk > 4 || math.IsNaN(pk) {
+		t.Errorf("the filter, modulation, feedback, stretch and slices: peak %g", pk)
+	}
+	pt.SettingsOf(syn).Apply(map[string]float64{"filter": 0, "mod1Source": 0, "feedback": 0, "stretch": 0, "overlap": 0, "slices": 0})
 	pt.SettingsOf(syn).Apply(map[string]float64{"source": 1, "wave": 2}) // a saw
 	if pk := peak(300); pk < 0.02 {
 		t.Errorf("the source wave: peak %g", pk)

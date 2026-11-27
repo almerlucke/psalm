@@ -79,6 +79,11 @@ jitter = 0.1
 | `octave` | The chance that a grain plays an octave up: sparkle. |
 | `stereoSpread` | A random place in the stereo field for each grain. |
 | `level` | The output level. |
+| `filter`, `cutoff`, `resonance`, `keyTrack` | A filter on every grain (off, lowpass, highpass, bandpass), where it cuts, how much it rings, and how much the cutoff follows the pitch of the grain. |
+| `mod1Source` ... `mod4Rate` | The **modulation** slots: a source (lfo, random, rise, velocity, envelope) times an amount moves the position, pitch, size, pan, level, cutoff or density of every grain. |
+| `feedback`, `feedbackTime`, `feedbackPitch` | The chance that a grain plays what the voice played a moment ago, how far back, and how many semitones higher (12: a swell that climbs). |
+| `stretch`, `overlap` | **Time stretch**: the recording moves this many times slower at the same pitch (4 is four times as long). `overlap` is how many grains sound at once, the density follows the size. |
+| `slices`, `slice` | **Slice markers** in a recording (the onsets, or 4 to 32 equal parts) and which one is played; the position is then a place inside the slice. |
 
 The level stays about the same when the density, size or shape change. The velocity of a note is its volume. The presets can also be changed in the editor, with the envelope of the whole note.
 
@@ -87,6 +92,33 @@ The level stays about the same when the density, size or shape change. The veloc
 - **source: wave** plays a single cycle wave. Pick it with **wave** (sine, triangle, saw, square), or choose `morph` and let **position** pick (0 the first, 1 the last). A grain is a short burst of the wave at the pitch of the note: grains of a wavetable, a smooth cloud or a rough buzz by **density**, **size** and **window**. The waves are made of their harmonics, fewer for the high notes, so they do not alias.
 - **source: live** plays what a [grain buffer](grainbuffer.md) hears (the one named in the box *grain buffer to listen to*): **position** is how far back the grains look, 0 is just now.
 - A script picks any of the lines of the box *recordings* by name, also the made ones (`tone osc sine saw`, `me live`), and so can switch the sound while it plays.
+
+```example A time stretch
+[set]
+stretch = 6
+overlap = 6
+grainSize = 250
+spray = 0.02
+```
+
+```example A beat from slices
+[set]
+slices = 1
+position = 0.2
+grainSize = 80
+density = 8
+jitter = 0
+```
+
+```example Bright and dark
+[set]
+filter = 1
+cutoff = 1200
+resonance = 0.5
+mod1Source = 2
+mod1Dest = 5
+mod1Amount = 0.7
+```
 
 ## Controlling each grain from a script
 
@@ -100,6 +132,8 @@ The settings are one value for all grains. A [script](script.md) can give the gr
 | `sizeSeq` | the length of each grain (ms) |
 | `panSeq` | the place in the stereo field (0 to 1) |
 | `ampSeq` | the level of each grain; 0 is a rest |
+| `cutoffSeq` | the cutoff of the filter of each grain (Hz) |
+| `sliceSeq` | the slice each grain plays (0 is the first), see `slices` |
 | `scale` | a list of semitones above the root (`[0, 2, 4, 7, 9]`) or a name (`"major"`, `"minor"`, `"pentatonic"`, `"blues"`, `"wholeTone"`...): the pitch of every grain is held to it; `"off"` takes it away |
 | `scaleRoot` | the pitch of the root of that scale (any octave) |
 | `stack` | semitones above the pitch: every grain is a chord (`[0, 4, 7]` makes three grains for each) |
