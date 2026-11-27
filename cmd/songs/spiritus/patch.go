@@ -76,9 +76,9 @@ type patchIDs struct {
 }
 
 // buildPatch makes the patch: the song, two scripts that hold the score and the chants, a clock of sixteenths into
-// seven scripts that each play a granular synth (two choirs of chants, a cloud of a pad, a shimmer of bells, a drone and
+// seven scripts that each play a granular synth (two choirs of chants, a cloud of a pad, a sparkle of bells, a drone and
 // the flames) or a synth that plays into a grain buffer (the pad and the bells: nobody hears them, the grains do). The
-// mixer has two buses, a hall and a shimmer. Rendering turns the loop of the song off so it ends with the last
+// mixer has one bus, a hall. Rendering turns the loop of the song off so it ends with the last
 // section. It returns the scripts, to look at what they say
 func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	add := func(kind, preset string, x, y float64) string {
@@ -120,7 +120,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		{name: "drone", code: droneScript, kind: "grains", preset: "frozenDrone"},
 		{name: "halo", code: haloScript, kind: "grains", preset: "glassKeys"},
 		{name: "cloud", code: cloudScript, kind: "grains", preset: "frozenDrone"},
-		{name: "sparkle", code: sparkleScript, kind: "grains", preset: "shimmer"},
+		{name: "sparkle", code: sparkleScript, kind: "grains", preset: "choirPad"},
 		{name: "pad", code: padScript, kind: "shaper", preset: "airPad", buffer: "pad"},
 		{name: "bells", code: bellsScript, kind: "shaper", preset: "churchBell", buffer: "bells"},
 	}
@@ -138,7 +138,6 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	}
 	mixer := add("mixer", "8 channels", 1000, 260)
 	hall := add("reverb", "", 1240, 20)
-	shine := add("shimmer", "", 1240, 160)
 	if err != nil {
 		return patchIDs{}, err
 	}
@@ -160,10 +159,8 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	}
 	connect(patcher.Cable{From: bufs[0], To: mixer, In: 6})
 	connect(patcher.Cable{From: bufs[1], To: mixer, In: 7})
-	for i, fx := range []string{hall, shine} {
-		connect(patcher.Cable{From: mixer, Out: 1 + i, To: fx})
-		connect(patcher.Cable{From: fx, To: mixer, In: 8 + i})
-	}
+	connect(patcher.Cable{From: mixer, Out: 1, To: hall})
+	connect(patcher.Cable{From: hall, To: mixer, In: 8})
 	connect(patcher.Cable{From: mixer, Out: 0, To: "out"})
 	if err != nil {
 		return patchIDs{}, err
@@ -185,20 +182,19 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"window": 1, "jitter": 0.6, "level": 0})
 	pt.SettingsOf(ids.synths["sparkle"]).Apply(map[string]float64{"source": 2, "ampAttack": 600, "ampDecay": 300, "ampSustain": 1, "ampRelease": 4000,
 		"window": 1, "jitter": 0.5, "level": 0})
-	// the mix: low, high, drone, halo, cloud, sparkle, then the two buffers (not heard); the sends are the hall and the shimmer
+	// the mix: low, high, drone, halo, cloud, sparkle, then the two buffers (not heard); the send is the hall
 	pt.SettingsOf(mixer).Apply(map[string]float64{
-		"level1": 0.9, "pan1": -0.1, "sendA1": 0.35, "sendB1": 0.1,
-		"level2": 0.6, "pan2": 0.1, "sendA2": 0.5, "sendB2": 0.3,
-		"level3": 0.4, "pan3": 0, "sendA3": 0.1,
-		"level4": 0.45, "pan4": 0, "sendA4": 0.5, "sendB4": 0.2,
-		"level5": 2.2, "pan5": 0, "sendA5": 0.4, "sendB5": 0.2,
-		"level6": 4.5, "pan6": 0, "sendA6": 0.5, "sendB6": 0.3,
+		"level1": 0.7, "pan1": -0.1, "sendA1": 0.35,
+		"level2": 0.55, "pan2": 0.1, "sendA2": 0.5,
+		"level3": 0.3, "pan3": 0, "sendA3": 0.1,
+		"level4": 0.4, "pan4": 0, "sendA4": 0.5,
+		"level5": 2, "pan5": 0, "sendA5": 0.4,
+		"level6": 4, "pan6": 0, "sendA6": 0.5,
 		"level7": 0, "level8": 0,
-		"returnA": 1, "returnB": 0.7,
+		"returnA": 1,
 	})
-	// the hall: a big room, mostly wet; the shimmer: the reverb with an octave up in it
-	pt.SettingsOf(hall).Apply(map[string]float64{"mix": 0.6, "decay": 6, "size": 0.8, "damping": 0.5})
-	pt.SettingsOf(shine).Apply(map[string]float64{"shimmer": 0.35, "semitones": 12, "mix": 1, "decay": 8})
+	// the hall: a big room, mostly wet
+	pt.SettingsOf(hall).Apply(map[string]float64{"mix": 0.55, "decay": 5, "size": 0.75, "damping": 0.6})
 	if once {
 		pt.SettingsOf(song).Apply(map[string]float64{"loop": 0})
 	}

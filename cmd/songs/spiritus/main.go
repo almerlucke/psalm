@@ -1,9 +1,11 @@
 // Spiritus: a piece for the Holy Spirit, who works in us to make us more like Jesus (from glory to glory, 2 Corinthians 3:18).
 // Everything that sounds is granular: nothing is played by a synth that is heard. Two choirs of chants (grains of the
 // Ad te levavi, the Factus est repente of Pentecost, the Epistle of Easter and the Crux fidelis, taken from the places
-// where the singers rest on their home note, so the chords are in tune), a cloud of grains of a pad and a shimmer
+// where the singers rest on their home note, so the chords are in tune), a cloud of grains of a pad and a sparkle
 // of grains of bells (two synths that play into grain buffers and are not on the mixer), a drone of grains of a sine and
-// the tongues of fire (short sine grains in the pentatonic scale). Gentle, slow, in D major; the Glory lifts a whole step
+// the tongues of fire (short sine grains in the pentatonic scale). Every grain has a lowpass filter that a slow lfo opens and
+// closes (the grain filter and the modulation matrix of the grains synth), the high choir echoes itself softly (the feedback), and
+// there is only a hall, no shimmer. Gentle, slow, in D major; the Glory lifts a whole step
 // to E major. Six sections at 60 bpm, about six minutes: Waiting (a drone, a chant far off), Wind (a sound from heaven:
 // the chant swells), Fire (flames on every one of them: bells and sparks), Indwelling (the Spirit in us: the choir of
 // the Crux, a heartbeat of grains), Glory (the lift, from glory to glory) and Amen (the chant of the beginning, and rest).
@@ -70,7 +72,7 @@ func main() {
 		log.Fatal(err)
 	}
 	master := mixer.New(p)
-	master.Channel("patch", pt.Out(), mixer.StripConfig{Volume: 1.6})
+	master.Channel("patch", pt.Out(), mixer.StripConfig{Volume: 3.2})
 	p.Out(master.Master())
 
 	if *profile {

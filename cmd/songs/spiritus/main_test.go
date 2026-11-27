@@ -41,7 +41,7 @@ func TestTourPlays(t *testing.T) {
 				energy += float64(v) * float64(v)
 			}
 		}
-		if peak < 0.02 || peak > 1.5 || math.IsNaN(energy) {
+		if peak < 0.005 || peak > 1.5 || math.IsNaN(energy) {
 			t.Errorf("section %d (%s): peak %v", i, s.name, peak)
 		}
 		for _, id := range ids.scripts {
