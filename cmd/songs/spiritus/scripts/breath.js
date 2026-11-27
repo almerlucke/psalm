@@ -4,9 +4,9 @@
 // smooth). It is the sound from heaven of the Wind, comes back as the breath under the Fire and the Glory, and is a lowpass away from
 // being felt more than heard.
 const plan = {
-  Wind:  { level: [0.4, 1], cut: 2600, vel: 0.6, bars: 8 },
-  Fire:  { level: [0.7, 0.5], cut: 2200, vel: 0.5, bars: 8, on: bar => bar >= 4 },
-  Glory: { level: [0.6, 0.9], cut: 2800, vel: 0.5, bars: 8 },
+  Wind:  { level: [0.72, 1.8], cut: 2600, vel: 0.6, bars: 8 },
+  Fire:  { level: [1.26, 0.9], cut: 2200, vel: 0.5, bars: 8, on: bar => bar >= 4 },
+  Glory: { level: [1.08, 1.62], cut: 2800, vel: 0.5, bars: 8 },
 }
 let cfg = null
 function section(name) { cfg = plan[name] }

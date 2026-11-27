@@ -77,6 +77,7 @@ crux assets/sounds/chants/Crux_fidelis_(Graduale_1974).wav 60.27`
 
 // patchIDs are the modules of the patch to look at: the scripts, and the parts that sound by name
 type patchIDs struct {
+	mixer   string
 	scripts []string
 	synths  map[string]string
 }
@@ -152,7 +153,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 	text(song, "sections", songText())
 	text(score, "code", harmonyScript)
 	text(chants, "code", chantsScript)
-	ids = patchIDs{scripts: []string{score, chants}, synths: map[string]string{}}
+	ids = patchIDs{mixer: mixer, scripts: []string{score, chants}, synths: map[string]string{}}
 	for _, s := range parts {
 		text(s.script, "code", s.code)
 		connect(patcher.Cable{From: clock, To: s.script})
@@ -202,8 +203,8 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		"level4": 0.4, "pan4": 0, "sendA4": 0.5,
 		"level5": 2, "pan5": 0, "sendA5": 0.4,
 		"level6": 4, "pan6": 0, "sendA6": 0.5,
-		"level7": 0.6, "pan7": 0.2, "sendA7": 0.5,
-		"level8": 4, "pan8": 0, "sendA8": 0.5,
+		"level7": 1, "pan7": 0.2, "sendA7": 0.5,
+		"level8": 2, "pan8": 0, "sendA8": 0.5,
 		"level9": 0, "level10": 0,
 		"returnA": 1,
 	})

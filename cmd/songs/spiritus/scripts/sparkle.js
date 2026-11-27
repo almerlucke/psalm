@@ -3,11 +3,11 @@
 // tremble), with a long one a shower of old ones. In the Fire the grains follow the beat (a grain every half a beat): the
 // bells twinkle in time, softly (a lowpass takes the edge off every grain; an lfo on the pan moves the grains).
 const plan = {
-  Wind:       { level: [0, 0.6], pos: [0.03, 0.1], size: 200, density: 10, spray: 0.05, octave: 0.02, sync: 0 },
-  Fire:       { level: [0.7, 1], pos: [0.03, 0.3], size: 120, density: 20, spray: 0.15, octave: 0.05, sync: 0.5 },
-  Indwelling: { level: [0.6, 0.8], pos: [0.03, 0.15], size: 220, density: 12, spray: 0.08, octave: 0.03, sync: 0 },
-  Glory:      { level: [0.9, 1], pos: [0.03, 0.4], size: 130, density: 22, spray: 0.2, octave: 0.05, sync: 0.5 },
-  Amen:       { level: [0.7, 0.2], pos: [0.04, 0.12], size: 250, density: 8, spray: 0.06, octave: 0.02, sync: 0 },
+  Wind:       { level: [0, 1.2], pos: [0.03, 0.1], size: 200, density: 10, spray: 0.05, octave: 0.02, sync: 0 },
+  Fire:       { level: [1.4, 2], pos: [0.03, 0.3], size: 120, density: 20, spray: 0.15, octave: 0.05, sync: 0.5 },
+  Indwelling: { level: [1.2, 1.6], pos: [0.03, 0.15], size: 220, density: 12, spray: 0.08, octave: 0.03, sync: 0 },
+  Glory:      { level: [1.8, 2], pos: [0.03, 0.4], size: 130, density: 22, spray: 0.2, octave: 0.05, sync: 0.5 },
+  Amen:       { level: [1.4, 0.4], pos: [0.04, 0.12], size: 250, density: 8, spray: 0.06, octave: 0.02, sync: 0 },
 }
 let cfg = null
 function section(name) { cfg = plan[name] }

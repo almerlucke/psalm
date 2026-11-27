@@ -6,7 +6,7 @@
 // (the Spirit in us), goes on through the Glory, and is a single slow beat in the first bars of the Amen.
 const walk = genny.rwalk(30, 0, 63, 7)
 const plan = {
-  Indwelling: { level: [0, 0.8], sync: 1, amps: [0.9, 0, 0.5, 0], on: bar => bar >= 6, cut: 1800 },
+  Indwelling: { level: [0.5, 1], sync: 1, amps: [0.9, 0, 0.5, 0], on: bar => bar >= 4, cut: 1800 },
   Glory:      { level: [0.8, 1], sync: 0.5, amps: [0.9, 0, 0.4, 0, 0.6, 0, 0.4, 0.3], cut: 2400 },
   Amen:       { level: [0.7, 0.2], sync: 1, amps: [0.8, 0, 0, 0], on: bar => bar < 6, cut: 1500 },
 }
