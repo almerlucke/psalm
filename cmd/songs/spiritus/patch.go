@@ -140,7 +140,7 @@ func buildPatch(pt *patcher.Patcher, once bool) (ids patchIDs, err error) {
 		{name: "chimes", code: chimesScript, kind: "grains", preset: "glassKeys"},
 		{name: "pulse", code: pulseScript, kind: "grains", preset: "stutter"},
 		{name: "hands", code: handsScript, kind: "grains", preset: "stutter"},
-		{name: "piano", code: pianoScript, kind: "piano", preset: "grand"},
+		{name: "piano", code: pianoScript, kind: "piano", preset: "satie"},
 		{name: "breath", code: breathScript, kind: "grains", preset: "frozenDrone"},
 		{name: "pad", code: padScript, kind: "shaper", preset: "airPad", buffer: "pad"},
 		{name: "bells", code: bellsScript, kind: "shaper", preset: "churchBell", buffer: "bells"},
